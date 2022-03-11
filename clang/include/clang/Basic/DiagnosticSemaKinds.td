@@ -5629,7 +5629,7 @@ def warn_undefined_inline : Warning<"inline function %q0 is not defined">,
 def err_undefined_inline_var : Error<"inline variable %q0 is not defined">;
 def note_used_here : Note<"used here">;
 
-def err_attribute_missing_on_first_decl : Error<
+def err_attribute_missing_on_first_decl : Warning<
   "%0 attribute does not appear on the first declaration">;
 def warn_internal_linkage_local_storage : Warning<
   "'internal_linkage' attribute on a non-static local variable is ignored">,
@@ -10272,6 +10272,11 @@ def err_openclcxx_placement_new : Error<
 def warn_mig_server_routine_does_not_return_kern_return_t : Warning<
   "'mig_server_routine' attribute only applies to routines that return a kern_return_t">,
   InGroup<IgnoredAttributes>;
+
+def warn_imp_cast_drops_unaligned : Warning<
+  "implicit cast from type %0 to type %1 drops __unaligned qualifier">,
+  InGroup<DiagGroup<"unaligned-qualifier-implicit-cast">>;
+
 } // end of sema category
 
 let CategoryName = "OpenMP Issue" in {
