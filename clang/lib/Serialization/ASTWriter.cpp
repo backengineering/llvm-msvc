@@ -479,6 +479,10 @@ void TypeLocWriter::VisitAttributedTypeLoc(AttributedTypeLoc TL) {
   Record.AddAttr(TL.getAttr());
 }
 
+void TypeLocWriter::VisitBTFTagAttributedTypeLoc(BTFTagAttributedTypeLoc TL) {
+  // Nothing to do.
+}
+
 void TypeLocWriter::VisitTemplateTypeParmTypeLoc(TemplateTypeParmTypeLoc TL) {
   Record.AddSourceLocation(TL.getNameLoc());
 }
@@ -1313,8 +1317,7 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
       Record.push_back(M.Signature ? 0 : M.File->getSize());
       Record.push_back(M.Signature ? 0 : getTimestampForOutput(M.File));
 
-      for (auto I : M.Signature)
-        Record.push_back(I);
+      llvm::append_range(Record, M.Signature);
 
       AddString(M.ModuleName, Record);
       AddPath(M.FileName, Record);
@@ -2007,15 +2010,11 @@ static void emitBlob(llvm::BitstreamWriter &Stream, StringRef Blob,
   // consumers will not want its contents.
   SmallString<0> CompressedBuffer;
   if (llvm::zlib::isAvailable()) {
-    llvm::Error E = llvm::zlib::compress(Blob.drop_back(1), CompressedBuffer);
-    if (!E) {
-      RecordDataType Record[] = {SM_SLOC_BUFFER_BLOB_COMPRESSED,
-                                 Blob.size() - 1};
-      Stream.EmitRecordWithBlob(SLocBufferBlobCompressedAbbrv, Record,
-                                CompressedBuffer);
-      return;
-    }
-    llvm::consumeError(std::move(E));
+    llvm::zlib::compress(Blob.drop_back(1), CompressedBuffer);
+    RecordDataType Record[] = {SM_SLOC_BUFFER_BLOB_COMPRESSED, Blob.size() - 1};
+    Stream.EmitRecordWithBlob(SLocBufferBlobCompressedAbbrv, Record,
+                              CompressedBuffer);
+    return;
   }
 
   RecordDataType Record[] = {SM_SLOC_BUFFER_BLOB};
@@ -3702,8 +3701,7 @@ public:
 
   data_type ImportData(const reader::ASTDeclContextNameLookupTrait::data_type &FromReader) {
     unsigned Start = DeclIDs.size();
-    for (auto ID : FromReader)
-      DeclIDs.push_back(ID);
+    llvm::append_range(DeclIDs, FromReader);
     return std::make_pair(Start, DeclIDs.size());
   }
 
@@ -5912,8 +5910,7 @@ void ASTWriter::AddedVisibleDecl(const DeclContext *DC, const Decl *D) {
     // We're adding a visible declaration to a predefined decl context. Ensure
     // that we write out all of its lookup results so we don't get a nasty
     // surprise when we try to emit its lookup table.
-    for (auto *Child : DC->decls())
-      DeclsToEmitEvenIfUnreferenced.push_back(Child);
+    llvm::append_range(DeclsToEmitEvenIfUnreferenced, DC->decls());
   }
   DeclsToEmitEvenIfUnreferenced.push_back(D);
 }

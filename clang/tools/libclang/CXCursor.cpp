@@ -826,6 +826,12 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
   case Stmt::OMPGenericLoopDirectiveClass:
     K = CXCursor_OMPGenericLoopDirective;
     break;
+  case Stmt::OMPTeamsGenericLoopDirectiveClass:
+    K = CXCursor_OMPTeamsGenericLoopDirective;
+    break;
+  case Stmt::OMPTargetTeamsGenericLoopDirectiveClass:
+    K = CXCursor_OMPTargetTeamsGenericLoopDirective;
+    break;
   case Stmt::BuiltinBitCastExprClass:
     K = CXCursor_BuiltinBitCastExpr;
   }

@@ -201,10 +201,11 @@ template <> struct DominatingValue<RValue> {
                 AggregateAddress, ComplexAddress };
 
     llvm::Value *Value;
+    llvm::Type *ElementType;
     unsigned K : 3;
     unsigned Align : 29;
-    saved_type(llvm::Value *v, Kind k, unsigned a = 0)
-      : Value(v), K(k), Align(a) {}
+    saved_type(llvm::Value *v, llvm::Type *e, Kind k, unsigned a = 0)
+      : Value(v), ElementType(e), K(k), Align(a) {}
 
   public:
     static bool needsSaving(RValue value);
@@ -553,6 +554,9 @@ public:
 
   /// True if the current statement has noinline attribute.
   bool InNoInlineAttributedStmt = false;
+
+  /// True if the current statement has always_inline attribute.
+  bool InAlwaysInlineAttributedStmt = false;
 
   // The CallExpr within the current statement that the musttail attribute
   // applies to.  nullptr if there is no 'musttail' on the current statement.
@@ -4645,6 +4649,11 @@ public:
 
   /// Set the codegen fast-math flags.
   void SetFastMathFlags(FPOptions FPFeatures);
+
+  // Truncate or extend a boolean vector to the requested number of elements.
+  llvm::Value *emitBoolVecConversion(llvm::Value *SrcVec,
+                                     unsigned NumElementsDst,
+                                     const llvm::Twine &Name = "");
 
 private:
   llvm::MDNode *getRangeForLoadFromType(QualType Ty);

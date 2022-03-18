@@ -47,7 +47,6 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils.h"
-#include "llvm/Transforms/Utils/SymbolRewriter.h"
 #include <cassert>
 #include <string>
 
@@ -736,21 +735,21 @@ void TargetPassConfig::addPass(Pass *P) {
   if (StopBefore == PassID && StopBeforeCount++ == StopBeforeInstanceNum)
     Stopped = true;
   if (Started && !Stopped) {
-    if (AddingMachinePasses)
+    if (AddingMachinePasses) {
+      // Construct banner message before PM->add() as that may delete the pass.
+      std::string Banner =
+          std::string("After ") + std::string(P->getPassName());
       addMachinePrePasses();
-    std::string Banner;
-    // Construct banner message before PM->add() as that may delete the pass.
-    if (AddingMachinePasses)
-      Banner = std::string("After ") + std::string(P->getPassName());
-    PM->add(P);
-    if (AddingMachinePasses)
+      PM->add(P);
       addMachinePostPasses(Banner);
+    } else {
+      PM->add(P);
+    }
 
     // Add the passes after the pass P if there is any.
-    for (const auto &IP : Impl->InsertedPasses) {
+    for (const auto &IP : Impl->InsertedPasses)
       if (IP.TargetPassID == PassID)
         addPass(IP.getInsertedPass());
-    }
   } else {
     delete P;
   }
@@ -894,6 +893,12 @@ void TargetPassConfig::addIRPasses() {
   addPass(&GCLoweringID);
   addPass(&ShadowStackGCLoweringID);
   addPass(createLowerConstantIntrinsicsPass());
+
+  // For MachO, lower @llvm.global_dtors into @llvm_global_ctors with
+  // __cxa_atexit() calls to avoid emitting the deprecated __mod_term_func.
+  if (TM->getTargetTriple().isOSBinFormatMachO() &&
+      TM->Options.LowerGlobalDtorsViaCxaAtExit)
+    addPass(createLowerGlobalDtorsLegacyPass());
 
   // Make sure that no unreachable blocks are instruction selected.
   addPass(createUnreachableBlockEliminationPass());

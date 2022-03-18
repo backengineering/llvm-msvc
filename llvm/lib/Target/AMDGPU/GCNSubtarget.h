@@ -571,6 +571,8 @@ public:
     return hasFlatScratchInsts() && (hasGFX10_3Insts() || hasGFX940Insts());
   }
 
+  bool hasFlatScratchSVSMode() const { return GFX940Insts; }
+
   bool hasScalarFlatScratchInsts() const {
     return ScalarFlatScratchInsts;
   }
@@ -894,6 +896,8 @@ public:
 
   bool hasMovB64() const { return GFX940Insts; }
 
+  bool hasLshlAddB64() const { return GFX940Insts; }
+
   bool enableSIScheduler() const {
     return EnableSIScheduler;
   }
@@ -960,6 +964,11 @@ public:
 
   bool hasLdsBranchVmemWARHazard() const {
     return HasLdsBranchVmemWARHazard;
+  }
+
+  // Cannot use op_sel with v_dot instructions.
+  bool hasDOTOpSelHazard() const {
+    return GFX940Insts;
   }
 
   bool hasNSAtoVMEMBug() const {

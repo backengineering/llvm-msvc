@@ -783,7 +783,7 @@ private:
     OpeningBrace.ParentBracket = Contexts.back().ContextKind;
 
     if (Contexts.back().CaretFound)
-      OpeningBrace.setType(TT_ObjCBlockLBrace);
+      OpeningBrace.overwriteFixedType(TT_ObjCBlockLBrace);
     Contexts.back().CaretFound = false;
 
     ScopedContextCreator ContextCreator(*this, tok::l_brace, 1);
@@ -1023,6 +1023,8 @@ private:
       if (Style.isCpp() && CurrentToken && CurrentToken->is(tok::kw_co_await))
         next();
       Contexts.back().ColonIsForRangeExpr = true;
+      if (!CurrentToken || CurrentToken->isNot(tok::l_paren))
+        return false;
       next();
       if (!parseParens())
         return false;
@@ -1526,8 +1528,36 @@ private:
       if (Current.getPrecedence() != prec::Assignment)
         return false;
 
-      if (Line.First->isOneOf(tok::kw_template, tok::kw_using, tok::kw_return))
+      if (Line.First->isOneOf(tok::kw_using, tok::kw_return))
         return false;
+      if (Line.First->is(tok::kw_template)) {
+        assert(Current.Previous);
+        if (Current.Previous->is(tok::kw_operator)) {
+          // `template ... operator=` cannot be an expression.
+          return false;
+        }
+
+        // `template` keyword can start a variable template.
+        const FormatToken *Tok = Line.First->getNextNonComment();
+        assert(Tok); // Current token is on the same line.
+        if (Tok->isNot(TT_TemplateOpener)) {
+          // Explicit template instantiations do not have `<>`.
+          return false;
+        }
+
+        Tok = Tok->MatchingParen;
+        if (!Tok)
+          return false;
+        Tok = Tok->getNextNonComment();
+        if (!Tok)
+          return false;
+
+        if (Tok->isOneOf(tok::kw_class, tok::kw_enum, tok::kw_concept,
+                         tok::kw_struct, tok::kw_using))
+          return false;
+
+        return true;
+      }
 
       // Type aliases use `type X = ...;` in TypeScript and can be exported
       // using `export type ...`.
@@ -2147,14 +2177,21 @@ private:
 
     if (PrevToken->Tok.isLiteral() ||
         PrevToken->isOneOf(tok::r_paren, tok::r_square, tok::kw_true,
-                           tok::kw_false, tok::r_brace) ||
-        NextToken->Tok.isLiteral() ||
-        NextToken->isOneOf(tok::kw_true, tok::kw_false) ||
-        NextToken->isUnaryOperator() ||
-        // If we know we're in a template argument, there are no named
-        // declarations. Thus, having an identifier on the right-hand side
-        // indicates a binary operator.
-        (InTemplateArgument && NextToken->Tok.isAnyIdentifier()))
+                           tok::kw_false, tok::r_brace))
+      return TT_BinaryOperator;
+
+    const FormatToken *NextNonParen = NextToken;
+    while (NextNonParen && NextNonParen->is(tok::l_paren))
+      NextNonParen = NextNonParen->getNextNonComment();
+    if (NextNonParen && (NextNonParen->Tok.isLiteral() ||
+                         NextNonParen->isOneOf(tok::kw_true, tok::kw_false) ||
+                         NextNonParen->isUnaryOperator()))
+      return TT_BinaryOperator;
+
+    // If we know we're in a template argument, there are no named declarations.
+    // Thus, having an identifier on the right-hand side indicates a binary
+    // operator.
+    if (InTemplateArgument && NextToken->Tok.isAnyIdentifier())
       return TT_BinaryOperator;
 
     // "&&(" is quite unlikely to be two successive unary "&".
@@ -4478,12 +4515,11 @@ bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
 
   // We only break before r_paren if we're in a block indented context.
   if (Right.is(tok::r_paren)) {
-    if (Style.AlignAfterOpenBracket == FormatStyle::BAS_BlockIndent) {
+    if (Style.AlignAfterOpenBracket == FormatStyle::BAS_BlockIndent)
       return Right.MatchingParen &&
              !(Right.MatchingParen->Previous &&
                (Right.MatchingParen->Previous->is(tok::kw_for) ||
                 Right.MatchingParen->Previous->isIf()));
-    }
 
     return false;
   }
@@ -4565,8 +4601,8 @@ void TokenAnnotator::printDebugInfo(const AnnotatedLine &Line) {
                  << " BK=" << Tok->getBlockKind() << " P=" << Tok->SplitPenalty
                  << " Name=" << Tok->Tok.getName() << " L=" << Tok->TotalLength
                  << " PPK=" << Tok->getPackingKind() << " FakeLParens=";
-    for (unsigned i = 0, e = Tok->FakeLParens.size(); i != e; ++i)
-      llvm::errs() << Tok->FakeLParens[i] << "/";
+    for (prec::Level LParen : Tok->FakeLParens)
+      llvm::errs() << LParen << "/";
     llvm::errs() << " FakeRParens=" << Tok->FakeRParens;
     llvm::errs() << " II=" << Tok->Tok.getIdentifierInfo();
     llvm::errs() << " Text='" << Tok->TokenText << "'\n";

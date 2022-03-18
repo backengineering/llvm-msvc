@@ -154,6 +154,10 @@ def FeatureZCRegMove : SubtargetFeature<"zcm", "HasZeroCycleRegMove", "true",
 def FeatureZCZeroingGP : SubtargetFeature<"zcz-gp", "HasZeroCycleZeroingGP", "true",
                                         "Has zero-cycle zeroing instructions for generic registers">;
 
+// It is generally beneficial to rewrite "fmov s0, wzr" to "movi d0, #0".
+// as movi is more efficient across all cores. Newer cores can eliminate
+// fmovs early and there is no difference with movi, but this not true for
+// all implementations.
 def FeatureNoZCZeroingFP : SubtargetFeature<"no-zcz-fp", "HasZeroCycleZeroingFP", "false",
                                         "Has no zero-cycle zeroing instructions for FP registers">;
 
@@ -168,7 +172,7 @@ def FeatureZCZeroingFPWorkaround : SubtargetFeature<"zcz-fp-workaround",
     "The zero-cycle floating-point zeroing instruction has a bug">;
 
 def FeatureStrictAlign : SubtargetFeature<"strict-align",
-                                          "StrictAlign", "true",
+                                          "RequiresStrictAlign", "true",
                                           "Disallow all unaligned memory "
                                           "access">;
 
@@ -190,11 +194,11 @@ def FeaturePredictableSelectIsExpensive : SubtargetFeature<
     "Prefer likely predicted branches over selects">;
 
 def FeatureCustomCheapAsMoveHandling : SubtargetFeature<"custom-cheap-as-move",
-    "CustomAsCheapAsMove", "true",
+    "HasCustomCheapAsMoveHandling", "true",
     "Use custom handling of cheap instructions">;
 
 def FeatureExynosCheapAsMoveHandling : SubtargetFeature<"exynos-cheap-as-move",
-    "ExynosAsCheapAsMove", "true",
+    "HasExynosCheapAsMoveHandling", "true",
     "Use Exynos specific handling of cheap instructions",
     [FeatureCustomCheapAsMoveHandling]>;
 
@@ -202,12 +206,12 @@ def FeaturePostRAScheduler : SubtargetFeature<"use-postra-scheduler",
     "UsePostRAScheduler", "true", "Schedule again after register allocation">;
 
 def FeatureSlowMisaligned128Store : SubtargetFeature<"slow-misaligned-128store",
-    "Misaligned128StoreIsSlow", "true", "Misaligned 128 bit stores are slow">;
+    "IsMisaligned128StoreSlow", "true", "Misaligned 128 bit stores are slow">;
 
 def FeatureSlowPaired128 : SubtargetFeature<"slow-paired-128",
-    "Paired128IsSlow", "true", "Paired 128 bit loads and stores are slow">;
+    "IsPaired128Slow", "true", "Paired 128 bit loads and stores are slow">;
 
-def FeatureSlowSTRQro : SubtargetFeature<"slow-strqro-store", "STRQroIsSlow",
+def FeatureSlowSTRQro : SubtargetFeature<"slow-strqro-store", "IsSTRQroSlow",
     "true", "STR of Q register with register offset is slow">;
 
 def FeatureAlternateSExtLoadCVTF32Pattern : SubtargetFeature<
@@ -957,7 +961,7 @@ def ProcessorFeatures {
                                  FeatureRCPC, FeatureSSBS, FeaturePerfMon];
   list<SubtargetFeature> A77  = [HasV8_2aOps, FeatureCrypto, FeatureFPARMv8,
                                  FeatureNEON, FeatureFullFP16, FeatureDotProd,
-                                 FeatureRCPC, FeaturePerfMon];
+                                 FeatureRCPC, FeaturePerfMon, FeatureSSBS];
   list<SubtargetFeature> A78  = [HasV8_2aOps, FeatureCrypto, FeatureFPARMv8,
                                  FeatureNEON, FeatureFullFP16, FeatureDotProd,
                                  FeatureRCPC, FeaturePerfMon, FeatureSPE,
@@ -975,11 +979,12 @@ def ProcessorFeatures {
                                  FeatureSB];
   list<SubtargetFeature> X1   = [HasV8_2aOps, FeatureCrypto, FeatureFPARMv8,
                                  FeatureNEON, FeatureRCPC, FeaturePerfMon,
-                                 FeatureSPE, FeatureFullFP16, FeatureDotProd];
+                                 FeatureSPE, FeatureFullFP16, FeatureDotProd,
+                                 FeatureSSBS];
   list<SubtargetFeature> X1C  = [HasV8_2aOps, FeatureCrypto, FeatureFPARMv8,
                                  FeatureNEON, FeatureRCPC, FeaturePerfMon,
                                  FeatureSPE, FeatureFullFP16, FeatureDotProd,
-                                 FeaturePAuth];
+                                 FeaturePAuth, FeatureSSBS];
   list<SubtargetFeature> X2   = [HasV9_0aOps, FeatureNEON, FeaturePerfMon,
                                  FeatureMatMulInt8, FeatureBF16, FeatureAM,
                                  FeatureMTE, FeatureETE, FeatureSVE2BitPerm,

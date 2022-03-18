@@ -5514,7 +5514,7 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
     MVT CmpVT = N0.getSimpleValueType();
 
     // Floating point needs special handling if we don't have FCOMI.
-    if (Subtarget->hasCMov())
+    if (Subtarget->hasCMOV())
       break;
 
     bool IsSignaling = Node->getOpcode() == X86ISD::STRICT_FCMPS;
@@ -5614,19 +5614,62 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
       uint64_t Mask = MaskC->getZExtValue();
       Mask &= maskTrailingOnes<uint64_t>(CmpVT.getScalarSizeInBits());
 
-      // Check if we can replace AND+IMM64 with a shift. This is possible for
-      // masks like 0xFF000000 or 0x00FFFFFF and if we care only about the zero
-      // flag.
-      if (CmpVT == MVT::i64 && !isInt<32>(Mask) &&
+      // Check if we can replace AND+IMM{32,64} with a shift. This is possible
+      // for masks like 0xFF000000 or 0x00FFFFFF and if we care only about the
+      // zero flag.
+      if (CmpVT == MVT::i64 && !isInt<8>(Mask) && isShiftedMask_64(Mask) &&
           onlyUsesZeroFlag(SDValue(Node, 0))) {
         unsigned ShiftOpcode = ISD::DELETED_NODE;
         unsigned ShiftAmt;
-        if (isMask_64(~Mask)) {
+        unsigned SubRegIdx;
+        MVT SubRegVT;
+        unsigned TestOpcode;
+        unsigned LeadingZeros = countLeadingZeros(Mask);
+        unsigned TrailingZeros = countTrailingZeros(Mask);
+
+        // With leading/trailing zeros, the transform is profitable if we can
+        // eliminate a movabsq or shrink a 32-bit immediate to 8-bit without
+        // incurring any extra register moves.
+        bool SavesBytes = !isInt<32>(Mask) || N0.getOperand(0).hasOneUse();
+        if (LeadingZeros == 0 && SavesBytes) {
+          // If the mask covers the most significant bit, then we can replace
+          // TEST+AND with a SHR and check eflags.
+          // This emits a redundant TEST which is subsequently eliminated.
           ShiftOpcode = X86::SHR64ri;
-          ShiftAmt = countTrailingZeros(Mask);
-        } else if (isMask_64(Mask)) {
+          ShiftAmt = TrailingZeros;
+          SubRegIdx = 0;
+          TestOpcode = X86::TEST64rr;
+        } else if (TrailingZeros == 0 && SavesBytes) {
+          // If the mask covers the least significant bit, then we can replace
+          // TEST+AND with a SHL and check eflags.
+          // This emits a redundant TEST which is subsequently eliminated.
           ShiftOpcode = X86::SHL64ri;
-          ShiftAmt = countLeadingZeros(Mask);
+          ShiftAmt = LeadingZeros;
+          SubRegIdx = 0;
+          TestOpcode = X86::TEST64rr;
+        } else if (MaskC->hasOneUse() && !isInt<32>(Mask)) {
+          // If the shifted mask extends into the high half and is 8/16/32 bits
+          // wide, then replace it with a SHR and a TEST8rr/TEST16rr/TEST32rr.
+          unsigned PopCount = 64 - LeadingZeros - TrailingZeros;
+          if (PopCount == 8) {
+            ShiftOpcode = X86::SHR64ri;
+            ShiftAmt = TrailingZeros;
+            SubRegIdx = X86::sub_8bit;
+            SubRegVT = MVT::i8;
+            TestOpcode = X86::TEST8rr;
+          } else if (PopCount == 16) {
+            ShiftOpcode = X86::SHR64ri;
+            ShiftAmt = TrailingZeros;
+            SubRegIdx = X86::sub_16bit;
+            SubRegVT = MVT::i16;
+            TestOpcode = X86::TEST16rr;
+          } else if (PopCount == 32) {
+            ShiftOpcode = X86::SHR64ri;
+            ShiftAmt = TrailingZeros;
+            SubRegIdx = X86::sub_32bit;
+            SubRegVT = MVT::i32;
+            TestOpcode = X86::TEST32rr;
+          }
         }
         if (ShiftOpcode != ISD::DELETED_NODE) {
           SDValue ShiftC = CurDAG->getTargetConstant(ShiftAmt, dl, MVT::i64);
@@ -5634,8 +5677,12 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
               CurDAG->getMachineNode(ShiftOpcode, dl, MVT::i64, MVT::i32,
                                      N0.getOperand(0), ShiftC),
               0);
+          if (SubRegIdx != 0) {
+            Shift =
+                CurDAG->getTargetExtractSubreg(SubRegIdx, dl, SubRegVT, Shift);
+          }
           MachineSDNode *Test =
-              CurDAG->getMachineNode(X86::TEST64rr, dl, MVT::i32, Shift, Shift);
+              CurDAG->getMachineNode(TestOpcode, dl, MVT::i32, Shift, Shift);
           ReplaceNode(Node, Test);
           return;
         }

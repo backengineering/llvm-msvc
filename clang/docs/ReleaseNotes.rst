@@ -64,6 +64,9 @@ Bug Fixes
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- ``-Wliteral-range`` will warn on floating-point equality comparisons with
+  constants that are not representable in a casted value. For example,
+  ``(float) f == 0.1`` is always false.
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
@@ -93,6 +96,17 @@ Attribute Changes in Clang
 - The ``overloadable`` attribute can now be written in all of the syntactic
   locations a declaration attribute may appear.
   This fixes `Issue 53805 <https://github.com/llvm/llvm-project/issues/53805>`_.
+
+- Improved namespace attributes handling:
+
+  - Handle GNU attributes before a namespace identifier and subsequent
+    attributes of different kinds.
+  - Emit error on GNU attributes for a nested namespace definition.
+
+- Statement attributes ``[[clang::noinline]]`` and  ``[[clang::always_inline]]``
+  can be used to control inlining decisions at callsites.
+
+- ``#pragma clang attribute push`` now supports multiple attributes within a single directive.
 
 Windows Support
 ---------------

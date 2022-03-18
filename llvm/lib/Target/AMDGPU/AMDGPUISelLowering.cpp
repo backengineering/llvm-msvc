@@ -19,6 +19,7 @@
 #include "GCNSubtarget.h"
 #include "SIMachineFunctionInfo.h"
 #include "llvm/CodeGen/Analysis.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/Support/CommandLine.h"
@@ -4381,10 +4382,14 @@ uint32_t AMDGPUTargetLowering::getImplicitParameterOffset(
   uint64_t ArgOffset = alignTo(MFI->getExplicitKernArgSize(), Alignment) +
                        ExplicitArgOffset;
   switch (Param) {
-  case GRID_DIM:
+  case FIRST_IMPLICIT:
     return ArgOffset;
-  case GRID_OFFSET:
-    return ArgOffset + 4;
+  case PRIVATE_BASE:
+    return ArgOffset + AMDGPU::ImplicitArg::PRIVATE_BASE_OFFSET;
+  case SHARED_BASE:
+    return ArgOffset + AMDGPU::ImplicitArg::SHARED_BASE_OFFSET;
+  case QUEUE_PTR:
+    return ArgOffset + AMDGPU::ImplicitArg::QUEUE_PTR_OFFSET;
   }
   llvm_unreachable("unexpected implicit parameter type");
 }

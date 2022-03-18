@@ -38,13 +38,13 @@ What's New in Libc++ 15.0.0?
 New Features
 ------------
 
- - Implemented P0627R6 (Function to mark unreachable code)
+- Implemented P0627R6 (Function to mark unreachable code)
 
- - Implemented P1165R1 (Make stateful allocator propagation more consistent for ``operator+(basic_string)``)
+- Implemented P1165R1 (Make stateful allocator propagation more consistent for ``operator+(basic_string)``)
 
- - `pop_heap` now uses an algorithm known as "bottom-up heapsort" or
-   "heapsort with bounce" to reduce the number of comparisons, and rearranges
-   elements using move-assignment instead of `swap`.
+- `pop_heap` now uses an algorithm known as "bottom-up heapsort" or
+  "heapsort with bounce" to reduce the number of comparisons, and rearranges
+  elements using move-assignment instead of `swap`.
 
 API Changes
 -----------
@@ -59,10 +59,10 @@ API Changes
   ``<filesystem>`` header. The associated macro
   ``_LIBCPP_DEPRECATED_EXPERIMENTAL_FILESYSTEM`` has also been removed.
 
-- Some libc++ headers no longer transitively include all of ``<algorithm>``and ``<chrono>``.
+- Some libc++ headers no longer transitively include all of ``<algorithm>``, ``<chrono>`` and ``<utility>``.
   If, after updating libc++, you see compiler errors related to missing declarations in
   namespace ``std``, it might be because one of your source files now needs to
-  ``#include <algorithm>`` and/or ``#include <chrono>``.
+  ``#include <algorithm>``, ``#include <chrono>`` and/or ``#include <utility>``.
 
 - The integer distributions ``binomial_distribution``, ``discrete_distribution``,
   ``geometric_distribution``, ``negative_binomial_distribution``, ``poisson_distribution``,
@@ -98,3 +98,17 @@ Build System Changes
   library should set ``LIBCXXABI_HERMETIC_STATIC_LIBRARY=ON`` when configuring CMake. The current
   behavior, which tries to guess the correct dll-export semantics based on whether we're building
   the libc++ shared library, will be removed in LLVM 16.
+
+- Previously, the C++ ABI library headers would be installed inside ``<prefix>/include/c++/v1``
+  alongside the libc++ headers as part of building libc++. This is not the case anymore -- the
+  ABI library is expected to install its headers where it wants them as part of its own build.
+  Note that no action is required for most users, who build libc++ against libc++abi, since
+  libc++abi already installs its headers in the right location. However, vendors building
+  libc++ against alternate ABI libraries should make sure that their ABI library installs
+  its own headers.
+
+- The legacy testing configuration is now deprecated and will be removed in the next release. For
+  most users, this should not have any impact. However, if you are testing libc++ in a configuration
+  or on a platform that used to be supported by the legacy testing configuration and isn't supported
+  by one of the configurations in ``libcxx/test/configs``, please reach out to the libc++ developers
+  to get your configuration supported officially.

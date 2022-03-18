@@ -1744,6 +1744,7 @@ llvm_target_lib_list = [lib for lib in [
             ("-gen-subtarget", "lib/Target/X86/X86GenSubtargetInfo.inc"),
             ("-gen-x86-EVEX2VEX-tables", "lib/Target/X86/X86GenEVEX2VEXTables.inc"),
             ("-gen-exegesis", "lib/Target/X86/X86GenExegesis.inc"),
+            ("-gen-x86-mnemonic-tables -asmwriternum=1", "lib/Target/X86/X86GenMnemonicTables.inc"),
         ],
     },
     {
@@ -3605,6 +3606,24 @@ cc_binary(
         ":AllTargetsCodeGens",
         ":BitReader",
         ":Core",
+    ],
+)
+
+cc_binary(
+    name = "llvm-remark-size-diff",
+    srcs = glob([
+        "tools/llvm-remark-size-diff/**/*.cpp",
+        "tools/llvm-remark-size-diff/**/*.h",
+    ]),
+    copts = llvm_copts,
+    includes = ["tools/llvm-reark-size-diff"],
+    stamp = 0,
+    deps = [
+        ":Core",
+        ":Demangle",
+        ":Object",
+        ":Remarks",
+        ":Support",
     ],
 )
 

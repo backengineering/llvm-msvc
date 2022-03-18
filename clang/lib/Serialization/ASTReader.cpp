@@ -6695,6 +6695,10 @@ void TypeLocReader::VisitAttributedTypeLoc(AttributedTypeLoc TL) {
   TL.setAttr(ReadAttr());
 }
 
+void TypeLocReader::VisitBTFTagAttributedTypeLoc(BTFTagAttributedTypeLoc TL) {
+  // Nothing to do.
+}
+
 void TypeLocReader::VisitTemplateTypeParmTypeLoc(TemplateTypeParmTypeLoc TL) {
   TL.setNameLoc(readSourceLocation());
 }
@@ -10608,9 +10612,8 @@ void ASTReader::diagnoseOdrViolations() {
                     ExpandedList.push_back(&TA);
                     continue;
                   }
-                  for (const TemplateArgument &PackTA : TA.getPackAsArray()) {
-                    ExpandedList.push_back(&PackTA);
-                  }
+                  llvm::append_range(ExpandedList, llvm::make_pointer_range(
+                                                       TA.getPackAsArray()));
                 }
                 return ExpandedList;
               };

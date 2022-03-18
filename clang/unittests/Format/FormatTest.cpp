@@ -2767,7 +2767,8 @@ TEST_F(FormatTest, CaseRanges) {
 
 TEST_F(FormatTest, ShortEnums) {
   FormatStyle Style = getLLVMStyle();
-  Style.AllowShortEnumsOnASingleLine = true;
+  EXPECT_TRUE(Style.AllowShortEnumsOnASingleLine);
+  EXPECT_FALSE(Style.BraceWrapping.AfterEnum);
   verifyFormat("enum { A, B, C } ShortEnum1, ShortEnum2;", Style);
   verifyFormat("typedef enum { A, B, C } ShortEnum1, ShortEnum2;", Style);
   Style.AllowShortEnumsOnASingleLine = false;
@@ -7217,9 +7218,8 @@ TEST_F(FormatTest, MemoizationTests) {
   OnePerLine.BinPackParameters = false;
   std::string input = "Constructor()\n"
                       "    : aaaa(a,\n";
-  for (unsigned i = 0, e = 80; i != e; ++i) {
+  for (unsigned i = 0, e = 80; i != e; ++i)
     input += "           a,\n";
-  }
   input += "           a) {}";
   verifyFormat(input, OnePerLine);
 }
@@ -9889,6 +9889,14 @@ TEST_F(FormatTest, UnderstandsFunctionRefQualification) {
   verifyFormat("template <typename T>\n"
                "void F(T) && = delete;",
                getGoogleStyle());
+  verifyFormat("template <typename T> void operator=(T) &;");
+  verifyFormat("template <typename T> void operator=(T) const &;");
+  verifyFormat("template <typename T> void operator=(T) &noexcept;");
+  verifyFormat("template <typename T> void operator=(T) & = default;");
+  verifyFormat("template <typename T> void operator=(T) &&;");
+  verifyFormat("template <typename T> void operator=(T) && = delete;");
+  verifyFormat("template <typename T> void operator=(T) & {}");
+  verifyFormat("template <typename T> void operator=(T) && {}");
 
   FormatStyle AlignLeft = getLLVMStyle();
   AlignLeft.PointerAlignment = FormatStyle::PAS_Left;
@@ -9909,6 +9917,17 @@ TEST_F(FormatTest, UnderstandsFunctionRefQualification) {
   verifyFormat("void Fn(T const volatile&&) const volatile&&;", AlignLeft);
   verifyFormat("void Fn(T const volatile&&) const volatile&& noexcept;",
                AlignLeft);
+  verifyFormat("template <typename T> void operator=(T) &;", AlignLeft);
+  verifyFormat("template <typename T> void operator=(T) const&;", AlignLeft);
+  verifyFormat("template <typename T> void operator=(T) & noexcept;",
+               AlignLeft);
+  verifyFormat("template <typename T> void operator=(T) & = default;",
+               AlignLeft);
+  verifyFormat("template <typename T> void operator=(T) &&;", AlignLeft);
+  verifyFormat("template <typename T> void operator=(T) && = delete;",
+               AlignLeft);
+  verifyFormat("template <typename T> void operator=(T) & {}", AlignLeft);
+  verifyFormat("template <typename T> void operator=(T) && {}", AlignLeft);
 
   FormatStyle AlignMiddle = getLLVMStyle();
   AlignMiddle.PointerAlignment = FormatStyle::PAS_Middle;
@@ -9930,6 +9949,17 @@ TEST_F(FormatTest, UnderstandsFunctionRefQualification) {
   verifyFormat("void Fn(T const volatile &&) const volatile &&;", AlignMiddle);
   verifyFormat("void Fn(T const volatile &&) const volatile && noexcept;",
                AlignMiddle);
+  verifyFormat("template <typename T> void operator=(T) &;", AlignMiddle);
+  verifyFormat("template <typename T> void operator=(T) const &;", AlignMiddle);
+  verifyFormat("template <typename T> void operator=(T) & noexcept;",
+               AlignMiddle);
+  verifyFormat("template <typename T> void operator=(T) & = default;",
+               AlignMiddle);
+  verifyFormat("template <typename T> void operator=(T) &&;", AlignMiddle);
+  verifyFormat("template <typename T> void operator=(T) && = delete;",
+               AlignMiddle);
+  verifyFormat("template <typename T> void operator=(T) & {}", AlignMiddle);
+  verifyFormat("template <typename T> void operator=(T) && {}", AlignMiddle);
 
   FormatStyle Spaces = getLLVMStyle();
   Spaces.SpacesInCStyleCastParentheses = true;
@@ -10304,6 +10334,11 @@ TEST_F(FormatTest, UnderstandsUsesOfStarAndAmp) {
   verifyFormat("vector<a * b> v;");
   verifyFormat("foo<b && false>();");
   verifyFormat("foo<b & 1>();");
+  verifyFormat("foo<b & (1)>();");
+  verifyFormat("foo<b & (~0)>();");
+  verifyFormat("foo<b & (true)>();");
+  verifyFormat("foo<b & ((1))>();");
+  verifyFormat("foo<b & (/*comment*/ 1)>();");
   verifyFormat("decltype(*::std::declval<const T &>()) void F();");
   verifyFormat("typeof(*::std::declval<const T &>()) void F();");
   verifyFormat("_Atomic(*::std::declval<const T &>()) void F();");
@@ -12089,6 +12124,7 @@ TEST_F(FormatTest, IncorrectCodeMissingParens) {
   verifyFormat("if {\n  foo;\n  foo();\n}");
   verifyFormat("switch {\n  foo;\n  foo();\n}");
   verifyIncompleteFormat("for {\n  foo;\n  foo();\n}");
+  verifyIncompleteFormat("ERROR: for target;");
   verifyFormat("while {\n  foo;\n  foo();\n}");
   verifyFormat("do {\n  foo;\n  foo();\n} while;");
 }
@@ -19176,6 +19212,14 @@ TEST_F(FormatTest, CatchAlignArrayOfStructuresRightAlignment) {
                "     {init1, init2, init3, init4}}\n"
                "};",
                Style);
+  // TODO: Fix the indentations below when this option is fully functional.
+  verifyFormat("int a[][] = {\n"
+               "    {\n"
+               "     {0, 2}, //\n"
+               " {1, 2}  //\n"
+               "    }\n"
+               "};",
+               Style);
   Style.ColumnLimit = 100;
   EXPECT_EQ(
       "test demo[] = {\n"
@@ -25623,6 +25667,12 @@ TEST_F(FormatTest, AlignArrayOfStructuresRightAlignmentNonSquare) {
                "  };\n"
                "}",
                Style);
+}
+
+TEST_F(FormatTest, FormatsVariableTemplates) {
+  verifyFormat("inline bool var = is_integral_v<int> && is_signed_v<int>;");
+  verifyFormat("template <typename T> "
+               "inline bool var = is_integral_v<T> && is_signed_v<T>;");
 }
 
 } // namespace

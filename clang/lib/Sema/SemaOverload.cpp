@@ -10256,10 +10256,19 @@ static bool checkAddressOfFunctionIsAvailable(Sema &S, const FunctionDecl *FD,
       return false;
     if (!Satisfaction.IsSatisfied) {
       if (Complain) {
-        if (InOverloadResolution)
+        if (InOverloadResolution) {
+          SmallString<128> TemplateArgString;
+          if (FunctionTemplateDecl *FunTmpl = FD->getPrimaryTemplate()) {
+            TemplateArgString += " ";
+            TemplateArgString += S.getTemplateArgumentBindingsText(
+                FunTmpl->getTemplateParameters(),
+                *FD->getTemplateSpecializationArgs());
+          }
+
           S.Diag(FD->getBeginLoc(),
-                 diag::note_ovl_candidate_unsatisfied_constraints);
-        else
+                 diag::note_ovl_candidate_unsatisfied_constraints)
+              << TemplateArgString;
+        } else
           S.Diag(Loc, diag::err_addrof_function_constraints_not_satisfied)
               << FD;
         S.DiagnoseUnsatisfiedConstraint(Satisfaction);
@@ -14344,7 +14353,7 @@ ExprResult Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
     if (!AllowRecovery)
       return ExprError();
     std::vector<Expr *> SubExprs = {MemExprE};
-    llvm::for_each(Args, [&SubExprs](Expr *E) { SubExprs.push_back(E); });
+    llvm::append_range(SubExprs, Args);
     return CreateRecoveryExpr(MemExprE->getBeginLoc(), RParenLoc, SubExprs,
                               Type);
   };

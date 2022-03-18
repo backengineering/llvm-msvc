@@ -49,13 +49,6 @@ using namespace llvm;
 using namespace PatternMatch;
 
 
-static Value *createMinMax(InstCombiner::BuilderTy &Builder,
-                           SelectPatternFlavor SPF, Value *A, Value *B) {
-  CmpInst::Predicate Pred = getMinMaxPred(SPF);
-  assert(CmpInst::isIntPredicate(Pred) && "Expected integer predicate");
-  return Builder.CreateSelect(Builder.CreateICmp(Pred, A, B), A, B);
-}
-
 /// Replace a select operand based on an equality comparison with the identity
 /// constant of a binop.
 static Instruction *foldSelectBinOpIdentity(SelectInst &Sel,
@@ -1704,114 +1697,6 @@ Instruction *InstCombinerImpl::foldSPFofSPF(Instruction *Inner,
     // TODO: This could be done in instsimplify.
     if (SPF1 == SPF2 && SelectPatternResult::isMinOrMax(SPF1))
       return replaceInstUsesWith(Outer, Inner);
-
-    // MAX(MIN(a, b), a) -> a
-    // MIN(MAX(a, b), a) -> a
-    // TODO: This could be done in instsimplify.
-    if ((SPF1 == SPF_SMIN && SPF2 == SPF_SMAX) ||
-        (SPF1 == SPF_SMAX && SPF2 == SPF_SMIN) ||
-        (SPF1 == SPF_UMIN && SPF2 == SPF_UMAX) ||
-        (SPF1 == SPF_UMAX && SPF2 == SPF_UMIN))
-      return replaceInstUsesWith(Outer, C);
-  }
-
-  if (SPF1 == SPF2) {
-    const APInt *CB, *CC;
-    if (match(B, m_APInt(CB)) && match(C, m_APInt(CC))) {
-      // MIN(MIN(A, 23), 97) -> MIN(A, 23)
-      // MAX(MAX(A, 97), 23) -> MAX(A, 97)
-      // TODO: This could be done in instsimplify.
-      if ((SPF1 == SPF_UMIN && CB->ule(*CC)) ||
-          (SPF1 == SPF_SMIN && CB->sle(*CC)) ||
-          (SPF1 == SPF_UMAX && CB->uge(*CC)) ||
-          (SPF1 == SPF_SMAX && CB->sge(*CC)))
-        return replaceInstUsesWith(Outer, Inner);
-
-      // MIN(MIN(A, 97), 23) -> MIN(A, 23)
-      // MAX(MAX(A, 23), 97) -> MAX(A, 97)
-      if ((SPF1 == SPF_UMIN && CB->ugt(*CC)) ||
-          (SPF1 == SPF_SMIN && CB->sgt(*CC)) ||
-          (SPF1 == SPF_UMAX && CB->ult(*CC)) ||
-          (SPF1 == SPF_SMAX && CB->slt(*CC))) {
-        Outer.replaceUsesOfWith(Inner, A);
-        return &Outer;
-      }
-    }
-  }
-
-  // max(max(A, B), min(A, B)) --> max(A, B)
-  // min(min(A, B), max(A, B)) --> min(A, B)
-  // TODO: This could be done in instsimplify.
-  if (SPF1 == SPF2 &&
-      ((SPF1 == SPF_UMIN && match(C, m_c_UMax(m_Specific(A), m_Specific(B)))) ||
-       (SPF1 == SPF_SMIN && match(C, m_c_SMax(m_Specific(A), m_Specific(B)))) ||
-       (SPF1 == SPF_UMAX && match(C, m_c_UMin(m_Specific(A), m_Specific(B)))) ||
-       (SPF1 == SPF_SMAX && match(C, m_c_SMin(m_Specific(A), m_Specific(B))))))
-    return replaceInstUsesWith(Outer, Inner);
-
-  // ABS(ABS(X)) -> ABS(X)
-  // NABS(NABS(X)) -> NABS(X)
-  // TODO: This could be done in instsimplify.
-  if (SPF1 == SPF2 && (SPF1 == SPF_ABS || SPF1 == SPF_NABS)) {
-    return replaceInstUsesWith(Outer, Inner);
-  }
-
-  // ABS(NABS(X)) -> ABS(X)
-  // NABS(ABS(X)) -> NABS(X)
-  if ((SPF1 == SPF_ABS && SPF2 == SPF_NABS) ||
-      (SPF1 == SPF_NABS && SPF2 == SPF_ABS)) {
-    SelectInst *SI = cast<SelectInst>(Inner);
-    Value *NewSI =
-        Builder.CreateSelect(SI->getCondition(), SI->getFalseValue(),
-                             SI->getTrueValue(), SI->getName(), SI);
-    return replaceInstUsesWith(Outer, NewSI);
-  }
-
-  auto IsFreeOrProfitableToInvert =
-      [&](Value *V, Value *&NotV, bool &ElidesXor) {
-    if (match(V, m_Not(m_Value(NotV)))) {
-      // If V has at most 2 uses then we can get rid of the xor operation
-      // entirely.
-      ElidesXor |= !V->hasNUsesOrMore(3);
-      return true;
-    }
-
-    if (isFreeToInvert(V, !V->hasNUsesOrMore(3))) {
-      NotV = nullptr;
-      return true;
-    }
-
-    return false;
-  };
-
-  Value *NotA, *NotB, *NotC;
-  bool ElidesXor = false;
-
-  // MIN(MIN(~A, ~B), ~C) == ~MAX(MAX(A, B), C)
-  // MIN(MAX(~A, ~B), ~C) == ~MAX(MIN(A, B), C)
-  // MAX(MIN(~A, ~B), ~C) == ~MIN(MAX(A, B), C)
-  // MAX(MAX(~A, ~B), ~C) == ~MIN(MIN(A, B), C)
-  //
-  // This transform is performance neutral if we can elide at least one xor from
-  // the set of three operands, since we'll be tacking on an xor at the very
-  // end.
-  if (SelectPatternResult::isMinOrMax(SPF1) &&
-      SelectPatternResult::isMinOrMax(SPF2) &&
-      IsFreeOrProfitableToInvert(A, NotA, ElidesXor) &&
-      IsFreeOrProfitableToInvert(B, NotB, ElidesXor) &&
-      IsFreeOrProfitableToInvert(C, NotC, ElidesXor) && ElidesXor) {
-    if (!NotA)
-      NotA = Builder.CreateNot(A);
-    if (!NotB)
-      NotB = Builder.CreateNot(B);
-    if (!NotC)
-      NotC = Builder.CreateNot(C);
-
-    Value *NewInner = createMinMax(Builder, getInverseMinMaxFlavor(SPF1), NotA,
-                                   NotB);
-    Value *NewOuter = Builder.CreateNot(
-        createMinMax(Builder, getInverseMinMaxFlavor(SPF2), NewInner, NotC));
-    return replaceInstUsesWith(Outer, NewOuter);
   }
 
   return nullptr;
@@ -2605,13 +2490,29 @@ Instruction *InstCombinerImpl::visitSelectInst(SelectInst &SI) {
     // Folding select to and/or i1 isn't poison safe in general. impliesPoison
     // checks whether folding it does not convert a well-defined value into
     // poison.
-    if (match(TrueVal, m_One()) && impliesPoison(FalseVal, CondVal)) {
-      // Change: A = select B, true, C --> A = or B, C
-      return BinaryOperator::CreateOr(CondVal, FalseVal);
+    if (match(TrueVal, m_One())) {
+      if (impliesPoison(FalseVal, CondVal)) {
+        // Change: A = select B, true, C --> A = or B, C
+        return BinaryOperator::CreateOr(CondVal, FalseVal);
+      }
+
+      if (auto *LHS = dyn_cast<FCmpInst>(CondVal))
+        if (auto *RHS = dyn_cast<FCmpInst>(FalseVal))
+          if (Value *V = foldLogicOfFCmps(LHS, RHS, /*IsAnd*/ false,
+                                          /*IsSelectLogical*/ true))
+            return replaceInstUsesWith(SI, V);
     }
-    if (match(FalseVal, m_Zero()) && impliesPoison(TrueVal, CondVal)) {
-      // Change: A = select B, C, false --> A = and B, C
-      return BinaryOperator::CreateAnd(CondVal, TrueVal);
+    if (match(FalseVal, m_Zero())) {
+      if (impliesPoison(TrueVal, CondVal)) {
+        // Change: A = select B, C, false --> A = and B, C
+        return BinaryOperator::CreateAnd(CondVal, TrueVal);
+      }
+
+      if (auto *LHS = dyn_cast<FCmpInst>(CondVal))
+        if (auto *RHS = dyn_cast<FCmpInst>(TrueVal))
+          if (Value *V = foldLogicOfFCmps(LHS, RHS, /*IsAnd*/ true,
+                                          /*IsSelectLogical*/ true))
+            return replaceInstUsesWith(SI, V);
     }
 
     auto *One = ConstantInt::getTrue(SelType);
