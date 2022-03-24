@@ -2867,8 +2867,7 @@ public:
   void ActOnCXXForRangeDecl(Decl *D);
   StmtResult ActOnCXXForRangeIdentifier(Scope *S, SourceLocation IdentLoc,
                                         IdentifierInfo *Ident,
-                                        ParsedAttributes &Attrs,
-                                        SourceLocation AttrEnd);
+                                        ParsedAttributes &Attrs);
   void SetDeclDeleted(Decl *dcl, SourceLocation DelLoc);
   void SetDeclDefaulted(Decl *dcl, SourceLocation DefaultLoc);
   void CheckStaticLocalForDllExport(VarDecl *VD);
@@ -4440,8 +4439,7 @@ public:
 
   /// Process the attributes before creating an attributed statement. Returns
   /// the semantic attributes that have been processed.
-  void ProcessStmtAttributes(Stmt *Stmt,
-                             const ParsedAttributesWithRange &InAttrs,
+  void ProcessStmtAttributes(Stmt *Stmt, const ParsedAttributes &InAttrs,
                              SmallVectorImpl<const Attr *> &OutAttrs);
 
   void WarnConflictingTypedMethods(ObjCMethodDecl *Method,
@@ -4783,7 +4781,7 @@ public:
 
   StmtResult BuildAttributedStmt(SourceLocation AttrsLoc,
                                  ArrayRef<const Attr *> Attrs, Stmt *SubStmt);
-  StmtResult ActOnAttributedStmt(const ParsedAttributesWithRange &AttrList,
+  StmtResult ActOnAttributedStmt(const ParsedAttributes &AttrList,
                                  Stmt *SubStmt);
 
   class ConditionResult;
@@ -7361,11 +7359,9 @@ public:
                                        TypeSourceInfo *TInfo,
                                        SourceLocation EllipsisLoc);
 
-  BaseResult ActOnBaseSpecifier(Decl *classdecl,
-                                SourceRange SpecifierRange,
-                                ParsedAttributes &Attrs,
-                                bool Virtual, AccessSpecifier Access,
-                                ParsedType basetype,
+  BaseResult ActOnBaseSpecifier(Decl *classdecl, SourceRange SpecifierRange,
+                                const ParsedAttributesView &Attrs, bool Virtual,
+                                AccessSpecifier Access, ParsedType basetype,
                                 SourceLocation BaseLoc,
                                 SourceLocation EllipsisLoc);
 
@@ -10175,7 +10171,7 @@ public:
   void ActOnPragmaVisibility(const IdentifierInfo* VisType,
                              SourceLocation PragmaLoc);
 
-  NamedDecl *DeclClonePragmaWeak(NamedDecl *ND, IdentifierInfo *II,
+  NamedDecl *DeclClonePragmaWeak(NamedDecl *ND, const IdentifierInfo *II,
                                  SourceLocation Loc);
   void DeclApplyPragmaWeak(Scope *S, NamedDecl *ND, WeakInfo &W);
 
@@ -10912,6 +10908,16 @@ public:
   /// Called on well-formed '\#pragma omp target teams loop' after parsing of
   /// the associated statement.
   StmtResult ActOnOpenMPTargetTeamsGenericLoopDirective(
+      ArrayRef<OMPClause *> Clauses, Stmt *AStmt, SourceLocation StartLoc,
+      SourceLocation EndLoc, VarsWithInheritedDSAType &VarsWithImplicitDSA);
+  /// Called on well-formed '\#pragma omp parallel loop' after parsing of the
+  /// associated statement.
+  StmtResult ActOnOpenMPParallelGenericLoopDirective(
+      ArrayRef<OMPClause *> Clauses, Stmt *AStmt, SourceLocation StartLoc,
+      SourceLocation EndLoc, VarsWithInheritedDSAType &VarsWithImplicitDSA);
+  /// Called on well-formed '\#pragma omp target parallel loop' after parsing
+  /// of the associated statement.
+  StmtResult ActOnOpenMPTargetParallelGenericLoopDirective(
       ArrayRef<OMPClause *> Clauses, Stmt *AStmt, SourceLocation StartLoc,
       SourceLocation EndLoc, VarsWithInheritedDSAType &VarsWithImplicitDSA);
   /// Called on well-formed '\#pragma omp cancellation point'.
@@ -11953,7 +11959,7 @@ public:
 
   // type checking for sizeless vector binary operators.
   QualType CheckSizelessVectorOperands(ExprResult &LHS, ExprResult &RHS,
-                                       SourceLocation Loc,
+                                       SourceLocation Loc, bool IsCompAssign,
                                        ArithConvKind OperationKind);
 
   /// Type checking for matrix binary operators.

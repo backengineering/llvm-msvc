@@ -1060,9 +1060,6 @@ static void lowerExplicitLowerBounds(
       mlir::Value lb = builder.createConvert(
           loc, idxTy, genScalarValue(converter, loc, expr, symMap, stmtCtx));
       result.emplace_back(lb);
-    } else if (!spec->lbound().isColon()) {
-      // Implicit lower bound is 1 (Fortran 2018 section 8.5.8.3 point 3.)
-      result.emplace_back(builder.createIntegerConstant(loc, idxTy, 1));
     }
   }
   assert(result.empty() || result.size() == box.dynamicBound().size());
@@ -1119,7 +1116,11 @@ lowerExplicitCharLen(Fortran::lower::AbstractConverter &converter,
   if (llvm::Optional<int64_t> len = box.getCharLenConst())
     return builder.createIntegerConstant(loc, lenTy, *len);
   if (llvm::Optional<Fortran::lower::SomeExpr> lenExpr = box.getCharLenExpr())
-    return genScalarValue(converter, loc, *lenExpr, symMap, stmtCtx);
+    // If the length expression is negative, the length is zero. See F2018
+    // 7.4.4.2 point 5.
+    return Fortran::lower::genMaxWithZero(
+        builder, loc,
+        genScalarValue(converter, loc, *lenExpr, symMap, stmtCtx));
   return mlir::Value{};
 }
 
