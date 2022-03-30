@@ -106,17 +106,8 @@ New checks
 
   Finds initializations of C++ shared pointers to non-array type that are initialized with an array.
 
-- New :doc:`modernize-macro-to-enum
-  <clang-tidy/checks/modernize-macro-to-enum>` check.
-
-  Replaces groups of adjacent macros with an unscoped anonymous enum.
-
 New check aliases
 ^^^^^^^^^^^^^^^^^
-
-- New alias :doc:`cppcoreguidelines-macro-to-enum
-  <clang-tidy/checks/cppcoreguidelines-macro-to-enum>` to :doc:`modernize-macro-to-enum
-  <clang-tidy/checks/modernize-macro-to-enum>` was added.
 
 Changes in existing checks
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -130,6 +121,9 @@ Changes in existing checks
 
 - Fixed a false positive in :doc:`misc-redundant-expression <clang-tidy/checks/misc-redundant-expression>`
   involving overloaded comparison operators.
+
+- Fixed a crash in :doc:`bugprone-sizeof-expression <clang-tidy/checks/bugprone-sizeof-expression>` when
+  `sizeof(...)` is compared agains a `__int128_t`.
 
 Removed checks
 ^^^^^^^^^^^^^^
