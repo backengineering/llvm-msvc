@@ -1151,7 +1151,6 @@ void llvm::thinLTOFinalizeInModule(Module &TheModule,
   for (auto &GO : TheModule.global_objects()) {
     if (auto *C = GO.getComdat(); C && NonPrevailingComdats.count(C)) {
       GO.setComdat(nullptr);
-      assert(GO.hasLocalLinkage() && "GO's comdat should have been dropped");
       GO.setLinkage(GlobalValue::AvailableExternallyLinkage);
     }
   }

@@ -48,6 +48,16 @@ def StructTimeSpecPtr : PtrType<StructTimeSpec>;
 def ExecArgvT : NamedType<"__exec_argv_t">;
 def ExecEnvpT : NamedType<"__exec_envp_t">;
 
+def AtForkCallbackT : NamedType<"__atfork_callback_t">;
+
+def PosixSpawnFileActionsT : NamedType<"posix_spawn_file_actions_t">;
+def PosixSpawnFileActionsTPtr : PtrType<PosixSpawnFileActionsT>;
+def ConstPosixSpawnFileActionsTPtr : ConstType<PosixSpawnFileActionsTPtr>;
+def PosixSpawnFileActionsTRestrictedPtr : RestrictedPtrType<PosixSpawnFileActionsT>;
+
+def PosixSpawnAttrT : NamedType<"posix_spawnattr_t">;
+def RestrictedPosixSpawnAttrTPtrType : RestrictedPtrType<PosixSpawnAttrT>;
+
 def POSIX : StandardSpec<"POSIX"> {
   PtrType CharPtr = PtrType<CharType>;
   RestrictedPtrType RestrictedCharPtr = RestrictedPtrType<CharType>;
@@ -350,6 +360,11 @@ def POSIX : StandardSpec<"POSIX"> {
           [ArgSpec<IntType>]
         >,
         FunctionSpec<
+          "getcwd",
+          RetValSpec<CharPtr>,
+          [ArgSpec<CharPtr>, ArgSpec<SizeTType>]
+        >,
+        FunctionSpec<
           "close",
           RetValSpec<IntType>,
           [ArgSpec<IntType>]
@@ -398,6 +413,11 @@ def POSIX : StandardSpec<"POSIX"> {
           "getuid",
           RetValSpec<UidT>,
           [ArgSpec<VoidType>]
+        >,
+        FunctionSpec<
+          "isatty",
+          RetValSpec<IntType>,
+          [ArgSpec<IntType>]
         >,
         FunctionSpec<
           "link",
@@ -508,6 +528,11 @@ def POSIX : StandardSpec<"POSIX"> {
           "symlinkat",
           RetValSpec<IntType>,
           [ArgSpec<IntType>, ArgSpec<ConstCharPtr>, ArgSpec<IntType>, ArgSpec<ConstCharPtr>]
+        >,
+        FunctionSpec<
+          "sysconf",
+          RetValSpec<IntType>,
+          [ArgSpec<IntType>]
         >,
         FunctionSpec<
           "__llvm_libc_syscall",
@@ -718,6 +743,7 @@ def POSIX : StandardSpec<"POSIX"> {
     "pthread.h",
     [], // Macros
     [
+        AtForkCallbackT,
         PThreadAttrTType,
         PThreadKeyT,
         PThreadMutexAttrTType,
@@ -730,6 +756,11 @@ def POSIX : StandardSpec<"POSIX"> {
     ], // Types
     [], // Enumerations
     [
+      FunctionSpec<
+          "pthread_atfork",
+          RetValSpec<IntType>,
+          [ArgSpec<AtForkCallbackT>, ArgSpec<AtForkCallbackT>, ArgSpec<AtForkCallbackT>]
+      >,
       FunctionSpec<
           "pthread_attr_init",
           RetValSpec<IntType>,
@@ -1017,6 +1048,58 @@ def POSIX : StandardSpec<"POSIX"> {
     ]
   >;
 
+  HeaderSpec SysIOctl = HeaderSpec<
+    "sys/ioctl.h",
+    [
+      Macro<"TIOCGETD">,
+    ],  // Macros
+    [], // Types
+    [], // Enumerations
+    []  // Functions
+  >;
+
+  HeaderSpec Spawn = HeaderSpec<
+    "spawn.h",
+    [], // Macros
+    [ModeTType, PosixSpawnAttrT, PidT, PosixSpawnFileActionsT],
+    [], // Enumerations
+    [
+      FunctionSpec<
+        "posix_spawn_file_actions_addclose",
+        RetValSpec<IntType>,
+        [ArgSpec<PosixSpawnFileActionsTPtr>, ArgSpec<IntType>]
+      >,
+      FunctionSpec<
+        "posix_spawn_file_actions_adddup2",
+        RetValSpec<IntType>,
+        [ArgSpec<PosixSpawnFileActionsTPtr>, ArgSpec<IntType>, ArgSpec<IntType>]
+      >,
+      FunctionSpec<
+        "posix_spawn_file_actions_addopen",
+        RetValSpec<IntType>,
+        [ArgSpec<PosixSpawnFileActionsTRestrictedPtr>, ArgSpec<IntType>,
+         ArgSpec<ConstCharRestrictedPtr>, ArgSpec<IntType>, ArgSpec<ModeTType>]
+      >,
+      FunctionSpec<
+        "posix_spawn_file_actions_destroy",
+        RetValSpec<IntType>,
+        [ArgSpec<PosixSpawnFileActionsTPtr>]
+      >,
+      FunctionSpec<
+        "posix_spawn_file_actions_init",
+        RetValSpec<IntType>,
+        [ArgSpec<PosixSpawnFileActionsTPtr>]
+      >,
+      FunctionSpec<
+        "posix_spawn",
+        RetValSpec<IntType>,
+        [ArgSpec<RestrictedPidTPtr>, ArgSpec<ConstCharRestrictedPtr>,
+         ArgSpec<PosixSpawnFileActionsTPtr>, ArgSpec<RestrictedPosixSpawnAttrTPtrType>,
+         ArgSpec<ConstCharRestrictedPtrPtr>, ArgSpec<ConstCharRestrictedPtrPtr>]
+      >,
+    ]
+  >;
+
   let Headers = [
     CType,
     Dirent,
@@ -1024,8 +1107,10 @@ def POSIX : StandardSpec<"POSIX"> {
     FCntl,
     PThread,
     Signal,
+    Spawn,
     StdIO,
     StdLib,
+    SysIOctl,
     SysMMan,
     SysResource,
     SysStat,

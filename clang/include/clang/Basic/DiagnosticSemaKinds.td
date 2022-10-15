@@ -147,7 +147,7 @@ def ext_vla_folded_to_constant : Note<
   "variable length array folded to constant array as an extension">,
   InGroup<GNUFoldingConstant>;
 def err_vla_unsupported : Error<
-  "variable length arrays are not supported for the current target">;
+  "variable length arrays are not supported for %select{the current target|'%1'}0">;
 def note_vla_unsupported : Note<
   "variable length arrays are not supported for the current target">;
 
@@ -8694,6 +8694,9 @@ def warn_cast_function_type : Warning<
   InGroup<CastFunctionType>, DefaultIgnore;
 def err_cast_pointer_to_non_pointer_int : Error<
   "pointer cannot be cast to type %0">;
+def err_nullptr_cast : Error<
+  "cannot cast an object of type %select{'nullptr_t' to %1|%1 to 'nullptr_t'}0"
+>;
 def err_cast_to_bfloat16 : Error<"cannot type-cast to __bf16">;
 def err_cast_from_bfloat16 : Error<"cannot type-cast from __bf16">;
 def err_typecheck_expect_scalar_operand : Error<
