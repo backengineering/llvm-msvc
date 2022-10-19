@@ -445,6 +445,12 @@ END-SCRIPT
 #include <__memory/uses_allocator.h> // expected-error@*:* {{use of private header from outside its module: '__memory/uses_allocator.h'}}
 #include <__memory/uses_allocator_construction.h> // expected-error@*:* {{use of private header from outside its module: '__memory/uses_allocator_construction.h'}}
 #include <__memory/voidify.h> // expected-error@*:* {{use of private header from outside its module: '__memory/voidify.h'}}
+#include <__memory_resource/memory_resource.h> // expected-error@*:* {{use of private header from outside its module: '__memory_resource/memory_resource.h'}}
+#include <__memory_resource/monotonic_buffer_resource.h> // expected-error@*:* {{use of private header from outside its module: '__memory_resource/monotonic_buffer_resource.h'}}
+#include <__memory_resource/polymorphic_allocator.h> // expected-error@*:* {{use of private header from outside its module: '__memory_resource/polymorphic_allocator.h'}}
+#include <__memory_resource/pool_options.h> // expected-error@*:* {{use of private header from outside its module: '__memory_resource/pool_options.h'}}
+#include <__memory_resource/synchronized_pool_resource.h> // expected-error@*:* {{use of private header from outside its module: '__memory_resource/synchronized_pool_resource.h'}}
+#include <__memory_resource/unsynchronized_pool_resource.h> // expected-error@*:* {{use of private header from outside its module: '__memory_resource/unsynchronized_pool_resource.h'}}
 #include <__mutex_base> // expected-error@*:* {{use of private header from outside its module: '__mutex_base'}}
 #include <__node_handle> // expected-error@*:* {{use of private header from outside its module: '__node_handle'}}
 #include <__numeric/accumulate.h> // expected-error@*:* {{use of private header from outside its module: '__numeric/accumulate.h'}}
@@ -506,6 +512,7 @@ END-SCRIPT
 #include <__ranges/dangling.h> // expected-error@*:* {{use of private header from outside its module: '__ranges/dangling.h'}}
 #include <__ranges/data.h> // expected-error@*:* {{use of private header from outside its module: '__ranges/data.h'}}
 #include <__ranges/drop_view.h> // expected-error@*:* {{use of private header from outside its module: '__ranges/drop_view.h'}}
+#include <__ranges/drop_while_view.h> // expected-error@*:* {{use of private header from outside its module: '__ranges/drop_while_view.h'}}
 #include <__ranges/empty.h> // expected-error@*:* {{use of private header from outside its module: '__ranges/empty.h'}}
 #include <__ranges/empty_view.h> // expected-error@*:* {{use of private header from outside its module: '__ranges/empty_view.h'}}
 #include <__ranges/enable_borrowed_range.h> // expected-error@*:* {{use of private header from outside its module: '__ranges/enable_borrowed_range.h'}}

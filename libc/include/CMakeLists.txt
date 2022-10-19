@@ -136,6 +136,7 @@ add_gen_header(
     .llvm-libc-macros.signal_macros
     .llvm-libc-types.struct_sigaction
     .llvm-libc-types.__sighandler_t
+    .llvm-libc-types.stack_t
     .llvm-libc-types.sigset_t
     .llvm-libc-types.pid_t
 )
@@ -191,6 +192,7 @@ add_gen_header(
   GEN_HDR pthread.h
   DEPENDS
     .llvm_libc_common_h
+    .llvm-libc-types.__atfork_callback_t
     .llvm-libc-types.__pthread_start_t
     .llvm-libc-types.__pthread_tss_dtor_t
     .llvm-libc-types.pthread_attr_t
@@ -212,10 +214,40 @@ add_gen_header(
     .llvm-libc-macros.sched_macros
 )
 
+add_gen_header(
+  spawn
+  DEF_FILE spawn.h.def
+  GEN_HDR spawn.h
+  DEPENDS
+    .llvm_libc_common_h
+    .llvm-libc-types.mode_t
+    .llvm-libc-types.pid_t
+    .llvm-libc-types.posix_spawnattr_t
+    .llvm-libc-types.posix_spawn_file_actions_t
+)
+
 # TODO: Not all platforms will have a include/sys directory. Add the sys
 # directory and the targets for sys/*.h files conditional to the OS requiring
 # them.
 file(MAKE_DIRECTORY "sys")
+
+add_gen_header(
+  sys_auxv
+  DEF_FILE sys/auxv.h.def
+  GEN_HDR sys/auxv.h
+  DEPENDS
+    .llvm_libc_common_h
+    .llvm-libc-macros.sys_auxv_macros
+)
+
+add_gen_header(
+  sys_ioctl
+  DEF_FILE sys/ioctl.h.def
+  GEN_HDR sys/ioctl.h
+  DEPENDS
+    .llvm_libc_common_h
+    .llvm-libc-macros.sys_ioctl_macros
+)
 
 add_gen_header(
   sys_mman
@@ -226,6 +258,25 @@ add_gen_header(
     .llvm-libc-types.off_t
     .llvm-libc-types.ssize_t
     .llvm-libc-macros.sys_mman_macros
+)
+
+add_gen_header(
+  sys_prctl
+  DEF_FILE sys/prctl.h.def
+  GEN_HDR sys/prctl.h
+  DEPENDS
+    .llvm_libc_common_h
+)
+
+add_gen_header(
+  sys_random
+  DEF_FILE sys/random.h.def
+  GEN_HDR sys/random.h
+  DEPENDS
+    .llvm_libc_common_h
+    .llvm-libc-macros.sys_random_macros
+    .llvm-libc-types.ssize_t
+    .llvm-libc-types.size_t
 )
 
 add_gen_header(
@@ -271,6 +322,16 @@ add_gen_header(
 )
 
 add_gen_header(
+  sys_time
+  DEF_FILE sys/time.h.def
+  GEN_HDR sys/time.h
+  DEPENDS
+    .llvm_libc_common_h
+    .llvm-libc-types.struct_timeval
+    .llvm-libc-macros.sys_time_macros
+)
+
+add_gen_header(
   sys_utsname
   DEF_FILE sys/utsname.h.def
   GEN_HDR sys/utsname.h
@@ -288,6 +349,19 @@ add_gen_header(
     .llvm-libc-macros.sys_wait_macros
     .llvm-libc-types.pid_t
     .llvm-libc-types.struct_rusage
+)
+
+add_gen_header(
+  termios
+  DEF_FILE termios.h.def
+  GEN_HDR termios.h
+  DEPENDS
+    .llvm_libc_common_h
+    .llvm-libc-macros.termios_macros
+    .llvm-libc-types.cc_t
+    .llvm-libc-types.speed_t
+    .llvm-libc-types.struct_termios
+    .llvm-libc-types.tcflag_t
 )
 
 if(NOT LLVM_LIBC_FULL_BUILD)

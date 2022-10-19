@@ -497,8 +497,10 @@ SourceManager::AllocateLoadedSLocEntries(unsigned NumSLocEntries,
                                          SourceLocation::UIntTy TotalSize) {
   assert(ExternalSLocEntries && "Don't have an external sloc source");
   // Make sure we're not about to run out of source locations.
-  if (CurrentLoadedOffset - TotalSize < NextLocalOffset)
+  if (CurrentLoadedOffset < TotalSize ||
+      CurrentLoadedOffset - TotalSize < NextLocalOffset) {
     return std::make_pair(0, 0);
+  }
   LoadedSLocEntryTable.resize(LoadedSLocEntryTable.size() + NumSLocEntries);
   SLocEntryLoaded.resize(LoadedSLocEntryTable.size());
   CurrentLoadedOffset -= TotalSize;
@@ -2169,10 +2171,11 @@ std::pair<bool, bool> SourceManager::isInTheSameTranslationUnit(
       // doesn't matter as these are never mixed in macro expansion.
       unsigned LParent = I->second.ParentFID.ID;
       unsigned RParent = Parent.ID;
-      assert((LOffs.second != ROffs.second) || (LParent == 0 || RParent == 0) ||
-             isInSameSLocAddrSpace(getComposedLoc(I->second.ParentFID, 0),
-                                   getComposedLoc(Parent, 0), nullptr) &&
-                 "Mixed local/loaded FileIDs with same include location?");
+      assert(((LOffs.second != ROffs.second) ||
+              (LParent == 0 || RParent == 0) ||
+              isInSameSLocAddrSpace(getComposedLoc(I->second.ParentFID, 0),
+                                    getComposedLoc(Parent, 0), nullptr)) &&
+             "Mixed local/loaded FileIDs with same include location?");
       IsBeforeInTUCache.setCommonLoc(LOffs.first, LOffs.second, ROffs.second,
                                      LParent < RParent);
       return std::make_pair(

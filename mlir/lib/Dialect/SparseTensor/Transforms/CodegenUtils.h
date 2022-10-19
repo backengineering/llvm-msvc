@@ -15,9 +15,11 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/SparseTensor/IR/Enums.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
-#include "mlir/ExecutionEngine/SparseTensor/Enums.h"
 #include "mlir/IR/Builders.h"
 
 namespace mlir {
@@ -27,6 +29,10 @@ class Type;
 class Value;
 
 namespace sparse_tensor {
+
+/// Shorthand aliases for the `emitCInterface` argument to `getFunc()`,
+/// `createFuncCall()`, and `replaceOpWithFuncCall()`.
+enum class EmitCInterface : bool { Off = false, On = true };
 
 //===----------------------------------------------------------------------===//
 // SparseTensorLoopEmiter class, manages sparse tensors and helps to generate
@@ -129,7 +135,7 @@ private:
   /// Input (TODO: and output) tensors.
   std::vector<Value> tensors;
   /// The dim type array for each tensor.
-  std::vector<std::vector<SparseTensorEncodingAttr::DimLevelType>> dims;
+  std::vector<std::vector<DimLevelType>> dims;
   /// Sparse iteration information (by tensor and dim). These arrays
   /// are updated to remain current within the current loop.
   std::vector<std::vector<Value>> pidxs;
@@ -191,9 +197,6 @@ StringRef primaryTypeFunctionSuffix(PrimaryType pt);
 /// Converts a primary storage type to its function-name suffix.
 StringRef primaryTypeFunctionSuffix(Type elemTp);
 
-/// Converts the IR's dimension level type to its internal type-encoding.
-DimLevelType dimLevelTypeEncoding(SparseTensorEncodingAttr::DimLevelType dlt);
-
 //===----------------------------------------------------------------------===//
 // Misc code generators and utilities.
 //===----------------------------------------------------------------------===//
@@ -224,6 +227,37 @@ void translateIndicesArray(OpBuilder &builder, Location loc,
                            ValueRange srcIndices, ArrayRef<Value> srcShape,
                            ArrayRef<Value> dstShape,
                            SmallVectorImpl<Value> &dstIndices);
+
+/// Returns a function reference (first hit also inserts into module). Sets
+/// the "_emit_c_interface" on the function declaration when requested,
+/// so that LLVM lowering generates a wrapper function that takes care
+/// of ABI complications with passing in and returning MemRefs to C functions.
+FlatSymbolRefAttr getFunc(ModuleOp module, StringRef name, TypeRange resultType,
+                          ValueRange operands, EmitCInterface emitCInterface);
+
+/// Creates a `CallOp` to the function reference returned by `getFunc()` in
+/// the builder's module.
+func::CallOp createFuncCall(OpBuilder &builder, Location loc, StringRef name,
+                            TypeRange resultType, ValueRange operands,
+                            EmitCInterface emitCInterface);
+
+/// Returns the equivalent of `void*` for opaque arguments to the
+/// execution engine.
+Type getOpaquePointerType(OpBuilder &builder);
+
+/// Generates an uninitialized temporary buffer of the given size and
+/// type, but returns it as type `memref<? x $tp>` (rather than as type
+/// `memref<$sz x $tp>`).
+Value genAlloca(OpBuilder &builder, Location loc, Value sz, Type tp);
+
+/// Generates an uninitialized temporary buffer of the given size and
+/// type, but returns it as type `memref<? x $tp>` (rather than as type
+/// `memref<$sz x $tp>`).
+Value genAlloca(OpBuilder &builder, Location loc, unsigned sz, Type tp);
+
+/// Generates an uninitialized temporary buffer with room for one value
+/// of the given type, and returns the `memref<$tp>`.
+Value genAllocaScalar(OpBuilder &builder, Location loc, Type tp);
 
 //===----------------------------------------------------------------------===//
 // Inlined constant generators.
@@ -322,11 +356,9 @@ inline Value constantPrimaryTypeEncoding(OpBuilder &builder, Location loc,
 }
 
 /// Generates a constant of the internal dimension level type encoding.
-inline Value
-constantDimLevelTypeEncoding(OpBuilder &builder, Location loc,
-                             SparseTensorEncodingAttr::DimLevelType dlt) {
-  return constantI8(builder, loc,
-                    static_cast<uint8_t>(dimLevelTypeEncoding(dlt)));
+inline Value constantDimLevelTypeEncoding(OpBuilder &builder, Location loc,
+                                          DimLevelType dlt) {
+  return constantI8(builder, loc, static_cast<uint8_t>(dlt));
 }
 
 } // namespace sparse_tensor

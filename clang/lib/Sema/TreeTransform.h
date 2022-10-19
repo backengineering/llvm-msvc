@@ -1285,9 +1285,10 @@ public:
   /// be resolved to a specific template, then builds the appropriate kind of
   /// template name. Subclasses may override this routine to provide different
   /// behavior.
-  TemplateName RebuildTemplateName(TemplateTemplateParmDecl *Param,
-                                   const TemplateArgument &ArgPack) {
-    return getSema().Context.getSubstTemplateTemplateParmPack(Param, ArgPack);
+  TemplateName RebuildTemplateName(const TemplateArgument &ArgPack,
+                                   Decl *AssociatedDecl, unsigned Index) {
+    return getSema().Context.getSubstTemplateTemplateParmPack(
+        ArgPack, AssociatedDecl, Index);
   }
 
   /// Build a new compound statement.
@@ -2814,20 +2815,18 @@ public:
   ///
   /// By default, performs semantic analysis to build the new expression.
   /// Subclasses may override this routine to provide different behavior.
-  ExprResult RebuildExtVectorElementExpr(Expr *Base,
-                                               SourceLocation OpLoc,
-                                               SourceLocation AccessorLoc,
-                                               IdentifierInfo &Accessor) {
+  ExprResult RebuildExtVectorElementExpr(Expr *Base, SourceLocation OpLoc,
+                                         bool IsArrow,
+                                         SourceLocation AccessorLoc,
+                                         IdentifierInfo &Accessor) {
 
     CXXScopeSpec SS;
     DeclarationNameInfo NameInfo(&Accessor, AccessorLoc);
-    return getSema().BuildMemberReferenceExpr(Base, Base->getType(),
-                                              OpLoc, /*IsArrow*/ false,
-                                              SS, SourceLocation(),
-                                              /*FirstQualifierInScope*/ nullptr,
-                                              NameInfo,
-                                              /* TemplateArgs */ nullptr,
-                                              /*S*/ nullptr);
+    return getSema().BuildMemberReferenceExpr(
+        Base, Base->getType(), OpLoc, IsArrow, SS, SourceLocation(),
+        /*FirstQualifierInScope*/ nullptr, NameInfo,
+        /* TemplateArgs */ nullptr,
+        /*S*/ nullptr);
   }
 
   /// Build a new initializer list expression.
@@ -4393,18 +4392,9 @@ TreeTransform<Derived>::TransformTemplateName(CXXScopeSpec &SS,
 
   if (SubstTemplateTemplateParmPackStorage *SubstPack
       = Name.getAsSubstTemplateTemplateParmPack()) {
-    TemplateTemplateParmDecl *TransParam
-    = cast_or_null<TemplateTemplateParmDecl>(
-            getDerived().TransformDecl(NameLoc, SubstPack->getParameterPack()));
-    if (!TransParam)
-      return TemplateName();
-
-    if (!getDerived().AlwaysRebuild() &&
-        TransParam == SubstPack->getParameterPack())
-      return Name;
-
-    return getDerived().RebuildTemplateName(TransParam,
-                                            SubstPack->getArgumentPack());
+    return getDerived().RebuildTemplateName(SubstPack->getArgumentPack(),
+                                            SubstPack->getAssociatedDecl(),
+                                            SubstPack->getIndex());
   }
 
   // These should be getting filtered out before they reach the AST.
@@ -4889,8 +4879,8 @@ QualType TreeTransform<Derived>::RebuildQualifiedType(QualType T,
         Replacement = SemaRef.Context.getQualifiedType(
             Replacement.getUnqualifiedType(), Qs);
         T = SemaRef.Context.getSubstTemplateTypeParmType(
-            SubstTypeParam->getReplacedParameter(), Replacement,
-            SubstTypeParam->getPackIndex());
+            Replacement, SubstTypeParam->getAssociatedDecl(),
+            SubstTypeParam->getIndex(), SubstTypeParam->getPackIndex());
       } else if ((AutoTy = dyn_cast<AutoType>(T)) && AutoTy->isDeduced()) {
         // 'auto' types behave the same way as template parameters.
         QualType Deduced = AutoTy->getDeducedType();
@@ -6442,6 +6432,9 @@ QualType TreeTransform<Derived>::TransformSubstTemplateTypeParmType(
                                          SubstTemplateTypeParmTypeLoc TL) {
   const SubstTemplateTypeParmType *T = TL.getTypePtr();
 
+  Decl *NewReplaced =
+      getDerived().TransformDecl(TL.getNameLoc(), T->getAssociatedDecl());
+
   // Substitute into the replacement type, which itself might involve something
   // that needs to be transformed. This only tends to occur with default
   // template arguments of template template parameters.
@@ -6451,7 +6444,7 @@ QualType TreeTransform<Derived>::TransformSubstTemplateTypeParmType(
     return QualType();
 
   QualType Result = SemaRef.Context.getSubstTemplateTypeParmType(
-      T->getReplacedParameter(), Replacement, T->getPackIndex());
+      Replacement, NewReplaced, T->getIndex(), T->getPackIndex());
 
   // Propagate type-source information.
   SubstTemplateTypeParmTypeLoc NewTL
@@ -11424,9 +11417,9 @@ TreeTransform<Derived>::TransformExtVectorElementExpr(ExtVectorElementExpr *E) {
   // FIXME: Bad source location
   SourceLocation FakeOperatorLoc =
       SemaRef.getLocForEndOfToken(E->getBase()->getEndLoc());
-  return getDerived().RebuildExtVectorElementExpr(Base.get(), FakeOperatorLoc,
-                                                  E->getAccessorLoc(),
-                                                  E->getAccessor());
+  return getDerived().RebuildExtVectorElementExpr(
+      Base.get(), FakeOperatorLoc, E->isArrow(), E->getAccessorLoc(),
+      E->getAccessor());
 }
 
 template<typename Derived>

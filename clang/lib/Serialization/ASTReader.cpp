@@ -2639,12 +2639,11 @@ ASTReader::ReadControlBlock(ModuleFile &F,
         // so we verify all input files.  Otherwise, verify only user input
         // files.
 
-        unsigned N = NumUserInputs;
-        if (ValidateSystemInputs ||
-            (HSOpts.ModulesValidateOncePerBuildSession &&
-             F.InputFilesValidationTimestamp <= HSOpts.BuildSessionTimestamp &&
-             F.Kind == MK_ImplicitModule))
-          N = NumInputs;
+        unsigned N = ValidateSystemInputs ? NumInputs : NumUserInputs;
+        if (HSOpts.ModulesValidateOncePerBuildSession &&
+            F.InputFilesValidationTimestamp > HSOpts.BuildSessionTimestamp &&
+            F.Kind == MK_ImplicitModule)
+          N = NumUserInputs;
 
         for (unsigned I = 0; I < N; ++I) {
           InputFile IF = getInputFile(F, I+1, Complain);
@@ -9435,7 +9434,8 @@ void ASTReader::finishPendingActions() {
 void ASTReader::diagnoseOdrViolations() {
   if (PendingOdrMergeFailures.empty() && PendingOdrMergeChecks.empty() &&
       PendingFunctionOdrMergeFailures.empty() &&
-      PendingEnumOdrMergeFailures.empty())
+      PendingEnumOdrMergeFailures.empty() &&
+      PendingObjCProtocolOdrMergeFailures.empty())
     return;
 
   // Trigger the import of the full definition of each class that had any
@@ -9479,6 +9479,16 @@ void ASTReader::diagnoseOdrViolations() {
     for (auto &Enum : Merge.second) {
       Enum->decls_begin();
     }
+  }
+
+  // Trigger the import of the full protocol definition.
+  auto ObjCProtocolOdrMergeFailures =
+      std::move(PendingObjCProtocolOdrMergeFailures);
+  PendingObjCProtocolOdrMergeFailures.clear();
+  for (auto &Merge : ObjCProtocolOdrMergeFailures) {
+    Merge.first->decls_begin();
+    for (auto &ProtocolPair : Merge.second)
+      ProtocolPair.first->decls_begin();
   }
 
   // For each declaration from a merged context, check that the canonical
@@ -9565,7 +9575,7 @@ void ASTReader::diagnoseOdrViolations() {
   }
 
   if (OdrMergeFailures.empty() && FunctionOdrMergeFailures.empty() &&
-      EnumOdrMergeFailures.empty())
+      EnumOdrMergeFailures.empty() && ObjCProtocolOdrMergeFailures.empty())
     return;
 
   // Ensure we don't accidentally recursively enter deserialization while
@@ -9629,6 +9639,25 @@ void ASTReader::diagnoseOdrViolations() {
     bool Diagnosed = false;
     for (auto &SecondEnum : Merge.second) {
       if (DiagsEmitter.diagnoseMismatch(FirstEnum, SecondEnum)) {
+        Diagnosed = true;
+        break;
+      }
+    }
+    (void)Diagnosed;
+    assert(Diagnosed && "Unable to emit ODR diagnostic.");
+  }
+
+  for (auto &Merge : ObjCProtocolOdrMergeFailures) {
+    // If we've already pointed out a specific problem with this protocol,
+    // don't bother issuing a general "something's different" diagnostic.
+    if (!DiagnosedOdrMergeFailures.insert(Merge.first).second)
+      continue;
+
+    ObjCProtocolDecl *FirstProtocol = Merge.first;
+    bool Diagnosed = false;
+    for (auto &ProtocolPair : Merge.second) {
+      if (DiagsEmitter.diagnoseMismatch(FirstProtocol, ProtocolPair.first,
+                                        ProtocolPair.second)) {
         Diagnosed = true;
         break;
       }

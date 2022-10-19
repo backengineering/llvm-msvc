@@ -47,75 +47,6 @@ using namespace mlir::linalg;
 //===----------------------------------------------------------------------===//
 // Transformations exposed as rewrite patterns.
 //===----------------------------------------------------------------------===//
-// Marker used as attribute name in generated Linalg rewriting transformations.
-const StringLiteral mlir::linalg::LinalgTransforms::kLinalgTransformMarker =
-    "__internal_linalg_transform__";
-
-mlir::linalg::LinalgTransformationFilter::LinalgTransformationFilter(
-    ArrayRef<StringAttr> matchDisjunction, Optional<StringAttr> replacement)
-    : matchDisjunction(matchDisjunction.begin(), matchDisjunction.end()),
-      replacement(replacement), matchByDefault(false) {}
-
-mlir::linalg::LinalgTransformationFilter::LinalgTransformationFilter(
-    const FilterFunction &f, ArrayRef<StringAttr> matchDisjunction,
-    Optional<StringAttr> replacement)
-    : matchDisjunction(matchDisjunction.begin(), matchDisjunction.end()),
-      replacement(replacement), matchByDefault(false) {
-  if (f)
-    filters.push_back(f);
-}
-
-LogicalResult mlir::linalg::LinalgTransformationFilter::checkAndNotify(
-    PatternRewriter &rewriter, Operation *op) const {
-  if (llvm::any_of(filters,
-                   [&](const FilterFunction &f) { return failed(f(op)); }))
-    return failure();
-
-  auto attr = op->template getAttrOfType<StringAttr>(
-      LinalgTransforms::kLinalgTransformMarker);
-
-  if (!attr) {
-    // 1. Has no filter case and matchDisjunction is empty.
-    if (matchDisjunction.empty() || matchByDefault)
-      return success();
-
-    // 2. Has no filter but was expecting a filter.
-    return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
-      diag << " does not have any filter from list: ";
-      interleaveComma(matchDisjunction, diag);
-    });
-  }
-
-  // 4. Match explicit filter.
-  for (auto filter : matchDisjunction)
-    if (attr.getValue() == filter)
-      return success();
-
-  // 5. Fail to match.
-  return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
-    diag << " does not have any filter from list: ";
-    interleaveComma(matchDisjunction, diag);
-  });
-}
-
-void mlir::linalg::LinalgTransformationFilter::
-    replaceLinalgTransformationFilter(PatternRewriter &rewriter,
-                                      Operation *op) const {
-  if (replacement.has_value())
-    op->setAttr(LinalgTransforms::kLinalgTransformMarker, replacement.value());
-  else
-    op->removeAttr(
-        rewriter.getStringAttr(LinalgTransforms::kLinalgTransformMarker));
-}
-
-bool mlir::linalg::LinalgTransformationFilter::hasReplacementFilter(
-    Operation *op) const {
-  if (!replacement)
-    return false;
-  auto attr = op->getAttr(LinalgTransforms::kLinalgTransformMarker)
-                  .dyn_cast<StringAttr>();
-  return attr && attr == *replacement;
-}
 
 LinalgTilingOptions &
 mlir::linalg::LinalgTilingOptions::setTileSizes(ArrayRef<int64_t> ts) {
@@ -272,10 +203,10 @@ linalg::rewriteAsPaddedOp(OpBuilder &b, LinalgOp opToPad,
   b.setInsertionPointAfter(opToPad);
   // Make a copy of the shaped operands and update it.
   SmallVector<Value> newOperands;
-  newOperands.reserve(opToPad.getNumInputsAndOutputs());
-  for (OpOperand *opOperand : opToPad.getInputAndOutputOperands()) {
+  newOperands.reserve(opToPad->getNumOperands());
+  for (OpOperand &opOperand : opToPad->getOpOperands()) {
     FailureOr<Value> paddedOperand = padOperandToSmallestStaticBoundingBox(
-        b, opToPad, opOperand, paddingDimensions, paddingValues, packPaddings);
+        b, opToPad, &opOperand, paddingDimensions, paddingValues, packPaddings);
     // Exit if `paddingDimensions` cannot be bounded statically.
     if (failed(paddedOperand))
       return failure();
@@ -356,32 +287,12 @@ void mlir::linalg::peelTiledLinalgOp(RewriterBase &rewriter, TiledLinalgOp &res,
   }
 }
 
-/// Linalg tiling pattern.
-mlir::linalg::LinalgTilingPattern::LinalgTilingPattern(
-    MLIRContext *context, LinalgTilingOptions options,
-    LinalgTransformationFilter f, PatternBenefit benefit)
-    : OpInterfaceRewritePattern<LinalgOp>(context, benefit),
-      filter(std::move(f)), options(std::move(options)) {}
-
-mlir::linalg::LinalgTilingPattern::LinalgTilingPattern(
-    StringRef opName, MLIRContext *context, LinalgTilingOptions options,
-    LinalgTransformationFilter f, PatternBenefit benefit)
-    : OpInterfaceRewritePattern<LinalgOp>(context, benefit),
-      filter(f.addOpNameFilter(opName)), options(std::move(options)) {}
-
 FailureOr<TiledLinalgOp>
-mlir::linalg::LinalgTilingPattern::returningMatchAndRewrite(
-    LinalgOp op, PatternRewriter &rewriter) const {
-  if (failed(filter.checkAndNotify(rewriter, op)))
-    return failure();
-
+mlir::linalg::tileWithLinalgTilingOptions(RewriterBase &rewriter, LinalgOp op,
+                                          const LinalgTilingOptions &options) {
   FailureOr<TiledLinalgOp> res = tileLinalgOp(rewriter, op, options);
   if (failed(res))
     return failure();
-
-  // Clear filter to stop recursive pattern application.
-  // This must be done here to properly propagate to peeling branches.
-  filter.replaceLinalgTransformationFilter(rewriter, res->op);
 
   // Peel the loops of the TiledLinalgOp.
   peelTiledLinalgOp(rewriter, *res, options.peeledLoops, options.loopType);
@@ -416,15 +327,15 @@ mlir::linalg::LinalgPaddingPattern::returningMatchAndRewrite(
 
   // Hoist the padding.
   for (const auto &en : enumerate(options.hoistPaddings)) {
-    if (static_cast<int64_t>(en.index()) >= paddedOp.getNumInputsAndOutputs())
+    if (static_cast<int64_t>(en.index()) >= paddedOp->getNumOperands())
       break;
-    OpOperand *opOperand = &paddedOp->getOpOperand(en.index());
-    auto padOp = opOperand->get().getDefiningOp<tensor::PadOp>();
+    OpOperand &opOperand = paddedOp->getOpOperand(en.index());
+    auto padOp = opOperand.get().getDefiningOp<tensor::PadOp>();
     if (!padOp || en.value() == 0)
       continue;
 
     // Fail hoisting if the operand shape is not fully static.
-    if (llvm::any_of(paddedOp.getShape(opOperand), ShapedType::isDynamic))
+    if (llvm::any_of(paddedOp.getShape(&opOperand), ShapedType::isDynamic))
       return failure();
 
     tensor::PadOp hoistedOp;
@@ -447,64 +358,9 @@ mlir::linalg::LinalgPaddingPattern::returningMatchAndRewrite(
   return paddedOp;
 }
 
-/// Linalg generalization pattern.
-mlir::linalg::LinalgGeneralizationPattern::LinalgGeneralizationPattern(
-    MLIRContext *context, LinalgTransformationFilter f, PatternBenefit benefit)
-    : OpInterfaceRewritePattern<LinalgOp>(context, benefit),
-      filter(std::move(f)) {}
-
-mlir::linalg::LinalgGeneralizationPattern::LinalgGeneralizationPattern(
-    StringRef opName, MLIRContext *context, LinalgTransformationFilter f,
-    PatternBenefit benefit)
-    : OpInterfaceRewritePattern<LinalgOp>(context, benefit),
-      filter(f.addOpNameFilter(opName)) {}
-
-FailureOr<GenericOp>
-mlir::linalg::LinalgGeneralizationPattern::returningMatchAndRewrite(
-    LinalgOp linalgOp, PatternRewriter &rewriter) const {
-  if (failed(filter.checkAndNotify(rewriter, linalgOp)))
-    return failure();
-  FailureOr<GenericOp> genericOp = generalizeNamedOp(rewriter, linalgOp);
-  if (failed(genericOp))
-    return failure();
-  filter.replaceLinalgTransformationFilter(rewriter, *genericOp);
-  return genericOp;
-}
-
 LogicalResult mlir::linalg::CopyVectorizationPattern::matchAndRewrite(
     memref::CopyOp copyOp, PatternRewriter &rewriter) const {
   return vectorizeCopy(rewriter, copyOp);
-}
-
-LogicalResult mlir::linalg::applyStagedPatterns(
-    Operation *op, ArrayRef<FrozenRewritePatternSet> stage1Patterns,
-    const FrozenRewritePatternSet &stage2Patterns,
-    function_ref<LogicalResult(Operation *)> stage3Lambda) {
-  unsigned iteration = 0;
-  (void)iteration;
-  for (const auto &patterns : stage1Patterns) {
-    LLVM_DEBUG(DBGS() << "Before 1st stage, iter: " << ++iteration << "\n"
-                      << *op);
-    if (failed(applyPatternsAndFoldGreedily(op, patterns))) {
-      LLVM_DEBUG(DBGS() << "Underlying first stage rewrite did not converge");
-      return failure();
-    }
-    LLVM_DEBUG(DBGS() << "After 1st stage, iter: " << ++iteration << "\n"
-                      << *op);
-    if (failed(applyPatternsAndFoldGreedily(op, stage2Patterns))) {
-      LLVM_DEBUG(DBGS() << "Underlying 2nd stage rewrite did not converge");
-      return failure();
-    }
-    LLVM_DEBUG(DBGS() << "After 2nd stage, iter : " << iteration << "\n"
-                      << *op);
-    if (stage3Lambda) {
-      if (failed(stage3Lambda(op)))
-        return failure();
-      LLVM_DEBUG(DBGS() << "After 3rd stage, iter : " << iteration << "\n"
-                        << *op);
-    }
-  }
-  return success();
 }
 
 static SmallVector<StringRef> getNParallelLoopsAttrs(unsigned nParallelLoops) {

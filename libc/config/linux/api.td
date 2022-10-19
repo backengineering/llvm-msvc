@@ -210,6 +210,7 @@ def SignalAPI : PublicAPI<"signal.h"> {
     "struct sigaction",
     "union sigval",
     "siginfo_t",
+    "stack_t",
     "pid_t",
   ];
 }
@@ -244,6 +245,7 @@ def ThreadsAPI : PublicAPI<"threads.h"> {
 
 def PThreadAPI : PublicAPI<"pthread.h"> {
   let Types = [
+      "__atfork_callback_t",
       "__pthread_once_func_t",
       "__pthread_start_t",
       "__pthread_tss_dtor_t",
@@ -287,4 +289,12 @@ def SysSendfileAPI : PublicAPI<"sys/sendfile.h"> {
 
 def SysUtsNameAPI : PublicAPI<"sys/utsname.h"> {
   let Types = ["struct utsname"];
+}
+
+def SpawnAPI : PublicAPI<"spawn.h"> {
+  let Types = ["mode_t", "pid_t", "posix_spawnattr_t", "posix_spawn_file_actions_t"];
+}
+
+def TermiosAPI : PublicAPI<"termios.h"> {
+  let Types = ["cc_t", "pid_t", "speed_t", "struct termios", "tcflag_t"];
 }

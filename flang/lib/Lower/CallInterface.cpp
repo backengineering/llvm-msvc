@@ -88,6 +88,36 @@ bool Fortran::lower::CallerInterface::isIndirectCall() const {
   return false;
 }
 
+bool Fortran::lower::CallerInterface::requireDispatchCall() const {
+  // calls with NOPASS attribute still have their component so check if it is
+  // polymorphic.
+  if (const Fortran::evaluate::Component *component =
+          procRef.proc().GetComponent()) {
+    if (Fortran::semantics::IsPolymorphic(component->GetFirstSymbol()))
+      return true;
+  }
+  // calls with PASS attribute have the passed-object already set in its
+  // arguments. Just check if their is one.
+  std::optional<unsigned> passArg = getPassArgIndex();
+  if (passArg)
+    return true;
+  return false;
+}
+
+std::optional<unsigned>
+Fortran::lower::CallerInterface::getPassArgIndex() const {
+  unsigned passArgIdx = 0;
+  std::optional<unsigned> passArg = std::nullopt;
+  for (const auto &arg : getCallDescription().arguments()) {
+    if (arg && arg->isPassedObject()) {
+      passArg = passArgIdx;
+      break;
+    }
+    ++passArgIdx;
+  }
+  return passArg;
+}
+
 const Fortran::semantics::Symbol *
 Fortran::lower::CallerInterface::getIfIndirectCallSymbol() const {
   if (const Fortran::semantics::Symbol *symbol = procRef.proc().GetSymbol())
@@ -899,6 +929,9 @@ private:
         if (isBindC) {
           passBy = PassEntityBy::Value;
           prop = Property::Value;
+          if (type.isa<fir::SequenceType>())
+            fir::emitFatalError(
+                loc, "array with VALUE attribute is not interoperable");
           if (fir::isa_builtin_cptr_type(type)) {
             auto recTy = type.dyn_cast<fir::RecordType>();
             mlir::Type fieldTy = recTy.getTypeList()[0].second;

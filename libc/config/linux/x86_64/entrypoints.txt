@@ -113,6 +113,9 @@ set(TARGET_LIBC_ENTRYPOINTS
     libc.src.sys.mman.munmap
     libc.src.sys.mman.posix_madvise
 
+    # sys/random.h entrypoints
+    libc.src.sys.random.getrandom
+
     # sys/resource.h entrypoints
     libc.src.sys.resource.getrlimit
     libc.src.sys.resource.setrlimit
@@ -138,6 +141,19 @@ set(TARGET_LIBC_ENTRYPOINTS
     libc.src.sys.wait.wait4
     libc.src.sys.wait.waitpid
 
+    # termios.h entrypoints
+    libc.src.termios.cfgetispeed
+    libc.src.termios.cfgetospeed
+    libc.src.termios.cfsetispeed
+    libc.src.termios.cfsetospeed
+    libc.src.termios.tcgetattr
+    libc.src.termios.tcgetsid
+    libc.src.termios.tcdrain
+    libc.src.termios.tcflow
+    libc.src.termios.tcflush
+    libc.src.termios.tcsendbreak
+    libc.src.termios.tcsetattr
+
     # unistd.h entrypoints
     libc.src.unistd.access
     libc.src.unistd.chdir
@@ -149,10 +165,12 @@ set(TARGET_LIBC_ENTRYPOINTS
     libc.src.unistd.fchdir
     libc.src.unistd.fsync
     libc.src.unistd.ftruncate
+    libc.src.unistd.getcwd
     libc.src.unistd.geteuid
     libc.src.unistd.getpid
     libc.src.unistd.getppid
     libc.src.unistd.getuid
+    libc.src.unistd.isatty
     libc.src.unistd.link
     libc.src.unistd.linkat
     libc.src.unistd.lseek
@@ -164,6 +182,7 @@ set(TARGET_LIBC_ENTRYPOINTS
     libc.src.unistd.rmdir
     libc.src.unistd.symlink
     libc.src.unistd.symlinkat
+    libc.src.unistd.sysconf
     libc.src.unistd.truncate
     libc.src.unistd.unlink
     libc.src.unistd.unlinkat
@@ -302,6 +321,7 @@ if(LLVM_LIBC_FULL_BUILD)
     libc.src.dirent.readdir
 
     # pthread.h entrypoints
+    libc.src.pthread.pthread_atfork
     libc.src.pthread.pthread_attr_destroy
     libc.src.pthread.pthread_attr_init
     libc.src.pthread.pthread_attr_getdetachstate
@@ -352,6 +372,7 @@ if(LLVM_LIBC_FULL_BUILD)
     libc.src.stdio.ferror_unlocked
     libc.src.stdio.fflush
     libc.src.stdio.fopen
+    libc.src.stdio.fputc
     libc.src.stdio.fputs
     libc.src.stdio.fopencookie
     libc.src.stdio.fread
@@ -362,6 +383,8 @@ if(LLVM_LIBC_FULL_BUILD)
     libc.src.stdio.fwrite_unlocked
     libc.src.stdio.fprintf
     libc.src.stdio.printf
+    libc.src.stdio.putc
+    libc.src.stdio.putchar
     libc.src.stdio.puts
     libc.src.stdio.stderr
     libc.src.stdio.stdout
@@ -377,12 +400,21 @@ if(LLVM_LIBC_FULL_BUILD)
     libc.src.signal.raise
     libc.src.signal.kill
     libc.src.signal.sigaction
+    libc.src.signal.sigaltstack
     libc.src.signal.sigdelset
     libc.src.signal.sigaddset
     libc.src.signal.sigemptyset
     libc.src.signal.sigprocmask
     libc.src.signal.sigfillset
     libc.src.signal.signal
+
+    # spawn.h entrypoints
+    libc.src.spawn.posix_spawn
+    libc.src.spawn.posix_spawn_file_actions_addclose
+    libc.src.spawn.posix_spawn_file_actions_adddup2
+    libc.src.spawn.posix_spawn_file_actions_addopen
+    libc.src.spawn.posix_spawn_file_actions_destroy
+    libc.src.spawn.posix_spawn_file_actions_init
 
     # threads.h entrypoints
     libc.src.threads.call_once

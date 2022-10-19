@@ -302,7 +302,8 @@ private:
       Contexts.back().ContextType = Context::ForEachMacro;
       Contexts.back().IsExpression = false;
     } else if (OpeningParen.Previous && OpeningParen.Previous->MatchingParen &&
-               OpeningParen.Previous->MatchingParen->is(TT_ObjCBlockLParen)) {
+               OpeningParen.Previous->MatchingParen->isOneOf(
+                   TT_ObjCBlockLParen, TT_FunctionTypeLParen)) {
       Contexts.back().IsExpression = false;
     } else if (!Line.MustBeDeclaration && !Line.InPPDirective) {
       bool IsForOrCatch =
@@ -765,7 +766,7 @@ private:
           // Remember that this is a [[using ns: foo]] C++ attribute, so we
           // don't add a space before the colon (unlike other colons).
           CurrentToken->setType(TT_AttributeColon);
-        } else if (!Style.isVerilog() &&
+        } else if (!Style.isVerilog() && !Line.InPragmaDirective &&
                    Left->isOneOf(TT_ArraySubscriptLSquare,
                                  TT_DesignatedInitializerLSquare)) {
           Left->setType(TT_ObjCMethodExpr);
@@ -1047,7 +1048,8 @@ private:
         // This handles a special macro in ObjC code where selectors including
         // the colon are passed as macro arguments.
         Tok->setType(TT_ObjCMethodExpr);
-      } else if (Contexts.back().ContextKind == tok::l_paren) {
+      } else if (Contexts.back().ContextKind == tok::l_paren &&
+                 !Line.InPragmaDirective) {
         Tok->setType(TT_InlineASMColon);
       }
       break;

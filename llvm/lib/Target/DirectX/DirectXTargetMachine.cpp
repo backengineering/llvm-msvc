@@ -13,6 +13,7 @@
 
 #include "DirectXTargetMachine.h"
 #include "DXILResourceAnalysis.h"
+#include "DXILShaderFlags.h"
 #include "DXILWriter/DXILWriterPass.h"
 #include "DirectX.h"
 #include "DirectXSubtarget.h"
@@ -42,6 +43,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeDirectXTarget() {
   initializeDXILOpLoweringLegacyPass(*PR);
   initializeDXILTranslateMetadataPass(*PR);
   initializeDXILResourceWrapperPass(*PR);
+  initializeShaderFlagsAnalysisWrapperPass(*PR);
 }
 
 class DXILTargetObjectFile : public TargetLoweringObjectFile {
@@ -103,11 +105,16 @@ void DirectXTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
           PM.addPass(DXILResourcePrinterPass(dbgs()));
           return true;
         }
+        if (PassName == "print-dx-shader-flags") {
+          PM.addPass(dxil::ShaderFlagsAnalysisPrinter(dbgs()));
+          return true;
+        }
         return false;
       });
 
   PB.registerAnalysisRegistrationCallback([](ModuleAnalysisManager &MAM) {
     MAM.registerPass([&] { return DXILResourceAnalysis(); });
+    MAM.registerPass([&] { return dxil::ShaderFlagsAnalysis(); });
   });
 }
 
@@ -120,9 +127,13 @@ bool DirectXTargetMachine::addPassesToEmitFile(
 
   if (TargetPassConfig::willCompleteCodeGenPipeline()) {
     PM.add(createDXILEmbedderPass());
+    // We embed the other DXContainer globals after embedding DXIL so that the
+    // globals don't pollute the DXIL.
+    PM.add(createDXContainerGlobalsPass());
   }
   switch (FileType) {
   case CGFT_AssemblyFile:
+    PM.add(createDXILPrettyPrinterPass(Out));
     PM.add(createPrintModulePass(Out, "", true));
     break;
   case CGFT_ObjectFile:

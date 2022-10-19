@@ -106,7 +106,7 @@ An operation is defined by specializing the `Op` class with concrete contents
 for all the fields it requires. For example, `tf.AvgPool` is defined as
 
 ```tablegen
-def TF_AvgPoolOp : TF_Op<"AvgPool", [NoSideEffect]> {
+def TF_AvgPoolOp : TF_Op<"AvgPool", [NoMemoryEffect]> {
   let summary = "Performs average pooling on the input.";
 
   let description = [{
@@ -272,6 +272,9 @@ The second parameter to `DefaultValuedAttr` should be a string containing the
 C++ default value. For example, a float default value should be specified as
 like `"0.5f"`, and an integer array default value should be specified as like
 `"{1, 2, 3}"`.
+
+The generated operation printing function will not print default-valued
+attributes when the attribute value is equal to the default.
 
 #### Confining attributes
 

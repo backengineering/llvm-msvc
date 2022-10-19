@@ -103,6 +103,146 @@ static FloatType getDLFloatType(MLIRContext &ctx, int32_t bitwidth) {
   }
 }
 
+static ICmpPredicate getICmpPredicate(llvm::CmpInst::Predicate p) {
+  switch (p) {
+  default:
+    llvm_unreachable("incorrect comparison predicate");
+  case llvm::CmpInst::Predicate::ICMP_EQ:
+    return LLVM::ICmpPredicate::eq;
+  case llvm::CmpInst::Predicate::ICMP_NE:
+    return LLVM::ICmpPredicate::ne;
+  case llvm::CmpInst::Predicate::ICMP_SLT:
+    return LLVM::ICmpPredicate::slt;
+  case llvm::CmpInst::Predicate::ICMP_SLE:
+    return LLVM::ICmpPredicate::sle;
+  case llvm::CmpInst::Predicate::ICMP_SGT:
+    return LLVM::ICmpPredicate::sgt;
+  case llvm::CmpInst::Predicate::ICMP_SGE:
+    return LLVM::ICmpPredicate::sge;
+  case llvm::CmpInst::Predicate::ICMP_ULT:
+    return LLVM::ICmpPredicate::ult;
+  case llvm::CmpInst::Predicate::ICMP_ULE:
+    return LLVM::ICmpPredicate::ule;
+  case llvm::CmpInst::Predicate::ICMP_UGT:
+    return LLVM::ICmpPredicate::ugt;
+  case llvm::CmpInst::Predicate::ICMP_UGE:
+    return LLVM::ICmpPredicate::uge;
+  }
+  llvm_unreachable("incorrect integer comparison predicate");
+}
+
+static FCmpPredicate getFCmpPredicate(llvm::CmpInst::Predicate p) {
+  switch (p) {
+  default:
+    llvm_unreachable("incorrect comparison predicate");
+  case llvm::CmpInst::Predicate::FCMP_FALSE:
+    return LLVM::FCmpPredicate::_false;
+  case llvm::CmpInst::Predicate::FCMP_TRUE:
+    return LLVM::FCmpPredicate::_true;
+  case llvm::CmpInst::Predicate::FCMP_OEQ:
+    return LLVM::FCmpPredicate::oeq;
+  case llvm::CmpInst::Predicate::FCMP_ONE:
+    return LLVM::FCmpPredicate::one;
+  case llvm::CmpInst::Predicate::FCMP_OLT:
+    return LLVM::FCmpPredicate::olt;
+  case llvm::CmpInst::Predicate::FCMP_OLE:
+    return LLVM::FCmpPredicate::ole;
+  case llvm::CmpInst::Predicate::FCMP_OGT:
+    return LLVM::FCmpPredicate::ogt;
+  case llvm::CmpInst::Predicate::FCMP_OGE:
+    return LLVM::FCmpPredicate::oge;
+  case llvm::CmpInst::Predicate::FCMP_ORD:
+    return LLVM::FCmpPredicate::ord;
+  case llvm::CmpInst::Predicate::FCMP_ULT:
+    return LLVM::FCmpPredicate::ult;
+  case llvm::CmpInst::Predicate::FCMP_ULE:
+    return LLVM::FCmpPredicate::ule;
+  case llvm::CmpInst::Predicate::FCMP_UGT:
+    return LLVM::FCmpPredicate::ugt;
+  case llvm::CmpInst::Predicate::FCMP_UGE:
+    return LLVM::FCmpPredicate::uge;
+  case llvm::CmpInst::Predicate::FCMP_UNO:
+    return LLVM::FCmpPredicate::uno;
+  case llvm::CmpInst::Predicate::FCMP_UEQ:
+    return LLVM::FCmpPredicate::ueq;
+  case llvm::CmpInst::Predicate::FCMP_UNE:
+    return LLVM::FCmpPredicate::une;
+  }
+  llvm_unreachable("incorrect floating point comparison predicate");
+}
+
+static AtomicOrdering getLLVMAtomicOrdering(llvm::AtomicOrdering ordering) {
+  switch (ordering) {
+  case llvm::AtomicOrdering::NotAtomic:
+    return LLVM::AtomicOrdering::not_atomic;
+  case llvm::AtomicOrdering::Unordered:
+    return LLVM::AtomicOrdering::unordered;
+  case llvm::AtomicOrdering::Monotonic:
+    return LLVM::AtomicOrdering::monotonic;
+  case llvm::AtomicOrdering::Acquire:
+    return LLVM::AtomicOrdering::acquire;
+  case llvm::AtomicOrdering::Release:
+    return LLVM::AtomicOrdering::release;
+  case llvm::AtomicOrdering::AcquireRelease:
+    return LLVM::AtomicOrdering::acq_rel;
+  case llvm::AtomicOrdering::SequentiallyConsistent:
+    return LLVM::AtomicOrdering::seq_cst;
+  }
+  llvm_unreachable("incorrect atomic ordering");
+}
+
+static AtomicBinOp getLLVMAtomicBinOp(llvm::AtomicRMWInst::BinOp binOp) {
+  switch (binOp) {
+  case llvm::AtomicRMWInst::Xchg:
+    return LLVM::AtomicBinOp::xchg;
+  case llvm::AtomicRMWInst::Add:
+    return LLVM::AtomicBinOp::add;
+  case llvm::AtomicRMWInst::Sub:
+    return LLVM::AtomicBinOp::sub;
+  case llvm::AtomicRMWInst::And:
+    return LLVM::AtomicBinOp::_and;
+  case llvm::AtomicRMWInst::Nand:
+    return LLVM::AtomicBinOp::nand;
+  case llvm::AtomicRMWInst::Or:
+    return LLVM::AtomicBinOp::_or;
+  case llvm::AtomicRMWInst::Xor:
+    return LLVM::AtomicBinOp::_xor;
+  case llvm::AtomicRMWInst::Max:
+    return LLVM::AtomicBinOp::max;
+  case llvm::AtomicRMWInst::Min:
+    return LLVM::AtomicBinOp::min;
+  case llvm::AtomicRMWInst::UMax:
+    return LLVM::AtomicBinOp::umax;
+  case llvm::AtomicRMWInst::UMin:
+    return LLVM::AtomicBinOp::umin;
+  case llvm::AtomicRMWInst::FAdd:
+    return LLVM::AtomicBinOp::fadd;
+  case llvm::AtomicRMWInst::FSub:
+    return LLVM::AtomicBinOp::fsub;
+  default:
+    llvm_unreachable("unsupported atomic binary operation");
+  }
+}
+
+/// Converts the sync scope identifier of `fenceInst` to the string
+/// representation necessary to build the LLVM dialect fence operation.
+static StringRef getLLVMSyncScope(llvm::FenceInst *fenceInst) {
+  llvm::LLVMContext &llvmContext = fenceInst->getContext();
+  SmallVector<StringRef> syncScopeNames;
+  llvmContext.getSyncScopeNames(syncScopeNames);
+  for (StringRef name : syncScopeNames)
+    if (fenceInst->getSyncScopeID() == llvmContext.getOrInsertSyncScopeID(name))
+      return name;
+  llvm_unreachable("incorrect sync scope identifier");
+}
+
+/// Converts an array of unsigned indices to a signed integer position array.
+static SmallVector<int64_t> getPositionFromIndices(ArrayRef<unsigned> indices) {
+  SmallVector<int64_t> position;
+  llvm::append_range(position, indices);
+  return position;
+}
+
 DataLayoutSpecInterface
 mlir::translateDataLayout(const llvm::DataLayout &dataLayout,
                           MLIRContext *context) {
@@ -175,6 +315,18 @@ public:
     b.setInsertionPointToStart(module.getBody());
   }
 
+  /// Stores the mapping between an LLVM value and its MLIR counterpart.
+  void mapValue(llvm::Value *llvm, Value mlir) { mapValue(llvm) = mlir; }
+
+  /// Provides write-once access to store the MLIR value corresponding to the
+  /// given LLVM value.
+  Value &mapValue(llvm::Value *value) {
+    Value &mlir = valueMapping[value];
+    assert(mlir == nullptr &&
+           "attempting to map a value that is already mapped");
+    return mlir;
+  }
+
   /// Returns the remapped version of `value` or a placeholder that will be
   /// remapped later if the defining instruction has not yet been visited.
   Value processValue(llvm::Value *value);
@@ -196,8 +348,12 @@ public:
 
   /// Converts an LLVM intrinsic to an MLIR LLVM dialect operation if an MLIR
   /// counterpart exists. Otherwise, returns failure.
-  LogicalResult convertIntrinsic(OpBuilder &odsBuilder,
-                                 llvm::CallInst *callInst);
+  LogicalResult convertIntrinsic(OpBuilder &odsBuilder, llvm::CallInst *inst);
+
+  /// Converts an LLVM instruction to an MLIR LLVM dialect operation if the
+  /// operation defines an MLIR Builder. Otherwise, returns failure.
+  LogicalResult convertOperation(OpBuilder &odsBuilder,
+                                 llvm::Instruction *inst);
 
   /// Imports `f` into the current module.
   LogicalResult processFunction(llvm::Function *f);
@@ -214,7 +370,8 @@ private:
   FlatSymbolRefAttr getPersonalityAsAttr(llvm::Function *f);
   /// Imports `bb` into `block`, which must be initially empty.
   LogicalResult processBasicBlock(llvm::BasicBlock *bb, Block *block);
-  /// Imports `inst` and populates instMap[inst] with the imported Value.
+  /// Imports `inst` and populates valueMapping[inst] with the result of the
+  /// imported operation.
   LogicalResult processInstruction(llvm::Instruction *inst);
   /// `br` branches to `target`. Append the block arguments to attach to the
   /// generated branch op to `blockArguments`. These should be in the same order
@@ -258,8 +415,8 @@ private:
 
   /// Remapped blocks, for the current function.
   DenseMap<llvm::BasicBlock *, Block *> blocks;
-  /// Remapped values. These are function-local.
-  DenseMap<llvm::Value *, Value> instMap;
+  /// Mappings between original and imported values. These are function-local.
+  DenseMap<llvm::Value *, Value> valueMapping;
   /// Instructions that had not been defined when first encountered as a use.
   /// Maps to the dummy Operation that was created in processValue().
   DenseMap<llvm::Value *, Operation *> unknownInstMap;
@@ -283,8 +440,9 @@ Type Importer::convertType(llvm::Type *type) {
 }
 
 LogicalResult Importer::convertIntrinsic(OpBuilder &odsBuilder,
-                                         llvm::CallInst *callInst) {
-  llvm::Function *callee = callInst->getCalledFunction();
+                                         llvm::CallInst *inst) {
+  // Check if the callee is an intrinsic.
+  llvm::Function *callee = inst->getCalledFunction();
   if (!callee || !callee->isIntrinsic())
     return failure();
 
@@ -293,7 +451,22 @@ LogicalResult Importer::convertIntrinsic(OpBuilder &odsBuilder,
   if (!isConvertibleIntrinsic(intrinsicID))
     return failure();
 
+  // Copy the call arguments to initialize operands array reference used by
+  // the conversion.
+  SmallVector<llvm::Value *> args(inst->args());
+  ArrayRef<llvm::Value *> llvmOperands(args);
 #include "mlir/Dialect/LLVMIR/LLVMIntrinsicFromLLVMIRConversions.inc"
+
+  return failure();
+}
+
+LogicalResult Importer::convertOperation(OpBuilder &odsBuilder,
+                                         llvm::Instruction *inst) {
+  // Copy the instruction operands to initialize the operands array reference
+  // used by the conversion.
+  SmallVector<llvm::Value *> operands(inst->operands());
+  ArrayRef<llvm::Value *> llvmOperands(operands);
+#include "mlir/Dialect/LLVMIR/LLVMOpFromLLVMIRConversions.inc"
 
   return failure();
 }
@@ -471,10 +644,9 @@ GlobalOp Importer::processGlobal(llvm::GlobalVariable *gv) {
     b.create<ReturnOp>(op.getLoc(), ArrayRef<Value>({v}));
   }
   if (gv->hasAtLeastLocalUnnamedAddr())
-    op.setUnnamedAddrAttr(UnnamedAddrAttr::get(
-        context, convertUnnamedAddrFromLLVM(gv->getUnnamedAddr())));
+    op.setUnnamedAddr(convertUnnamedAddrFromLLVM(gv->getUnnamedAddr()));
   if (gv->hasSection())
-    op.setSectionAttr(b.getStringAttr(gv->getSection()));
+    op.setSection(gv->getSection());
 
   return globals[gv] = op;
 }
@@ -504,7 +676,7 @@ Value Importer::processConstant(llvm::Constant *c) {
     b.setInsertionPoint(currentEntryBlock, currentEntryBlock->begin());
     if (failed(processInstruction(i)))
       return nullptr;
-    assert(instMap.count(i));
+    assert(valueMapping.count(i));
 
     // If we don't remove entry of `i` here, it's totally possible that the
     // next time llvm::ConstantExpr::getAsInstruction is called again, which
@@ -512,8 +684,8 @@ Value Importer::processConstant(llvm::Constant *c) {
     // created Instruction might be the same as `i`. Making processInstruction
     // falsely believe that the new Instruction has been processed before
     // and raised an assertion error.
-    Value value = instMap[i];
-    instMap.erase(i);
+    Value value = valueMapping[i];
+    valueMapping.erase(i);
     // Remove this zombie LLVM instruction now, leaving us only with the MLIR
     // op.
     i->deleteValue();
@@ -574,8 +746,8 @@ Value Importer::processConstant(llvm::Constant *c) {
 }
 
 Value Importer::processValue(llvm::Value *value) {
-  auto it = instMap.find(value);
-  if (it != instMap.end())
+  auto it = valueMapping.find(value);
+  if (it != valueMapping.end())
     return it->second;
 
   // We don't expect to see instructions in dominator order. If we haven't seen
@@ -611,208 +783,6 @@ IntegerAttr Importer::matchIntegerAttr(Value value) {
   return integerAttr;
 }
 
-/// Return the MLIR OperationName for the given LLVM opcode.
-static StringRef lookupOperationNameFromOpcode(unsigned opcode) {
-// Maps from LLVM opcode to MLIR OperationName. This is deliberately ordered
-// as in llvm/IR/Instructions.def to aid comprehension and spot missing
-// instructions.
-#define INST(llvm_n, mlir_n)                                                   \
-  { llvm::Instruction::llvm_n, LLVM::mlir_n##Op::getOperationName() }
-  static const DenseMap<unsigned, StringRef> opcMap = {
-      // clang-format off
-      INST(Ret, Return),
-      // Br is handled specially.
-      // Switch is handled specially.
-      // FIXME: indirectbr
-      // Invoke is handled specially.
-      INST(Resume, Resume),
-      INST(Unreachable, Unreachable),
-      // FIXME: cleanupret
-      // FIXME: catchret
-      // FIXME: catchswitch
-      // FIXME: callbr
-      INST(FNeg, FNeg),
-      INST(Add, Add),
-      INST(FAdd, FAdd),
-      INST(Sub, Sub),
-      INST(FSub, FSub),
-      INST(Mul, Mul),
-      INST(FMul, FMul),
-      INST(UDiv, UDiv),
-      INST(SDiv, SDiv),
-      INST(FDiv, FDiv),
-      INST(URem, URem),
-      INST(SRem, SRem),
-      INST(FRem, FRem),
-      INST(Shl, Shl),
-      INST(LShr, LShr),
-      INST(AShr, AShr),
-      INST(And, And),
-      INST(Or, Or),
-      INST(Xor, XOr),
-      INST(ExtractElement, ExtractElement),
-      INST(InsertElement, InsertElement),
-      // ShuffleVector is handled specially.
-      // ExtractValue is handled specially.
-      // InsertValue is handled specially.
-      INST(Alloca, Alloca),
-      INST(Load, Load),
-      INST(Store, Store),
-      INST(Fence, Fence),
-      // AtomicCmpXchg is handled specially.
-      // AtomicRMW is handled specially.
-      // Getelementptr is handled specially.
-      INST(Trunc, Trunc),
-      INST(ZExt, ZExt),
-      INST(SExt, SExt),
-      INST(FPToUI, FPToUI),
-      INST(FPToSI, FPToSI),
-      INST(UIToFP, UIToFP),
-      INST(SIToFP, SIToFP),
-      INST(FPTrunc, FPTrunc),
-      INST(FPExt, FPExt),
-      INST(PtrToInt, PtrToInt),
-      INST(IntToPtr, IntToPtr),
-      INST(BitCast, Bitcast),
-      INST(AddrSpaceCast, AddrSpaceCast),
-      // ICmp is handled specially.
-      // FCmp is handled specially.
-      // PHI is handled specially.
-      INST(Select, Select),
-      INST(Freeze, Freeze),
-      INST(Call, Call),
-      // FIXME: vaarg
-      // FIXME: landingpad
-      // FIXME: catchpad
-      // FIXME: cleanuppad
-      // clang-format on
-  };
-#undef INST
-
-  return opcMap.lookup(opcode);
-}
-
-static ICmpPredicate getICmpPredicate(llvm::CmpInst::Predicate p) {
-  switch (p) {
-  default:
-    llvm_unreachable("incorrect comparison predicate");
-  case llvm::CmpInst::Predicate::ICMP_EQ:
-    return LLVM::ICmpPredicate::eq;
-  case llvm::CmpInst::Predicate::ICMP_NE:
-    return LLVM::ICmpPredicate::ne;
-  case llvm::CmpInst::Predicate::ICMP_SLT:
-    return LLVM::ICmpPredicate::slt;
-  case llvm::CmpInst::Predicate::ICMP_SLE:
-    return LLVM::ICmpPredicate::sle;
-  case llvm::CmpInst::Predicate::ICMP_SGT:
-    return LLVM::ICmpPredicate::sgt;
-  case llvm::CmpInst::Predicate::ICMP_SGE:
-    return LLVM::ICmpPredicate::sge;
-  case llvm::CmpInst::Predicate::ICMP_ULT:
-    return LLVM::ICmpPredicate::ult;
-  case llvm::CmpInst::Predicate::ICMP_ULE:
-    return LLVM::ICmpPredicate::ule;
-  case llvm::CmpInst::Predicate::ICMP_UGT:
-    return LLVM::ICmpPredicate::ugt;
-  case llvm::CmpInst::Predicate::ICMP_UGE:
-    return LLVM::ICmpPredicate::uge;
-  }
-  llvm_unreachable("incorrect integer comparison predicate");
-}
-
-static FCmpPredicate getFCmpPredicate(llvm::CmpInst::Predicate p) {
-  switch (p) {
-  default:
-    llvm_unreachable("incorrect comparison predicate");
-  case llvm::CmpInst::Predicate::FCMP_FALSE:
-    return LLVM::FCmpPredicate::_false;
-  case llvm::CmpInst::Predicate::FCMP_TRUE:
-    return LLVM::FCmpPredicate::_true;
-  case llvm::CmpInst::Predicate::FCMP_OEQ:
-    return LLVM::FCmpPredicate::oeq;
-  case llvm::CmpInst::Predicate::FCMP_ONE:
-    return LLVM::FCmpPredicate::one;
-  case llvm::CmpInst::Predicate::FCMP_OLT:
-    return LLVM::FCmpPredicate::olt;
-  case llvm::CmpInst::Predicate::FCMP_OLE:
-    return LLVM::FCmpPredicate::ole;
-  case llvm::CmpInst::Predicate::FCMP_OGT:
-    return LLVM::FCmpPredicate::ogt;
-  case llvm::CmpInst::Predicate::FCMP_OGE:
-    return LLVM::FCmpPredicate::oge;
-  case llvm::CmpInst::Predicate::FCMP_ORD:
-    return LLVM::FCmpPredicate::ord;
-  case llvm::CmpInst::Predicate::FCMP_ULT:
-    return LLVM::FCmpPredicate::ult;
-  case llvm::CmpInst::Predicate::FCMP_ULE:
-    return LLVM::FCmpPredicate::ule;
-  case llvm::CmpInst::Predicate::FCMP_UGT:
-    return LLVM::FCmpPredicate::ugt;
-  case llvm::CmpInst::Predicate::FCMP_UGE:
-    return LLVM::FCmpPredicate::uge;
-  case llvm::CmpInst::Predicate::FCMP_UNO:
-    return LLVM::FCmpPredicate::uno;
-  case llvm::CmpInst::Predicate::FCMP_UEQ:
-    return LLVM::FCmpPredicate::ueq;
-  case llvm::CmpInst::Predicate::FCMP_UNE:
-    return LLVM::FCmpPredicate::une;
-  }
-  llvm_unreachable("incorrect floating point comparison predicate");
-}
-
-static AtomicOrdering getLLVMAtomicOrdering(llvm::AtomicOrdering ordering) {
-  switch (ordering) {
-  case llvm::AtomicOrdering::NotAtomic:
-    return LLVM::AtomicOrdering::not_atomic;
-  case llvm::AtomicOrdering::Unordered:
-    return LLVM::AtomicOrdering::unordered;
-  case llvm::AtomicOrdering::Monotonic:
-    return LLVM::AtomicOrdering::monotonic;
-  case llvm::AtomicOrdering::Acquire:
-    return LLVM::AtomicOrdering::acquire;
-  case llvm::AtomicOrdering::Release:
-    return LLVM::AtomicOrdering::release;
-  case llvm::AtomicOrdering::AcquireRelease:
-    return LLVM::AtomicOrdering::acq_rel;
-  case llvm::AtomicOrdering::SequentiallyConsistent:
-    return LLVM::AtomicOrdering::seq_cst;
-  }
-  llvm_unreachable("incorrect atomic ordering");
-}
-
-static AtomicBinOp getLLVMAtomicBinOp(llvm::AtomicRMWInst::BinOp binOp) {
-  switch (binOp) {
-  case llvm::AtomicRMWInst::Xchg:
-    return LLVM::AtomicBinOp::xchg;
-  case llvm::AtomicRMWInst::Add:
-    return LLVM::AtomicBinOp::add;
-  case llvm::AtomicRMWInst::Sub:
-    return LLVM::AtomicBinOp::sub;
-  case llvm::AtomicRMWInst::And:
-    return LLVM::AtomicBinOp::_and;
-  case llvm::AtomicRMWInst::Nand:
-    return LLVM::AtomicBinOp::nand;
-  case llvm::AtomicRMWInst::Or:
-    return LLVM::AtomicBinOp::_or;
-  case llvm::AtomicRMWInst::Xor:
-    return LLVM::AtomicBinOp::_xor;
-  case llvm::AtomicRMWInst::Max:
-    return LLVM::AtomicBinOp::max;
-  case llvm::AtomicRMWInst::Min:
-    return LLVM::AtomicBinOp::min;
-  case llvm::AtomicRMWInst::UMax:
-    return LLVM::AtomicBinOp::umax;
-  case llvm::AtomicRMWInst::UMin:
-    return LLVM::AtomicBinOp::umin;
-  case llvm::AtomicRMWInst::FAdd:
-    return LLVM::AtomicBinOp::fadd;
-  case llvm::AtomicRMWInst::FSub:
-    return LLVM::AtomicBinOp::fsub;
-  default:
-    llvm_unreachable("unsupported atomic binary operation");
-  }
-}
-
 // `br` branches to `target`. Return the branch arguments to `br`, in the
 // same order of the PHIs in `target`.
 LogicalResult
@@ -827,106 +797,24 @@ Importer::processBranchArgs(llvm::Instruction *br, llvm::BasicBlock *target,
 }
 
 LogicalResult Importer::processInstruction(llvm::Instruction *inst) {
-  // FIXME: Support uses of SubtargetData. Currently inbounds GEPs, fast-math
-  // flags and call / operand attributes are not supported.
+  // FIXME: Support uses of SubtargetData.
+  // FIXME: Add support for inbounds GEPs.
+  // FIXME: Add support for fast-math flags and call / operand attributes.
+  // FIXME: Add support for the indirectbr, cleanupret, catchret, catchswitch,
+  // callbr, vaarg, landingpad, catchpad, cleanuppad instructions.
+
+  // Convert all intrinsics that provide an MLIR builder.
+  if (auto *callInst = dyn_cast<llvm::CallInst>(inst))
+    if (succeeded(convertIntrinsic(b, callInst)))
+      return success();
+
+  // Convert all operations that provide an MLIR builder.
+  if (succeeded(convertOperation(b, inst)))
+    return success();
+
+  // Convert all special instructions that do not provide an MLIR builder.
   Location loc = translateLoc(inst->getDebugLoc());
-  assert(!instMap.count(inst) &&
-         "processInstruction must be called only once per instruction!");
-  switch (inst->getOpcode()) {
-  default:
-    return emitError(loc) << "unknown instruction: " << diag(*inst);
-  case llvm::Instruction::Add:
-  case llvm::Instruction::FAdd:
-  case llvm::Instruction::Sub:
-  case llvm::Instruction::FSub:
-  case llvm::Instruction::Mul:
-  case llvm::Instruction::FMul:
-  case llvm::Instruction::UDiv:
-  case llvm::Instruction::SDiv:
-  case llvm::Instruction::FDiv:
-  case llvm::Instruction::URem:
-  case llvm::Instruction::SRem:
-  case llvm::Instruction::FRem:
-  case llvm::Instruction::Shl:
-  case llvm::Instruction::LShr:
-  case llvm::Instruction::AShr:
-  case llvm::Instruction::And:
-  case llvm::Instruction::Or:
-  case llvm::Instruction::Xor:
-  case llvm::Instruction::Load:
-  case llvm::Instruction::Store:
-  case llvm::Instruction::Ret:
-  case llvm::Instruction::Resume:
-  case llvm::Instruction::Trunc:
-  case llvm::Instruction::ZExt:
-  case llvm::Instruction::SExt:
-  case llvm::Instruction::FPToUI:
-  case llvm::Instruction::FPToSI:
-  case llvm::Instruction::UIToFP:
-  case llvm::Instruction::SIToFP:
-  case llvm::Instruction::FPTrunc:
-  case llvm::Instruction::FPExt:
-  case llvm::Instruction::PtrToInt:
-  case llvm::Instruction::IntToPtr:
-  case llvm::Instruction::AddrSpaceCast:
-  case llvm::Instruction::Freeze:
-  case llvm::Instruction::BitCast:
-  case llvm::Instruction::ExtractElement:
-  case llvm::Instruction::InsertElement:
-  case llvm::Instruction::Select:
-  case llvm::Instruction::FNeg:
-  case llvm::Instruction::Unreachable: {
-    OperationState state(loc, lookupOperationNameFromOpcode(inst->getOpcode()));
-    SmallVector<llvm::Value *> operands(inst->operand_values());
-    SmallVector<Value> ops = processValues(operands);
-    if (!inst->getType()->isVoidTy()) {
-      Type type = convertType(inst->getType());
-      state.addTypes(type);
-    }
-    state.addOperands(ops);
-    Operation *op = b.create(state);
-    if (!inst->getType()->isVoidTy())
-      instMap[inst] = op->getResult(0);
-    return success();
-  }
-  case llvm::Instruction::Alloca: {
-    Value size = processValue(inst->getOperand(0));
-    auto *allocaInst = cast<llvm::AllocaInst>(inst);
-    instMap[inst] =
-        b.create<AllocaOp>(loc, convertType(inst->getType()),
-                           convertType(allocaInst->getAllocatedType()), size,
-                           allocaInst->getAlign().value());
-    return success();
-  }
-  case llvm::Instruction::ICmp: {
-    Value lhs = processValue(inst->getOperand(0));
-    Value rhs = processValue(inst->getOperand(1));
-    instMap[inst] = b.create<ICmpOp>(
-        loc, getICmpPredicate(cast<llvm::ICmpInst>(inst)->getPredicate()), lhs,
-        rhs);
-    return success();
-  }
-  case llvm::Instruction::FCmp: {
-    Value lhs = processValue(inst->getOperand(0));
-    Value rhs = processValue(inst->getOperand(1));
-
-    if (lhs.getType() != rhs.getType())
-      return failure();
-
-    Type boolType = b.getI1Type();
-    Type resType = boolType;
-    if (LLVM::isCompatibleVectorType(lhs.getType())) {
-      unsigned numElements =
-          LLVM::getVectorNumElements(lhs.getType()).getFixedValue();
-      resType = VectorType::get({numElements}, boolType);
-    }
-
-    instMap[inst] = b.create<FCmpOp>(
-        loc, resType,
-        getFCmpPredicate(cast<llvm::FCmpInst>(inst)->getPredicate()), lhs, rhs);
-    return success();
-  }
-  case llvm::Instruction::Br: {
+  if (inst->getOpcode() == llvm::Instruction::Br) {
     auto *brInst = cast<llvm::BranchInst>(inst);
     OperationState state(loc,
                          brInst->isConditional() ? "llvm.cond_br" : "llvm.br");
@@ -954,7 +842,7 @@ LogicalResult Importer::processInstruction(llvm::Instruction *inst) {
     b.create(state);
     return success();
   }
-  case llvm::Instruction::Switch: {
+  if (inst->getOpcode() == llvm::Instruction::Switch) {
     auto *swInst = cast<llvm::SwitchInst>(inst);
     // Process the condition value.
     Value condition = processValue(swInst->getCondition());
@@ -985,19 +873,14 @@ LogicalResult Importer::processInstruction(llvm::Instruction *inst) {
                        caseValues, caseBlocks, caseOperandRefs);
     return success();
   }
-  case llvm::Instruction::PHI: {
+  if (inst->getOpcode() == llvm::Instruction::PHI) {
     Type type = convertType(inst->getType());
-    instMap[inst] = b.getInsertionBlock()->addArgument(
-        type, translateLoc(inst->getDebugLoc()));
+    mapValue(inst, b.getInsertionBlock()->addArgument(
+                       type, translateLoc(inst->getDebugLoc())));
     return success();
   }
-  case llvm::Instruction::Call: {
+  if (inst->getOpcode() == llvm::Instruction::Call) {
     llvm::CallInst *ci = cast<llvm::CallInst>(inst);
-
-    // For all intrinsics, try to generate to the corresponding op.
-    if (succeeded(convertIntrinsic(b, ci)))
-      return success();
-
     SmallVector<llvm::Value *> args(ci->args());
     SmallVector<Value> ops = processValues(args);
     SmallVector<Type, 2> tys;
@@ -1015,10 +898,10 @@ LogicalResult Importer::processInstruction(llvm::Instruction *inst) {
       op = b.create<CallOp>(loc, tys, ops);
     }
     if (!ci->getType()->isVoidTy())
-      instMap[inst] = op->getResult(0);
+      mapValue(inst, op->getResult(0));
     return success();
   }
-  case llvm::Instruction::LandingPad: {
+  if (inst->getOpcode() == llvm::Instruction::LandingPad) {
     llvm::LandingPadInst *lpi = cast<llvm::LandingPadInst>(inst);
     SmallVector<Value, 4> ops;
 
@@ -1026,10 +909,11 @@ LogicalResult Importer::processInstruction(llvm::Instruction *inst) {
       ops.push_back(processConstant(lpi->getClause(i)));
 
     Type ty = convertType(lpi->getType());
-    instMap[inst] = b.create<LandingpadOp>(loc, ty, lpi->isCleanup(), ops);
+    Value res = b.create<LandingpadOp>(loc, ty, lpi->isCleanup(), ops);
+    mapValue(inst, res);
     return success();
   }
-  case llvm::Instruction::Invoke: {
+  if (inst->getOpcode() == llvm::Instruction::Invoke) {
     llvm::InvokeInst *ii = cast<llvm::InvokeInst>(inst);
 
     SmallVector<Type, 2> tys;
@@ -1057,56 +941,10 @@ LogicalResult Importer::processInstruction(llvm::Instruction *inst) {
     }
 
     if (!ii->getType()->isVoidTy())
-      instMap[inst] = op->getResult(0);
+      mapValue(inst, op->getResult(0));
     return success();
   }
-  case llvm::Instruction::Fence: {
-    StringRef syncscope;
-    SmallVector<StringRef, 4> ssNs;
-    llvm::LLVMContext &llvmContext = inst->getContext();
-    llvm::FenceInst *fence = cast<llvm::FenceInst>(inst);
-    llvmContext.getSyncScopeNames(ssNs);
-    int fenceSyncScopeID = fence->getSyncScopeID();
-    for (unsigned i = 0, e = ssNs.size(); i != e; i++) {
-      if (fenceSyncScopeID == llvmContext.getOrInsertSyncScopeID(ssNs[i])) {
-        syncscope = ssNs[i];
-        break;
-      }
-    }
-    b.create<FenceOp>(loc, getLLVMAtomicOrdering(fence->getOrdering()),
-                      syncscope);
-    return success();
-  }
-  case llvm::Instruction::AtomicRMW: {
-    auto *atomicInst = cast<llvm::AtomicRMWInst>(inst);
-    Value ptr = processValue(atomicInst->getPointerOperand());
-    Value val = processValue(atomicInst->getValOperand());
-
-    LLVM::AtomicBinOp binOp = getLLVMAtomicBinOp(atomicInst->getOperation());
-    LLVM::AtomicOrdering ordering =
-        getLLVMAtomicOrdering(atomicInst->getOrdering());
-
-    Type type = convertType(inst->getType());
-    instMap[inst] = b.create<AtomicRMWOp>(loc, type, binOp, ptr, val, ordering);
-    return success();
-  }
-  case llvm::Instruction::AtomicCmpXchg: {
-    auto *cmpXchgInst = cast<llvm::AtomicCmpXchgInst>(inst);
-    Value ptr = processValue(cmpXchgInst->getPointerOperand());
-    Value cmpVal = processValue(cmpXchgInst->getCompareOperand());
-    Value newVal = processValue(cmpXchgInst->getNewValOperand());
-
-    LLVM::AtomicOrdering ordering =
-        getLLVMAtomicOrdering(cmpXchgInst->getSuccessOrdering());
-    LLVM::AtomicOrdering failOrdering =
-        getLLVMAtomicOrdering(cmpXchgInst->getFailureOrdering());
-
-    Type type = convertType(inst->getType());
-    instMap[inst] = b.create<AtomicCmpXchgOp>(loc, type, ptr, cmpVal, newVal,
-                                              ordering, failOrdering);
-    return success();
-  }
-  case llvm::Instruction::GetElementPtr: {
+  if (inst->getOpcode() == llvm::Instruction::GetElementPtr) {
     // FIXME: Support inbounds GEPs.
     llvm::GetElementPtrInst *gep = cast<llvm::GetElementPtrInst>(inst);
     Value basePtr = processValue(gep->getOperand(0));
@@ -1123,39 +961,12 @@ LogicalResult Importer::processInstruction(llvm::Instruction *inst) {
     }
 
     Type type = convertType(inst->getType());
-    instMap[inst] =
-        b.create<GEPOp>(loc, type, sourceElementType, basePtr, indices);
+    Value res = b.create<GEPOp>(loc, type, sourceElementType, basePtr, indices);
+    mapValue(inst, res);
     return success();
   }
-  case llvm::Instruction::InsertValue: {
-    auto *ivInst = cast<llvm::InsertValueInst>(inst);
-    Value inserted = processValue(ivInst->getInsertedValueOperand());
-    Value aggOperand = processValue(ivInst->getAggregateOperand());
 
-    SmallVector<int64_t> indices;
-    llvm::append_range(indices, ivInst->getIndices());
-    instMap[inst] = b.create<InsertValueOp>(loc, aggOperand, inserted, indices);
-    return success();
-  }
-  case llvm::Instruction::ExtractValue: {
-    auto *evInst = cast<llvm::ExtractValueInst>(inst);
-    Value aggOperand = processValue(evInst->getAggregateOperand());
-
-    SmallVector<int64_t> indices;
-    llvm::append_range(indices, evInst->getIndices());
-    instMap[inst] = b.create<ExtractValueOp>(loc, aggOperand, indices);
-    return success();
-  }
-  case llvm::Instruction::ShuffleVector: {
-    auto *svInst = cast<llvm::ShuffleVectorInst>(inst);
-    Value vec1 = processValue(svInst->getOperand(0));
-    Value vec2 = processValue(svInst->getOperand(1));
-
-    SmallVector<int32_t> mask(svInst->getShuffleMask());
-    instMap[inst] = b.create<ShuffleVectorOp>(loc, vec1, vec2, mask);
-    return success();
-  }
-  }
+  return emitError(loc) << "unknown instruction: " << diag(*inst);
 }
 
 FlatSymbolRefAttr Importer::getPersonalityAsAttr(llvm::Function *f) {
@@ -1191,7 +1002,7 @@ void Importer::processFunctionAttributes(llvm::Function *func,
 
 LogicalResult Importer::processFunction(llvm::Function *f) {
   blocks.clear();
-  instMap.clear();
+  valueMapping.clear();
   unknownInstMap.clear();
 
   auto functionType =
@@ -1238,13 +1049,13 @@ LogicalResult Importer::processFunction(llvm::Function *f) {
   }
 
   if (FlatSymbolRefAttr personality = getPersonalityAsAttr(f))
-    fop->setAttr(b.getStringAttr("personality"), personality);
+    fop.setPersonalityAttr(personality);
   else if (f->hasPersonalityFn())
     emitWarning(UnknownLoc::get(context),
                 "could not deduce personality, skipping it");
 
   if (f->hasGC())
-    fop.setGarbageCollectorAttr(b.getStringAttr(f->getGC()));
+    fop.setGarbageCollector(StringRef(f->getGC()));
 
   // Handle Function attributes.
   processFunctionAttributes(f, fop);
@@ -1262,8 +1073,9 @@ LogicalResult Importer::processFunction(llvm::Function *f) {
 
   // Add function arguments to the entry block.
   for (const auto &kv : llvm::enumerate(f->args())) {
-    instMap[&kv.value()] = blockList[0]->addArgument(
-        functionType.getParamType(kv.index()), fop.getLoc());
+    mapValue(&kv.value(),
+             blockList[0]->addArgument(functionType.getParamType(kv.index()),
+                                       fop.getLoc()));
   }
 
   for (auto bbs : llvm::zip(*f, blockList)) {
@@ -1274,8 +1086,8 @@ LogicalResult Importer::processFunction(llvm::Function *f) {
   // Now that all instructions are guaranteed to have been visited, ensure
   // any unknown uses we encountered are remapped.
   for (auto &llvmAndUnknown : unknownInstMap) {
-    assert(instMap.count(llvmAndUnknown.first));
-    Value newValue = instMap[llvmAndUnknown.first];
+    assert(valueMapping.count(llvmAndUnknown.first));
+    Value newValue = valueMapping[llvmAndUnknown.first];
     Value oldValue = llvmAndUnknown.second->getResult(0);
     oldValue.replaceAllUsesWith(newValue);
     llvmAndUnknown.second->erase();
