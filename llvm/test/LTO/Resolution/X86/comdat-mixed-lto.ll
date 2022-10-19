@@ -23,6 +23,15 @@
 ; CHECK: declare dso_local void @__cxx_global_var_init() section ".text.startup"
 ; CHECK-NOT: declare
 
+; Check the behavior with the prevailing testglobfunc in %t2.o.
+; RUN: llvm-lto2 run -r=%t1.o,C,pl -r=%t2.o,C,l -r=%t1.o,testglobfunc,lx -r=%t2.o,testglobfunc,plx -o %t4 %t1.o %t2.o -save-temps
+; RUN: llvm-dis %t4.0.0.preopt.bc -o - | FileCheck %s --check-prefix=CHECK2
+
+; CHECK2: @llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @__cxx_global_var_init, ptr @C }]
+; CHECK2: @C = available_externally dso_local global %"class.Test::ptr" zeroinitializer, align 4
+; CHECK2: declare dso_local void @__cxx_global_var_init() section ".text.startup"
+; CHECK2: define available_externally dso_local void @testglobfunc() section ".text.startup" {
+
 ; ModuleID = 'comdat-mixed-lto.o'
 source_filename = "comdat-mixed-lto.cpp"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"

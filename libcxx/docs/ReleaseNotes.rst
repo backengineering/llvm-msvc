@@ -42,12 +42,15 @@ Implemented Papers
 - P2445R1 - ``std::forward_like``
 - P2273R3 - Making ``std::unique_ptr`` constexpr
 - P0591R4 - Utility functions to implement uses-allocator construction
+- P2291R3 - Add Constexpr Modifiers to Functions ``to_chars`` and
+  ``from_chars`` for Integral Types in ``<charconv>`` Header
 
 Improvements and New Features
 -----------------------------
 - Declarations of ``std::c8rtomb()`` and ``std::mbrtoc8()`` from P0482R6 are
   now provided when implementations in the global namespace are provided by
   the C library.
+- Implemented ``<memory_resource>`` header from C++17
 
 Deprecations and Removals
 -------------------------

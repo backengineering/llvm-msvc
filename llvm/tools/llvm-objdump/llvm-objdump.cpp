@@ -1190,8 +1190,9 @@ static void addSymbolizer(
   for (size_t Index = 0; Index != Bytes.size();) {
     MCInst Inst;
     uint64_t Size;
-    ArrayRef<uint8_t> ThisBytes = Bytes.slice(Index - SectionAddr);
-    DisAsm->getInstruction(Inst, Size, ThisBytes, Index, nulls());
+    ArrayRef<uint8_t> ThisBytes = Bytes.slice(Index);
+    const uint64_t ThisAddr = SectionAddr + Index;
+    DisAsm->getInstruction(Inst, Size, ThisBytes, ThisAddr, nulls());
     if (Size == 0)
       Size = std::min<uint64_t>(ThisBytes.size(),
                                 DisAsm->suggestBytesToSkip(ThisBytes, Index));
@@ -2927,7 +2928,7 @@ static object::BuildID parseBuildIDArg(const opt::Arg *A) {
   return object::BuildID(BuildID.begin(), BuildID.end());
 }
 
-static void invalidArgValue(const opt::Arg *A) {
+void objdump::invalidArgValue(const opt::Arg *A) {
   reportCmdLineError("'" + StringRef(A->getValue()) +
                      "' is not a valid value for '" + A->getSpelling() + "'");
 }
@@ -3216,10 +3217,10 @@ int main(int argc, char **argv) {
       !DynamicSymbolTable && !UnwindInfo && !FaultMapSection && !Offloading &&
       !(MachOOpt &&
         (Bind || DataInCode || ChainedFixups || DyldInfo || DylibId ||
-         DylibsUsed || ExportsTrie || FirstPrivateHeader || FunctionStarts ||
-         IndirectSymbols || InfoPlist || LazyBind || LinkOptHints ||
-         ObjcMetaData || Rebase || Rpaths || UniversalHeaders || WeakBind ||
-         !FilterSections.empty()))) {
+         DylibsUsed || ExportsTrie || FirstPrivateHeader ||
+         FunctionStartsType != FunctionStartsMode::None || IndirectSymbols ||
+         InfoPlist || LazyBind || LinkOptHints || ObjcMetaData || Rebase ||
+         Rpaths || UniversalHeaders || WeakBind || !FilterSections.empty()))) {
     T->printHelp(ToolName);
     return 2;
   }

@@ -11871,8 +11871,14 @@ Decl *Sema::ActOnUsingEnumDeclaration(Scope *S, AccessSpecifier AS,
                                       SourceLocation IdentLoc,
                                       IdentifierInfo &II, CXXScopeSpec *SS) {
   assert(!SS->isInvalid() && "ScopeSpec is invalid");
-  ParsedType TypeRep = getTypeName(II, IdentLoc, S, SS);
-  if (!TypeRep) {
+  TypeSourceInfo *TSI = nullptr;
+  QualType EnumTy = GetTypeFromParser(
+      getTypeName(II, IdentLoc, S, SS, /*isClassName=*/false,
+                  /*HasTrailingDot=*/false,
+                  /*ObjectType=*/nullptr, /*IsCtorOrDtorName=*/false,
+                  /*WantNontrivialTypeSourceInfo=*/true),
+      &TSI);
+  if (EnumTy.isNull()) {
     Diag(IdentLoc, SS && isDependentScopeSpecifier(*SS)
                        ? diag::err_using_enum_is_dependent
                        : diag::err_unknown_typename)
@@ -11881,17 +11887,21 @@ Decl *Sema::ActOnUsingEnumDeclaration(Scope *S, AccessSpecifier AS,
     return nullptr;
   }
 
-  auto *Enum = dyn_cast_if_present<EnumDecl>(TypeRep.get()->getAsTagDecl());
+  auto *Enum = dyn_cast_if_present<EnumDecl>(EnumTy->getAsTagDecl());
   if (!Enum) {
-    Diag(IdentLoc, diag::err_using_enum_not_enum) << TypeRep.get();
+    Diag(IdentLoc, diag::err_using_enum_not_enum) << EnumTy;
     return nullptr;
   }
 
   if (auto *Def = Enum->getDefinition())
     Enum = Def;
 
+  if (TSI == nullptr)
+    TSI = Context.getTrivialTypeSourceInfo(EnumTy, IdentLoc);
+
   auto *UD =
-      BuildUsingEnumDeclaration(S, AS, UsingLoc, EnumLoc, IdentLoc, Enum);
+      BuildUsingEnumDeclaration(S, AS, UsingLoc, EnumLoc, IdentLoc, TSI, Enum);
+
   if (UD)
     PushOnScopeChains(UD, S, /*AddToContext*/ false);
 
@@ -12583,6 +12593,7 @@ NamedDecl *Sema::BuildUsingEnumDeclaration(Scope *S, AccessSpecifier AS,
                                            SourceLocation UsingLoc,
                                            SourceLocation EnumLoc,
                                            SourceLocation NameLoc,
+                                           TypeSourceInfo *EnumType,
                                            EnumDecl *ED) {
   bool Invalid = false;
 
@@ -12609,7 +12620,7 @@ NamedDecl *Sema::BuildUsingEnumDeclaration(Scope *S, AccessSpecifier AS,
     Invalid = true;
 
   UsingEnumDecl *UD = UsingEnumDecl::Create(Context, CurContext, UsingLoc,
-                                            EnumLoc, NameLoc, ED);
+                                            EnumLoc, NameLoc, EnumType);
   UD->setAccess(AS);
   CurContext->addDecl(UD);
 
@@ -15540,7 +15551,10 @@ Sema::BuildCXXConstructExpr(SourceLocation ConstructLoc, QualType DeclInitType,
                             SourceRange ParenRange) {
   if (auto *Shadow = dyn_cast<ConstructorUsingShadowDecl>(FoundDecl)) {
     Constructor = findInheritingConstructor(ConstructLoc, Constructor, Shadow);
-    if (DiagnoseUseOfDecl(Constructor, ConstructLoc))
+    // The only way to get here is if we did overlaod resolution to find the
+    // shadow decl, so we don't need to worry about re-checking the trailing
+    // requires clause.
+    if (DiagnoseUseOfOverloadedDecl(Constructor, ConstructLoc))
       return ExprError();
   }
 
@@ -16769,11 +16783,10 @@ Decl *Sema::BuildStaticAssertDeclaration(SourceLocation StaticAssertLoc,
     AllowFoldKind FoldKind = NoFold;
 
     if (!getLangOpts().CPlusPlus) {
-      // In C mode only allow folding and strip the implicit conversion
-      // to the type of the first _Static_assert argument that would
-      // otherwise suppress diagnostics for arguments that convert to int.
+      // In C mode, allow folding as an extension for better compatibility with
+      // C++ in terms of expressions like static_assert("test") or
+      // static_assert(nullptr).
       FoldKind = AllowFold;
-      BaseExpr = BaseExpr->IgnoreImpCasts();
     }
 
     if (!Failed && VerifyIntegerConstantExpression(

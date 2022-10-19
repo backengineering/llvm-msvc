@@ -16,6 +16,7 @@
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/SparseTensor/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -104,8 +105,7 @@ static bool isZeroYield(GenericOp op) {
   auto yieldOp = cast<linalg::YieldOp>(op.getRegion().front().getTerminator());
   if (auto arg = yieldOp.getOperand(0).dyn_cast<BlockArgument>()) {
     if (arg.getOwner()->getParentOp() == op) {
-      OpOperand *t = op.getInputAndOutputOperands()[arg.getArgNumber()];
-      return isZeroValue(t->get());
+      return isZeroValue(op->getOperand(arg.getArgNumber()));
     }
   }
   return isZeroValue(yieldOp.getOperand(0));
@@ -146,12 +146,13 @@ static RankedTensorType getUnorderedCOOFromType(RankedTensorType src) {
   // level should the COO has a unique level at the end. Ends by a unordered
   // unique singleton level.
   dims.push_back(SparseTensorEncodingAttr::DimLevelType::SingletonNo);
+  SparseTensorEncodingAttr encSrc = getSparseTensorEncoding(src);
   // TODO: Maybe pick the bitwidth based on input/output tensors (probably the
   // largest one among them) in the original operation instead of using the
   // default value.
   auto enc = SparseTensorEncodingAttr::get(
-      ctx, dims, AffineMap::getMultiDimIdentityMap(rank, ctx), AffineMap(), 0,
-      0);
+      ctx, dims, AffineMap::getMultiDimIdentityMap(rank, ctx), AffineMap(),
+      encSrc.getPointerBitWidth(), encSrc.getIndexBitWidth());
   return RankedTensorType::get(src.getShape(), src.getElementType(), enc);
 }
 
@@ -241,15 +242,15 @@ public:
       return failure();
     // Modify operand structure of producer and consumer.
     Location loc = prod.getLoc();
-    SmallVector<Value> inputOps = prod.getInputOperands();
-    SmallVector<Value> outputOps = op.getOutputOperands();
+    SmallVector<Value> inputOps = prod.getInputs();
+    SmallVector<Value> outputOps = op.getOutputs();
     SmallVector<AffineMap> fusedIndexMaps = prod.getIndexingMapsArray();
     inputOps.push_back(op.getInputOperand(1 - other)->get());
     fusedIndexMaps.push_back(fusedIndexMaps.back()); // mimic other
     // Fuse producer and consumer into a new generic op.
     auto fusedOp = rewriter.create<GenericOp>(
         loc, op.getResult(0).getType(), inputOps, outputOps,
-        rewriter.getAffineMapArrayAttr(fusedIndexMaps), prod.iterator_types(),
+        rewriter.getAffineMapArrayAttr(fusedIndexMaps), prod.getIteratorTypes(),
         /*doc=*/nullptr, /*library_call=*/nullptr);
     Block &prodBlock = prod.getRegion().front();
     Block &consBlock = op.getRegion().front();
@@ -514,20 +515,114 @@ public:
   }
 };
 
+/// Sparse rewriting rule for the new operator.
+struct NewRewriter : public OpRewritePattern<NewOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(NewOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto dstTp = op.getResult().getType().template cast<RankedTensorType>();
+    SparseTensorEncodingAttr encDst = getSparseTensorEncoding(dstTp);
+    if (!encDst) {
+      return failure();
+    }
+
+    // Create a sparse tensor reader.
+    Value fileName = op.getSource();
+    Type opaqueTp = getOpaquePointerType(rewriter);
+    Value reader = createFuncCall(rewriter, loc, "createSparseTensorReader",
+                                  {opaqueTp}, {fileName}, EmitCInterface::Off)
+                       .getResult(0);
+
+    // Allocate a buffer for storing dimension sizes and indices.
+    Type indexTp = rewriter.getIndexType();
+    auto memTp = MemRefType::get({ShapedType::kDynamicSize}, indexTp);
+    uint64_t rank = dstTp.getRank();
+    Value dimSizes = rewriter.create<memref::AllocOp>(
+        loc, memTp, ValueRange{constantIndex(rewriter, loc, rank)});
+
+    // If the result tensor has dynamic dimensions, get the dynamic sizes from
+    // the sparse tensor reader.
+    SmallVector<Value, 4> dynSizesArray;
+    if (!dstTp.hasStaticShape()) {
+      createFuncCall(rewriter, loc, "getSparseTensorReaderDimSizes", {},
+                     {reader, dimSizes}, EmitCInterface::On)
+          .getResult(0);
+      ArrayRef<int64_t> dstShape = dstTp.getShape();
+      for (auto &d : llvm::enumerate(dstShape)) {
+        if (d.value() == ShapedType::kDynamicSize) {
+          dynSizesArray.push_back(rewriter.create<memref::LoadOp>(
+              loc, dimSizes, constantIndex(rewriter, loc, d.index())));
+        }
+      }
+    }
+
+    // Implement the NewOp as follows:
+    //   %tmp = bufferization.alloc_tensor : an unordered COO with identity
+    //                                       storage ordering
+    //   for i = 0 to nnz
+    //     get the next element from the input file
+    //     insert the element to %tmp
+    //   %t = sparse_tensor.ConvertOp %tmp
+    RankedTensorType cooTp = getUnorderedCOOFromType(dstTp);
+    auto cooBuffer =
+        rewriter.create<AllocTensorOp>(loc, cooTp, dynSizesArray).getResult();
+
+    Value c0 = constantIndex(rewriter, loc, 0);
+    Value c1 = constantIndex(rewriter, loc, 1);
+    Value nnz = createFuncCall(rewriter, loc, "getSparseTensorReaderNNZ",
+                               {indexTp}, {reader}, EmitCInterface::Off)
+                    .getResult(0);
+    scf::ForOp forOp = rewriter.create<scf::ForOp>(loc, c0, nnz, c1);
+    rewriter.setInsertionPointToStart(forOp.getBody());
+
+    Type eltTp = dstTp.getElementType();
+    SmallString<18> getNextFuncName{"getSparseTensorReaderNext",
+                                    primaryTypeFunctionSuffix(eltTp)};
+    Value indices = dimSizes; // Reuse the indices memref to store indices.
+    Value value = createFuncCall(rewriter, loc, getNextFuncName, {eltTp},
+                                 {reader, indices}, EmitCInterface::On)
+                      .getResult(0);
+    SmallVector<Value, 4> indicesArray;
+    for (uint64_t i = 0; i < rank; i++) {
+      indicesArray.push_back(rewriter.create<memref::LoadOp>(
+          loc, indices, constantIndex(rewriter, loc, i)));
+    }
+    rewriter.create<InsertOp>(loc, value, cooBuffer, indicesArray);
+    rewriter.setInsertionPointAfter(forOp);
+
+    // Release the indices buffer and the sparse tensor reader.
+    rewriter.create<memref::DeallocOp>(loc, indices);
+    createFuncCall(rewriter, loc, "delSparseTensorReader", {}, {reader},
+                   EmitCInterface::Off);
+
+    Value newOp = rewriter.replaceOpWithNewOp<ConvertOp>(op, dstTp, cooBuffer);
+
+    // Release the unordered COO tensor buffer.
+    rewriter.setInsertionPointAfterValue(newOp);
+    rewriter.create<DeallocTensorOp>(loc, cooBuffer);
+
+    return success();
+  }
+};
+
 } // namespace
 
 //===---------------------------------------------------------------------===//
 // Methods that add patterns described in this file to a pattern list.
 //===---------------------------------------------------------------------===//
 void mlir::populateSparseTensorRewriting(RewritePatternSet &patterns,
-                                         bool enableRT) {
+                                         bool enableRT, bool enableForeach,
+                                         bool /*enableConvert*/) {
   patterns.add<FoldInvariantYield, FuseSparseMultiplyOverAdd,
                ReshapeRewriter<tensor::ExpandShapeOp>,
-               ReshapeRewriter<tensor::CollapseShapeOp>, ForeachRewriter>(
-      patterns.getContext());
+               ReshapeRewriter<tensor::CollapseShapeOp>>(patterns.getContext());
+  if (enableForeach)
+    patterns.add<ForeachRewriter>(patterns.getContext());
+
   // TODO: If RT not enabled, rewrite concatenate ops, etc here.
   if (!enableRT)
-    patterns.add<ConcatenateRewriter,
+    patterns.add<ConcatenateRewriter, NewRewriter,
                  Sparse2SparseReshapeRewriter<tensor::ExpandShapeOp>,
                  Sparse2SparseReshapeRewriter<tensor::CollapseShapeOp>>(
         patterns.getContext());
