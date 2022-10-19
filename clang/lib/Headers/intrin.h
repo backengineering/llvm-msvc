@@ -72,6 +72,7 @@ unsigned long __indword(unsigned short);
 void __indwordstring(unsigned short, unsigned long *, unsigned long);
 void __int2c(void);
 void __invlpg(void *);
+void _invpcid(unsigned int, void *);
 unsigned short __inword(unsigned short);
 void __inwordstring(unsigned short, unsigned short *, unsigned long);
 void __lidt(void *);
