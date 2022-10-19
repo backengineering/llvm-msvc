@@ -6556,15 +6556,21 @@ InstructionCost BoUpSLP::getEntryCost(const TreeEntry *E,
         match(VL0, MatchCmp))
       SwappedVecPred = CmpInst::getSwappedPredicate(VecPred);
     else
-      SwappedVecPred = VecPred = CmpInst::BAD_ICMP_PREDICATE;
+      SwappedVecPred = VecPred = ScalarTy->isFloatingPointTy()
+                                     ? CmpInst::BAD_FCMP_PREDICATE
+                                     : CmpInst::BAD_ICMP_PREDICATE;
     auto GetScalarCost = [&](unsigned Idx) {
       auto *VI = cast<Instruction>(VL[Idx]);
-      CmpInst::Predicate CurrentPred;
+      CmpInst::Predicate CurrentPred = ScalarTy->isFloatingPointTy()
+                                           ? CmpInst::BAD_FCMP_PREDICATE
+                                           : CmpInst::BAD_ICMP_PREDICATE;
       auto MatchCmp = m_Cmp(CurrentPred, m_Value(), m_Value());
       if ((!match(VI, m_Select(MatchCmp, m_Value(), m_Value())) &&
            !match(VI, MatchCmp)) ||
           (CurrentPred != VecPred && CurrentPred != SwappedVecPred))
-        VecPred = SwappedVecPred = CmpInst::BAD_ICMP_PREDICATE;
+        VecPred = SwappedVecPred = ScalarTy->isFloatingPointTy()
+                                       ? CmpInst::BAD_FCMP_PREDICATE
+                                       : CmpInst::BAD_ICMP_PREDICATE;
 
       return TTI->getCmpSelInstrCost(E->getOpcode(), ScalarTy,
                                      Builder.getInt1Ty(), CurrentPred, CostKind,
@@ -6616,7 +6622,7 @@ InstructionCost BoUpSLP::getEntryCost(const TreeEntry *E,
   case Instruction::Xor:
   case Instruction::GetElementPtr: {
     unsigned Opcode = ShuffleOrOp == Instruction::GetElementPtr
-                          ? Instruction::Add
+                          ? static_cast<unsigned>(Instruction::Add)
                           : ShuffleOrOp;
     auto GetScalarCost = [=](unsigned Idx) {
       auto *VI = dyn_cast<Instruction>(VL[Idx]);
