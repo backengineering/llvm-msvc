@@ -444,6 +444,10 @@ void LinkerDriver::parseDirectives(InputFile *file) {
       // [MSVC Compatibility] Handle #pragma comment(linker, "/ALIGN:0x10000")
       parseNumbers(arg->getValue(), &config->align);
       break;
+    case OPT_release:
+      // Handle #pragma comment(linker, "/RELEASE")
+      config->writeCheckSum = true;
+      break;
     default:
       error(arg->getSpelling() + " is not allowed in .drectve");
     }
@@ -2050,6 +2054,10 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
       }
     }
   }
+
+  // Handle /RELEASE
+  if (args.hasArg(OPT_release))
+    config->writeCheckSum = true;
 
   run();
   if (errorCount())
