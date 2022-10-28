@@ -382,12 +382,6 @@ int clang_main(int Argc, char **Argv) {
   for (auto Arg : Args) {
     if (StringRef(Arg).compare("-fprint-arguments") == 0) {
       HasPrintArgs = true;
-    } else if (StringRef(Arg).find("--target=x86_64-pc-windows") !=
-               StringRef::npos) {
-      // details in function 'handleTargetFeatures'
-      Args.push_back("-mssse3");
-      Args.push_back("-msse4.1");
-      Args.push_back("-maes");
     }
   }
   
