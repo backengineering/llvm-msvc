@@ -24,7 +24,7 @@
 
 using namespace clang;
 using namespace CodeGen;
-using namespace hlsl;
+using namespace clang::hlsl;
 using namespace llvm;
 
 namespace {
@@ -176,8 +176,9 @@ void CGHLSLRuntime::finishCodeGen() {
     layoutBuffer(Buf, DL);
     GlobalVariable *GV = replaceBuffer(Buf);
     M.getGlobalList().push_back(GV);
-    hlsl::ResourceClass RC =
-        Buf.IsCBuffer ? hlsl::ResourceClass::CBuffer : hlsl::ResourceClass::SRV;
+    llvm::hlsl::ResourceClass RC = Buf.IsCBuffer
+                                       ? llvm::hlsl::ResourceClass::CBuffer
+                                       : llvm::hlsl::ResourceClass::SRV;
     llvm::hlsl::ResourceKind RK = Buf.IsCBuffer
                                       ? llvm::hlsl::ResourceKind::CBuffer
                                       : llvm::hlsl::ResourceKind::TBuffer;
@@ -193,21 +194,20 @@ CGHLSLRuntime::Buffer::Buffer(const HLSLBufferDecl *D)
 
 void CGHLSLRuntime::addBufferResourceAnnotation(llvm::GlobalVariable *GV,
                                                 llvm::StringRef TyName,
-                                                hlsl::ResourceClass RC,
+                                                llvm::hlsl::ResourceClass RC,
                                                 llvm::hlsl::ResourceKind RK,
                                                 BufferResBinding &Binding) {
-  uint32_t Counter = ResourceCounters[static_cast<uint32_t>(RC)]++;
   llvm::Module &M = CGM.getModule();
 
   NamedMDNode *ResourceMD = nullptr;
   switch (RC) {
-  case hlsl::ResourceClass::UAV:
+  case llvm::hlsl::ResourceClass::UAV:
     ResourceMD = M.getOrInsertNamedMetadata("hlsl.uavs");
     break;
-  case hlsl::ResourceClass::SRV:
+  case llvm::hlsl::ResourceClass::SRV:
     ResourceMD = M.getOrInsertNamedMetadata("hlsl.srvs");
     break;
-  case hlsl::ResourceClass::CBuffer:
+  case llvm::hlsl::ResourceClass::CBuffer:
     ResourceMD = M.getOrInsertNamedMetadata("hlsl.cbufs");
     break;
   default:
@@ -219,7 +219,7 @@ void CGHLSLRuntime::addBufferResourceAnnotation(llvm::GlobalVariable *GV,
          "ResourceMD must have been set by the switch above.");
 
   llvm::hlsl::FrontendResource Res(
-      GV, TyName, Counter, RK, Binding.Reg.value_or(UINT_MAX), Binding.Space);
+      GV, TyName, RK, Binding.Reg.value_or(UINT_MAX), Binding.Space);
   ResourceMD->addOperand(Res.getMetadata());
 }
 
@@ -290,8 +290,9 @@ void CGHLSLRuntime::annotateHLSLResource(const VarDecl *D, GlobalVariable *GV) {
 
   QualType QT(Ty, 0);
   BufferResBinding Binding(D->getAttr<HLSLResourceBindingAttr>());
-  addBufferResourceAnnotation(
-      GV, QT.getAsString(), static_cast<hlsl::ResourceClass>(RC), RK, Binding);
+  addBufferResourceAnnotation(GV, QT.getAsString(),
+                              static_cast<llvm::hlsl::ResourceClass>(RC), RK,
+                              Binding);
 }
 
 CGHLSLRuntime::BufferResBinding::BufferResBinding(

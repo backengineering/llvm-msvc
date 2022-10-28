@@ -71,6 +71,12 @@ def SparseTensor_ConvertOp : SparseTensor_Op<"convert",
     data structure transformations. Also, conversions from sparse tensor types
     into dense tensor types may be infeasible in terms of storage requirements.
 
+    Trivial dense-to-dense convert will be removed by canonicalization while
+    trivial sparse-to-sparse convert will be removed by the sparse codegen. This
+    is because we use trivial sparse-to-sparse convert to tell bufferization
+    that the sparse codegen will expand the tensor buffer into sparse tensor
+    storage.
+
     Examples:
 
     ```mlir
@@ -161,6 +167,25 @@ def SparseTensor_ToValuesOp : SparseTensor_Op<"values", [Pure]>,
   let hasVerifier = 1;
 }
 
+def SparseTensor_NumberOfEntriesOp : SparseTensor_Op<"number_of_entries", [Pure]>,
+    Arguments<(ins AnySparseTensor:$tensor)>,
+    Results<(outs Index:$result)> {
+  let summary = "Returns the number of entries that are stored in the tensor.";
+  let description = [{
+    Returns the number of entries that are stored in the given sparse tensor.
+    Note that this is typically the number of nonzero elements in the tensor,
+    but since explicit zeros may appear in the storage formats, the more
+    accurate nomenclature is used.
+
+    Example:
+
+    ```mlir
+    %noe = sparse_tensor.number_of_entries %tensor : tensor<64x64xf64, #CSR>
+    ```
+  }];
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
 def SparseTensor_ConcatenateOp : SparseTensor_Op<"concatenate", [Pure]>,
     Arguments<(ins Variadic<AnyRankedTensor>:$inputs, IndexAttr:$dimension)>,
     Results<(outs AnyRankedTensor:$result)> {
@@ -245,7 +270,8 @@ def SparseTensor_PushBackOp : SparseTensor_Op<"push_back",
      AllTypesMatch<["inBuffer", "outBuffer"]>]>,
     Arguments<(ins StridedMemRefRankOf<[Index], [1]>:$bufferSizes,
                StridedMemRefRankOf<[AnyType], [1]>:$inBuffer,
-               AnyType:$value, IndexAttr:$idx, UnitAttr:$inbounds)>,
+               AnyType:$value, IndexAttr:$idx, Optional<Index>:$n,
+               UnitAttr:$inbounds)>,
     Results<(outs StridedMemRefRankOf<[AnyType], [1]>:$outBuffer)>  {
   string summary = "Pushes a value to the back of a given buffer";
   string description = [{
@@ -254,6 +280,14 @@ def SparseTensor_PushBackOp : SparseTensor_Op<"push_back",
     capacity of the buffer is recorded in the memref type of `inBuffer `. If the
     current buffer is full, then `inBuffer.realloc` is called before pushing the
     data to the buffer. This is similar to std::vector push_back.
+
+    The optional input `n` specifies the number of times to repeately push
+    the value to the back of the tensor. When `n` is a compile-time constant,
+    its value can't be less than 1. If `n` is a runtime value that is less
+    than 1, the behavior is undefined. Although using input `n` is semantically
+    equivalent to calling push_back n times, it gives compiler more chances to
+    to optimize the memory reallocation and the filling of the memory with the
+    same value.
 
     The `inbounds` attribute tells the compiler that the insertion won't go
     beyond the current storage buffer. This allows the compiler to not generate
@@ -275,10 +309,24 @@ def SparseTensor_PushBackOp : SparseTensor_Op<"push_back",
     %r = sparse_tensor.push_back inbounds %bufferSizes, %buffer, %val
       {idx = 0 : index} : memref<?xindex>, memref<?xf64>, f64
     ```
+
+    ```mlir
+    %r = sparse_tensor.push_back inbounds %bufferSizes, %buffer, %val, %n
+      {idx = 0 : index} : memref<?xindex>, memref<?xf64>, f64
+    ```
   }];
   let assemblyFormat = "(`inbounds` $inbounds^)? $bufferSizes `,` $inBuffer"
-                       " `,` $value attr-dict `:` type($bufferSizes) `,`"
-                       " type($inBuffer) `,` type($value)";
+                       " `,` $value (`,` $n^ )?  attr-dict `:`"
+                       " type($bufferSizes) `,` type($inBuffer) `,`"
+                       " type($value)  (`,` type($n)^ )?";
+
+  let builders = [
+    //Build an op without input `n`.
+    OpBuilder<(ins "Type":$outBuffer, "Value":$bufferSizes, "Value":$inBuffer,
+                   "Value":$value, "APInt":$idx)>
+  ];
+
+  let hasVerifier = 1;
 }
 
 def SparseTensor_ExpandOp : SparseTensor_Op<"expand", []>,
@@ -809,17 +857,46 @@ def SparseTensor_YieldOp : SparseTensor_Op<"yield", [Pure, Terminator]>,
 
 def SparseTensor_ForeachOp : SparseTensor_Op<"foreach",
     [SingleBlockImplicitTerminator<"YieldOp">]>,
-    Arguments<(ins AnySparseTensor:$tensor)>{
-  let summary = "Iterates over non-zero elements in a sparse tensor";
+    Arguments<(ins AnyTensor:$tensor)>{
+  let summary = "Iterates over elements in a tensor";
   let description = [{
-     Iterates over every non-zero element in the given sparse tensor and executes
-     the block.
+     Iterates over stored elements in a tensor (which are typically, but not always,
+     non-zero for sparse tensors) and executes the block.
 
-     For a input sparse tensor with rank n, the block must take n + 1 arguments. The
+     For an input tensor with rank n, the block must take n + 1 arguments. The
      first n arguments must be Index type, together indicating the current coordinates
      of the element being visited. The last argument must have the same type as the
-     sparse tensor's element type, representing the actual value loaded from the input
+     tensor's element type, representing the actual value loaded from the input
      tensor at the given coordinates.
+
+     Note that foreach generated loop iterates over the stored elements in the storage
+     order. However, no matter what storage order is used, the indices passed to the block
+     always obey the original dimension order.
+
+     For example:
+     ```mlir
+     #COL_MAJOR = #sparse_tensor.encoding<{
+       dimLevelType = [ "compressed", "compressed" ],
+       dimOrdering = affine_map<(i,j) -> (j,i)>
+     }>
+     
+     // foreach on a column-major sparse tensor
+     sparse_tensor.foreach in %0 : tensor<2x3xf64, #COL_MAJOR> do {
+      ^bb0(%row: index, %col: index, %arg3: f64): 
+         // [%row, %col] -> [0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]
+     }
+
+     #ROW_MAJOR = #sparse_tensor.encoding<{
+       dimLevelType = [ "compressed", "compressed" ],
+     }>
+
+     // foreach on a row-major sparse tensor
+     sparse_tensor.foreach in %0 : tensor<2x3xf64, #ROW_MAJOR> do {
+      ^bb0(%row: index, %col: index, %arg3: f64): 
+         // [%row, %col] -> [0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1]
+     }
+
+     ```
 
      Example:
 

@@ -27,7 +27,6 @@ def LLVM_Dialect : Dialect {
   let name = "llvm";
   let cppNamespace = "::mlir::LLVM";
 
-  let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
   let hasRegionArgAttrVerify = 1;
   let hasRegionResultAttrVerify = 1;
@@ -49,6 +48,7 @@ def LLVM_Dialect : Dialect {
     static StringRef getByRefAttrName() { return "llvm.byref"; }
     static StringRef getStructRetAttrName() { return "llvm.sret"; }
     static StringRef getInAllocaAttrName() { return "llvm.inalloca"; }
+    static StringRef getNoUndefAttrName() { return "llvm.noundef"; }
 
     /// Verifies if the attribute is a well-formed value for "llvm.struct_attrs"
     static LogicalResult verifyStructAttr(
@@ -76,11 +76,20 @@ def LLVM_Dialect : Dialect {
       return "llvm.readnone";
     }
 
+    Type parseType(DialectAsmParser &p) const override;
+    void printType(Type, DialectAsmPrinter &p) const override;
+
   private:
+    /// Register all types.
+    void registerTypes();
+
     /// A cache storing compatible LLVM types that have been verified. This
     /// can save us lots of verification time if there are many occurrences
     /// of some deeply-nested aggregate types in the program.
     ThreadLocalCache<DenseSet<Type>> compatibleTypes;
+
+    /// Register the attributes of this dialect.
+    void registerAttributes();
   }];
 }
 
@@ -407,42 +416,6 @@ class LLVM_OneResultIntrOp<string mnem, list<int> overloadedResults = [],
                            list<int> overloadedOperands = [],
                            list<Trait> traits = []>
     : LLVM_IntrOp<mnem, overloadedResults, overloadedOperands, traits, 1>;
-
-// LLVM vector reduction over a single vector.
-class LLVM_VectorReduction<string mnem>
-    : LLVM_OneResultIntrOp<"vector.reduce." # mnem,
-                           [], [0], [Pure]>,
-      Arguments<(ins LLVM_Type)>;
-
-// LLVM vector reduction over a single vector, with an initial value,
-// and with permission to reassociate the reduction operations.
-class LLVM_VectorReductionAcc<string mnem>
-    : LLVM_OneResultIntrOp<"vector.reduce." # mnem,
-                           [], [0], [Pure]>,
-      Arguments<(ins LLVM_Type:$start_value, LLVM_Type:$input,
-                 DefaultValuedAttr<BoolAttr, "false">:$reassoc)> {
-  let llvmBuilder = [{
-    llvm::Module *module = builder.GetInsertBlock()->getModule();
-    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
-        module,
-        llvm::Intrinsic::vector_reduce_}] # mnem # [{,
-        { }] # !interleave(ListIntSubst<LLVM_IntrPatterns.operand, [1]>.lst,
-                           ", ") # [{
-        });
-    auto operands = moduleTranslation.lookupValues(opInst.getOperands());
-    llvm::FastMathFlags origFM = builder.getFastMathFlags();
-    llvm::FastMathFlags tempFM = origFM;
-    tempFM.setAllowReassoc($reassoc);
-    builder.setFastMathFlags(tempFM);  // set fastmath flag
-    $res = builder.CreateCall(fn, operands);
-    builder.setFastMathFlags(origFM);  // restore fastmath flag
-  }];
-  let mlirBuilder = [{
-    bool allowReassoc = inst->getFastMathFlags().allowReassoc();
-    $res = $_builder.create<$_qualCppClassName>($_location,
-      $_resultType, $start_value, $input, allowReassoc);
-  }];
-}
 
 def LLVM_OneResultOpBuilder :
   OpBuilder<(ins "Type":$resultType, "ValueRange":$operands,

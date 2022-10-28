@@ -161,6 +161,10 @@ public:
                            : TargetInfo::UnsignedLongLong)
                : TargetInfo::getLeastIntTypeByWidth(BitWidth, IsSigned);
   }
+
+  bool areDefaultedSMFStillPOD(const LangOptions &) const override {
+    return false;
+  }
 };
 
 // DragonFlyBSD Target
@@ -558,6 +562,10 @@ public:
   checkCallingConvention(CallingConv CC) const override {
     return (CC == CC_C) ? TargetInfo::CCCR_OK : TargetInfo::CCCR_Error;
   }
+
+  bool areDefaultedSMFStillPOD(const LangOptions &) const override {
+    return false;
+  }
 };
 
 // PS4 Target
@@ -751,6 +759,7 @@ protected:
 public:
   AIXTargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
       : OSTargetInfo<Target>(Triple, Opts) {
+    this->MCountName = "__mcount";
     this->TheCXXABI.set(TargetCXXABI::XL);
 
     if (this->PointerWidth == 64) {

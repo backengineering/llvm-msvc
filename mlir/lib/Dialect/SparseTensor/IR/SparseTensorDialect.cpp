@@ -334,7 +334,12 @@ LogicalResult ConvertOp::verify() {
 }
 
 OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
-  if (getType() == getSource().getType())
+  Type dstType = getType();
+  // Fold trivial dense-to-dense convert and leave trivial sparse-to-sparse
+  // convert for codegen to remove. This is because we use trivial
+  // sparse-to-sparse convert to tell bufferization that the sparse codegen
+  // will expand the tensor buffer into sparse tensor storage.
+  if (!getSparseTensorEncoding(dstType) && dstType == getSource().getType())
     return getSource();
   return {};
 }
@@ -512,7 +517,7 @@ LogicalResult ConcatenateOp::verify() {
               "sum of all the concatenation dimensions of the input tensors.");
       }
     } else {
-      int prev = dstDim;
+      int64_t prev = dstDim;
       for (auto src : getInputs()) {
         auto d = src.getType().cast<RankedTensorType>().getShape()[i];
         if (prev != ShapedType::kDynamicSize && d != prev)
@@ -530,6 +535,22 @@ LogicalResult InsertOp::verify() {
   RankedTensorType ttp = getTensor().getType().cast<RankedTensorType>();
   if (ttp.getRank() != static_cast<int64_t>(getIndices().size()))
     return emitOpError("incorrect number of indices");
+  return success();
+}
+
+void PushBackOp::build(OpBuilder &builder, OperationState &result,
+                       Type outBuffer, Value bufferSizes, Value inBuffer,
+                       Value value, APInt idx) {
+  build(builder, result, outBuffer, bufferSizes, inBuffer, value, idx, Value());
+}
+
+LogicalResult PushBackOp::verify() {
+  Value n = getN();
+  if (n) {
+    auto nValue = dyn_cast_or_null<arith::ConstantIndexOp>(n.getDefiningOp());
+    if (nValue && nValue.value() < 1)
+      return emitOpError("n must be not less than 1");
+  }
   return success();
 }
 

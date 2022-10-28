@@ -1001,7 +1001,7 @@ static void genCustomDirectiveParser(CustomDirective *dir, MethodBody &body) {
   for (FormatElement *param : dir->getArguments()) {
     if (auto *attr = dyn_cast<AttributeVariable>(param)) {
       const NamedAttribute *var = attr->getVar();
-      if (var->attr.isOptional())
+      if (var->attr.isOptional() || var->attr.hasDefaultValue())
         body << llvm::formatv("    if ({0}Attr)\n  ", var->name);
 
       body << llvm::formatv("    result.addAttribute(\"{0}\", {0}Attr);\n",
@@ -1742,7 +1742,7 @@ static void genCustomDirectiveParameterPrinter(FormatElement *element,
     if (var->isVariadic())
       body << name << "().getTypes()";
     else if (var->isOptional())
-      body << llvm::formatv("({0}() ? {0}().getType() : Type())", name);
+      body << llvm::formatv("({0}() ? {0}().getType() : ::mlir::Type())", name);
     else
       body << name << "().getType()";
 

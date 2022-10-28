@@ -294,6 +294,7 @@ public:
   mlir::Value genShape(mlir::Location loc, llvm::ArrayRef<mlir::Value> shift,
                        llvm::ArrayRef<mlir::Value> exts);
   mlir::Value genShape(mlir::Location loc, llvm::ArrayRef<mlir::Value> exts);
+  mlir::Value genShift(mlir::Location loc, llvm::ArrayRef<mlir::Value> shift);
 
   /// Create one of the shape ops given an extended value. For a boxed value,
   /// this may create a `fir.shift` op.
@@ -560,6 +561,14 @@ mlir::Value genMaxWithZero(fir::FirOpBuilder &builder, mlir::Location loc,
 mlir::Value genCPtrOrCFunptrAddr(fir::FirOpBuilder &builder, mlir::Location loc,
                                  mlir::Value cPtr, mlir::Type ty);
 
+/// Get the C address value.
+mlir::Value genCPtrOrCFunptrValue(fir::FirOpBuilder &builder,
+                                  mlir::Location loc, mlir::Value cPtr);
+
+/// Create a fir.box from a fir::ExtendedValue and wrap it in a fir::BoxValue
+/// to keep all the lower bound and explicit parameter information.
+fir::BoxValue createBoxValue(fir::FirOpBuilder &builder, mlir::Location loc,
+                             const fir::ExtendedValue &exv);
 } // namespace fir::factory
 
 #endif // FORTRAN_OPTIMIZER_BUILDER_FIRBUILDER_H

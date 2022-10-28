@@ -98,33 +98,48 @@ bool ByteCodeStmtGen<Emitter>::visitFunc(const FunctionDecl *F) {
   if (const auto Ctor = dyn_cast<CXXConstructorDecl>(F)) {
     const RecordDecl *RD = Ctor->getParent();
     const Record *R = this->getRecord(RD);
+    assert(R);
 
     for (const auto *Init : Ctor->inits()) {
-      const FieldDecl *Member = Init->getMember();
       const Expr *InitExpr = Init->getInit();
-      const Record::Field *F = R->getField(Member);
+      if (const FieldDecl *Member = Init->getMember()) {
+        const Record::Field *F = R->getField(Member);
 
-      if (Optional<PrimType> T = this->classify(InitExpr->getType())) {
-        if (!this->emitThis(InitExpr))
-          return false;
+        if (Optional<PrimType> T = this->classify(InitExpr->getType())) {
+          if (!this->emitThis(InitExpr))
+            return false;
 
-        if (!this->visit(InitExpr))
-          return false;
+          if (!this->visit(InitExpr))
+            return false;
 
-        if (!this->emitInitField(*T, F->Offset, InitExpr))
-          return false;
-      } else {
-        // Non-primitive case. Get a pointer to the field-to-initialize
-        // on the stack and call visitInitialzer() for it.
-        if (!this->emitThis(InitExpr))
-          return false;
+          if (!this->emitInitField(*T, F->Offset, InitExpr))
+            return false;
+        } else {
+          // Non-primitive case. Get a pointer to the field-to-initialize
+          // on the stack and call visitInitialzer() for it.
+          if (!this->emitThis(InitExpr))
+            return false;
 
-        if (!this->emitGetPtrField(F->Offset, InitExpr))
-          return false;
+          if (!this->emitGetPtrField(F->Offset, InitExpr))
+            return false;
 
+          if (!this->visitInitializer(InitExpr))
+            return false;
+
+          if (!this->emitPopPtr(InitExpr))
+            return false;
+        }
+      } else if (const Type *Base = Init->getBaseClass()) {
+        // Base class initializer.
+        // Get This Base and call initializer on it.
+        auto *BaseDecl = Base->getAsCXXRecordDecl();
+        assert(BaseDecl);
+        const Record::Base *B = R->getBase(BaseDecl);
+        assert(B);
+        if (!this->emitGetPtrThisBase(B->Offset, InitExpr))
+          return false;
         if (!this->visitInitializer(InitExpr))
           return false;
-
         if (!this->emitPopPtr(InitExpr))
           return false;
       }
@@ -157,6 +172,8 @@ bool ByteCodeStmtGen<Emitter>::visitStmt(const Stmt *S) {
     return visitWhileStmt(cast<WhileStmt>(S));
   case Stmt::DoStmtClass:
     return visitDoStmt(cast<DoStmt>(S));
+  case Stmt::ForStmtClass:
+    return visitForStmt(cast<ForStmt>(S));
   case Stmt::BreakStmtClass:
     return visitBreakStmt(cast<BreakStmt>(S));
   case Stmt::ContinueStmtClass:
@@ -312,6 +329,39 @@ bool ByteCodeStmtGen<Emitter>::visitDoStmt(const DoStmt *S) {
   if (!this->visitBool(Cond))
     return false;
   if (!this->jumpTrue(StartLabel))
+    return false;
+  this->emitLabel(EndLabel);
+  return true;
+}
+
+template <class Emitter>
+bool ByteCodeStmtGen<Emitter>::visitForStmt(const ForStmt *S) {
+  // for (Init; Cond; Inc) { Body }
+  const Stmt *Init = S->getInit();
+  const Expr *Cond = S->getCond();
+  const Expr *Inc = S->getInc();
+  const Stmt *Body = S->getBody();
+
+  LabelTy EndLabel = this->getLabel();
+  LabelTy CondLabel = this->getLabel();
+  LabelTy IncLabel = this->getLabel();
+  LoopScope<Emitter> LS(this, EndLabel, IncLabel);
+
+  if (Init && !this->visitStmt(Init))
+    return false;
+  this->emitLabel(CondLabel);
+  if (Cond) {
+    if (!this->visitBool(Cond))
+      return false;
+    if (!this->jumpFalse(EndLabel))
+      return false;
+  }
+  if (Body && !this->visitStmt(Body))
+    return false;
+  this->emitLabel(IncLabel);
+  if (Inc && !this->discard(Inc))
+    return false;
+  if (!this->jump(CondLabel))
     return false;
   this->emitLabel(EndLabel);
   return true;

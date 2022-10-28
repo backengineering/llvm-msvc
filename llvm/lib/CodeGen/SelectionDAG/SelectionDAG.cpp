@@ -4299,7 +4299,7 @@ unsigned SelectionDAG::ComputeNumSignBits(SDValue Op, const APInt &DemandedElts,
 
     // If the sign portion ends in our element the subtraction gives correct
     // result. Otherwise it gives either negative or > bitwidth result
-    return std::max(std::min(KnownSign - rIndex * BitWidth, BitWidth), 0);
+    return std::clamp(KnownSign - rIndex * BitWidth, 0, BitWidth);
   }
   case ISD::INSERT_VECTOR_ELT: {
     // If we know the element index, split the demand between the
@@ -4626,6 +4626,10 @@ bool SelectionDAG::canCreateUndefOrPoison(SDValue Op, const APInt &DemandedElts,
   case ISD::AND:
   case ISD::OR:
   case ISD::XOR:
+  case ISD::ROTL:
+  case ISD::ROTR:
+  case ISD::FSHL:
+  case ISD::FSHR:
   case ISD::BSWAP:
   case ISD::CTPOP:
   case ISD::BITREVERSE:
@@ -4634,6 +4638,8 @@ bool SelectionDAG::canCreateUndefOrPoison(SDValue Op, const APInt &DemandedElts,
   case ISD::ZERO_EXTEND:
   case ISD::TRUNCATE:
   case ISD::SIGN_EXTEND_INREG:
+  case ISD::SIGN_EXTEND_VECTOR_INREG:
+  case ISD::ZERO_EXTEND_VECTOR_INREG:
   case ISD::BITCAST:
     return false;
 
@@ -6898,7 +6904,8 @@ static SDValue getMemcpyLoadsAndStores(SelectionDAG &DAG, const SDLoc &dl,
     Align NewAlign = DL.getABITypeAlign(Ty);
 
     // Don't promote to an alignment that would require dynamic stack
-    // realignment.
+    // realignment which may conflict with optimizations such as tail call
+    // optimization.
     const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
     if (!TRI->hasStackRealignment(MF))
       while (NewAlign > Alignment && DL.exceedsNaturalStackAlignment(NewAlign))
@@ -7090,6 +7097,15 @@ static SDValue getMemmoveLoadsAndStores(SelectionDAG &DAG, const SDLoc &dl,
   if (DstAlignCanChange) {
     Type *Ty = MemOps[0].getTypeForEVT(C);
     Align NewAlign = DL.getABITypeAlign(Ty);
+
+    // Don't promote to an alignment that would require dynamic stack
+    // realignment which may conflict with optimizations such as tail call
+    // optimization.
+    const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
+    if (!TRI->hasStackRealignment(MF))
+      while (NewAlign > Alignment && DL.exceedsNaturalStackAlignment(NewAlign))
+        NewAlign = NewAlign.previous();
+
     if (NewAlign > Alignment) {
       // Give the stack frame object a larger alignment if needed.
       if (MFI.getObjectAlign(FI->getIndex()) < NewAlign)
@@ -7198,7 +7214,17 @@ static SDValue getMemsetStores(SelectionDAG &DAG, const SDLoc &dl,
 
   if (DstAlignCanChange) {
     Type *Ty = MemOps[0].getTypeForEVT(*DAG.getContext());
-    Align NewAlign = DAG.getDataLayout().getABITypeAlign(Ty);
+    const DataLayout &DL = DAG.getDataLayout();
+    Align NewAlign = DL.getABITypeAlign(Ty);
+
+    // Don't promote to an alignment that would require dynamic stack
+    // realignment which may conflict with optimizations such as tail call
+    // optimization.
+    const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
+    if (!TRI->hasStackRealignment(MF))
+      while (NewAlign > Alignment && DL.exceedsNaturalStackAlignment(NewAlign))
+        NewAlign = NewAlign.previous();
+
     if (NewAlign > Alignment) {
       // Give the stack frame object a larger alignment if needed.
       if (MFI.getObjectAlign(FI->getIndex()) < NewAlign)

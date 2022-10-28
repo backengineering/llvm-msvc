@@ -173,6 +173,18 @@ static void printCommonStructuredOpParts(OpAsmPrinter &p, ValueRange inputs,
     p << " outs(" << outputs << " : " << outputs.getTypes() << ")";
 }
 
+static void printCommonStructuredOpPartsWithNewLine(OpAsmPrinter &p,
+                                                    ValueRange inputs,
+                                                    ValueRange outputs) {
+  if (!inputs.empty()) {
+    p.printNewline();
+    p << "ins(" << inputs << " : " << inputs.getTypes() << ")";
+  }
+  if (!outputs.empty()) {
+    p.printNewline();
+    p << "outs(" << outputs << " : " << outputs.getTypes() << ")";
+  }
+}
 //===----------------------------------------------------------------------===//
 // Specific parsing and printing for named structured ops created by ods-gen.
 //===----------------------------------------------------------------------===//
@@ -252,23 +264,6 @@ static void printNamedStructuredOp(OpAsmPrinter &p, Operation *op,
   printNamedStructuredOpResults(p, op->getResultTypes());
 
   // Region is elided.
-}
-
-/// This is a common class used for patterns of the form
-/// ```
-///    someop(memrefcast(%src)) -> someop(%src)
-/// ```
-/// It folds the source of the memref.cast into the root operation directly.
-static LogicalResult foldMemRefCast(Operation *op) {
-  bool folded = false;
-  for (OpOperand &operand : op->getOpOperands()) {
-    auto castOp = operand.get().getDefiningOp<memref::CastOp>();
-    if (castOp && memref::CastOp::canFoldIntoConsumerOp(castOp)) {
-      operand.set(castOp.getOperand());
-      folded = true;
-    }
-  }
-  return success(folded);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1290,7 +1285,7 @@ void GenericOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 LogicalResult GenericOp::fold(ArrayRef<Attribute>,
                               SmallVectorImpl<OpFoldResult> &) {
-  return foldMemRefCast(*this);
+  return memref::foldMemRefCast(*this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1352,16 +1347,20 @@ ParseResult MapOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void MapOp::print(OpAsmPrinter &p) {
-  printCommonStructuredOpParts(p, SmallVector<Value>(getInputOperands()),
-                               SmallVector<Value>(getOutputOperands()));
+  p.increaseIndent();
+  printCommonStructuredOpPartsWithNewLine(
+      p, SmallVector<Value>(getInputOperands()),
+      SmallVector<Value>(getOutputOperands()));
   p.printOptionalAttrDict((*this)->getAttrs());
 
+  p.printNewline();
   p << "(";
   llvm::interleaveComma(getMapper().getArguments(), p,
                         [&](auto arg) { p.printRegionArgument(arg); });
   p << ") ";
 
   p.printRegion(getMapper(), /*printEntryBlockArgs=*/false);
+  p.decreaseIndent();
 }
 
 LogicalResult MapOp::verify() {
@@ -1498,21 +1497,26 @@ ParseResult ReduceOp::parse(OpAsmParser &parser, OperationState &result) {
 
 static void printDenseI64ArrayAttr(OpAsmPrinter &p, StringRef attributeName,
                                    ArrayRef<int64_t> attributeValue) {
-  p << " " << attributeName << " = [" << attributeValue << "] ";
+  p << attributeName << " = [" << attributeValue << "] ";
 }
 
 void ReduceOp::print(OpAsmPrinter &p) {
-  printCommonStructuredOpParts(p, SmallVector<Value>(getInputOperands()),
-                               SmallVector<Value>(getOutputOperands()));
+  p.increaseIndent();
+  printCommonStructuredOpPartsWithNewLine(
+      p, SmallVector<Value>(getInputOperands()),
+      SmallVector<Value>(getOutputOperands()));
+  p.printNewline();
   printDenseI64ArrayAttr(p, getDimensionsAttrName(), getDimensions());
   p.printOptionalAttrDict((*this)->getAttrs(), {getDimensionsAttrName()});
 
+  p.printNewline();
   p << "(";
   llvm::interleaveComma(getCombiner().getArguments(), p,
                         [&](auto arg) { p.printRegionArgument(arg); });
   p << ") ";
 
   p.printRegion(getCombiner(), /*printEntryBlockArgs=*/false);
+  p.decreaseIndent();
 }
 
 LogicalResult ReduceOp::verify() {
@@ -1599,6 +1603,146 @@ LogicalResult ReduceOp::verify() {
              << bbArg.getType();
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TransposeOp
+//===----------------------------------------------------------------------===//
+
+std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+                   mlir::ArrayRef<mlir::NamedAttribute>)>
+TransposeOp::getRegionBuilder() {
+  return [](mlir::ImplicitLocOpBuilder &b, mlir::Block &block,
+            mlir::ArrayRef<mlir::NamedAttribute>) {
+    b.create<linalg::YieldOp>(block.getArguments().back());
+  };
+}
+
+void TransposeOp::createRegion(::mlir::OpBuilder &opBuilder,
+                               ::mlir::OperationState &odsState) {
+  Region *region = odsState.addRegion();
+
+  SmallVector<Type> argTypes;
+  SmallVector<Location> argLocs;
+  for (auto t : odsState.operands) {
+    argTypes.push_back(getElementTypeOrSelf(t));
+    argLocs.push_back(opBuilder.getUnknownLoc());
+  }
+
+  // RAII.
+  OpBuilder::InsertionGuard guard(opBuilder);
+  Block *body =
+      opBuilder.createBlock(region, /*insertPt=*/{}, argTypes, argLocs);
+
+  ImplicitLocOpBuilder b(opBuilder.getUnknownLoc(), opBuilder);
+  getRegionBuilder()(b, *body, odsState.attributes.getAttrs());
+}
+
+void TransposeOp::build(::mlir::OpBuilder &odsBuilder,
+                        ::mlir::OperationState &odsState, Value input,
+                        Value init, DenseI64ArrayAttr permutation,
+                        ArrayRef<NamedAttribute> attributes) {
+  odsState.addOperands(input);
+  odsState.addOperands(init);
+  odsState.addAttribute(getPermutationAttrName(odsState.name), permutation);
+  odsState.addAttributes(attributes);
+  odsState.addTypes(init.getType());
+
+  createRegion(odsBuilder, odsState);
+}
+
+void TransposeOp::build(::mlir::OpBuilder &odsBuilder,
+                        ::mlir::OperationState &odsState, Value input,
+                        Value init, ArrayRef<int64_t> permutation,
+                        ArrayRef<NamedAttribute> attributes) {
+  build(odsBuilder, odsState, input, init,
+        odsBuilder.getDenseI64ArrayAttr(permutation), attributes);
+}
+
+ParseResult TransposeOp::parse(OpAsmParser &parser, OperationState &result) {
+  if (failed(parseDstStyleOp(
+          parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+            return parseDenseI64ArrayAttr(parser, attributes, "permutation");
+          })))
+    return failure();
+
+  OpBuilder opBuilder(parser.getContext());
+  createRegion(opBuilder, result);
+  return success();
+}
+
+void TransposeOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  if (!getResults().empty())
+    setNameFn(getResults().front(), "transposed");
+}
+
+void TransposeOp::print(OpAsmPrinter &p) {
+  p.increaseIndent();
+  printCommonStructuredOpPartsWithNewLine(
+      p, SmallVector<Value>(getInputOperands()),
+      SmallVector<Value>(getOutputOperands()));
+  p.printNewline();
+  printDenseI64ArrayAttr(p, getPermutationAttrName(), getPermutation());
+  p.printOptionalAttrDict((*this)->getAttrs(), {getPermutationAttrName()});
+  p.decreaseIndent();
+}
+
+LogicalResult TransposeOp::verify() {
+  ArrayRef<int64_t> permutationRef = getPermutation();
+
+  if (!isPermutation(permutationRef))
+    return emitOpError("permutation is not valid");
+
+  auto inputType = getInput().getType();
+  auto initType = getInit().getType();
+
+  int64_t rank = inputType.getRank();
+
+  if (rank != initType.getRank())
+    return emitOpError() << "input rank " << rank
+                         << " does not match init rank " << initType.getRank();
+
+  if (rank != static_cast<int64_t>(permutationRef.size()))
+    return emitOpError() << "size of permutation " << permutationRef.size()
+                         << " does not match the argument rank " << rank;
+
+  auto inputDims = inputType.getShape();
+  auto initDims = initType.getShape();
+
+  for (int64_t i = 0; i < rank; ++i) {
+    int64_t inputDim = inputDims[permutationRef[i]];
+    int64_t initDim = initDims[i];
+
+    if (inputDim != initDim) {
+      return emitOpError() << "dim(result, " << i << ") = " << initDim
+                           << " doesn't match dim(input, permutation[" << i
+                           << "]) = " << inputDim;
+    }
+  }
+
+  return success();
+}
+
+SmallVector<StringRef> TransposeOp::getIteratorTypesArray() {
+  int64_t rank = getInit().getType().getRank();
+  return SmallVector<StringRef>(rank, getParallelIteratorTypeName());
+}
+
+ArrayAttr TransposeOp::getIndexingMaps() {
+  Builder builder(getContext());
+  int64_t rank = getInit().getType().getRank();
+  return builder.getAffineMapArrayAttr(
+      {builder.getMultiDimIdentityMap(rank),
+       AffineMap::getPermutationMap(
+           llvm::to_vector_of<unsigned>(getPermutation()), getContext())});
+}
+
+void TransposeOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getGenericEffectsImpl(effects, getOperation()->getResults(),
+                        getInputOperands(), getOutputOperands());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1708,6 +1852,19 @@ SmallVector<AffineExpr, 4> mlir::linalg::concat(ArrayRef<AffineExpr> a,
   auto rangeB = llvm::make_range(b.begin(), b.end());
   auto concatRanges = llvm::concat<const AffineExpr>(rangeA, rangeB);
   return llvm::to_vector<4>(concatRanges);
+}
+
+bool mlir::linalg::isPermutation(ArrayRef<int64_t> permutation) {
+  // Count the number of appearances for all indices.
+  SmallVector<int64_t> indexCounts(permutation.size(), 0);
+  for (auto index : permutation) {
+    // Exit if the index is out-of-range.
+    if (index < 0 || index >= static_cast<int64_t>(permutation.size()))
+      return false;
+    ++indexCounts[index];
+  }
+  // Return true if all indices appear once.
+  return count(indexCounts, 1) == static_cast<int64_t>(permutation.size());
 }
 
 static void appendMangledType(llvm::raw_string_ostream &ss, Type t) {

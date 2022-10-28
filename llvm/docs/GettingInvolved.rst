@@ -281,9 +281,9 @@ don't find anyone present, chances are they happen to be off that day.
     - English, Norwegian (not fluently)
   * - Johannes Doerfert (he/him)
     - OpenMP, LLVM-IR, interprocedural optimizations, Attributor, workshops, research, ...
-    - Every 2 weeks, Wednesdays 10:30am (Chicago Time), for 1 hour.
-      `ics <https://outlook.office365.com/owa/calendar/5c93bae7d8fc48f5bd150f9efda8806f@anl.gov/4929bd0f955b4f9b82b7bc995cb3b1bf665030567582422766/S-1-8-2190330107-3188380388-3000953923-1819937831/reachcalendar.ics>`__
-    - `MS Teams <https://teams.microsoft.com/l/meetup-join/19%3ameeting_MTM2ZDNkNGUtZjg3My00ZDFjLTk5NjctYTIwMmI3MWM4MjFj%40thread.v2/0?context=%7b%22Tid%22%3a%220cfca185-25f7-49e3-8ae7-704d5326e285%22%2c%22Oid%22%3a%220cacfb51-1523-4455-a443-adca936d1af0%22%7d>`__
+    - Every week, Wednesdays 9:30am (Pacific Time), for 1 hour.
+      `ics <https://drive.google.com/file/d/1E_QkRvirmdJzlXf2EKBUX-v8Xj7-eW3v/view?usp=sharing>`__
+    - `MS Teams <https://teams.microsoft.com/l/meetup-join/19%3ameeting_MTMxNzU4MWYtYzViNS00OTM2LWJmNWQtMjg5ZWFhNGVjNzgw%40thread.v2/0?context=%7b%22Tid%22%3a%22a722dec9-ae4e-4ae3-9d75-fd66e2680a63%22%2c%22Oid%22%3a%22885bda30-ce8e-46db-aa7e-15de0474831a%22%7d>`__
     - English, German
   * - Tobias Grosser
     - General questions on how to contribute to LLVM/MLIR, Polly, Loop Optimization, FPL, Research in LLVM, PhD in CS, Summer of Code.
@@ -310,6 +310,14 @@ don't find anyone present, chances are they happen to be off that day.
     - Monthly, 3rd Thursday of the month at 21:00 Warsaw/Poland time, 1 hour slot.
     - `MS Teams <https://teams.microsoft.com/l/meetup-join/19%3ameeting_ODRmN2UwYTgtODdiOS00N2VkLTgxZjgtNDUxYjI3YmNkM2Ri%40thread.v2/0?context=%7b%22Tid%22%3a%2246c98d88-e344-4ed4-8496-4ed7712e255d%22%2c%22Oid%22%3a%220c2b140d-8412-4963-a118-0f7534426b65%22%7d>`__
     - English, Polish
+  * - Quentin Colombet (he/him)
+    - LLVM/MLIR; Codegen (Instruction selection (GlobalISel/SDISel), Machine IR,
+      Register allocation, etc.); Optimizations; MCA
+    - Monthly, 1st Wednesday of the month at 8.00am PT, for 30 minutes.
+      `ics <https://calendar.google.com/calendar/ical/48c4ad60290a4df218e51e1ceec1106fe317b0ebc76938d9273592053f38204e%40group.calendar.google.com/public/basic.ics>`__
+      `gcal <https://calendar.google.com/calendar/embed?src=48c4ad60290a4df218e51e1ceec1106fe317b0ebc76938d9273592053f38204e%40group.calendar.google.com>`__
+    - `Google meet <https://meet.google.com/cbz-grrp-obs>`__
+    - English, French
 
 
 Guidance for office hours hosts
@@ -435,6 +443,9 @@ also be seen inline below:
 Guidance on what to put into LLVM community calendar invites
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+To add your event, create a calendar event for it and invite calendar@llvm.org
+on it. Your event should then show up on the community calendar.
+ 
 Please put the following pieces of information in your calendar invite:
 
 * Write a single paragraph describing what the event is about. Include things

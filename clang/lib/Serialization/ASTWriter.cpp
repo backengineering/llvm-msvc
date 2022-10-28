@@ -100,6 +100,7 @@
 #include "llvm/Support/OnDiskHashTable.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SHA1.h"
+#include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/VersionTuple.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -462,8 +463,9 @@ void TypeLocWriter::VisitAutoTypeLoc(AutoTypeLoc TL) {
     addSourceLocation(TL.getLAngleLoc());
     addSourceLocation(TL.getRAngleLoc());
     for (unsigned I = 0; I < TL.getNumArgs(); ++I)
-      Record.AddTemplateArgumentLocInfo(TL.getTypePtr()->getArg(I).getKind(),
-                                        TL.getArgLocInfo(I));
+      Record.AddTemplateArgumentLocInfo(
+          TL.getTypePtr()->getTypeConstraintArguments()[I].getKind(),
+          TL.getArgLocInfo(I));
   }
   Record.push_back(TL.isDecltypeAuto());
   if (TL.isDecltypeAuto())
@@ -1475,15 +1477,15 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
   Record.push_back(SM.getMainFileID().getOpaqueValue());
   Stream.EmitRecord(ORIGINAL_FILE_ID, Record);
 
-  std::set<const FileEntry *> AffectingModuleMaps;
+  std::set<const FileEntry *> AffectingClangModuleMaps;
   if (WritingModule) {
-    AffectingModuleMaps =
+    AffectingClangModuleMaps =
         GetAllModuleMaps(PP.getHeaderSearchInfo(), WritingModule);
   }
 
   WriteInputFiles(Context.SourceMgr,
                   PP.getHeaderSearchInfo().getHeaderSearchOpts(),
-                  AffectingModuleMaps);
+                  AffectingClangModuleMaps);
   Stream.ExitBlock();
 }
 
@@ -1503,7 +1505,7 @@ struct InputFileEntry {
 
 void ASTWriter::WriteInputFiles(
     SourceManager &SourceMgr, HeaderSearchOptions &HSOpts,
-    std::set<const FileEntry *> &AffectingModuleMaps) {
+    std::set<const FileEntry *> &AffectingClangModuleMaps) {
   using namespace llvm;
 
   Stream.EnterSubblock(INPUT_FILES_BLOCK_ID, 4);
@@ -1545,9 +1547,9 @@ void ASTWriter::WriteInputFiles(
 
     if (isModuleMap(File.getFileCharacteristic()) &&
         !isSystem(File.getFileCharacteristic()) &&
-        !AffectingModuleMaps.empty() &&
-        AffectingModuleMaps.find(Cache->OrigEntry) ==
-            AffectingModuleMaps.end()) {
+        !AffectingClangModuleMaps.empty() &&
+        AffectingClangModuleMaps.find(Cache->OrigEntry) ==
+            AffectingClangModuleMaps.end()) {
       SkippedModuleMaps.insert(Cache->OrigEntry);
       // Do not emit modulemaps that do not affect current module.
       continue;
@@ -2668,12 +2670,12 @@ unsigned ASTWriter::getLocalOrImportedSubmoduleID(const Module *Mod) {
 }
 
 unsigned ASTWriter::getSubmoduleID(Module *Mod) {
+  unsigned ID = getLocalOrImportedSubmoduleID(Mod);
   // FIXME: This can easily happen, if we have a reference to a submodule that
   // did not result in us loading a module file for that submodule. For
   // instance, a cross-top-level-module 'conflict' declaration will hit this.
-  unsigned ID = getLocalOrImportedSubmoduleID(Mod);
-  assert((ID || !Mod) &&
-         "asked for module ID for non-local, non-imported module");
+  // assert((ID || !Mod) &&
+  //        "asked for module ID for non-local, non-imported module");
   return ID;
 }
 
@@ -2874,9 +2876,9 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
     }
 
     // Emit the modules affecting compilation that were not imported.
-    if (!Mod->AffectingModules.empty()) {
+    if (!Mod->AffectingClangModules.empty()) {
       RecordData Record;
-      for (auto *I : Mod->AffectingModules)
+      for (auto *I : Mod->AffectingClangModules)
         Record.push_back(getSubmoduleID(I));
       Stream.EmitRecord(SUBMODULE_AFFECTING_MODULES, Record);
     }
@@ -4484,6 +4486,7 @@ ASTFileSignature ASTWriter::WriteAST(Sema &SemaRef, StringRef OutputFile,
                                      Module *WritingModule, StringRef isysroot,
                                      bool hasErrors,
                                      bool ShouldCacheASTInMemory) {
+  llvm::TimeTraceScope scope("WriteAST", OutputFile);
   WritingAST = true;
 
   ASTHasCompilerErrors = hasErrors;

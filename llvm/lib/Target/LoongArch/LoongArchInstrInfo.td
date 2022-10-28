@@ -202,24 +202,32 @@ def simm21_lsl2 : Operand<OtherVT> {
   let DecoderMethod = "decodeSImmOperand<21, 2>";
 }
 
-// TODO: Need split the ParserMethod/PredicateMethod for call/jump/tailcall.
-def SImm26Operand: AsmOperandClass {
-  let Name = "SImm26Operand";
+def SImm26OperandB: AsmOperandClass {
+  let Name = "SImm26OperandB";
+  let PredicateMethod = "isSImm26Operand";
+  let RenderMethod = "addImmOperands";
+  let DiagnosticType = "InvalidSImm26Operand";
+  let ParserMethod = "parseImmediate";
+}
+
+// A symbol or an imm used in B/PseudoBR.
+def simm26_b : Operand<OtherVT> {
+  let ParserMatchClass = SImm26OperandB;
+  let EncoderMethod = "getImmOpValueAsr2";
+  let DecoderMethod = "decodeSImmOperand<26, 2>";
+}
+
+def SImm26OperandBL: AsmOperandClass {
+  let Name = "SImm26OperandBL";
+  let PredicateMethod = "isSImm26Operand";
   let RenderMethod = "addImmOperands";
   let DiagnosticType = "InvalidSImm26Operand";
   let ParserMethod = "parseSImm26Operand";
 }
 
-// A symbol or an imm used in B/PseudoBR.
-def simm26_b : Operand<OtherVT> {
-  let ParserMatchClass = SImm26Operand;
-  let EncoderMethod = "getImmOpValueAsr2";
-  let DecoderMethod = "decodeSImmOperand<26, 2>";
-}
-
 // A symbol or an imm used in BL/PseudoCALL.
 def simm26_bl : Operand<GRLenVT> {
-  let ParserMatchClass = SImm26Operand;
+  let ParserMatchClass = SImm26OperandBL;
   let EncoderMethod = "getImmOpValueAsr2";
   let DecoderMethod = "decodeSImmOperand<26, 2>";
 }
@@ -1172,6 +1180,30 @@ class PseudoMaskedAMUMinUMax
 def PseudoMaskedAtomicLoadUMax32 : PseudoMaskedAMUMinUMax;
 def PseudoMaskedAtomicLoadUMin32 : PseudoMaskedAMUMinUMax;
 
+/// Compare and exchange
+
+class PseudoCmpXchg
+    : Pseudo<(outs GPR:$res, GPR:$scratch),
+             (ins GPR:$addr, GPR:$cmpval, GPR:$newval), []> {
+  let Constraints = "@earlyclobber $res,@earlyclobber $scratch";
+  let mayLoad = 1;
+  let mayStore = 1;
+  let hasSideEffects = 0;
+}
+
+def PseudoCmpXchg32 : PseudoCmpXchg;
+def PseudoCmpXchg64 : PseudoCmpXchg;
+
+def PseudoMaskedCmpXchg32
+    : Pseudo<(outs GPR:$res, GPR:$scratch),
+             (ins GPR:$addr, GPR:$cmpval, GPR:$newval, GPR:$mask,
+              grlenimm:$ordering), []> {
+  let Constraints = "@earlyclobber $res,@earlyclobber $scratch";
+  let mayLoad = 1;
+  let mayStore = 1;
+  let hasSideEffects = 0;
+}
+
 class AtomicPat<Intrinsic intrin, Pseudo AMInst>
     : Pat<(intrin GPR:$addr, GPR:$incr, GPR:$mask, timm:$ordering),
           (AMInst GPR:$addr, GPR:$incr, GPR:$mask, timm:$ordering)>;
@@ -1194,7 +1226,7 @@ def : Pat<(atomic_load_sub_64 GPR:$rj, GPR:$rk),
 def : AtomicPat<int_loongarch_masked_atomicrmw_sub_i64,
                 PseudoMaskedAtomicLoadSub32>;
 def : Pat<(atomic_load_nand_64 GPR:$rj, GPR:$rk),
-          (PseudoAtomicLoadNand64 GPR:$rk, GPR:$rj)>;
+          (PseudoAtomicLoadNand64 GPR:$rj, GPR:$rk)>;
 def : AtomicPat<int_loongarch_masked_atomicrmw_nand_i64,
                 PseudoMaskedAtomicLoadNand32>;
 def : Pat<(atomic_load_add_32 GPR:$rj, GPR:$rk),
@@ -1225,10 +1257,19 @@ def : AtomicPat<int_loongarch_masked_atomicrmw_umax_i64,
                 PseudoMaskedAtomicLoadUMax32>;
 def : AtomicPat<int_loongarch_masked_atomicrmw_umin_i64,
                 PseudoMaskedAtomicLoadUMin32>;
+
+def : Pat<(atomic_cmp_swap_64 GPR:$addr, GPR:$cmp, GPR:$new),
+          (PseudoCmpXchg64 GPR:$addr, GPR:$cmp, GPR:$new)>;
+def : Pat<(int_loongarch_masked_cmpxchg_i64
+            GPR:$addr, GPR:$cmpval, GPR:$newval, GPR:$mask, timm:$ordering),
+          (PseudoMaskedCmpXchg32
+            GPR:$addr, GPR:$cmpval, GPR:$newval, GPR:$mask, timm:$ordering)>;
+def : Pat<(atomic_cmp_swap_32 GPR:$addr, GPR:$cmp, GPR:$new),
+          (PseudoCmpXchg32 GPR:$addr, GPR:$cmp, GPR:$new)>;
 } // Predicates = [IsLA64]
 
 def : Pat<(atomic_load_nand_32 GPR:$rj, GPR:$rk),
-          (PseudoAtomicLoadNand32 GPR:$rk, GPR:$rj)>;
+          (PseudoAtomicLoadNand32 GPR:$rj, GPR:$rk)>;
 
 let Predicates = [IsLA32] in {
 def : AtomicPat<int_loongarch_masked_atomicrmw_xchg_i32,

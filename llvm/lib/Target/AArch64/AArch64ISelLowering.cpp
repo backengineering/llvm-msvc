@@ -4592,12 +4592,6 @@ SDValue AArch64TargetLowering::LowerINTRINSIC_W_CHAIN(SDValue Op,
     // changed.
     return DAG.getMergeValues({MS.getValue(0), MS.getValue(2)}, DL);
   }
-  case Intrinsic::aarch64_sme_get_pstatesm: {
-    SDValue Chain = Op->getOperand(0);
-    SMEAttrs Attrs(DAG.getMachineFunction().getFunction());
-    SDValue PStateSM = getPStateSM(DAG, Chain, Attrs, DL, Op.getValueType());
-    return DAG.getMergeValues({PStateSM, Chain}, DL);
-  }
   case Intrinsic::aarch64_sme_za_enable:
     return DAG.getNode(
         AArch64ISD::SMSTART, DL, MVT::Other,
@@ -6308,8 +6302,8 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
     for (unsigned I=0; I<InVals.size(); ++I) {
       Register Reg = MF.getRegInfo().createVirtualRegister(
           getRegClassFor(InVals[I].getValueType().getSimpleVT()));
-      SDValue X = DAG.getCopyToReg(Chain, DL, Reg, InVals[I]);
-      InVals[I] = DAG.getCopyFromReg(X, DL, Reg,
+      Chain = DAG.getCopyToReg(Chain, DL, Reg, InVals[I]);
+      InVals[I] = DAG.getCopyFromReg(Chain, DL, Reg,
                                      InVals[I].getValueType());
     }
   }
@@ -7722,7 +7716,8 @@ SDValue AArch64TargetLowering::LowerGlobalAddress(SDValue Op,
   }
   EVT PtrVT = getPointerTy(DAG.getDataLayout());
   SDLoc DL(GN);
-  if (OpFlags & (AArch64II::MO_DLLIMPORT | AArch64II::MO_COFFSTUB))
+  if (OpFlags & (AArch64II::MO_DLLIMPORT | AArch64II::MO_DLLIMPORTAUX |
+                 AArch64II::MO_COFFSTUB))
     Result = DAG.getLoad(PtrVT, DL, DAG.getEntryNode(), Result,
                          MachinePointerInfo::getGOT(DAG.getMachineFunction()));
   return Result;
@@ -15071,8 +15066,8 @@ static SDValue performMulCombine(SDNode *N, SelectionDAG &DAG,
   // 64-bit is 5 cycles, so this is always a win.
   // More aggressively, some multiplications N0 * C can be lowered to
   // shift+add+shift if the constant C = A * B where A = 2^N + 1 and B = 2^M,
-  // e.g. 6=3*2=(2+1)*2.
-  // TODO: lower more cases, e.g. C = 45 which equals to (1+2)*16-(1+2).
+  // e.g. 6=3*2=(2+1)*2, 45=(1+4)*(1+8)
+  // TODO: lower more cases.
 
   // TrailingZeroes is used to test if the mul can be lowered to
   // shift+add+shift.
@@ -15109,13 +15104,34 @@ static SDValue performMulCombine(SDNode *N, SelectionDAG &DAG,
     return DAG.getNode(ISD::SUB, DL, VT, Zero, N);
   };
 
+  // Can the const C be decomposed into (1+2^M1)*(1+2^N1), eg:
+  // C = 45 is equal to (1+4)*(1+8), we don't decompose it into (1+2)*(16-1) as
+  // the (2^N - 1) can't be execused via a single instruction.
+  auto isPowPlusPlusConst = [](APInt C, APInt &M, APInt &N) {
+    unsigned BitWidth = C.getBitWidth();
+    for (unsigned i = 1; i < BitWidth / 2; i++) {
+      APInt Rem;
+      APInt X(BitWidth, (1 << i) + 1);
+      APInt::sdivrem(C, X, N, Rem);
+      APInt NVMinus1 = N - 1;
+      if (Rem == 0 && NVMinus1.isPowerOf2()) {
+        M = X;
+        return true;
+      }
+    }
+    return false;
+  };
+
   if (ConstValue.isNonNegative()) {
     // (mul x, (2^N + 1) * 2^M) => (shl (add (shl x, N), x), M)
     // (mul x, 2^N - 1) => (sub (shl x, N), x)
     // (mul x, (2^(N-M) - 1) * 2^M) => (sub (shl x, N), (shl x, M))
+    // (mul x, (2^M + 1) * (2^N + 1))
+    //     => MV = (add (shl x, M), x); (add (shl MV, N), MV)
     APInt SCVMinus1 = ShiftedConstValue - 1;
     APInt SCVPlus1 = ShiftedConstValue + 1;
     APInt CVPlus1 = ConstValue + 1;
+    APInt CVM, CVN;
     if (SCVMinus1.isPowerOf2()) {
       ShiftAmt = SCVMinus1.logBase2();
       return Shl(Add(Shl(N0, ShiftAmt), N0), TrailingZeroes);
@@ -15125,6 +15141,17 @@ static SDValue performMulCombine(SDNode *N, SelectionDAG &DAG,
     } else if (SCVPlus1.isPowerOf2()) {
       ShiftAmt = SCVPlus1.logBase2() + TrailingZeroes;
       return Sub(Shl(N0, ShiftAmt), Shl(N0, TrailingZeroes));
+    } else if (Subtarget->hasLSLFast() &&
+               isPowPlusPlusConst(ConstValue, CVM, CVN)) {
+      APInt CVMMinus1 = CVM - 1;
+      APInt CVNMinus1 = CVN - 1;
+      unsigned ShiftM1 = CVMMinus1.logBase2();
+      unsigned ShiftN1 = CVNMinus1.logBase2();
+      // LSLFast implicate that Shifts <= 3 places are fast
+      if (ShiftM1 <= 3 && ShiftN1 <= 3) {
+        SDValue MVal = Add(Shl(N0, ShiftM1), N0);
+        return Add(Shl(MVal, ShiftN1), MVal);
+      }
     }
   } else {
     // (mul x, -(2^N - 1)) => (sub x, (shl x, N))
@@ -16827,6 +16854,32 @@ static SDValue performBuildVectorCombine(SDNode *N,
   return SDValue();
 }
 
+// ((X >> C) - Y) + Z --> (Z - Y) + (X >> C)
+static SDValue performAddCombineSubShift(SDNode *N, SDValue SUB, SDValue Z,
+                                         SelectionDAG &DAG) {
+  // DAGCombiner will revert the combination when Z is constant cause
+  // dead loop. So don't enable the combination when Z is constant.
+  if (isa<ConstantSDNode>(Z))
+    return SDValue();
+
+  if (SUB.getOpcode() != ISD::SUB || !SUB.hasOneUse())
+    return SDValue();
+
+  SDValue SHL = SUB.getOperand(0);
+  if (SHL.getOpcode() != ISD::SHL || !SHL.hasOneUse())
+    return SDValue();
+
+  if (!isa<ConstantSDNode>(SHL.getOperand(1)))
+    return SDValue();
+
+  SDLoc DL(N);
+  EVT VT = N->getValueType(0);
+
+  SDValue Y = SUB.getOperand(1);
+  SDValue NewSub = DAG.getNode(ISD::SUB, DL, VT, Z, Y);
+  return DAG.getNode(ISD::ADD, DL, VT, NewSub, SHL);
+}
+
 static SDValue performAddCombineForShiftedOperands(SDNode *N,
                                                    SelectionDAG &DAG) {
   // NOTE: Swapping LHS and RHS is not done for SUB, since SUB is not
@@ -16843,6 +16896,11 @@ static SDValue performAddCombineForShiftedOperands(SDNode *N,
   SDLoc DL(N);
   SDValue LHS = N->getOperand(0);
   SDValue RHS = N->getOperand(1);
+
+  if (SDValue Val = performAddCombineSubShift(N, LHS, RHS, DAG))
+    return Val;
+  if (SDValue Val = performAddCombineSubShift(N, RHS, LHS, DAG))
+    return Val;
 
   uint64_t LHSImm = 0, RHSImm = 0;
   // If both operand are shifted by imm and shift amount is not greater than 4
@@ -19461,6 +19519,35 @@ static SDValue performSETCCCombine(SDNode *N,
       LHS = DAG.getNode(ISD::ZERO_EXTEND, DL, ToVT, LHS);
       return DAG.getSetCC(DL, VT, LHS, RHS, Cond);
     }
+  }
+
+  // Try to express conjunction "cmp 0 (or (xor A0 A1) (xor B0 B1))" as:
+  // cmp A0, A0; ccmp A0, B1, 0, eq; cmp inv(Cond) flag
+  if (!DCI.isBeforeLegalize() && VT.isScalarInteger() &&
+      (Cond == ISD::SETEQ || Cond == ISD::SETNE) && isNullConstant(RHS) &&
+      LHS->getOpcode() == ISD::OR &&
+      (LHS.getOperand(0)->getOpcode() == ISD::XOR &&
+       LHS.getOperand(1)->getOpcode() == ISD::XOR) &&
+      LHS.hasOneUse() && LHS.getOperand(0)->hasOneUse() &&
+      LHS.getOperand(1)->hasOneUse()) {
+    SDValue XOR0 = LHS.getOperand(0);
+    SDValue XOR1 = LHS.getOperand(1);
+    SDValue CCVal = DAG.getConstant(AArch64CC::EQ, DL, MVT_CC);
+    EVT TstVT = LHS->getValueType(0);
+    SDValue Cmp =
+        DAG.getNode(AArch64ISD::SUBS, DL, DAG.getVTList(TstVT, MVT::Glue),
+                    XOR0.getOperand(0), XOR0.getOperand(1));
+    SDValue Overflow = Cmp.getValue(1);
+    SDValue NZCVOp = DAG.getConstant(0, DL, MVT::i32);
+    SDValue CCmp = DAG.getNode(AArch64ISD::CCMP, DL, MVT_CC, XOR1.getOperand(0),
+                               XOR1.getOperand(1), NZCVOp, CCVal, Overflow);
+    // Invert CSEL's operands.
+    SDValue TVal = DAG.getConstant(1, DL, VT);
+    SDValue FVal = DAG.getConstant(0, DL, VT);
+    AArch64CC::CondCode CC = changeIntCCToAArch64CC(Cond);
+    AArch64CC::CondCode InvCC = AArch64CC::getInvertedCondCode(CC);
+    return DAG.getNode(AArch64ISD::CSEL, DL, VT, FVal, TVal,
+                       DAG.getConstant(InvCC, DL, MVT::i32), CCmp);
   }
 
   return SDValue();

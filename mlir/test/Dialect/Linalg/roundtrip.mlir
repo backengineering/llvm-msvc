@@ -67,11 +67,11 @@ func.func @fill_view(%arg0: memref<?xf32, strided<[1], offset: ?>>, %arg1: f32) 
 
 // -----
 
-func.func @transpose(%arg0: memref<?x?x?xf32, strided<[?, ?, 1], offset: ?>>) {
+func.func @memref_transpose(%arg0: memref<?x?x?xf32, strided<[?, ?, 1], offset: ?>>) {
   %0 = memref.transpose %arg0 (i, j, k) -> (k, j, i) : memref<?x?x?xf32, strided<[?, ?, 1], offset: ?>> to memref<?x?x?xf32, strided<[1, ?, ?], offset: ?>>
   return
 }
-// CHECK-LABEL: func @transpose
+// CHECK-LABEL: func @memref_transpose
 //       CHECK:   memref.transpose %{{.*}} ([[i:.*]], [[j:.*]], [[k:.*]]) -> ([[k]], [[j]], [[i]]) :
 //  CHECK-SAME:      memref<?x?x?xf32, strided<[?, ?, 1], offset: ?>> to memref<?x?x?xf32, strided<[1, ?, ?], offset: ?>>
 
@@ -326,6 +326,25 @@ func.func @mixed_parallel_reduced_results(%arg0 : tensor<?x?x?xf32>,
 
 // -----
 
+func.func @map_no_inputs(%init: tensor<64xf32>) -> tensor<64xf32> {
+   %add = linalg.map
+      outs(%init:tensor<64xf32>)
+      () {
+        %0 = arith.constant 0.0: f32
+        linalg.yield %0: f32
+      }
+  func.return %add : tensor<64xf32>
+}
+// CHECK-LABEL: func @map_no_inputs
+//       CHECK:   linalg.map
+//  CHECK-NEXT:   outs
+//  CHECK-NEXT:   () {
+//  CHECK-NEXT:     arith.constant
+//  CHECK-NEXT:     linalg.yield
+//  CHECK-NEXT:   }
+
+// -----
+
 func.func @map_binary(%lhs: tensor<64xf32>, %rhs: tensor<64xf32>,
                       %init: tensor<64xf32>) -> tensor<64xf32> {
    %add = linalg.map
@@ -338,7 +357,13 @@ func.func @map_binary(%lhs: tensor<64xf32>, %rhs: tensor<64xf32>,
   func.return %add : tensor<64xf32>
 }
 // CHECK-LABEL: func @map_binary
-//       CHECK:     linalg.map
+//       CHECK:   linalg.map
+//  CHECK-NEXT:   ins
+//  CHECK-NEXT:   outs
+//  CHECK-NEXT:   (%{{.*}}: f32, %{{.*}}: f32) {
+//  CHECK-NEXT:     arith.addf
+//  CHECK-NEXT:     linalg.yield
+//  CHECK-NEXT:   }
 
 // -----
 
@@ -401,7 +426,14 @@ func.func @reduce(%input: tensor<16x32x64xf32>,
   func.return %reduce : tensor<16x64xf32>
 }
 // CHECK-LABEL: func @reduce
-//       CHECK:     linalg.reduce
+//       CHECK:   linalg.reduce
+//  CHECK-NEXT:   ins
+//  CHECK-NEXT:   outs
+//  CHECK-NEXT:   dimensions = [1]
+//  CHECK-NEXT:   (%{{.*}}: f32, %{{.*}}: f32) {
+//  CHECK-NEXT:     arith.addf
+//  CHECK-NEXT:     linalg.yield
+//  CHECK-NEXT:   }
 
 // -----
 
@@ -457,3 +489,31 @@ func.func @variadic_reduce_memref(%input1: memref<16x32x64xf32>,
 }
 // CHECK-LABEL: func @variadic_reduce_memref
 //       CHECK:     linalg.reduce
+
+// -----
+
+func.func @transpose(%input: tensor<16x32x64xf32>,
+                     %init: tensor<32x64x16xf32>) -> tensor<32x64x16xf32> {
+  %transpose = linalg.transpose
+      ins(%input:tensor<16x32x64xf32>)
+      outs(%init:tensor<32x64x16xf32>)
+      permutation = [1, 2, 0]
+  func.return %transpose : tensor<32x64x16xf32>
+}
+// CHECK-LABEL: func @transpose
+//      CHECK:    linalg.transpose
+// CHECK-NEXT:    ins
+// CHECK-NEXT:    outs
+// CHECK-NEXT:    permutation
+
+// -----
+
+func.func @transpose_memref(%input: memref<16x32x64xf32>,
+                            %init: memref<32x64x16xf32>) {
+  linalg.transpose
+      ins(%input:memref<16x32x64xf32>)
+      outs(%init:memref<32x64x16xf32>)
+      permutation = [1, 2, 0]
+  func.return
+}
+// CHECK-LABEL: func @transpose_memref

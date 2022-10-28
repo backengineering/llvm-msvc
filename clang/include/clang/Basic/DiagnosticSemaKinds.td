@@ -5027,6 +5027,8 @@ def err_template_arg_not_pointer_to_member_form : Error<
 def err_template_arg_member_ptr_base_derived_not_supported : Error<
   "sorry, non-type template argument of pointer-to-member type %1 that refers "
   "to member %q0 of a different class is not supported yet">;
+def err_template_arg_invalid : Error<
+  "non-type template argument '%0' is invalid">;
 def ext_template_arg_extra_parens : ExtWarn<
   "address non-type template argument cannot be surrounded by parentheses">;
 def warn_cxx98_compat_template_arg_extra_parens : Warning<
@@ -6866,8 +6868,8 @@ def err_array_init_plain_string_into_char8_t : Error<
 def note_array_init_plain_string_into_char8_t : Note<
   "add 'u8' prefix to form a 'char8_t' string literal">;
 def err_array_init_utf8_string_into_char : Error<
-  "%select{|ISO C++20 does not permit }0initialization of char array with "
-  "UTF-8 string literal%select{ is not permitted by '-fchar8_t'|}0">;
+  "initialization of %select{|signed }0char array with "
+  "UTF-8 string literal is not permitted by %select{'-fchar8_t'|C++20}1">;
 def warn_cxx20_compat_utf8_string : Warning<
   "type of UTF-8 string literal will change from array of const char to "
   "array of const char8_t in C++20">, InGroup<CXX20Compat>, DefaultIgnore;
@@ -8692,6 +8694,8 @@ def warn_bad_function_cast : Warning<
 def warn_cast_function_type : Warning<
   "cast %diff{from $ to $ |}0,1converts to incompatible function type">,
   InGroup<CastFunctionType>, DefaultIgnore;
+def warn_cast_function_type_strict : Warning<warn_cast_function_type.Text>,
+  InGroup<CastFunctionTypeStrict>, DefaultIgnore;
 def err_cast_pointer_to_non_pointer_int : Error<
   "pointer cannot be cast to type %0">;
 def err_nullptr_cast : Error<
@@ -9399,15 +9403,14 @@ def warn_ptr_arith_precedes_bounds : Warning<
   "the pointer decremented by %0 refers before the beginning of the array">,
   InGroup<ArrayBoundsPointerArithmetic>, DefaultIgnore;
 def warn_ptr_arith_exceeds_bounds : Warning<
-  "the pointer incremented by %0 refers past the end of the array (that "
-  "contains %1 element%s2)">,
+  "the pointer incremented by %0 refers past the end of the array (that has type %1)">,
   InGroup<ArrayBoundsPointerArithmetic>, DefaultIgnore;
 def warn_array_index_precedes_bounds : Warning<
   "array index %0 is before the beginning of the array">,
   InGroup<ArrayBounds>;
 def warn_array_index_exceeds_bounds : Warning<
-  "array index %0 is past the end of the array (which contains %1 "
-  "element%s2)">, InGroup<ArrayBounds>;
+  "array index %0 is past the end of the array (that has type %1%select{|, cast to %3}2)">,
+  InGroup<ArrayBounds>;
 def warn_ptr_arith_exceeds_max_addressable_bounds : Warning<
   "the pointer incremented by %0 refers past the last possible element for an array in %1-bit "
   "address space containing %2-bit (%3-byte) elements (max possible %4 element%s5)">,
@@ -9958,10 +9961,10 @@ def err_argument_not_shifted_byte_or_xxff : Error<
   "argument should be an 8-bit value shifted by a multiple of 8 bits, or in the form 0x??FF">;
 def err_argument_not_contiguous_bit_field : Error<
   "argument %0 value should represent a contiguous bit field">;
-def err_rotation_argument_to_cadd
-    : Error<"argument should be the value 90 or 270">;
-def err_rotation_argument_to_cmla
-    : Error<"argument should be the value 0, 90, 180 or 270">;
+def err_rotation_argument_to_cadd : Error<
+  "argument should be the value 90 or 270">;
+def err_rotation_argument_to_cmla : Error<
+  "argument should be the value 0, 90, 180 or 270">;
 def warn_neon_vector_initializer_non_portable : Warning<
   "vector initializers are not compatible with NEON intrinsics in big endian "
   "mode">, InGroup<DiagGroup<"nonportable-vector-initialization">>;
@@ -10299,8 +10302,8 @@ def err_reference_pipe_type : Error <
 def err_opencl_no_main : Error<"%select{function|kernel}0 cannot be called 'main'">;
 def err_opencl_kernel_attr :
   Error<"attribute %0 can only be applied to an OpenCL kernel function">;
-def err_opencl_return_value_with_address_space : Error<
-  "return value cannot be qualified with address space">;
+def err_return_value_with_address_space : Error<
+  "return type cannot be qualified with address space">;
 def err_opencl_constant_no_init : Error<
   "variable in constant address space must be initialized">;
 def err_opencl_atomic_init: Error<

@@ -96,7 +96,7 @@ define void @test_readwrite(ptr %p) {
 }
 
 define void @test_volatile(ptr %p) {
-; CHECK: Function Attrs: argmemonly nofree norecurse nounwind
+; CHECK: Function Attrs: inaccessiblemem_or_argmemonly nofree norecurse nounwind
 ; CHECK-LABEL: define {{[^@]+}}@test_volatile
 ; CHECK-SAME: (ptr [[P:%.*]]) #[[ATTR6:[0-9]+]] {
 ; CHECK-NEXT:    store volatile i8 0, ptr [[P]], align 1
@@ -175,6 +175,16 @@ define void @direct3b(ptr %p) {
 ; CHECK-NEXT:    ret void
 ;
   call void @direct3_callee(ptr %p) ["may-read-and-capture"(ptr %p)]
+  ret void
+}
+
+define void @direct3c(ptr %p) {
+; CHECK-LABEL: define {{[^@]+}}@direct3c
+; CHECK-SAME: (ptr nocapture writeonly [[P:%.*]]) {
+; CHECK-NEXT:    call void @direct3_callee(ptr [[P]]) [ "may-read"() ]
+; CHECK-NEXT:    ret void
+;
+  call void @direct3_callee(ptr %p) ["may-read"()]
   ret void
 }
 

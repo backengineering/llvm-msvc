@@ -1063,10 +1063,15 @@ public:
     for (const auto &value : ctor.values()) {
       const Fortran::semantics::Symbol &sym = *value.first;
       const Fortran::lower::SomeExpr &expr = value.second.value();
-      // Parent components need more work because they do not appear in the
-      // fir.rec type.
-      if (sym.test(Fortran::semantics::Symbol::Flag::ParentComp))
-        TODO(loc, "parent component in structure constructor");
+      if (sym.test(Fortran::semantics::Symbol::Flag::ParentComp)) {
+        ExtValue from = gen(expr);
+        mlir::Type fromTy = fir::unwrapPassByRefType(
+            fir::unwrapRefType(fir::getBase(from).getType()));
+        mlir::Value resCast =
+            builder.createConvert(loc, builder.getRefType(fromTy), res);
+        fir::factory::genRecordAssignment(builder, loc, resCast, from);
+        continue;
+      }
 
       if (isDerivedTypeWithLenParameters(sym))
         TODO(loc, "component with length parameters in structure constructor");
@@ -1100,6 +1105,9 @@ public:
           [&](const fir::BoxValue &toBox) {
             fir::emitFatalError(loc, "derived type components must not be "
                                      "represented by fir::BoxValue");
+          },
+          [&](const fir::PolymorphicValue &) {
+            TODO(loc, "polymorphic component in derived type assignment");
           },
           [&](const fir::MutableBoxValue &toBox) {
             if (toBox.isPointer()) {
@@ -2745,8 +2753,8 @@ public:
       if (std::optional<unsigned> passArg = caller.getPassArgIndex()) {
         // PASS, PASS(arg-name)
         dispatch = builder.create<fir::DispatchOp>(
-            loc, funcType.getResults(), procName, operands[*passArg], operands,
-            builder.getI32IntegerAttr(*passArg));
+            loc, funcType.getResults(), builder.getStringAttr(procName),
+            operands[*passArg], operands, builder.getI32IntegerAttr(*passArg));
       } else {
         // NOPASS
         const Fortran::evaluate::Component *component =
@@ -2754,9 +2762,15 @@ public:
         assert(component && "expect component for type-bound procedure call.");
         fir::ExtendedValue pass =
             symMap.lookupSymbol(component->GetFirstSymbol()).toExtendedValue();
-        dispatch = builder.create<fir::DispatchOp>(loc, funcType.getResults(),
-                                                   procName, fir::getBase(pass),
-                                                   operands, nullptr);
+        mlir::Value passObject = fir::getBase(pass);
+        if (fir::isa_ref_type(passObject.getType()))
+          passObject = builder.create<fir::ConvertOp>(
+              loc,
+              passObject.getType().dyn_cast<fir::ReferenceType>().getEleTy(),
+              passObject);
+        dispatch = builder.create<fir::DispatchOp>(
+            loc, funcType.getResults(), builder.getStringAttr(procName),
+            passObject, operands, nullptr);
       }
       callResult = dispatch.getResult(0);
       callNumResults = dispatch.getNumResults();

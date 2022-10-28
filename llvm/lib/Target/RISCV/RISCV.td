@@ -388,6 +388,17 @@ def HasStdExtZicbop : Predicate<"Subtarget->hasStdExtZicbop()">,
                                 AssemblerPredicate<(all_of FeatureStdExtZicbop),
                                 "'Zicbop' (Cache-Block Prefetch Instructions)">;
 
+def FeatureStdExtSvnapot
+    : SubtargetFeature<"svnapot", "HasStdExtSvnapot", "true",
+                       "'Svnapot' (NAPOT Translation Contiguity)">;
+
+def FeatureStdExtSvinval
+    : SubtargetFeature<"svinval", "HasStdExtSvinval", "true",
+                       "'Svinval' (Fine-Grained Address-Translation Cache Invalidation)">;
+def HasStdExtSvinval : Predicate<"Subtarget->hasStdExtSvinval()">,
+                                AssemblerPredicate<(all_of FeatureStdExtSvinval),
+                                "'Svinval' (Fine-Grained Address-Translation Cache Invalidation)">;
+
 def FeatureStdExtZtso
     : SubtargetFeature<"experimental-ztso", "HasStdExtZtso", "true",
                        "'Ztso' (Memory Model - Total Store Order)">;

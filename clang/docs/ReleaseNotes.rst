@@ -252,6 +252,12 @@ Bug Fixes
   `Issue 47177 <https://github.com/llvm/llvm-project/issues/47177>`_
   `Issue 47179 <https://github.com/llvm/llvm-project/issues/47179>`_
 - Fix a crash upon stray coloncolon token in C2x mode.
+- Reject non-type template arguments formed by casting a non-zero integer
+  to a pointer in pre-C++17 modes, instead of treating them as null
+  pointers.
+- Fix template arguments of pointer and reference not taking the type as
+  part of their identity.
+  `Issue 47136 <https://github.com/llvm/llvm-project/issues/47136>`_
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -318,6 +324,18 @@ Improvements to Clang's diagnostics
   on the previous undocumented behavior. As a side effect of this change,
   constructor calls outside of initializer expressions are no longer ignored,
   which can result in new warnings (or make existing warnings disappear).
+- The wording of diagnostics regarding arithmetic on fixed-sized arrays and
+  pointers is improved to include the type of the array and whether it's cast
+  to another type. This should improve comprehension for why an index is
+  out-of-bounds.
+- Clang now correctly points to the problematic parameter for the ``-Wnonnull``
+  warning. This fixes
+  `Issue 58273 <https://github.com/llvm/llvm-project/issues/58273>`_.
+- Introduced ``-Wcast-function-type-strict`` to warn about function type mismatches
+  in casts that may result in runtime indirect call `Control-Flow Integrity (CFI)
+  <https://clang.llvm.org/docs/ControlFlowIntegrity.html>`_ failures. This diagnostic
+  is grouped under ``-Wcast-function-type`` as it identifies a more strict set of
+  potentially problematic function type casts.
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
@@ -353,6 +371,11 @@ Non-comprehensive list of changes in this release
   timestamp to be used in replacement of the current date and time in
   the ``__DATE__``, ``__TIME__``, and ``__TIMESTAMP__`` macros. See
   `<https://reproducible-builds.org/docs/source-date-epoch/>`_.
+- Clang now supports ``__has_constexpr_builtin`` function-like macro that
+  evaluates to 1 if the builtin is supported and can be constant evaluated.
+  It can be used to writing conditionally constexpr code that uses builtins.
+- The time profiler (using ``-ftime-trace`` option) now traces various constant
+  evaluation events.
 
 New Compiler Flags
 ------------------
@@ -368,8 +391,26 @@ New Compiler Flags
   `::operator new(size_­t, std::aligned_val_t, nothrow_­t)` if there is
   `get_­return_­object_­on_­allocation_­failure`. We feel this is more consistent
   with the intention.
+
 - Added ``--no-default-config`` to disable automatically loading configuration
   files using default paths.
+
+- Added the new level, ``3``, to the ``-fstrict-flex-arrays=`` flag. The new
+  level is the strict, standards-conforming mode for flexible array members. It
+  recognizes only incomplete arrays as flexible array members (which is how the
+  feature is defined by the C standard).
+
+  .. code-block:: c
+
+    struct foo {
+      int a;
+      int b[]; // Flexible array member.
+    };
+
+    struct bar {
+      int a;
+      int b[0]; // NOT a flexible array member.
+    };
 
 Deprecated Compiler Flags
 -------------------------
@@ -533,15 +574,21 @@ C++20 Feature Support
 - Implemented `P0634r3 <https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p0634r3.html>`_,
   which removes the requirement for the ``typename`` keyword in certain contexts.
 - Implemented The Equality Operator You Are Looking For (`P2468 <http://wg21.link/p2468r2>`_).
-
 - Implemented `P2113R0: Proposed resolution for 2019 comment CA 112 <https://wg21.link/P2113R0>`_
   ([temp.func.order]p6.2.1 is not implemented, matching GCC).
+- Implemented `P0857R0 <https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/p0857r0.html>`_,
+  which specifies constrained lambdas and constrained template *template-parameter*\s.
+
+- Do not hide templated base members introduced via using-decl in derived class
+  (useful specially for constrained members). Fixes `GH50886 <https://github.com/llvm/llvm-project/issues/50886>`_.
 
 C++2b Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
 
 - Support label at end of compound statement (`P2324 <https://wg21.link/p2324r2>`_).
 - Implemented `P1169R4: static operator() <https://wg21.link/P1169R4>`_.
+- Implemented "char8_t Compatibility and Portability Fix" (`P2513R3 <https://wg21.link/P2513R3>`_).
+  This Change was applied to C++20 as a Defect Report.
 
 CUDA/HIP Language Changes in Clang
 ----------------------------------
@@ -561,6 +608,10 @@ ABI Changes in Clang
   attribute is also specified on the member. Clang historically did perform
   such packing. Clang now matches the gcc behavior (except on Darwin and PS4).
   You can switch back to the old ABI behavior with the flag:
+  ``-fclang-abi-compat=15.0``.
+- GCC allows POD types to have defaulted special members. Clang historically
+  classified such types as non-POD. Clang now matches the gcc behavior (except
+  on Darwin and PS4). You can switch back to the old ABI behavior with the flag:
   ``-fclang-abi-compat=15.0``.
 
 OpenMP Support in Clang
@@ -583,9 +634,40 @@ X86 Support in Clang
 --------------------
 - Support ``-mindirect-branch-cs-prefix`` for call and jmp to indirect thunk.
 - Fix 32-bit ``__fastcall`` and ``__vectorcall`` ABI mismatch with MSVC.
+- Add ISA of ``AMX-FP16`` which support ``_tile_dpfp16ps``.
+- Switch ``AVX512-BF16`` intrinsics types from ``short`` to ``__bf16``.
+- Add support for ``PREFETCHI`` instructions.
+- Support ISA of ``CMPCCXADD``.
+  * Support intrinsic of ``__cmpccxadd_epi32``.
+  * Support intrinsic of ``__cmpccxadd_epi64``.
+- Add support for ``RAO-INT`` instructions.
+  * Support intrinsic of ``_aadd_i32/64``
+  * Support intrinsic of ``_aand_i32/64``
+  * Support intrinsic of ``_aor_i32/64``
+  * Support intrinsic of ``_axor_i32/64``
+- Support ISA of ``AVX-IFMA``.
+  * Support intrinsic of ``_mm(256)_madd52hi_avx_epu64``.
+  * Support intrinsic of ``_mm(256)_madd52lo_avx_epu64``.
+- Support ISA of ``AVX-VNNI-INT8``.
+  * Support intrinsic of ``_mm(256)_dpbssd(s)_epi32``.
+  * Support intrinsic of ``_mm(256)_dpbsud(s)_epi32``.
+  * Support intrinsic of ``_mm(256)_dpbuud(s)_epi32``.
+
+WebAssembly Support in Clang
+----------------------------
+
+The -mcpu=generic configuration now enables sign-ext and mutable-globals. These
+proposals are standardized and available in all major engines.
 
 DWARF Support in Clang
 ----------------------
+
+Previously when emitting DWARFv4 and tuning for GDB, Clang would use DWARF v2's
+``DW_AT_bit_offset`` and ``DW_AT_data_member_location``. Clang now uses DWARF v4's
+``DW_AT_data_bit_offset`` regardless of tuning.
+
+Support for ``DW_AT_data_bit_offset`` was added in GDB 8.0. For earlier versions,
+you can use the ``-gdwarf-3`` option to emit compatible DWARF.
 
 Arm and AArch64 Support in Clang
 --------------------------------
@@ -620,7 +702,10 @@ AST Matchers
 
 clang-format
 ------------
-- Add `RemoveSemicolon` option for removing `;` after a non-empty function definition.
+- Add ``RemoveSemicolon`` option for removing ``;`` after a non-empty function definition.
+- Add ``RequiresExpressionIndentation`` option for configuring the alignment of requires-expressions.
+  The default value of this option is ``OuterScope``, which differs in behavior from clang-format 15.
+  To match the default behavior of clang-format 15, use the ``Keyword`` value.
 
 clang-extdef-mapping
 --------------------
@@ -633,6 +718,9 @@ libclang
   the behavior of ``QualType::getNonReferenceType`` for ``CXType``.
 - Introduced the new function ``clang_CXXMethod_isDeleted``, which queries
   whether the method is declared ``= delete``.
+- Introduced the new function ``clang_CXXMethod_isCopyAssignmentOperator``,
+  which identifies whether a method cursor is a copy-assignment
+  operator.
 - ``clang_Cursor_getNumTemplateArguments``, ``clang_Cursor_getTemplateArgumentKind``, 
   ``clang_Cursor_getTemplateArgumentType``, ``clang_Cursor_getTemplateArgumentValue`` and 
   ``clang_Cursor_getTemplateArgumentUnsignedValue`` now work on struct, class,

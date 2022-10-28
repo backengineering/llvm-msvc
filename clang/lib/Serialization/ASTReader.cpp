@@ -122,6 +122,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SaveAndRestore.h"
+#include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/VersionTuple.h"
 #include "llvm/Support/raw_ostream.h"
@@ -4208,6 +4209,8 @@ ASTReader::ASTReadResult ASTReader::ReadAST(StringRef FileName,
                                             SourceLocation ImportLoc,
                                             unsigned ClientLoadCapabilities,
                                             SmallVectorImpl<ImportedSubmodule> *Imported) {
+  llvm::TimeTraceScope scope("ReadAST", FileName);
+
   llvm::SaveAndRestore<SourceLocation>
     SetCurImportLocRAII(CurrentImportLoc, ImportLoc);
   llvm::SaveAndRestore<Optional<ModuleKind>> SetCurModuleKindRAII(
@@ -4376,7 +4379,7 @@ ASTReader::ASTReadResult ASTReader::ReadAST(StringRef FileName,
 
     case UnresolvedModuleRef::Affecting:
       if (ResolvedMod)
-        Unresolved.Mod->AffectingModules.insert(ResolvedMod);
+        Unresolved.Mod->AffectingClangModules.insert(ResolvedMod);
       continue;
 
     case UnresolvedModuleRef::Export:
@@ -6687,8 +6690,9 @@ void TypeLocReader::VisitAutoTypeLoc(AutoTypeLoc TL) {
     TL.setLAngleLoc(readSourceLocation());
     TL.setRAngleLoc(readSourceLocation());
     for (unsigned i = 0, e = TL.getNumArgs(); i != e; ++i)
-      TL.setArgLocInfo(i, Reader.readTemplateArgumentLocInfo(
-                              TL.getTypePtr()->getArg(i).getKind()));
+      TL.setArgLocInfo(
+          i, Reader.readTemplateArgumentLocInfo(
+                 TL.getTypePtr()->getTypeConstraintArguments()[i].getKind()));
   }
   if (Reader.readBool())
     TL.setRParenLoc(readSourceLocation());
@@ -6736,10 +6740,9 @@ void TypeLocReader::VisitTemplateSpecializationTypeLoc(
   TL.setLAngleLoc(readSourceLocation());
   TL.setRAngleLoc(readSourceLocation());
   for (unsigned i = 0, e = TL.getNumArgs(); i != e; ++i)
-    TL.setArgLocInfo(
-        i,
-        Reader.readTemplateArgumentLocInfo(
-          TL.getTypePtr()->getArg(i).getKind()));
+    TL.setArgLocInfo(i,
+                     Reader.readTemplateArgumentLocInfo(
+                         TL.getTypePtr()->template_arguments()[i].getKind()));
 }
 
 void TypeLocReader::VisitParenTypeLoc(ParenTypeLoc TL) {
@@ -6771,10 +6774,9 @@ void TypeLocReader::VisitDependentTemplateSpecializationTypeLoc(
   TL.setLAngleLoc(readSourceLocation());
   TL.setRAngleLoc(readSourceLocation());
   for (unsigned I = 0, E = TL.getNumArgs(); I != E; ++I)
-    TL.setArgLocInfo(
-        I,
-        Reader.readTemplateArgumentLocInfo(
-            TL.getTypePtr()->getArg(I).getKind()));
+    TL.setArgLocInfo(I,
+                     Reader.readTemplateArgumentLocInfo(
+                         TL.getTypePtr()->template_arguments()[I].getKind()));
 }
 
 void TypeLocReader::VisitPackExpansionTypeLoc(PackExpansionTypeLoc TL) {

@@ -1012,6 +1012,16 @@ static void updateConsecutiveMacroArgTokens(SourceManager &SM,
   llvm::MutableArrayRef<Token> All(begin_tokens, end_tokens);
   llvm::MutableArrayRef<Token> Partition;
 
+  auto NearLast = [&, Last = BeginLoc](SourceLocation Loc) mutable {
+    // The maximum distance between two consecutive tokens in a partition.
+    // This is an important trick to avoid using too much SourceLocation address
+    // space!
+    static constexpr SourceLocation::IntTy MaxDistance = 50;
+    auto Distance = Loc.getRawEncoding() - Last.getRawEncoding();
+    Last = Loc;
+    return Distance <= MaxDistance;
+  };
+
   // Partition the tokens by their FileID.
   // This is a hot function, and calling getFileID can be expensive, the
   // implementation is optimized by reducing the number of getFileID.
@@ -1019,7 +1029,7 @@ static void updateConsecutiveMacroArgTokens(SourceManager &SM,
     // Consecutive tokens not written in macros must be from the same file.
     // (Neither #include nor eof can occur inside a macro argument.)
     Partition = All.take_while([&](const Token &T) {
-      return T.getLocation().isFileID();
+      return T.getLocation().isFileID() && NearLast(T.getLocation());
     });
   } else {
     // Call getFileID once to calculate the bounds, and use the cheaper
@@ -1028,7 +1038,8 @@ static void updateConsecutiveMacroArgTokens(SourceManager &SM,
     SourceLocation Limit =
         SM.getComposedLoc(BeginFID, SM.getFileIDSize(BeginFID));
     Partition = All.take_while([&](const Token &T) {
-      return T.getLocation() >= BeginLoc && T.getLocation() < Limit;
+      return T.getLocation() >= BeginLoc && T.getLocation() < Limit &&
+             NearLast(T.getLocation());
     });
   }
   assert(!Partition.empty());

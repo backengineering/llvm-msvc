@@ -134,10 +134,6 @@ if(CLANG_BUILT_STANDALONE)
 
     umbrella_lit_testsuite_begin(check-all)
   endif() # LLVM_INCLUDE_TESTS
-
-  set(BACKEND_PACKAGE_STRING "LLVM ${LLVM_PACKAGE_VERSION}")
-else()
-  set(BACKEND_PACKAGE_STRING "${PACKAGE_STRING}")
 endif() # standalone
 
 if(NOT DEFINED LLVM_COMMON_CMAKE_UTILS)
@@ -151,7 +147,12 @@ list(INSERT CMAKE_MODULE_PATH 0
   "${LLVM_COMMON_CMAKE_UTILS}/Modules"
   )
 
-if(LLVM_ENABLE_LIBXML2)
+# This allows disabling clang's XML dependency even if LLVM finds libxml2.
+# By default, clang depends on libxml2 if LLVM does.
+option(CLANG_ENABLE_LIBXML2 "Whether libclang may depend on libxml2"
+       ${LLVM_ENABLE_LIBXML2})
+
+if(CLANG_ENABLE_LIBXML2)
   # Don't look for libxml if we're using MSan, since uninstrumented third party
   # code may call MSan interceptors like strlen, leading to false positives.
   if(NOT LLVM_USE_SANITIZER MATCHES "Memory.*")
@@ -868,7 +869,7 @@ if (CLANG_ENABLE_BOOTSTRAP)
   endforeach()
 endif()
 
-if (CLANG_BOLT_INSTRUMENT)
+if (CLANG_BOLT_INSTRUMENT AND NOT LLVM_BUILD_INSTRUMENTED)
   set(CLANG_PATH ${LLVM_RUNTIME_OUTPUT_INTDIR}/clang)
   set(CLANGXX_PATH ${CLANG_PATH}++)
   set(CLANG_INSTRUMENTED ${CLANG_PATH}-bolt.inst)

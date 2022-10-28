@@ -599,10 +599,19 @@ void RewriteInstance::parsePseudoProbe() {
     errs() << "BOLT-WARNING: fail in building GUID2FuncDescMap\n";
     return;
   }
+
+  MCPseudoProbeDecoder::Uint64Set GuidFilter;
+  MCPseudoProbeDecoder::Uint64Map FuncStartAddrs;
+  for (const BinaryFunction *F : BC->getAllBinaryFunctions()) {
+    for (const MCSymbol *Sym : F->getSymbols()) {
+      FuncStartAddrs[Function::getGUID(NameResolver::restore(Sym->getName()))] =
+          F->getAddress();
+    }
+  }
   Contents = PseudoProbeSection->getContents();
   if (!BC->ProbeDecoder.buildAddress2ProbeMap(
-          reinterpret_cast<const uint8_t *>(Contents.data()),
-          Contents.size())) {
+          reinterpret_cast<const uint8_t *>(Contents.data()), Contents.size(),
+          GuidFilter, FuncStartAddrs)) {
     BC->ProbeDecoder.getAddress2ProbesMap().clear();
     errs() << "BOLT-WARNING: fail in building Address2ProbeMap\n";
     return;
@@ -966,7 +975,19 @@ void RewriteInstance::discoverFileObjects() {
     if (Name.empty()) {
       UniqueName = "ANONYMOUS." + std::to_string(AnonymousId++);
     } else if (cantFail(Symbol.getFlags()) & SymbolRef::SF_Global) {
-      assert(!BC->getBinaryDataByName(Name) && "global name not unique");
+      if (const BinaryData *BD = BC->getBinaryDataByName(Name)) {
+        if (BD->getSize() == ELFSymbolRef(Symbol).getSize() &&
+            BD->getAddress() == Address) {
+          if (opts::Verbosity > 1)
+            errs() << "BOLT-WARNING: ignoring duplicate global symbol " << Name
+                   << "\n";
+          // Ignore duplicate entry - possibly a bug in the linker
+          continue;
+        }
+        errs() << "BOLT-ERROR: bad input binary, global symbol \"" << Name
+               << "\" is not unique\n";
+        exit(1);
+      }
       UniqueName = Name;
     } else {
       // If we have a local file name, we should create 2 variants for the
@@ -1265,9 +1286,12 @@ void RewriteInstance::createPLTBinaryFunction(uint64_t TargetAddress,
 
   ErrorOr<BinarySection &> Section = BC->getSectionForAddress(EntryAddress);
   assert(Section && "cannot get section for address");
-  BF = BC->createBinaryFunction(Rel->Symbol->getName().str() + "@PLT", *Section,
-                                EntryAddress, 0, EntrySize,
-                                Section->getAlignment());
+  if (!BF)
+    BF = BC->createBinaryFunction(Rel->Symbol->getName().str() + "@PLT",
+                                  *Section, EntryAddress, 0, EntrySize,
+                                  Section->getAlignment());
+  else
+    BF->addAlternativeName(Rel->Symbol->getName().str() + "@PLT");
   setPLTSymbol(BF, Rel->Symbol->getName());
 }
 
@@ -1399,15 +1423,19 @@ void RewriteInstance::disassemblePLT() {
       continue;
 
     analyzeOnePLTSection(Section, PLTSI->EntrySize);
-    // If we did not register any function at the start of the section,
-    // then it must be a general PLT entry. Add a function at the location.
-    if (BC->getBinaryFunctions().find(Section.getAddress()) ==
-        BC->getBinaryFunctions().end()) {
-      BinaryFunction *BF = BC->createBinaryFunction(
+
+    BinaryFunction *PltBF;
+    auto BFIter = BC->getBinaryFunctions().find(Section.getAddress());
+    if (BFIter != BC->getBinaryFunctions().end()) {
+      PltBF = &BFIter->second;
+    } else {
+      // If we did not register any function at the start of the section,
+      // then it must be a general PLT entry. Add a function at the location.
+      PltBF = BC->createBinaryFunction(
           "__BOLT_PSEUDO_" + Section.getName().str(), Section,
           Section.getAddress(), 0, PLTSI->EntrySize, Section.getAlignment());
-      BF->setPseudo(true);
     }
+    PltBF->setPseudo(true);
   }
 }
 
@@ -3407,6 +3435,8 @@ void RewriteInstance::encodePseudoProbes() {
   // Address of the first probe is absolute.
   // Other probes' address are represented by delta
   auto EmitDecodedPseudoProbe = [&](MCDecodedPseudoProbe *&CurProbe) {
+    assert(!isSentinelProbe(CurProbe->getAttributes()) &&
+           "Sentinel probes should not be emitted");
     EmitULEB128IntValue(CurProbe->getIndex());
     uint8_t PackedType = CurProbe->getType() | (CurProbe->getAttributes() << 4);
     uint8_t Flag =
@@ -3511,9 +3541,17 @@ void RewriteInstance::encodePseudoProbes() {
         reinterpret_cast<const uint8_t *>(DescContents.data()),
         DescContents.size());
     StringRef ProbeContents = PseudoProbeSection->getOutputContents();
+    MCPseudoProbeDecoder::Uint64Set GuidFilter;
+    MCPseudoProbeDecoder::Uint64Map FuncStartAddrs;
+    for (const BinaryFunction *F : BC->getAllBinaryFunctions()) {
+      const uint64_t Addr =
+          F->isEmitted() ? F->getOutputAddress() : F->getAddress();
+      FuncStartAddrs[Function::getGUID(
+          NameResolver::restore(F->getOneName()))] = Addr;
+    }
     DummyDecoder.buildAddress2ProbeMap(
         reinterpret_cast<const uint8_t *>(ProbeContents.data()),
-        ProbeContents.size());
+        ProbeContents.size(), GuidFilter, FuncStartAddrs);
     DummyDecoder.printProbesForAllAddresses(outs());
   }
 }

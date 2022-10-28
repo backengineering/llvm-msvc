@@ -87,16 +87,18 @@ static_assert(DI[1] == 50, "");
 static_assert(DI[2] == 30, "");
 static_assert(DI[3] == 40, "");
 
-/// FIXME: The example below tests ImplicitValueInitExprs, but we can't
-///   currently evaluate other parts of it.
-#if 0
+constexpr int addThreeElements(const int v[3]) {
+  return v[0] + v[1] + v[2];
+}
+constexpr int is[] = {10, 20, 30 };
+static_assert(addThreeElements(is) == 60, "");
+
 struct fred {
   char s [6];
   int n;
 };
 
 struct fred y [] = { [0] = { .s[0] = 'q' } };
-#endif
 #pragma clang diagnostic pop
 
 namespace indices {
@@ -116,4 +118,16 @@ namespace indices {
                                        // ref-note {{cannot refer to element -2 of array of 10}} \
                                        // expected-error {{must be initialized by a constant expression}} \
                                        // expected-note {{cannot refer to element -2 of array of 10}}
+};
+
+namespace DefaultInit {
+  template <typename T, unsigned N>
+  struct B {
+    T a[N];
+  };
+
+  int f() {
+     constexpr B<int,10> arr = {};
+     constexpr int x = arr.a[0];
+  }
 };

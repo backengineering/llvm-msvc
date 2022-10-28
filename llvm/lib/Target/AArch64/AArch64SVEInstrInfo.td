@@ -2118,10 +2118,10 @@ let Predicates = [HasBF16, HasSVE] in {
 } // End HasBF16, HasSVE
 
 let Predicates = [HasBF16, HasSVEorSME] in {
-  defm BFMLALB_ZZZ : sve_bfloat_matmul_longvecl<0b0, "bfmlalb", int_aarch64_sve_bfmlalb>;
-  defm BFMLALT_ZZZ : sve_bfloat_matmul_longvecl<0b1, "bfmlalt", int_aarch64_sve_bfmlalt>;
-  defm BFMLALB_ZZI : sve_bfloat_matmul_longvecl_idx<0b0, "bfmlalb", int_aarch64_sve_bfmlalb_lane>;
-  defm BFMLALT_ZZI : sve_bfloat_matmul_longvecl_idx<0b1, "bfmlalt", int_aarch64_sve_bfmlalt_lane>;
+  defm BFMLALB_ZZZ : sve_bfloat_matmul_longvecl<0b0, 0b0, "bfmlalb", int_aarch64_sve_bfmlalb>;
+  defm BFMLALT_ZZZ : sve_bfloat_matmul_longvecl<0b1, 0b0, "bfmlalt", int_aarch64_sve_bfmlalt>;
+  defm BFMLALB_ZZZI : sve_bfloat_matmul_longvecl_idx<0b0, 0b0, "bfmlalb", int_aarch64_sve_bfmlalb_lane>;
+  defm BFMLALT_ZZZI : sve_bfloat_matmul_longvecl_idx<0b1, 0b0, "bfmlalt", int_aarch64_sve_bfmlalt_lane>;
   defm BFCVT_ZPmZ   : sve_bfloat_convert<0b1, "bfcvt",   int_aarch64_sve_fcvt_bf16f32>;
   defm BFCVTNT_ZPmZ : sve_bfloat_convert<0b0, "bfcvtnt", int_aarch64_sve_fcvtnt_bf16f32>;
 } // End HasBF16, HasSVEorSME
@@ -3555,3 +3555,38 @@ let Predicates = [HasSVE2BitPerm] in {
   defm BDEP_ZZZ : sve2_misc_bitwise<0b1101, "bdep", int_aarch64_sve_bdep_x>;
   defm BGRP_ZZZ : sve2_misc_bitwise<0b1110, "bgrp", int_aarch64_sve_bgrp_x>;
 } // End HasSVE2BitPerm
+
+//===----------------------------------------------------------------------===//
+// SME or SVE2.1 instructions
+//===----------------------------------------------------------------------===//
+
+let Predicates = [HasSVE2p1_or_HasSME] in {
+defm REVD_ZPmZ : sve2_int_perm_revd<"revd", AArch64revd_mt>;
+
+defm SCLAMP_ZZZ : sve2_clamp<"sclamp", 0b0, int_aarch64_sve_sclamp>;
+defm UCLAMP_ZZZ : sve2_clamp<"uclamp", 0b1, int_aarch64_sve_uclamp>;
+
+defm PSEL_PPPRI : sve2_int_perm_sel_p<"psel", int_aarch64_sve_psel>;
+} // End HasSVE2p1_or_HasSME
+
+//===----------------------------------------------------------------------===//
+// SME2 or SVE2.1 instructions
+//===----------------------------------------------------------------------===//
+
+let Predicates = [HasSVE2p1_or_HasSME2] in {
+defm FCLAMP_ZZZ : sve2p1_fclamp<"fclamp">;
+def FDOT_ZZZ_S  : sve_float_dot<0b0, "fdot">;
+def FDOT_ZZZI_S : sve_float_dot_indexed<0b0, "fdot">;
+def BFMLSLB_ZZZ_S : sve_bfloat_matmul_longvecl<0b0, 0b1, "bfmlslb">;
+def BFMLSLT_ZZZ_S : sve_bfloat_matmul_longvecl<0b1, 0b1, "bfmlslt">;
+def BFMLSLB_ZZZI_S : sve_bfloat_matmul_longvecl_idx<0b0, 0b1, "bfmlslb">;
+def BFMLSLT_ZZZI_S : sve_bfloat_matmul_longvecl_idx<0b1, 0b1, "bfmlslt">;
+
+def SDOT_ZZZ_HtoS  : sve2p1_two_way_dot_vv<"sdot", 0b0>;
+def UDOT_ZZZ_HtoS  : sve2p1_two_way_dot_vv<"udot", 0b1>;
+def SDOT_ZZZI_HtoS : sve2p1_two_way_dot_vvi<"sdot", 0b0>;
+def UDOT_ZZZI_HtoS : sve2p1_two_way_dot_vvi<"udot", 0b1>;
+
+defm PEXT_PCI : sve2p1_pred_as_ctr_to_mask<"pext">;
+defm PTRUE_C  : sve2p1_ptrue_pn<"ptrue">;
+} // End HasSVE2p1_or_HasSME2
