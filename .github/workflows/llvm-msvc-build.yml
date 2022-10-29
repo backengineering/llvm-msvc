@@ -1,0 +1,65 @@
+name: llvm-msvc-build
+
+concurrency:
+  group: build-${{ github.head_ref }}
+  cancel-in-progress: true
+
+on: [push, pull_request]
+
+jobs:
+  build:
+     # Skip building pull requests from the same repository
+    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
+    name: Build llvm-msvc 
+    runs-on: windows-latest
+    steps:
+    - name: Install dependency
+      uses: crazy-max/ghaction-chocolatey@v1
+      with:
+        args: install cmake ninja vswhere
+
+    - uses: GuillaumeFalourd/setup-windows10-sdk-action@v1
+      with:
+        sdk-version: 19041
+
+    - name: Build llvm
+      run: |
+        $vsPath = (vswhere -latest -property installationPath)
+        Import-Module (Join-Path $vsPath "Common7\Tools\Microsoft.VisualStudio.DevShell.dll")
+        Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64 -winsdk=10.0.19041.0"
+        $Env:CC = "clang-cl"
+        $Env:CXX = "clang-cl"
+        git clone --branch dev --depth 1 https://github.com/NewWorldComingSoon/llvm-msvc
+        cmake -Bbuild -GNinja -DCMAKE_SYSTEM_VERSION=10.0.19041.0 -DLLVM_USE_CRT_RELEASE=MT -DCMAKE_BUILD_TYPE=Release -DCPACK_GENERATOR=ZIP "-DCMAKE_INSTALL_PREFIX=$pwd\\prefix" -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" -DLLVM_ENABLE_PROJECTS="clang;lld" llvm-msvc\\llvm
+        cmake --build build
+
+    - name: Package llvm
+      run: |
+        cmake --build build --target package
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: llvm-msvc
+        path: build/*.zip
+        
+    - name: Get lowercase OS name
+      id: osname
+      uses: ASzc/change-string-case-action@v1
+      with:
+        string: ${{ runner.os }}
+        
+    - name: Compress artifacts
+      uses: vimtor/action-zip@v1
+      with:
+        files: build/
+        dest: ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: ${{ startsWith(github.ref, 'refs/tags/') }}
+      with:
+        files: ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
