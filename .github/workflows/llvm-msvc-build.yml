@@ -52,7 +52,7 @@ jobs:
     - name: Compress artifacts
       uses: vimtor/action-zip@v1
       with:
-        files: llvm-msvc.zip
+        files: build/llvm-msvc.zip
         dest: ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip
 
     - name: Release
