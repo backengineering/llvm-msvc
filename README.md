@@ -26,5 +26,9 @@ cmake .. -G "Visual Studio 17 2022" -A X64 -DLLVM_ENABLE_PROJECTS="clang;lld" -D
 msbuild /m -p:Configuration=release INSTALL.vcxproj 
 ```
 
+## Learning
+If you don't know how to learn LLVM, you can check out this [repository](https://github.com/gmh5225/awesome-llvm-security) of mine
+
+## Issues
 If you have any questions, please tell me or send [issues](https://github.com/NewWorldComingSoon/llvm-msvc-issues/issues)
 
