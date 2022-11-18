@@ -435,6 +435,11 @@ namespace clang {
     /// \return True if the diagnostic has been successfully reported, false
     /// otherwise.
     bool StackSizeDiagHandler(const llvm::DiagnosticInfoStackSize &D);
+    /// Specialized handler for ResourceLimit diagnostic.
+    /// \return True if the diagnostic has been successfully reported, false
+    /// otherwise.
+    bool ResourceLimitDiagHandler(const llvm::DiagnosticInfoResourceLimit &D);
+
     /// Specialized handler for unsupported backend feature diagnostic.
     void UnsupportedDiagHandler(const llvm::DiagnosticInfoUnsupported &D);
     /// Specialized handlers for optimization remarks.
@@ -623,10 +628,23 @@ BackendConsumer::StackSizeDiagHandler(const llvm::DiagnosticInfoStackSize &D) {
   if (!Loc)
     return false;
 
-  // FIXME: Shouldn't need to truncate to uint32_t
   Diags.Report(*Loc, diag::warn_fe_frame_larger_than)
-      << static_cast<uint32_t>(D.getStackSize())
-      << static_cast<uint32_t>(D.getStackLimit())
+      << D.getStackSize()
+      << D.getStackLimit()
+      << llvm::demangle(D.getFunction().getName().str());
+  return true;
+}
+
+bool BackendConsumer::ResourceLimitDiagHandler(
+    const llvm::DiagnosticInfoResourceLimit &D) {
+  auto Loc = getFunctionSourceLocation(D.getFunction());
+  if (!Loc)
+    return false;
+  unsigned DiagID = diag::err_fe_backend_resource_limit;
+  ComputeDiagID(D.getSeverity(), backend_resource_limit, DiagID);
+
+  Diags.Report(*Loc, DiagID)
+      << D.getResourceName() << D.getResourceSize() << D.getResourceLimit()
       << llvm::demangle(D.getFunction().getName().str());
   return true;
 }
@@ -874,6 +892,11 @@ void BackendConsumer::DiagnosticHandlerImpl(const DiagnosticInfo &DI) {
       return;
     ComputeDiagID(Severity, backend_frame_larger_than, DiagID);
     break;
+  case llvm::DK_ResourceLimit:
+    if (ResourceLimitDiagHandler(cast<DiagnosticInfoResourceLimit>(DI)))
+      return;
+    ComputeDiagID(Severity, backend_resource_limit, DiagID);
+    break;
   case DK_Linker:
     ComputeDiagID(Severity, linking_module, DiagID);
     break;
@@ -1077,6 +1100,8 @@ std::unique_ptr<llvm::Module>
 CodeGenAction::loadModule(MemoryBufferRef MBRef) {
   CompilerInstance &CI = getCompilerInstance();
   SourceManager &SM = CI.getSourceManager();
+
+  VMContext->setOpaquePointers(CI.getCodeGenOpts().OpaquePointers);
 
   // For ThinLTO backend invocations, ensure that the context
   // merges types based on ODR identifiers. We also need to read

@@ -191,14 +191,17 @@ def Tensor_EmptyOp : Tensor_Op<"empty",
 
   let builders = [
     // Build with fully static sizes.
-    OpBuilder<(ins "ArrayRef<int64_t>":$staticShape, "Type":$elementType)>,
+    OpBuilder<(ins "ArrayRef<int64_t>":$staticShape, "Type":$elementType,
+                   CArg<"Attribute", "{}">:$encoding)>,
 
     // Build with mixed static/dynamic sizes.
     OpBuilder<(ins "ArrayRef<int64_t>":$staticShape, "Type":$elementType,
-                   "ValueRange":$dynamicSizes)>,
+                   "ValueRange":$dynamicSizes,
+                   CArg<"Attribute", "{}">:$encoding)>,
 
     // Build with mixed static/dynamic sizes.
-    OpBuilder<(ins "ArrayRef<OpFoldResult>":$sizes, "Type":$elementType)>
+    OpBuilder<(ins "ArrayRef<OpFoldResult>":$sizes, "Type":$elementType,
+                   CArg<"Attribute", "{}">:$encoding)>
   ];
 
   let hasCanonicalizer = 1;
@@ -723,7 +726,7 @@ def Tensor_InsertOp : Tensor_Op<"insert", [
     }]>];
 
   let extraClassDeclaration = [{
-    std::pair<int64_t, int64_t> getOutputsPositionRange() {
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
       return {1, 2};  // `dest` operand
     }
   }];
@@ -868,7 +871,7 @@ def Tensor_InsertSliceOp : Tensor_OpWithOffsetSizesAndStrides<"insert_slice", [
     /// and `strides` operands.
     static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 2; }
 
-    std::pair<int64_t, int64_t> getOutputsPositionRange() {
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
       return {1, 2};  // `dest` operand
     }
   }];

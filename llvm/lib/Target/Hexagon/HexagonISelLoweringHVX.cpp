@@ -429,7 +429,7 @@ HexagonTargetLowering::initializeHVXLowering() {
     }
   }
 
-  setTargetDAGCombine({ISD::SPLAT_VECTOR, ISD::VSELECT});
+  setTargetDAGCombine({ISD::SPLAT_VECTOR, ISD::VSELECT, ISD::TRUNCATE});
 }
 
 unsigned
@@ -572,7 +572,7 @@ HexagonTargetLowering::isHvxBoolTy(MVT Ty) const {
 }
 
 bool HexagonTargetLowering::allowsHvxMemoryAccess(
-    MVT VecTy, MachineMemOperand::Flags Flags, bool *Fast) const {
+    MVT VecTy, MachineMemOperand::Flags Flags, unsigned *Fast) const {
   // Bool vectors are excluded by default, but make it explicit to
   // emphasize that bool vectors cannot be loaded or stored.
   // Also, disallow double vector stores (to prevent unnecessary
@@ -582,17 +582,17 @@ bool HexagonTargetLowering::allowsHvxMemoryAccess(
   if (!Subtarget.isHVXVectorType(VecTy, /*IncludeBool=*/false))
     return false;
   if (Fast)
-    *Fast = true;
+    *Fast = 1;
   return true;
 }
 
 bool HexagonTargetLowering::allowsHvxMisalignedMemoryAccesses(
-    MVT VecTy, MachineMemOperand::Flags Flags, bool *Fast) const {
+    MVT VecTy, MachineMemOperand::Flags Flags, unsigned *Fast) const {
   if (!Subtarget.isHVXVectorType(VecTy))
     return false;
   // XXX Should this be false?  vmemu are a bit slower than vmem.
   if (Fast)
-    *Fast = true;
+    *Fast = 1;
   return true;
 }
 
@@ -1295,7 +1295,7 @@ HexagonTargetLowering::extractHvxSubvectorReg(SDValue VecV, SDValue IdxV,
 
   SDValue W1Idx = DAG.getConstant(WordIdx+1, dl, MVT::i32);
   SDValue W1 = extractHvxElementReg(WordVec, W1Idx, dl, MVT::i32, DAG);
-  SDValue WW = DAG.getNode(HexagonISD::COMBINE, dl, MVT::i64, {W1, W0});
+  SDValue WW = getCombine(W1, W0, dl, MVT::i64, DAG);
   return DAG.getBitcast(ResTy, WW);
 }
 
@@ -1358,7 +1358,7 @@ HexagonTargetLowering::extractHvxSubvectorPred(SDValue VecV, SDValue IdxV,
   SDValue W0 = DAG.getNode(HexagonISD::VEXTRACTW, dl, MVT::i32, {ShuffV, Zero});
   SDValue W1 = DAG.getNode(HexagonISD::VEXTRACTW, dl, MVT::i32,
                            {ShuffV, DAG.getConstant(4, dl, MVT::i32)});
-  SDValue Vec64 = DAG.getNode(HexagonISD::COMBINE, dl, MVT::v8i8, {W1, W0});
+  SDValue Vec64 = getCombine(W1, W0, dl, MVT::v8i8, DAG);
   return getInstr(Hexagon::A4_vcmpbgtui, dl, ResTy,
                   {Vec64, DAG.getTargetConstant(0, dl, MVT::i32)}, DAG);
 }
@@ -1995,8 +1995,7 @@ HexagonTargetLowering::LowerHvxBitcast(SDValue Op, SelectionDAG &DAG) const {
     SmallVector<SDValue,2> Combines;
     assert(Words.size() % 2 == 0);
     for (unsigned i = 0, e = Words.size(); i < e; i += 2) {
-      SDValue C = DAG.getNode(
-          HexagonISD::COMBINE, dl, MVT::i64, {Words[i+1], Words[i]});
+      SDValue C = getCombine(Words[i+1], Words[i], dl, MVT::i64, DAG);
       Combines.push_back(C);
     }
 
@@ -3512,10 +3511,41 @@ HexagonTargetLowering::PerformHvxDAGCombine(SDNode *N, DAGCombinerInfo &DCI)
   SelectionDAG &DAG = DCI.DAG;
   SDValue Op(N, 0);
   unsigned Opc = Op.getOpcode();
-  if (DCI.isBeforeLegalizeOps())
-    return SDValue();
 
   SmallVector<SDValue, 4> Ops(N->ops().begin(), N->ops().end());
+
+  if (Opc == ISD::TRUNCATE) {
+    // Simplify V:v2NiB --(bitcast)--> vNi2B --(truncate)--> vNiB
+    // to extract-subvector (shuffle V, pick even, pick odd)
+    if (Ops[0].getOpcode() == ISD::BITCAST)
+      return SDValue();
+    SDValue Cast = Ops[0];
+    SDValue Src = Cast.getOperand(0);
+
+    EVT TruncTy = Op.getValueType();
+    EVT CastTy = Cast.getValueType();
+    EVT SrcTy = Src.getValueType();
+    if (SrcTy.isSimple())
+      return SDValue();
+    if (SrcTy.getVectorElementType() != TruncTy.getVectorElementType())
+      return SDValue();
+    unsigned SrcLen = SrcTy.getVectorNumElements();
+    unsigned CastLen = CastTy.getVectorNumElements();
+    if (2 * CastLen != SrcLen)
+      return SDValue();
+
+    SmallVector<int, 128> Mask(SrcLen);
+    for (int i = 0; i != static_cast<int>(CastLen); ++i) {
+      Mask[i] = 2 * i;
+      Mask[i + CastLen] = 2 * i + 1;
+    }
+    SDValue Deal =
+        DAG.getVectorShuffle(SrcTy, dl, Src, DAG.getUNDEF(SrcTy), Mask);
+    return opSplit(Deal, dl, DAG).first;
+  }
+
+  if (DCI.isBeforeLegalizeOps())
+    return SDValue();
 
   switch (Opc) {
     case ISD::VSELECT: {

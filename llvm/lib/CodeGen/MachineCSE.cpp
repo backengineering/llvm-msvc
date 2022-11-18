@@ -265,8 +265,10 @@ bool MachineCSE::isPhysDefTriviallyDead(
 }
 
 static bool isCallerPreservedOrConstPhysReg(MCRegister Reg,
+                                            const MachineOperand &MO,
                                             const MachineFunction &MF,
-                                            const TargetRegisterInfo &TRI) {
+                                            const TargetRegisterInfo &TRI,
+                                            const TargetInstrInfo &TII) {
   // MachineRegisterInfo::isConstantPhysReg directly called by
   // MachineRegisterInfo::isCallerPreservedOrConstPhysReg expects the
   // reserved registers to be frozen. That doesn't cause a problem  post-ISel as
@@ -275,7 +277,7 @@ static bool isCallerPreservedOrConstPhysReg(MCRegister Reg,
   // It does cause issues mid-GlobalISel, however, hence the additional
   // reservedRegsFrozen check.
   const MachineRegisterInfo &MRI = MF.getRegInfo();
-  return TRI.isCallerPreservedPhysReg(Reg, MF) ||
+  return TRI.isCallerPreservedPhysReg(Reg, MF) || TII.isIgnorableUse(MO) ||
          (MRI.reservedRegsFrozen() && MRI.isConstantPhysReg(Reg));
 }
 
@@ -298,7 +300,8 @@ bool MachineCSE::hasLivePhysRegDefUses(const MachineInstr *MI,
     if (Register::isVirtualRegister(Reg))
       continue;
     // Reading either caller preserved or constant physregs is ok.
-    if (!isCallerPreservedOrConstPhysReg(Reg.asMCReg(), *MI->getMF(), *TRI))
+    if (!isCallerPreservedOrConstPhysReg(Reg.asMCReg(), MO, *MI->getMF(), *TRI,
+                                         *TII))
       for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
         PhysRefs.insert(*AI);
   }
@@ -808,13 +811,14 @@ bool MachineCSE::isPRECandidate(MachineInstr *MI,
       MI->getNumExplicitDefs() != 1)
     return false;
 
-  for (const auto &def : MI->defs())
-    if (!Register::isVirtualRegister(def.getReg()))
-      return false;
-
-  for (const auto &use : MI->uses())
-    if (use.isReg() && !Register::isVirtualRegister(use.getReg()))
-      PhysRefs.insert(use.getReg());
+  for (const MachineOperand &MO : MI->operands()) {
+    if (MO.isReg() && !Register::isVirtualRegister(MO.getReg())) {
+      if (MO.isDef())
+        return false;
+      else
+        PhysRefs.insert(MO.getReg());
+    }
+  }
 
   return true;
 }

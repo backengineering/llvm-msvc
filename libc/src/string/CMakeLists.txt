@@ -97,6 +97,14 @@ add_entrypoint_object(
 )
 
 add_entrypoint_object(
+  strcoll
+  SRCS
+    strcoll.cpp
+  HDRS
+    strcoll.h
+)
+
+add_entrypoint_object(
   strcpy
   SRCS
     strcpy.cpp
@@ -453,7 +461,7 @@ function(add_memmove memmove_name)
     SRCS ${LIBC_SOURCE_DIR}/src/string/memmove.cpp
     HDRS ${LIBC_SOURCE_DIR}/src/string/memmove.h
     DEPENDS
-      .memory_utils.memory_utils
+      .memory_utils.memcpy_implementation
       libc.include.string
     ${ARGN}
   )

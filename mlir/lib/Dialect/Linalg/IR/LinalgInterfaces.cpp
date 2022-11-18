@@ -119,7 +119,7 @@ static MatchContractionResult isContractionInterfaceImpl(Operation *op) {
   auto linalgOp = dyn_cast<linalg::LinalgOp>(op);
   if (!linalgOp)
     return MatchContractionResult::NotLinalgOp;
-  if (linalgOp.getNumInputs() != 2 || linalgOp.getNumOutputs() != 1)
+  if (linalgOp.getNumDpsInputs() != 2 || linalgOp.getNumDpsInits() != 1)
     return MatchContractionResult::WrongNumOperands;
   auto mapRange = linalgOp.getIndexingMapsArray();
   if (linalgOp.getNumReductionLoops() == 0)
@@ -278,7 +278,7 @@ static MatchConvolutionResult isConvolutionInterfaceImpl(Operation *op) {
   auto linalgOp = dyn_cast<linalg::LinalgOp>(op);
   if (!linalgOp)
     return MatchConvolutionResult::NotLinalgOp;
-  if (linalgOp.getNumInputs() < 2 || linalgOp.getNumOutputs() != 1)
+  if (linalgOp.getNumDpsInputs() < 2 || linalgOp.getNumDpsInits() != 1)
     return MatchConvolutionResult::WrongNumOperands;
 
   auto indexingMaps = linalgOp.getIndexingMapsArray();
@@ -321,7 +321,7 @@ static MatchConvolutionResult isConvolutionInterfaceImpl(Operation *op) {
     if (inputExprWalker.unConvolvedDims.count(outputDim) &&
         !filterDims.count(outputDim)) {
       // Batch dimension.
-      if (iteratorTypes[outputDim] != getParallelIteratorTypeName())
+      if (iteratorTypes[outputDim] != utils::IteratorType::parallel)
         return MatchConvolutionResult::OutputDimsNotParallel;
       allLoopDims.insert(outputDim);
       continue;
@@ -329,7 +329,7 @@ static MatchConvolutionResult isConvolutionInterfaceImpl(Operation *op) {
     if (inputExprWalker.convolvedDims.count(outputDim) &&
         !filterDims.count(outputDim)) {
       // Output image Loop dimension.
-      if (iteratorTypes[outputDim] != getParallelIteratorTypeName())
+      if (iteratorTypes[outputDim] != utils::IteratorType::parallel)
         return MatchConvolutionResult::OutputDimsNotParallel;
       allLoopDims.insert(outputDim);
       continue;
@@ -338,7 +338,7 @@ static MatchConvolutionResult isConvolutionInterfaceImpl(Operation *op) {
         !inputExprWalker.unConvolvedDims.count(outputDim) &&
         filterDims.count(outputDim)) {
       // Output channel dimension.
-      if (iteratorTypes[outputDim] != getParallelIteratorTypeName())
+      if (iteratorTypes[outputDim] != utils::IteratorType::parallel)
         return MatchConvolutionResult::OutputDimsNotParallel;
       allLoopDims.insert(outputDim);
       continue;
@@ -346,7 +346,7 @@ static MatchConvolutionResult isConvolutionInterfaceImpl(Operation *op) {
     if (inputExprWalker.unConvolvedDims.count(outputDim) &&
         filterDims.count(outputDim)) {
       // Depth multiplier.
-      if (iteratorTypes[outputDim] != getParallelIteratorTypeName())
+      if (iteratorTypes[outputDim] != utils::IteratorType::parallel)
         return MatchConvolutionResult::OutputDimsNotParallel;
       allLoopDims.insert(outputDim);
       continue;
@@ -364,7 +364,7 @@ static MatchConvolutionResult isConvolutionInterfaceImpl(Operation *op) {
     if (inputExprWalker.convolvedDims.count(filterDim) &&
         !outputDims.count(filterDim)) {
       // Filter loop dimension.
-      if (iteratorTypes[filterDim] != getReductionIteratorTypeName())
+      if (iteratorTypes[filterDim] != utils::IteratorType::reduction)
         return MatchConvolutionResult::NonOutputDimNotReduction;
       if (allLoopDims.count(filterDim))
         return MatchConvolutionResult::NonConvolutionLoop;
@@ -374,7 +374,7 @@ static MatchConvolutionResult isConvolutionInterfaceImpl(Operation *op) {
     if (inputExprWalker.unConvolvedDims.count(filterDim) &&
         !outputDims.count(filterDim)) {
       // Input channel dimension.
-      if (iteratorTypes[filterDim] != getReductionIteratorTypeName())
+      if (iteratorTypes[filterDim] != utils::IteratorType::reduction)
         return MatchConvolutionResult::NonOutputDimNotReduction;
       if (allLoopDims.count(filterDim))
         return MatchConvolutionResult::NonConvolutionLoop;
@@ -436,10 +436,10 @@ static MatchFillResult isFillInterfaceImpl(Operation *op) {
   auto linalgOp = dyn_cast<linalg::LinalgOp>(op);
   if (!linalgOp)
     return MatchFillResult::NotLinalgOp;
-  if (linalgOp.getNumInputs() != 1 || linalgOp.getNumOutputs() != 1)
+  if (linalgOp.getNumDpsInputs() != 1 || linalgOp.getNumDpsInits() != 1)
     return MatchFillResult::WrongNumOperands;
 
-  OpOperand *value = linalgOp.getInputOperand(0);
+  OpOperand *value = linalgOp.getDpsInputOperand(0);
   if (!linalgOp.isScalar(value))
     return MatchFillResult::NotScalarInput;
 
@@ -555,9 +555,9 @@ static std::pair<int64_t, int64_t>
 getResultsPositionInLoopsToShapeMap(LinalgOp &op) {
   int64_t inputRankSum = 0;
   int64_t outputRankSum = 0;
-  for (OpOperand *input : op.getInputOperands())
+  for (OpOperand *input : op.getDpsInputOperands())
     inputRankSum += op.getRank(input);
-  for (OpOperand *output : op.getOutputOperands())
+  for (OpOperand *output : op.getDpsInitOperands())
     outputRankSum += op.getRank(output);
   return {inputRankSum, inputRankSum + outputRankSum};
 }
@@ -601,7 +601,7 @@ LinalgOp::reifyResultShapes(OpBuilder &b,
           createFlatListOfOperandDims(b, loc));
   int64_t pos = 0;
   ArrayRef<AffineExpr> shapeExprs = resultShapesFromInputShapesMap.getResults();
-  for (OpOperand *opOperand : getOutputOperands()) {
+  for (OpOperand *opOperand : getDpsInitOperands()) {
     SmallVector<Value> shapes;
     for (int64_t dim : llvm::seq<int64_t>(0, getRank(opOperand))) {
       if (checkDimExpr.visit(shapeExprs[pos]))
@@ -618,15 +618,6 @@ LinalgOp::reifyResultShapes(OpBuilder &b,
 
 LogicalResult mlir::linalg::detail::verifyStructuredOpInterface(Operation *op) {
   LinalgOp linalgOp = cast<LinalgOp>(op);
-
-  // Check all iterator types are known.
-  auto iteratorTypesRange = linalgOp.getIteratorTypesArray();
-  for (StringRef iteratorType : iteratorTypesRange) {
-    if (!llvm::is_contained(getAllIteratorTypeNames(), iteratorType) ||
-        !utils::symbolizeIteratorType(iteratorType).has_value())
-      return op->emitOpError("unexpected iterator_type (")
-             << iteratorType << ")";
-  }
 
   // Before checking indexing maps, we need to make sure the attributes
   // referenced by it are valid.

@@ -63,7 +63,8 @@ Error GenericKernelTy::launch(GenericDeviceTy &GenericDevice, void **ArgPtrs,
       getNumBlocks(GenericDevice, NumTeamsClause, LoopTripCount, NumThreads);
 
   INFO(OMP_INFOTYPE_PLUGIN_KERNEL, GenericDevice.getDeviceId(),
-       "Launching kernel %s with %d blocks and %d threads in %s mode\n",
+       "Launching kernel %s with %" PRIu64
+       " blocks and %d threads in %s mode\n",
        getName(), NumBlocks, NumThreads, getExecutionModeName());
 
   return launchImpl(GenericDevice, NumThreads, NumBlocks, DynamicMemorySize,
@@ -149,7 +150,7 @@ GenericDeviceTy::GenericDeviceTy(int32_t DeviceId, int32_t NumDevices,
   if (OMP_TeamsThreadLimit > 0)
     GridValues.GV_Max_WG_Size =
         std::min(GridValues.GV_Max_WG_Size, uint32_t(OMP_TeamsThreadLimit));
-};
+}
 
 Error GenericDeviceTy::init(GenericPluginTy &Plugin) {
   if (auto Err = initImpl(Plugin))

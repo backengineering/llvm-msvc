@@ -133,6 +133,20 @@ constexpr C RVOAndParams(const C *c) {
 constexpr C RVOAndParamsResult = RVOAndParams(&c);
 #endif
 
+class Bar { // expected-note {{definition of 'Bar' is not complete}} \
+            // ref-note {{definition of 'Bar' is not complete}}
+public:
+  constexpr Bar(){}
+  constexpr Bar b; // expected-error {{cannot be constexpr}} \
+                   // expected-error {{has incomplete type 'const Bar'}} \
+                   // ref-error {{cannot be constexpr}} \
+                   // ref-error {{has incomplete type 'const Bar'}}
+};
+constexpr Bar B; // expected-error {{must be initialized by a constant expression}} \
+                 // expected-error {{failed to evaluate an expression}} \
+                 // ref-error {{must be initialized by a constant expression}}
+constexpr Bar *pb = nullptr;
+
 constexpr int locals() {
   C c;
   c.a = 10;
@@ -204,6 +218,26 @@ static_assert(a2.i == 200, ""); // ref-error {{static assertion failed}} \
                                 // expected-error {{static assertion failed}} \
                                 // expected-note {{evaluates to '12 == 200'}}
 
+
+struct S {
+  int a = 0;
+  constexpr int get5() const { return 5; }
+  constexpr void fo() const {
+    this; // expected-warning {{expression result unused}} \
+          // ref-warning {{expression result unused}}
+    this->a; // expected-warning {{expression result unused}} \
+             // ref-warning {{expression result unused}}
+    get5();
+  }
+
+  constexpr int m() const {
+    fo();
+    return 1;
+  }
+};
+constexpr S s;
+static_assert(s.m() == 1, "");
+
 namespace MI {
   class A {
   public:
@@ -225,6 +259,8 @@ namespace MI {
   static_assert(c.a == 10, "");
   static_assert(c.b == 20, "");
 
+  constexpr const A *aPointer = &c;
+  constexpr const B *bPointer = &c;
 
   class D : private A, private B {
     public:

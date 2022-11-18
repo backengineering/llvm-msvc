@@ -27,6 +27,7 @@
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/MemoryLocation.h"
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/Analysis/VectorUtils.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/ISDOpcodes.h"
@@ -1481,6 +1482,20 @@ SDValue SelectionDAG::getVPLogicalNOT(const SDLoc &DL, SDValue Val,
   return getNode(ISD::VP_XOR, DL, VT, Val, TrueValue, Mask, EVL);
 }
 
+SDValue SelectionDAG::getVPPtrExtOrTrunc(const SDLoc &DL, EVT VT, SDValue Op,
+                                         SDValue Mask, SDValue EVL) {
+  return getVPZExtOrTrunc(DL, VT, Op, Mask, EVL);
+}
+
+SDValue SelectionDAG::getVPZExtOrTrunc(const SDLoc &DL, EVT VT, SDValue Op,
+                                       SDValue Mask, SDValue EVL) {
+  if (VT.bitsGT(Op.getValueType()))
+    return getNode(ISD::VP_ZERO_EXTEND, DL, VT, Op, Mask, EVL);
+  if (VT.bitsLT(Op.getValueType()))
+    return getNode(ISD::VP_TRUNCATE, DL, VT, Op, Mask, EVL);
+  return Op;
+}
+
 SDValue SelectionDAG::getBoolConstant(bool V, const SDLoc &DL, EVT VT,
                                       EVT OpVT) {
   if (!V)
@@ -2780,9 +2795,7 @@ SDValue SelectionDAG::getSplatSourceVector(SDValue V, int &SplatIdx) {
     SplatIdx = 0;
     return V;
   case ISD::VECTOR_SHUFFLE: {
-    if (VT.isScalableVector())
-      return SDValue();
-
+    assert(!VT.isScalableVector());
     // Check if this is a shuffle node doing a splat.
     // TODO - remove this and rely purely on SelectionDAG::isSplatValue,
     // getTargetVShiftNode currently struggles without the splat source.
@@ -2897,14 +2910,10 @@ const APInt *SelectionDAG::getValidMaximumShiftAmountConstant(
 KnownBits SelectionDAG::computeKnownBits(SDValue Op, unsigned Depth) const {
   EVT VT = Op.getValueType();
 
-  // TOOD: Until we have a plan for how to represent demanded elements for
-  // scalable vectors, we can just bail out for now.
-  if (Op.getValueType().isScalableVector()) {
-    unsigned BitWidth = Op.getScalarValueSizeInBits();
-    return KnownBits(BitWidth);
-  }
-
-  APInt DemandedElts = VT.isVector()
+  // Since the number of lanes in a scalable vector is unknown at compile time,
+  // we track one bit which is implicitly broadcast to all lanes.  This means
+  // that all lanes in a scalable vector are considered demanded.
+  APInt DemandedElts = VT.isFixedLengthVector()
                            ? APInt::getAllOnes(VT.getVectorNumElements())
                            : APInt(1, 1);
   return computeKnownBits(Op, DemandedElts, Depth);
@@ -2918,11 +2927,6 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
   unsigned BitWidth = Op.getScalarValueSizeInBits();
 
   KnownBits Known(BitWidth);   // Don't know anything.
-
-  // TOOD: Until we have a plan for how to represent demanded elements for
-  // scalable vectors, we can just bail out for now.
-  if (Op.getValueType().isScalableVector())
-    return Known;
 
   if (auto *C = dyn_cast<ConstantSDNode>(Op)) {
     // We know all of the bits for a constant!
@@ -2938,7 +2942,7 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
 
   KnownBits Known2;
   unsigned NumElts = DemandedElts.getBitWidth();
-  assert((!Op.getValueType().isVector() ||
+  assert((!Op.getValueType().isFixedLengthVector() ||
           NumElts == Op.getValueType().getVectorNumElements()) &&
          "Unexpected vector size");
 
@@ -2950,7 +2954,18 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
   case ISD::MERGE_VALUES:
     return computeKnownBits(Op.getOperand(Op.getResNo()), DemandedElts,
                             Depth + 1);
+  case ISD::SPLAT_VECTOR: {
+    SDValue SrcOp = Op.getOperand(0);
+    Known = computeKnownBits(SrcOp, Depth + 1);
+    if (SrcOp.getValueSizeInBits() != BitWidth) {
+      assert(SrcOp.getValueSizeInBits() > BitWidth &&
+             "Expected SPLAT_VECTOR implicit truncation");
+      Known = Known.trunc(BitWidth);
+    }
+    break;
+  }
   case ISD::BUILD_VECTOR:
+    assert(!Op.getValueType().isScalableVector());
     // Collect the known bits that are shared by every demanded vector element.
     Known.Zero.setAllBits(); Known.One.setAllBits();
     for (unsigned i = 0, e = Op.getNumOperands(); i != e; ++i) {
@@ -2976,32 +2991,18 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
     }
     break;
   case ISD::VECTOR_SHUFFLE: {
+    assert(!Op.getValueType().isScalableVector());
     // Collect the known bits that are shared by every vector element referenced
     // by the shuffle.
-    APInt DemandedLHS(NumElts, 0), DemandedRHS(NumElts, 0);
-    Known.Zero.setAllBits(); Known.One.setAllBits();
+    APInt DemandedLHS, DemandedRHS;
     const ShuffleVectorSDNode *SVN = cast<ShuffleVectorSDNode>(Op);
     assert(NumElts == SVN->getMask().size() && "Unexpected vector size");
-    for (unsigned i = 0; i != NumElts; ++i) {
-      if (!DemandedElts[i])
-        continue;
+    if (!getShuffleDemandedElts(NumElts, SVN->getMask(), DemandedElts,
+                                DemandedLHS, DemandedRHS))
+      break;
 
-      int M = SVN->getMaskElt(i);
-      if (M < 0) {
-        // For UNDEF elements, we don't know anything about the common state of
-        // the shuffle result.
-        Known.resetAll();
-        DemandedLHS.clearAllBits();
-        DemandedRHS.clearAllBits();
-        break;
-      }
-
-      if ((unsigned)M < NumElts)
-        DemandedLHS.setBit((unsigned)M % NumElts);
-      else
-        DemandedRHS.setBit((unsigned)M % NumElts);
-    }
     // Known bits are the values that are shared by every demanded element.
+    Known.Zero.setAllBits(); Known.One.setAllBits();
     if (!!DemandedLHS) {
       SDValue LHS = Op.getOperand(0);
       Known2 = computeKnownBits(LHS, DemandedLHS, Depth + 1);
@@ -3018,6 +3019,8 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
     break;
   }
   case ISD::CONCAT_VECTORS: {
+    if (Op.getValueType().isScalableVector())
+      break;
     // Split DemandedElts and test each of the demanded subvectors.
     Known.Zero.setAllBits(); Known.One.setAllBits();
     EVT SubVectorVT = Op.getOperand(0).getValueType();
@@ -3038,6 +3041,8 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
     break;
   }
   case ISD::INSERT_SUBVECTOR: {
+    if (Op.getValueType().isScalableVector())
+      break;
     // Demand any elements from the subvector and the remainder from the src its
     // inserted into.
     SDValue Src = Op.getOperand(0);
@@ -3065,7 +3070,7 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
     // Offset the demanded elts by the subvector index.
     SDValue Src = Op.getOperand(0);
     // Bail until we can represent demanded elements for scalable vectors.
-    if (Src.getValueType().isScalableVector())
+    if (Op.getValueType().isScalableVector() || Src.getValueType().isScalableVector())
       break;
     uint64_t Idx = Op.getConstantOperandVal(1);
     unsigned NumSrcElts = Src.getValueType().getVectorNumElements();
@@ -3074,6 +3079,8 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
     break;
   }
   case ISD::SCALAR_TO_VECTOR: {
+    if (Op.getValueType().isScalableVector())
+      break;
     // We know about scalar_to_vector as much as we know about it source,
     // which becomes the first element of otherwise unknown vector.
     if (DemandedElts != 1)
@@ -3087,6 +3094,9 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
     break;
   }
   case ISD::BITCAST: {
+    if (Op.getValueType().isScalableVector())
+      break;
+
     SDValue N0 = Op.getOperand(0);
     EVT SubVT = N0.getValueType();
     unsigned SubBitWidth = SubVT.getScalarSizeInBits();
@@ -3408,7 +3418,8 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
     if (ISD::isNON_EXTLoad(LD) && Cst) {
       // Determine any common known bits from the loaded constant pool value.
       Type *CstTy = Cst->getType();
-      if ((NumElts * BitWidth) == CstTy->getPrimitiveSizeInBits()) {
+      if ((NumElts * BitWidth) == CstTy->getPrimitiveSizeInBits() &&
+          !Op.getValueType().isScalableVector()) {
         // If its a vector splat, then we can (quickly) reuse the scalar path.
         // NOTE: We assume all elements match and none are UNDEF.
         if (CstTy->isVectorTy()) {
@@ -3458,12 +3469,32 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
       unsigned MemBits = VT.getScalarSizeInBits();
       Known.Zero.setBitsFrom(MemBits);
     } else if (const MDNode *Ranges = LD->getRanges()) {
-      if (LD->getExtensionType() == ISD::NON_EXTLOAD)
-        computeKnownBitsFromRangeMetadata(*Ranges, Known);
+      EVT VT = LD->getValueType(0);
+
+      // TODO: Handle for extending loads
+      if (LD->getExtensionType() == ISD::NON_EXTLOAD) {
+        if (VT.isVector()) {
+          // Handle truncation to the first demanded element.
+          // TODO: Figure out which demanded elements are covered
+          if (DemandedElts != 1 || !getDataLayout().isLittleEndian())
+            break;
+
+          // Handle the case where a load has a vector type, but scalar memory
+          // with an attached range.
+          EVT MemVT = LD->getMemoryVT();
+          KnownBits KnownFull(MemVT.getSizeInBits());
+
+          computeKnownBitsFromRangeMetadata(*Ranges, KnownFull);
+          Known = KnownFull.trunc(BitWidth);
+        } else
+          computeKnownBitsFromRangeMetadata(*Ranges, Known);
+      }
     }
     break;
   }
   case ISD::ZERO_EXTEND_VECTOR_INREG: {
+    if (Op.getValueType().isScalableVector())
+      break;
     EVT InVT = Op.getOperand(0).getValueType();
     APInt InDemandedElts = DemandedElts.zext(InVT.getVectorNumElements());
     Known = computeKnownBits(Op.getOperand(0), InDemandedElts, Depth + 1);
@@ -3476,6 +3507,8 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
     break;
   }
   case ISD::SIGN_EXTEND_VECTOR_INREG: {
+    if (Op.getValueType().isScalableVector())
+      break;
     EVT InVT = Op.getOperand(0).getValueType();
     APInt InDemandedElts = DemandedElts.zext(InVT.getVectorNumElements());
     Known = computeKnownBits(Op.getOperand(0), InDemandedElts, Depth + 1);
@@ -3492,6 +3525,8 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
     break;
   }
   case ISD::ANY_EXTEND_VECTOR_INREG: {
+    if (Op.getValueType().isScalableVector())
+      break;
     EVT InVT = Op.getOperand(0).getValueType();
     APInt InDemandedElts = DemandedElts.zext(InVT.getVectorNumElements());
     Known = computeKnownBits(Op.getOperand(0), InDemandedElts, Depth + 1);
@@ -3657,6 +3692,9 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
     break;
   }
   case ISD::INSERT_VECTOR_ELT: {
+    if (Op.getValueType().isScalableVector())
+      break;
+
     // If we know the element index, split the demand between the
     // source vector and the inserted element, otherwise assume we need
     // the original demanded vector elements and the value.
@@ -3823,6 +3861,11 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
   case ISD::INTRINSIC_WO_CHAIN:
   case ISD::INTRINSIC_W_CHAIN:
   case ISD::INTRINSIC_VOID:
+    // TODO: Probably okay to remove after audit; here to reduce change size
+    // in initial enablement patch for scalable vectors
+    if (Op.getValueType().isScalableVector())
+      break;
+
     // Allow the target to implement this method for its nodes.
     TLI->computeKnownBitsForTargetNode(Op, Known, DemandedElts, *this, Depth);
     break;
@@ -3984,22 +4027,13 @@ unsigned SelectionDAG::ComputeNumSignBits(SDValue Op, const APInt &DemandedElts,
   case ISD::VECTOR_SHUFFLE: {
     // Collect the minimum number of sign bits that are shared by every vector
     // element referenced by the shuffle.
-    APInt DemandedLHS(NumElts, 0), DemandedRHS(NumElts, 0);
+    APInt DemandedLHS, DemandedRHS;
     const ShuffleVectorSDNode *SVN = cast<ShuffleVectorSDNode>(Op);
     assert(NumElts == SVN->getMask().size() && "Unexpected vector size");
-    for (unsigned i = 0; i != NumElts; ++i) {
-      int M = SVN->getMaskElt(i);
-      if (!DemandedElts[i])
-        continue;
-      // For UNDEF elements, we don't know anything about the common state of
-      // the shuffle result.
-      if (M < 0)
-        return 1;
-      if ((unsigned)M < NumElts)
-        DemandedLHS.setBit((unsigned)M % NumElts);
-      else
-        DemandedRHS.setBit((unsigned)M % NumElts);
-    }
+    if (!getShuffleDemandedElts(NumElts, SVN->getMask(), DemandedElts,
+                                DemandedLHS, DemandedRHS))
+      return 1;
+
     Tmp = std::numeric_limits<unsigned>::max();
     if (!!DemandedLHS)
       Tmp = ComputeNumSignBits(Op.getOperand(0), DemandedLHS, Depth + 1);
@@ -8946,12 +8980,12 @@ SDValue SelectionDAG::simplifySelect(SDValue Cond, SDValue T, SDValue F) {
   if (auto *CondC = dyn_cast<ConstantSDNode>(Cond))
     return CondC->isZero() ? F : T;
 
-  // TODO: This should simplify VSELECT with constant condition using something
-  // like this (but check boolean contents to be complete?):
-  //  if (ISD::isBuildVectorAllOnes(Cond.getNode()))
-  //    return T;
-  //  if (ISD::isBuildVectorAllZeros(Cond.getNode()))
-  //    return F;
+  // TODO: This should simplify VSELECT with non-zero constant condition using
+  // something like this (but check boolean contents to be complete?):
+  if (ConstantSDNode *CondC = isConstOrConstSplat(Cond, /*AllowUndefs*/ false,
+                                                  /*AllowTruncation*/ true))
+    if (CondC->isZero())
+      return F;
 
   // select ?, T, T --> T
   if (T == F)

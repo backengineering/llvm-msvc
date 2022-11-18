@@ -98,14 +98,15 @@ bool ByteCodeStmtGen<Emitter>::visitFunc(const FunctionDecl *F) {
   if (const auto Ctor = dyn_cast<CXXConstructorDecl>(F)) {
     const RecordDecl *RD = Ctor->getParent();
     const Record *R = this->getRecord(RD);
-    assert(R);
+    if (!R)
+      return false;
 
     for (const auto *Init : Ctor->inits()) {
       const Expr *InitExpr = Init->getInit();
       if (const FieldDecl *Member = Init->getMember()) {
         const Record::Field *F = R->getField(Member);
 
-        if (Optional<PrimType> T = this->classify(InitExpr->getType())) {
+        if (Optional<PrimType> T = this->classify(InitExpr)) {
           if (!this->emitThis(InitExpr))
             return false;
 
@@ -113,6 +114,9 @@ bool ByteCodeStmtGen<Emitter>::visitFunc(const FunctionDecl *F) {
             return false;
 
           if (!this->emitInitField(*T, F->Offset, InitExpr))
+            return false;
+
+          if (!this->emitPopPtr(InitExpr))
             return false;
         } else {
           // Non-primitive case. Get a pointer to the field-to-initialize
@@ -234,12 +238,11 @@ bool ByteCodeStmtGen<Emitter>::visitReturnStmt(const ReturnStmt *RS) {
       this->emitCleanup();
       return this->emitRetVoid(RS);
     }
-  } else {
-    this->emitCleanup();
-    if (!this->emitRetVoid(RS))
-      return false;
-    return true;
   }
+
+  // Void return.
+  this->emitCleanup();
+  return this->emitRetVoid(RS);
 }
 
 template <class Emitter>

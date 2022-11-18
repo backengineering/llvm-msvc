@@ -193,8 +193,8 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*args=*/(ins),
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
-        return getNumIterators(getParallelIteratorTypeName(),
-                                $_op.getIteratorTypesArray());
+        return llvm::count($_op.getIteratorTypesArray(),
+                           utils::IteratorType::parallel);
       }]
     >,
     InterfaceMethod<
@@ -207,7 +207,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
         return findPositionsOfType($_op.getIteratorTypesArray(),
-                                   getParallelIteratorTypeName(), res);
+                                   utils::IteratorType::parallel, res);
       }]
     >,
     InterfaceMethod<
@@ -219,8 +219,8 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*args=*/(ins),
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
-        return getNumIterators(getReductionIteratorTypeName(),
-                               $_op.getIteratorTypesArray());
+        return llvm::count($_op.getIteratorTypesArray(),
+                           utils::IteratorType::reduction);
       }]
     >,
     InterfaceMethod<
@@ -233,33 +233,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
         return findPositionsOfType($_op.getIteratorTypesArray(),
-                                   getReductionIteratorTypeName(), res);
-      }]
-    >,
-    InterfaceMethod<
-      /*desc=*/[{
-        Return the number of window loops.
-      }],
-      /*retTy=*/"unsigned",
-      /*methodName=*/"getNumWindowLoops",
-      /*args=*/(ins),
-      /*methodBody=*/"",
-      /*defaultImplementation=*/[{
-        return getNumIterators(getWindowIteratorTypeName(),
-                               $_op.getIteratorTypesArray());
-      }]
-    >,
-    InterfaceMethod<
-      /*desc=*/[{
-        Return the dims that are window loops.
-      }],
-      /*retTy=*/"void",
-      /*methodName=*/"getWindowDims",
-      /*args=*/(ins "SmallVectorImpl<unsigned> &":$res),
-      /*methodBody=*/"",
-      /*defaultImplementation=*/[{
-        return findPositionsOfType($_op.getIteratorTypesArray(),
-                                   getWindowIteratorTypeName(), res);
+                                   utils::IteratorType::reduction, res);
       }]
     >,
     InterfaceMethod<
@@ -271,7 +245,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*args=*/(ins),
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
-        return getNumIterators($_op.getIteratorTypesArray());
+        return $_op.getIteratorTypesArray().size();
       }]
     >,
     InterfaceMethod<
@@ -286,10 +260,10 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*defaultImplementation=*/[{
         auto iters = $_op.getIteratorTypesArray();
         return iters.size() == 1 &&
-               getNumIterators(getReductionIteratorTypeName(), iters) == 1;
+               llvm::count(iters, utils::IteratorType::reduction) == 1;
       }]>,
     //===------------------------------------------------------------------===//
-    // Input and Output arguments handling.
+    // Input and Init arguments handling.
     //===------------------------------------------------------------------===//
     InterfaceMethod<
       /*desc=*/[{
@@ -317,7 +291,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*args=*/(ins "OpOperand *":$opOperand),
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
-        if (!$_op.isOutput(opOperand))
+        if (!$_op.isDpsInit(opOperand))
           return false;
         return payloadUsesValueFromOperand(opOperand);
       }]
@@ -353,7 +327,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
         // TODO: reevalute the need for a cast when a better mechanism exists.
         return getBlock()->getArguments().take_front(
             cast<DestinationStyleOpInterface>(*this->getOperation())
-                .getNumInputs());
+                .getNumDpsInputs());
       }]
     >,
     InterfaceMethod<
@@ -371,7 +345,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
         // TODO: reevalute the need for a cast when a better mechanism exists.
         return getBlock()->getArguments().take_back(
             cast<DestinationStyleOpInterface>(*this->getOperation())
-                .getNumOutputs());
+                .getNumDpsInits());
       }]
     >,
     InterfaceMethod<
@@ -450,7 +424,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
         // TODO: reevalute the need for a cast when a better mechanism exists.
         return *(indexingMaps.begin() +
                  cast<DestinationStyleOpInterface>(*this->getOperation())
-                     .getNumInputs() +
+                     .getNumDpsInputs() +
                  result.getResultNumber());
       }]
     >,
@@ -472,7 +446,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
         int64_t resultIndex =
             opOperand->getOperandNumber() -
             cast<DestinationStyleOpInterface>(*this->getOperation())
-                .getNumInputs();
+                .getNumDpsInputs();
         assert(resultIndex >= 0 &&
                resultIndex < this->getOperation()->getNumResults());
         Operation *yieldOp = getBlock()->getTerminator();
@@ -506,12 +480,14 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
         can be infered from other parameters and in such cases default
         getIteratorTypesArray should be overriden.
       }],
-      /*retTy=*/"SmallVector<StringRef>",
+      /*retTy=*/"SmallVector<utils::IteratorType>",
       /*methodName=*/"getIteratorTypesArray",
       /*args=*/(ins),
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
-        auto range = $_op.getIteratorTypes().template getAsValueRange<StringAttr>();
+        auto range = $_op.getIteratorTypes()
+                         .template getAsValueRange<IteratorTypeAttr,
+                                                   utils::IteratorType>();
         return {range.begin(), range.end()};
       }]
     >,
@@ -767,10 +743,6 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
     LogicalResult reifyResultShapes(OpBuilder &b,
         ReifiedRankedShapedTypeDims &reifiedReturnShapes);
 
-    SmallVector<StringRef> getIteratorTypeNames() {
-      return getIteratorTypesArray();
-    }
-
     //========================================================================//
     // Forwarding functions to access interface methods from the
     // DestinationStyleOpInterface.
@@ -780,49 +752,49 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
     // TODO: reevalute the need for a cast when a better mechanism exists.
     //========================================================================//
 
-    int64_t getNumInputs() {
+    int64_t getNumDpsInputs() {
       return cast<DestinationStyleOpInterface>(*this->getOperation())
-          .getNumInputs();
+          .getNumDpsInputs();
     }
 
-    int64_t getNumOutputs() {
+    int64_t getNumDpsInits() {
       return cast<DestinationStyleOpInterface>(*this->getOperation())
-          .getNumOutputs();
+          .getNumDpsInits();
     }
 
-    OpOperandVector getInputOperands() {
+    OpOperandVector getDpsInputOperands() {
       return cast<DestinationStyleOpInterface>(*this->getOperation())
-          .getInputOperands();
+          .getDpsInputOperands();
     }
 
-    OpOperand *getInputOperand(int64_t i) {
+    OpOperand *getDpsInputOperand(int64_t i) {
       return cast<DestinationStyleOpInterface>(*this->getOperation())
-          .getInputOperand(i);
+          .getDpsInputOperand(i);
     }
 
-    void setOutputOperand(int64_t i, Value value) {
+    void setDpsInitOperand(int64_t i, Value value) {
       return cast<DestinationStyleOpInterface>(*this->getOperation())
-          .setOutputOperand(i, value);
+          .setDpsInitOperand(i, value);
     }
 
-    OpOperandVector getOutputOperands() {
+    OpOperandVector getDpsInitOperands() {
       return cast<DestinationStyleOpInterface>(*this->getOperation())
-          .getOutputOperands();
+          .getDpsInitOperands();
     }
 
-    OpOperand *getOutputOperand(int64_t i) {
+    OpOperand *getDpsInitOperand(int64_t i) {
       return cast<DestinationStyleOpInterface>(*this->getOperation())
-          .getOutputOperand(i);
+          .getDpsInitOperand(i);
     }
 
-    bool isInput(OpOperand *opOperand) {
+    bool isDpsInput(OpOperand *opOperand) {
       return cast<DestinationStyleOpInterface>(*this->getOperation())
-          .isInput(opOperand);
+          .isDpsInput(opOperand);
     }
 
-    bool isOutput(OpOperand *opOperand) {
+    bool isDpsInit(OpOperand *opOperand) {
       return cast<DestinationStyleOpInterface>(*this->getOperation())
-          .isOutput(opOperand);
+          .isDpsInit(opOperand);
     }
 
     bool isScalar(OpOperand *opOperand) {

@@ -740,7 +740,7 @@ def CSRRCI : CSR_ii<0b111, "csrrci">;
 /// RV64I instructions
 
 let Predicates = [IsRV64] in {
-def LWU   : Load_ri<0b110, "lwu">, Sched<[WriteLDWU, ReadMemBase]>;
+def LWU   : Load_ri<0b110, "lwu">, Sched<[WriteLDW, ReadMemBase]>;
 def LD    : Load_ri<0b011, "ld">, Sched<[WriteLDD, ReadMemBase]>;
 def SD    : Store_rri<0b011, "sd">, Sched<[WriteSTD, ReadStoreData, ReadMemBase]>;
 
@@ -1172,7 +1172,9 @@ def sexti32 : ComplexPattern<i64, 1, "selectSExti32">;
 def assertzexti32 : PatFrag<(ops node:$src), (assertzext node:$src), [{
   return cast<VTSDNode>(N->getOperand(1))->getVT().bitsLE(MVT::i32);
 }]>;
-def zexti32 : ComplexPattern<i64, 1, "selectZExti32">;
+def zexti32 : ComplexPattern<i64, 1, "selectZExtBits<32>">;
+def zexti16 : ComplexPattern<XLenVT, 1, "selectZExtBits<16>">;
+def zexti8 : ComplexPattern<XLenVT, 1, "selectZExtBits<8>">;
 
 class binop_oneuse<SDPatternOperator operator>
     : PatFrag<(ops node:$A, node:$B),
@@ -1780,3 +1782,9 @@ include "RISCVInstrInfoZk.td"
 include "RISCVInstrInfoV.td"
 include "RISCVInstrInfoZfh.td"
 include "RISCVInstrInfoZicbo.td"
+
+//===----------------------------------------------------------------------===//
+// Vendor extensions
+//===----------------------------------------------------------------------===//
+
+include "RISCVInstrInfoXVentana.td"

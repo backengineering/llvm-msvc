@@ -553,7 +553,7 @@ def {0} : LinalgStructuredBase_Op<"{1}", !listconcat([AttrSizedOperandSegments],
 
     let extraClassDeclaration = structuredOpsBaseDecls # [{{
       // Auto-generated.
-      SmallVector<StringRef> getIteratorTypesArray();
+      SmallVector<utils::IteratorType> getIteratorTypesArray();
       ArrayAttr getIndexingMaps();
       static void regionBuilder(ImplicitLocOpBuilder &b,
                                 Block &block, ArrayRef<NamedAttribute> attrs);
@@ -563,7 +563,7 @@ def {0} : LinalgStructuredBase_Op<"{1}", !listconcat([AttrSizedOperandSegments],
         return regionBuilder;
       }
 
-      std::pair<int64_t, int64_t> getOutputsPositionRange() {{
+      std::pair<int64_t, int64_t> getDpsInitsPositionRange() {{
         int64_t getNumOperands = this->getNumOperands();
         return {{getNumOperands - 1, getNumOperands};
       }
@@ -597,8 +597,8 @@ static const char structuredOpBuilderFormat[] = R"FMT(
 // {1}: Comma interleaved iterator type names.
 static const char structuredOpIteratorTypesFormat[] =
     R"FMT(
-SmallVector<StringRef> {0}::getIteratorTypesArray() {{
-  return SmallVector<StringRef>{{ {1} };
+SmallVector<utils::IteratorType> {0}::getIteratorTypesArray() {{
+  return SmallVector<utils::IteratorType>{{ {1} };
 }
 )FMT";
 
@@ -607,9 +607,9 @@ SmallVector<StringRef> {0}::getIteratorTypesArray() {{
 // {0}: Class name
 static const char rankPolyStructuredOpIteratorTypesFormat[] =
     R"FMT(
-SmallVector<StringRef> {0}::getIteratorTypesArray() {{
-  int64_t rank = getRank(getOutputOperand(0));
-  return SmallVector<StringRef>(rank, getParallelIteratorTypeName());
+SmallVector<utils::IteratorType> {0}::getIteratorTypesArray() {{
+  int64_t rank = getRank(getDpsInitOperand(0));
+  return SmallVector<utils::IteratorType>(rank, utils::IteratorType::parallel);
 }
 )FMT";
 
@@ -661,7 +661,7 @@ void {0}::getEffects(SmallVectorImpl<
     SideEffects::EffectInstance<MemoryEffects::Effect> >&effects) {{
       if (hasTensorSemantics()) return;
       getGenericEffectsImpl(effects,
-        getOperation()->getResults(), getInputOperands(), getOutputOperands());
+        getOperation()->getResults(), getDpsInputOperands(), getDpsInitOperands());
 }
 )FMT";
 
@@ -812,10 +812,10 @@ generateNamedGenericOpDefns(LinalgOpConfig &opConfig,
                           [&](LinalgIteratorTypeDef it) {
                             switch (it) {
                             case LinalgIteratorTypeDef::parallel:
-                              ss << "getParallelIteratorTypeName()";
+                              ss << "utils::IteratorType::parallel";
                               break;
                             case LinalgIteratorTypeDef::reduction:
-                              ss << "getReductionIteratorTypeName()";
+                              ss << "utils::IteratorType::reduction";
                               break;
                             }
                           });

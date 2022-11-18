@@ -47,7 +47,7 @@ static cl::opt<unsigned int> StartingGranularityLevel(
 
 static cl::opt<bool> TmpFilesAsBitcode(
     "write-tmp-files-as-bitcode",
-    cl::desc("Write temporary files as bitcode, instead of textual IR"),
+    cl::desc("Always write temporary files as bitcode instead of textual IR"),
     cl::init(false), cl::cat(LLVMReduceOptions));
 
 #ifdef LLVM_ENABLE_THREADS
@@ -60,60 +60,42 @@ static cl::opt<unsigned> NumJobs(
 unsigned NumJobs = 1;
 #endif
 
-void writeOutput(ReducerWorkItem &M, llvm::StringRef Message);
-
 void writeBitcode(ReducerWorkItem &M, raw_ostream &OutStream);
 
 void readBitcode(ReducerWorkItem &M, MemoryBufferRef Data, LLVMContext &Ctx,
                  const char *ToolName);
 
-bool isReduced(ReducerWorkItem &M, TestRunner &Test,
-               SmallString<128> &CurrentFilepath) {
+bool isReduced(ReducerWorkItem &M, TestRunner &Test) {
+  const bool UseBitcode = Test.inputIsBitcode() || TmpFilesAsBitcode;
+
+  SmallString<128> CurrentFilepath;
+
   // Write ReducerWorkItem to tmp file
   int FD;
   std::error_code EC = sys::fs::createTemporaryFile(
-      "llvm-reduce", M.isMIR() ? "mir" : (TmpFilesAsBitcode ? "bc" : "ll"), FD,
+      "llvm-reduce", M.isMIR() ? "mir" : (UseBitcode ? "bc" : "ll"), FD,
       CurrentFilepath);
   if (EC) {
     errs() << "Error making unique filename: " << EC.message() << "!\n";
     exit(1);
   }
 
-  if (TmpFilesAsBitcode) {
-    llvm::raw_fd_ostream OutStream(FD, true);
-    writeBitcode(M, OutStream);
-    OutStream.close();
-    if (OutStream.has_error()) {
-      errs() << "Error emitting bitcode to file '" << CurrentFilepath << "'!\n";
-      sys::fs::remove(CurrentFilepath);
-      exit(1);
-    }
-    bool Res = Test.run(CurrentFilepath);
-    sys::fs::remove(CurrentFilepath);
-    return Res;
-  }
   ToolOutputFile Out(CurrentFilepath, FD);
-  M.print(Out.os(), /*AnnotationWriter=*/nullptr);
+
+  if (TmpFilesAsBitcode)
+    writeBitcode(M, Out.os());
+  else
+    M.print(Out.os(), /*AnnotationWriter=*/nullptr);
+
   Out.os().close();
   if (Out.os().has_error()) {
-    errs() << "Error emitting bitcode to file '" << CurrentFilepath << "'!\n";
+    errs() << "Error emitting bitcode to file '" << CurrentFilepath
+           << "': " << Out.os().error().message();
     exit(1);
   }
 
   // Current Chunks aren't interesting
   return Test.run(CurrentFilepath);
-}
-
-/// Counts the amount of lines for a given file
-static int getLines(StringRef Filepath) {
-  int Lines = 0;
-  std::string CurrLine;
-  std::ifstream FileStream{std::string(Filepath)};
-
-  while (std::getline(FileStream, CurrLine))
-    ++Lines;
-
-  return Lines;
 }
 
 /// Splits Chunks in half and prints them.
@@ -122,22 +104,22 @@ static bool increaseGranularity(std::vector<Chunk> &Chunks) {
   if (Verbose)
     errs() << "Increasing granularity...";
   std::vector<Chunk> NewChunks;
-  bool SplitOne = false;
+  bool SplitAny = false;
 
-  for (auto &C : Chunks) {
+  for (Chunk C : Chunks) {
     if (C.End - C.Begin == 0)
       NewChunks.push_back(C);
     else {
       int Half = (C.Begin + C.End) / 2;
       NewChunks.push_back({C.Begin, Half});
       NewChunks.push_back({Half + 1, C.End});
-      SplitOne = true;
+      SplitAny = true;
     }
   }
-  if (SplitOne) {
+  if (SplitAny) {
     Chunks = NewChunks;
     if (Verbose) {
-      errs() << "Success! New Chunks:\n";
+      errs() << "Success! " << NewChunks.size() << " New Chunks:\n";
       for (auto C : Chunks) {
         errs() << '\t';
         C.print();
@@ -145,7 +127,7 @@ static bool increaseGranularity(std::vector<Chunk> &Chunks) {
       }
     }
   }
-  return SplitOne;
+  return SplitAny;
 }
 
 // Check if \p ChunkToCheckForUninterestingness is interesting. Returns the
@@ -154,7 +136,7 @@ static std::unique_ptr<ReducerWorkItem>
 CheckChunk(Chunk &ChunkToCheckForUninterestingness,
            std::unique_ptr<ReducerWorkItem> Clone, TestRunner &Test,
            ReductionFunc ExtractChunksFromModule,
-           std::set<Chunk> &UninterestingChunks,
+           DenseSet<Chunk> &UninterestingChunks,
            std::vector<Chunk> &ChunksStillConsideredInteresting) {
   // Take all of ChunksStillConsideredInteresting chunks, except those we've
   // already deemed uninteresting (UninterestingChunks) but didn't remove
@@ -165,8 +147,8 @@ CheckChunk(Chunk &ChunkToCheckForUninterestingness,
                         UninterestingChunks.size() - 1);
   copy_if(ChunksStillConsideredInteresting, std::back_inserter(CurrentChunks),
           [&](const Chunk &C) {
-            return !UninterestingChunks.count(C) &&
-                   C != ChunkToCheckForUninterestingness;
+            return C != ChunkToCheckForUninterestingness &&
+                   !UninterestingChunks.count(C);
           });
 
   // Generate Module with only Targets inside Current Chunks
@@ -195,8 +177,7 @@ CheckChunk(Chunk &ChunkToCheckForUninterestingness,
     errs() << "\n";
   }
 
-  SmallString<128> CurrentFilepath;
-  if (!isReduced(*Clone, Test, CurrentFilepath)) {
+  if (!isReduced(*Clone, Test)) {
     // Program became non-reduced, so this chunk appears to be interesting.
     if (Verbose)
       errs() << "\n";
@@ -207,13 +188,12 @@ CheckChunk(Chunk &ChunkToCheckForUninterestingness,
 
 static SmallString<0> ProcessChunkFromSerializedBitcode(
     Chunk &ChunkToCheckForUninterestingness, TestRunner &Test,
-    ReductionFunc ExtractChunksFromModule, std::set<Chunk> &UninterestingChunks,
+    ReductionFunc ExtractChunksFromModule, DenseSet<Chunk> &UninterestingChunks,
     std::vector<Chunk> &ChunksStillConsideredInteresting,
     SmallString<0> &OriginalBC, std::atomic<bool> &AnyReduced) {
   LLVMContext Ctx;
   auto CloneMMM = std::make_unique<ReducerWorkItem>();
-  auto Data = MemoryBufferRef(StringRef(OriginalBC.data(), OriginalBC.size()),
-                              "<bc file>");
+  MemoryBufferRef Data(StringRef(OriginalBC), "<bc file>");
   readBitcode(*CloneMMM, Data, Ctx, Test.getToolName());
 
   SmallString<0> Result;
@@ -239,12 +219,6 @@ void llvm::runDeltaPass(TestRunner &Test, ReductionFunc ExtractChunksFromModule,
          "input module is broken before making changes");
   errs() << "*** " << Message << "...\n";
 
-  SmallString<128> CurrentFilepath;
-  if (!isReduced(Test.getProgram(), Test, CurrentFilepath)) {
-    errs() << "\nInput isn't interesting! Verify interesting-ness test\n";
-    exit(1);
-  }
-
   int Targets;
   {
     // Count the number of chunks by counting the number of calls to
@@ -257,7 +231,7 @@ void llvm::runDeltaPass(TestRunner &Test, ReductionFunc ExtractChunksFromModule,
 
     assert(!verifyReducerWorkItem(Test.getProgram(), &errs()) &&
            "input module is broken after counting chunks");
-    assert(isReduced(Test.getProgram(), Test, CurrentFilepath) &&
+    assert(isReduced(Test.getProgram(), Test) &&
            "input module no longer interesting after counting chunks");
 
 #ifndef NDEBUG
@@ -295,7 +269,7 @@ void llvm::runDeltaPass(TestRunner &Test, ReductionFunc ExtractChunksFromModule,
   do {
     FoundAtLeastOneNewUninterestingChunkWithCurrentGranularity = false;
 
-    std::set<Chunk> UninterestingChunks;
+    DenseSet<Chunk> UninterestingChunks;
 
     // When running with more than one thread, serialize the original bitcode
     // to OriginalBC.
@@ -370,8 +344,7 @@ void llvm::runDeltaPass(TestRunner &Test, ReductionFunc ExtractChunksFromModule,
           }
 
           Result = std::make_unique<ReducerWorkItem>();
-          auto Data = MemoryBufferRef(StringRef(Res.data(), Res.size()),
-                                      "<bc file>");
+          MemoryBufferRef Data(StringRef(Res), "<bc file>");
           readBitcode(*Result, Data, Test.getProgram().M->getContext(),
                       Test.getToolName());
           break;
@@ -393,10 +366,9 @@ void llvm::runDeltaPass(TestRunner &Test, ReductionFunc ExtractChunksFromModule,
       FoundAtLeastOneNewUninterestingChunkWithCurrentGranularity = true;
       UninterestingChunks.insert(ChunkToCheckForUninterestingness);
       ReducedProgram = std::move(Result);
-      if (Verbose)
-        errs() << " **** SUCCESS | lines: " << getLines(CurrentFilepath)
-               << "\n";
-      writeOutput(*ReducedProgram, "Saved new best reduction to ");
+
+      // FIXME: Report meaningful progress info
+      Test.writeOutput(" **** SUCCESS | Saved new best reduction to ");
     }
     // Delete uninteresting chunks
     erase_if(ChunksStillConsideredInteresting,

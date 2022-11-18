@@ -2,59 +2,85 @@
 //
 // Test __sanitizer_annotate_contiguous_container.
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 #include <assert.h>
 #include <sanitizer/asan_interface.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-void TestContainer(size_t capacity) {
-  char *beg = new char[capacity];
+static constexpr size_t kGranularity = 8;
+
+template <class T> static constexpr T RoundDown(T x) {
+  return reinterpret_cast<T>(reinterpret_cast<uintptr_t>(x) &
+                             ~(kGranularity - 1));
+}
+
+void TestContainer(size_t capacity, size_t off_begin, size_t off_end,
+                   bool poison_buffer) {
+  char *buffer = new char[capacity + off_begin + off_end];
+  char *buffer_end = buffer + capacity + off_begin + off_end;
+  if (poison_buffer)
+    __asan_poison_memory_region(buffer, buffer_end - buffer);
+  else
+    __asan_unpoison_memory_region(buffer, buffer_end - buffer);
+  char *beg = buffer + off_begin;
   char *end = beg + capacity;
-  char *mid = beg + capacity;
+  char *mid = poison_buffer ? beg : beg + capacity;
   char *old_mid = 0;
+  // If after the container, there is another object, last granule
+  // cannot be poisoned.
+  char *cannot_poison = (off_end == 0) ? end : RoundDown(end);
 
-  for (int i = 0; i < 10000; i++) {
+  for (int i = 0; i < 1000; i++) {
     size_t size = rand() % (capacity + 1);
     assert(size <= capacity);
     old_mid = mid;
     mid = beg + size;
     __sanitizer_annotate_contiguous_container(beg, end, old_mid, mid);
 
+    // If off buffer before the container was poisoned and we had to
+    // unpoison it, we won't poison it again as we don't have information,
+    // if it was poisoned.
+    if (!poison_buffer)
+      for (size_t idx = 0; idx < off_begin; idx++)
+        assert(!__asan_address_is_poisoned(buffer + idx));
     for (size_t idx = 0; idx < size; idx++)
-        assert(!__asan_address_is_poisoned(beg + idx));
-    for (size_t idx = size; idx < capacity; idx++)
-        assert(__asan_address_is_poisoned(beg + idx));
+      assert(!__asan_address_is_poisoned(beg + idx));
+    for (size_t idx = size; beg + idx < cannot_poison; idx++)
+      assert(__asan_address_is_poisoned(beg + idx));
+    for (size_t idx = 0; idx < off_end; idx++)
+      assert(__asan_address_is_poisoned(end + idx) == poison_buffer);
+
     assert(__sanitizer_verify_contiguous_container(beg, mid, end));
     assert(NULL ==
            __sanitizer_contiguous_container_find_bad_address(beg, mid, end));
-    if (mid != beg) {
-      assert(!__sanitizer_verify_contiguous_container(beg, mid - 1, end));
-      assert(mid - 1 == __sanitizer_contiguous_container_find_bad_address(
-                            beg, mid - 1, end));
+    size_t distance = (off_end > 0) ? kGranularity + 1 : 1;
+    if (mid >= beg + distance) {
+      assert(
+          !__sanitizer_verify_contiguous_container(beg, mid - distance, end));
+      assert(mid - distance ==
+             __sanitizer_contiguous_container_find_bad_address(
+                 beg, mid - distance, end));
     }
-    if (mid != end) {
-      assert(!__sanitizer_verify_contiguous_container(beg, mid + 1, end));
+
+    if (mid + distance <= end) {
+      assert(
+          !__sanitizer_verify_contiguous_container(beg, mid + distance, end));
       assert(mid == __sanitizer_contiguous_container_find_bad_address(
-                        beg, mid + 1, end));
+                        beg, mid + distance, end));
     }
   }
 
-  // Don't forget to unpoison the whole thing before destroying/reallocating.
-  __sanitizer_annotate_contiguous_container(beg, end, mid, end);
-  for (size_t idx = 0; idx < capacity; idx++)
-    assert(!__asan_address_is_poisoned(beg + idx));
-  delete[] beg;
+  __asan_unpoison_memory_region(buffer, buffer_end - buffer);
+  delete[] buffer;
 }
 
-__attribute__((noinline))
-void Throw() { throw 1; }
+__attribute__((noinline)) void Throw() { throw 1; }
 
-__attribute__((noinline))
-void ThrowAndCatch() {
+__attribute__((noinline)) void ThrowAndCatch() {
   try {
     Throw();
-  } catch(...) {
+  } catch (...) {
   }
 }
 
@@ -72,8 +98,11 @@ void TestThrow() {
 }
 
 int main(int argc, char **argv) {
-  int n = argc == 1 ? 128 : atoi(argv[1]);
+  int n = argc == 1 ? 64 : atoi(argv[1]);
   for (int i = 0; i <= n; i++)
-    TestContainer(i);
+    for (int j = 0; j < 8; j++)
+      for (int k = 0; k < 8; k++)
+        for (int poison = 0; poison < 2; ++poison)
+          TestContainer(i, j, k, poison);
   TestThrow();
 }
