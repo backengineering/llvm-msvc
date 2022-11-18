@@ -714,14 +714,14 @@ bool Sema::UnifySection(StringRef SectionName, int SectionFlags,
       ((SectionFlags & ASTContext::PSF_Implicit) &&
        !(Section.SectionFlags & ASTContext::PSF_Implicit)))
     return false;
-  Diag(Decl->getLocation(), diag::err_section_conflict) << Decl << Section;
-  if (Section.Decl)
-    Diag(Section.Decl->getLocation(), diag::note_declared_at)
-        << Section.Decl->getName();
-  if (PragmaLocation.isValid())
-    Diag(PragmaLocation, diag::note_pragma_entered_here);
-  if (Section.PragmaSectionLocation.isValid())
-    Diag(Section.PragmaSectionLocation, diag::note_pragma_entered_here);
+  // Diag(Decl->getLocation(), diag::err_section_conflict) << Decl << Section;
+  // if (Section.Decl)
+  //   Diag(Section.Decl->getLocation(), diag::note_declared_at)
+  //       << Section.Decl->getName();
+  // if (PragmaLocation.isValid())
+  //   Diag(PragmaLocation, diag::note_pragma_entered_here);
+  // if (Section.PragmaSectionLocation.isValid())
+  //   Diag(Section.PragmaSectionLocation, diag::note_pragma_entered_here);
   return true;
 }
 
