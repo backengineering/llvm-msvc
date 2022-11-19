@@ -30,7 +30,7 @@ jobs:
         $Env:CC = "clang-cl"
         $Env:CXX = "clang-cl"
         git clone --branch dev --depth 1 https://github.com/NewWorldComingSoon/llvm-msvc
-        cmake -Bbuild -GNinja -DCMAKE_SYSTEM_VERSION=10.0.19041.0 -DLLVM_ENABLE_ZLIB=OFF -DLLVM_USE_STATIC_ZSTD=true -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_USE_CRT_RELEASE=MT -DCMAKE_BUILD_TYPE=Release -DCPACK_GENERATOR=ZIP "-DCMAKE_INSTALL_PREFIX=$pwd\\prefix" -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" -DLLVM_ENABLE_PROJECTS="clang;lld" llvm-msvc\\llvm
+        cmake -Bbuild -GNinja -DCMAKE_SYSTEM_VERSION=10.0.19041.0 -DLLVM_ENABLE_ZLIB=OFF -DLLVM_USE_STATIC_ZSTD=TRUE -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_USE_CRT_RELEASE=MT -DCMAKE_BUILD_TYPE=Release -DCPACK_GENERATOR=ZIP "-DCMAKE_INSTALL_PREFIX=$pwd\\prefix" -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" -DLLVM_ENABLE_PROJECTS="clang;lld" llvm-msvc\\llvm
         cmake --build build
 
     - name: Package llvm
