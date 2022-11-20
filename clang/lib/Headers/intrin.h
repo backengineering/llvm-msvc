@@ -448,6 +448,14 @@ unsigned char _InterlockedCompareExchange128_rel(__int64 volatile *_Destination,
 |* movs, stos
 \*----------------------------------------------------------------------------*/
 #if defined(__i386__) || defined(__x86_64__)
+static __inline__ void __DEFAULT_FN_ATTRS __stosb(unsigned char *__dst,
+                                                  unsigned char __src,
+                                                  size_t __n) {
+    __asm__ __volatile__("rep stosb"
+                         : "+D"(__dst), "+c"(__n)
+                         : "a"(__src)
+                         : "memory");
+}
 static __inline__ void __DEFAULT_FN_ATTRS __movsb(unsigned char *__dst,
                                                   unsigned char const *__src,
                                                   size_t __n) {
