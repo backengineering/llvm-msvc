@@ -10,32 +10,30 @@ jobs:
   build:
      # Skip building pull requests from the same repository
     if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
-    name: Build llvm-msvc 
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2019]
+    env:
+      BUILD_TYPE: Release
     steps:
-    - name: Install dependency
-      uses: crazy-max/ghaction-chocolatey@v1
-      with:
-        args: install cmake ninja vswhere
 
-    - uses: GuillaumeFalourd/setup-windows10-sdk-action@v1
-      with:
-        sdk-version: 19041
-
+    - name: Install ninja-build tool
+      uses: seanmiddleditch/gha-setup-ninja@v3
+    
+    - name: Enable Developer Command Prompt
+      uses: ilammy/msvc-dev-cmd@v1.7.0
+      
     - name: Build llvm
       run: |
-        $vsPath = (vswhere -latest -property installationPath)
-        Import-Module (Join-Path $vsPath "Common7\Tools\Microsoft.VisualStudio.DevShell.dll")
-        Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64 -winsdk=10.0.19041.0"
-        $Env:CC = "clang-cl"
-        $Env:CXX = "clang-cl"
-        git clone --branch dev --depth 1 https://github.com/NewWorldComingSoon/llvm-msvc
-        cmake -Bbuild -GNinja -DCMAKE_SYSTEM_VERSION=10.0.19041.0 -DLLVM_USE_CRT_RELEASE=MT -DCMAKE_BUILD_TYPE=Release -DCPACK_GENERATOR=ZIP "-DCMAKE_INSTALL_PREFIX=$pwd\\prefix" -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" -DLLVM_ENABLE_PROJECTS="clang;lld" llvm-msvc\\llvm
-        cmake --build build
+       git clone --branch dev --depth 1 https://github.com/NewWorldComingSoon/llvm-msvc
+        cmake -Bbuild -DHAVE_STD_IS_TRIVIALLY_COPYABLE=0 -DLLVM_TOOL_LLVM_SHLIB_BUILD=off -DLLVM_ENABLE_LIBXML2=ON -DLLVM_USE_CRT_RELEASE=MT -DCMAKE_BUILD_TYPE=Release -DCMAKE_CONFIGURATION_TYPES="Release" -DCPACK_GENERATOR=ZIP "-DCMAKE_INSTALL_PREFIX=$pwd\\prefix" -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" -DLLVM_ENABLE_PROJECTS="clang;lld" llvm-msvc\\llvm
+        cmake --build build --config Release
 
     - name: Package llvm
       run: |
-        cmake --build build --target package
+        cmake --build build --target package --config Release
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
@@ -52,7 +50,7 @@ jobs:
     - name: Compress artifacts
       uses: vimtor/action-zip@v1
       with:
-        files: build/llvm-msvc.zip
+        files: build/*.zip
         dest: ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip
 
     - name: Release
