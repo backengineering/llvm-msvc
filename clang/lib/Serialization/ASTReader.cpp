@@ -9955,6 +9955,9 @@ OMPClause *OMPClauseReader::readClause() {
   case llvm::omp::OMPC_severity:
     C = new (Context) OMPSeverityClause();
     break;
+  case llvm::omp::OMPC_message:
+    C = new (Context) OMPMessageClause();
+    break;
   case llvm::omp::OMPC_private:
     C = OMPPrivateClause::CreateEmpty(Context, Record.readInt());
     break;
@@ -10367,6 +10370,11 @@ void OMPClauseReader::VisitOMPSeverityClause(OMPSeverityClause *C) {
   C->setSeverityKind(static_cast<OpenMPSeverityClauseKind>(Record.readInt()));
   C->setLParenLoc(Record.readSourceLocation());
   C->setSeverityKindKwLoc(Record.readSourceLocation());
+}
+
+void OMPClauseReader::VisitOMPMessageClause(OMPMessageClause *C) {
+  C->setMessageString(Record.readSubExpr());
+  C->setLParenLoc(Record.readSourceLocation());
 }
 
 void OMPClauseReader::VisitOMPPrivateClause(OMPPrivateClause *C) {
@@ -10792,7 +10800,9 @@ void OMPClauseReader::VisitOMPGrainsizeClause(OMPGrainsizeClause *C) {
 
 void OMPClauseReader::VisitOMPNumTasksClause(OMPNumTasksClause *C) {
   VisitOMPClauseWithPreInit(C);
+  C->setModifier(Record.readEnum<OpenMPNumTasksClauseModifier>());
   C->setNumTasks(Record.readSubExpr());
+  C->setModifierLoc(Record.readSourceLocation());
   C->setLParenLoc(Record.readSourceLocation());
 }
 
