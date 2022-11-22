@@ -46,18 +46,21 @@ jobs:
       uses: ASzc/change-string-case-action@v1
       with:
         string: ${{ runner.os }}
-        
-    - name: Compress artifacts
-      uses: vimtor/action-zip@v1
-      with:
-        files: build/*.zip
-        dest: ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip
-
-    - name: Release
-      uses: softprops/action-gh-release@v1
-      if: ${{ startsWith(github.ref, 'refs/tags/') }}
-      with:
-        files: ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip
+    
+    - name: archive
+      if: |
+        github.event.release
+      run:
+        7z a build.zip build
+    
+    - name: publish
+      if: |
+        github.event.release
+      uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: build.zip
+        asset_name: ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip
+        asset_content_type: application/zip
