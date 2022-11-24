@@ -977,7 +977,7 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
   }
 
   // Function alignments.
-  const Align FunctionAlignment(Subtarget.hasStdExtC() ? 2 : 4);
+  const Align FunctionAlignment(Subtarget.hasStdExtCOrZca() ? 2 : 4);
   setMinFunctionAlignment(FunctionAlignment);
   setPrefFunctionAlignment(FunctionAlignment);
 
@@ -5496,8 +5496,7 @@ SDValue RISCVTargetLowering::LowerINTRINSIC_W_CHAIN(SDValue Op,
 
     // TODO: We restrict this to unmasked loads currently in consideration of
     // the complexity of hanlding all falses masks.
-    if (IsUnmasked && isNullConstant(Stride) &&
-        !Subtarget.hasOptimizedZeroStrideLoad()) {
+    if (IsUnmasked && isNullConstant(Stride)) {
       MVT ScalarVT = ContainerVT.getVectorElementType();
       SDValue ScalarLoad =
           DAG.getExtLoad(ISD::ZEXTLOAD, DL, XLenVT, Load->getChain(), Ptr,

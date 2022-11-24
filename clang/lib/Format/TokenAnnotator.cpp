@@ -2837,7 +2837,7 @@ static bool isFunctionDeclarationName(bool IsCpp, const FormatToken &Current,
     if (!Current.is(TT_StartOfName) || Current.NestingLevel != 0)
       return false;
     for (; Next; Next = Next->Next) {
-      if (Next->is(TT_TemplateOpener)) {
+      if (Next->is(TT_TemplateOpener) && Next->MatchingParen) {
         Next = Next->MatchingParen;
       } else if (Next->is(tok::coloncolon)) {
         Next = Next->Next;
@@ -2851,6 +2851,8 @@ static bool isFunctionDeclarationName(bool IsCpp, const FormatToken &Current,
           return false;
       } else if (isCppAttribute(IsCpp, *Next)) {
         Next = Next->MatchingParen;
+        if (!Next)
+          return false;
       } else if (Next->is(tok::l_paren)) {
         break;
       } else {

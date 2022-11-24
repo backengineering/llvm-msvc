@@ -181,6 +181,9 @@ code bases.
   ``$prefix/lib/clang/$CLANG_MAJOR_VERSION`` and can be queried using
   ``clang -print-resource-dir``, just like before.
 
+- To match GCC, ``__ppc64__`` is no longer defined on PowerPC64 targets. Use
+  ``__powerpc64__`` instead.
+
 What's New in Clang |release|?
 ==============================
 Some of the major new features and improvements to Clang are listed
@@ -298,6 +301,9 @@ Bug Fixes
   and Clang 15 accidentally stopped predeclaring those functions in that
   language mode. Clang 16 now predeclares those functions again. This fixes
   `Issue 56607 <https://github.com/llvm/llvm-project/issues/56607>`_.
+- GNU attributes being applied prior to standard attributes would be handled
+  improperly, which was corrected to match the behaviour exhibited by GCC.
+  `Issue 58229 <https://github.com/llvm/llvm-project/issues/58229>`_
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
