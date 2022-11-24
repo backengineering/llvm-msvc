@@ -930,7 +930,7 @@ MacroArgs *Preprocessor::ReadMacroCallArgumentList(Token &MacroName,
   if (!isVariadic && NumActuals > MinArgsExpected &&
       !ContainsCodeCompletionTok) {
     if (getLangOpts().MSVCCompat) {
-	  // [MSVC Compatibility]
+      // [MSVC Compatibility]
       // MSVC discards redundant args and warns about it.
       Diag(TooManyArgsLoc, diag::ext_too_many_args_in_macro_invoc_msvc)
           << MacroName.getIdentifierInfo();
