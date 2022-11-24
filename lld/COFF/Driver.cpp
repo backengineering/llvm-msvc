@@ -465,8 +465,14 @@ StringRef LinkerDriver::doFindFile(StringRef filename) {
   };
 
   bool hasPathSep = (filename.find_first_of("/\\") != StringRef::npos);
-  if (hasPathSep)
-    return getFilename(filename);
+  if (hasPathSep) {
+    if (sys::fs::exists(filename.str())) {
+      // [MSVC Compatibility]
+      // If the file is not found, the search should continue
+      return getFilename(filename);
+    }
+  }
+
   bool hasExt = filename.contains('.');
   for (StringRef dir : searchPaths) {
     SmallString<128> path = dir;
