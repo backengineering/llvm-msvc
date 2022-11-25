@@ -48,19 +48,15 @@ jobs:
         string: ${{ runner.os }}
     
     - name: archive
-      if: |
-        github.event.release
       run:
-        7z a build.zip build
+        7z a ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip build
     
-    - name: publish
-      if: |
-        github.event.release
-      uses: actions/upload-release-asset@v1
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: ${{ startsWith(github.ref, 'refs/tags/') }}
+      with:
+        prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-pre') }}
+        files: ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: build.zip
-        asset_name: ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip
-        asset_content_type: application/zip
+        
