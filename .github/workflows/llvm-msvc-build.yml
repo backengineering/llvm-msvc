@@ -21,9 +21,6 @@ jobs:
 
     - name: Install ninja-build tool
       uses: seanmiddleditch/gha-setup-ninja@v3
-    
-    - name: Enable Developer Command Prompt
-      uses: ilammy/msvc-dev-cmd@v1.7.0
       
     - name: Build llvm
       run: |
