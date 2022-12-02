@@ -82,9 +82,12 @@ bool llvm::canSimplifyInvokeNoUnwind(const Function *F) {
   // implies that the function does not throw synchronous exceptions.
  
   // Cannot simplify CXX Personality under AsynchEH
-  const llvm::Module *M = (const llvm::Module *)F->getParent();
-  bool EHa = M->getModuleFlag("eh-asynch");
-  return !EHa && !isAsynchronousEHPersonality(Personality);
+  // const llvm::Module *M = (const llvm::Module *)F->getParent();
+  // bool EHa = M->getModuleFlag("eh-asynch");
+  // return !EHa && !isAsynchronousEHPersonality(Personality);
+
+  // Never simplify CXX Personality
+  return false;
 }
 
 DenseMap<BasicBlock *, ColorVector> llvm::colorEHFunclets(Function &F) {
