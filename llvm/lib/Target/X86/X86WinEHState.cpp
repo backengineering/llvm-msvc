@@ -622,7 +622,7 @@ bool WinEHStatePass::isStateStoreNeeded(EHPersonality Personality,
   // // If the function throws, it needs a state store.
   // return !Call.doesNotThrow();
   
-  // Always needed
+  // [SEH] Always needed
   return true;
 }
 
