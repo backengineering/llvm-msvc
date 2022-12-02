@@ -236,6 +236,7 @@ void llvm::calculateCXXStateForAsynchEH(const BasicBlock *BB, int State,
     WI = WorkList.pop_back_val();
     const BasicBlock *BB = WI->Block;
     int State = WI->State;
+    delete WI;
     if (EHInfo.BlockToStateMap.count(BB) && EHInfo.BlockToStateMap[BB] <= State)
       continue; // skip blocks already visited by lower State
 
@@ -296,6 +297,7 @@ void llvm::calculateSEHStateForAsynchEH(const BasicBlock *BB, int State,
     WI = WorkList.pop_back_val();
     const BasicBlock *BB = WI->Block;
     int State = WI->State;
+    delete WI;
     if (EHInfo.BlockToStateMap.count(BB) && EHInfo.BlockToStateMap[BB] <= State)
       continue; // skip blocks already visited by lower State
 

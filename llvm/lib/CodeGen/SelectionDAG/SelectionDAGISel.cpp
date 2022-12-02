@@ -1293,15 +1293,15 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
     int State = EHInfo->BlockToStateMap[BB];
     if (BB->getFirstMayFaultInst()) {
       // Report IP range only for blocks with Faulty inst
-      MCSymbol *BeginLabel = MMI.getContext().createTempSymbol();
-      MCSymbol *EndLabel = MMI.getContext().createTempSymbol();
-      EHInfo->addIPToStateRange(State, BeginLabel, EndLabel);
-
-      // Insert EH Labels
       auto MBBb = MBB->getFirstNonPHI();
       MachineInstr *MIb = &*MBBb;
       if (MIb->isTerminator())
         continue;
+
+      // Insert EH Labels
+      MCSymbol *BeginLabel = MMI.getContext().createTempSymbol();
+      MCSymbol *EndLabel = MMI.getContext().createTempSymbol();
+      EHInfo->addIPToStateRange(State, BeginLabel, EndLabel);
       BuildMI(*MBB, MBBb, SDB->getCurDebugLoc(),
               TII->get(TargetOpcode::EH_LABEL))
           .addSym(BeginLabel);
