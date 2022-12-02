@@ -14,6 +14,7 @@
 #include "flang/Lower/Allocatable.h"
 #include "flang/Lower/CallInterface.h"
 #include "flang/Lower/Coarray.h"
+#include "flang/Lower/ConvertCall.h"
 #include "flang/Lower/ConvertExpr.h"
 #include "flang/Lower/ConvertExprToHLFIR.h"
 #include "flang/Lower/ConvertType.h"
@@ -1097,10 +1098,22 @@ private:
     Fortran::lower::pft::Evaluation &eval = getEval();
     setCurrentPosition(stmt.v.source);
     assert(stmt.typedCall && "Call was not analyzed");
-    // Call statement lowering shares code with function call lowering.
-    mlir::Value res = Fortran::lower::createSubroutineCall(
-        *this, *stmt.typedCall, explicitIterSpace, implicitIterSpace,
-        localSymbols, stmtCtx, /*isUserDefAssignment=*/false);
+    mlir::Value res{};
+    if (bridge.getLoweringOptions().getLowerToHighLevelFIR()) {
+      llvm::Optional<mlir::Type> resultType = llvm::None;
+      if (stmt.typedCall->hasAlternateReturns())
+        resultType = builder->getIndexType();
+      auto hlfirRes = Fortran::lower::convertCallToHLFIR(
+          toLocation(), *this, *stmt.typedCall, resultType, localSymbols,
+          stmtCtx);
+      if (hlfirRes)
+        res = *hlfirRes;
+    } else {
+      // Call statement lowering shares code with function call lowering.
+      res = Fortran::lower::createSubroutineCall(
+          *this, *stmt.typedCall, explicitIterSpace, implicitIterSpace,
+          localSymbols, stmtCtx, /*isUserDefAssignment=*/false);
+    }
     if (!res)
       return; // "Normal" subroutine call.
     // Call with alternate return specifiers.
@@ -2223,11 +2236,6 @@ private:
               int kind =
                   Fortran::evaluate::ToInt64(intrinsic->kind()).value_or(kind);
               llvm::SmallVector<Fortran::lower::LenParameterTy> params;
-              if (intrinsic->category() ==
-                      Fortran::common::TypeCategory::Character ||
-                  intrinsic->category() ==
-                      Fortran::common::TypeCategory::Derived)
-                TODO(loc, "typeSpec with length parameters");
               ty = genType(intrinsic->category(), kind, params);
             } else {
               const Fortran::semantics::DerivedTypeSpec *derived =
@@ -2291,12 +2299,24 @@ private:
             exactValue = builder->create<fir::BoxAddrOp>(
                 loc, fir::ReferenceType::get(attr.getType()),
                 fir::getBase(selector));
+            const Fortran::semantics::IntrinsicTypeSpec *intrinsic =
+                typeSpec->declTypeSpec->AsIntrinsic();
+            if (intrinsic->category() ==
+                Fortran::common::TypeCategory::Character) {
+              auto charTy = attr.getType().dyn_cast<fir::CharacterType>();
+              mlir::Value charLen =
+                  fir::factory::CharacterExprHelper(*builder, loc)
+                      .readLengthFromBox(fir::getBase(selector), charTy);
+              addAssocEntitySymbol(fir::CharBoxValue(exactValue, charLen));
+            } else {
+              addAssocEntitySymbol(exactValue);
+            }
           } else if (std::holds_alternative<Fortran::parser::DerivedTypeSpec>(
                          typeSpec->u)) {
             exactValue = builder->create<fir::ConvertOp>(
                 loc, fir::BoxType::get(attr.getType()), fir::getBase(selector));
+            addAssocEntitySymbol(exactValue);
           }
-          addAssocEntitySymbol(exactValue);
         } else if (std::holds_alternative<Fortran::parser::DerivedTypeSpec>(
                        guard.u)) {
           // CLASS IS
@@ -2710,21 +2730,19 @@ private:
             [&](const Fortran::evaluate::Assignment::BoundsSpec &lbExprs) {
               if (Fortran::evaluate::IsProcedure(assign.rhs))
                 TODO(loc, "procedure pointer assignment");
+
               std::optional<Fortran::evaluate::DynamicType> lhsType =
                   assign.lhs.GetType();
-              std::optional<Fortran::evaluate::DynamicType> rhsType =
-                  assign.rhs.GetType();
-              // Polymorphic lhs/rhs may need more care. See F2018 10.2.2.3.
-              // If the pointer object is not polymorphic (7.3.2.3) and the
-              // pointer target is polymorphic with dynamic type that differs
-              // from its declared type, the assignment target is the ancestor
-              // component of the pointer target that has the type of the
-              // pointer object. Otherwise, the assignment target is the pointer
-              // target.
-              if ((lhsType && !lhsType->IsPolymorphic()) &&
-                  (rhsType && rhsType->IsPolymorphic()))
-                TODO(loc, "non-polymorphic pointer assignment with polymorphic "
-                          "entity on rhs");
+              // Delegate pointer association to unlimited polymorphic pointer
+              // to the runtime. element size, type code, attribute and of
+              // course base_addr might need to be updated.
+              if (lhsType && lhsType->IsUnlimitedPolymorphic()) {
+                mlir::Value lhs = genExprMutableBox(loc, assign.lhs).getAddr();
+                mlir::Value rhs =
+                    fir::getBase(genExprBox(loc, assign.rhs, stmtCtx));
+                Fortran::lower::genPointerAssociate(*builder, loc, lhs, rhs);
+                return;
+              }
 
               llvm::SmallVector<mlir::Value> lbounds;
               for (const Fortran::evaluate::ExtentExpr &lbExpr : lbExprs)

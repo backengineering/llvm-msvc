@@ -2335,11 +2335,16 @@ static void buildScalarSteps(Value *ScalarIV, Value *Step,
                              const InductionDescriptor &ID, VPValue *Def,
                              VPTransformState &State) {
   IRBuilderBase &Builder = State.Builder;
-  // We shouldn't have to build scalar steps if we aren't vectorizing.
-  // Get the value type and ensure it and the step have the same integer type.
+
+  // Ensure step has the same type as that of scalar IV.
   Type *ScalarIVTy = ScalarIV->getType()->getScalarType();
-  assert(ScalarIVTy == Step->getType() &&
-         "Val and Step should have the same type");
+  if (ScalarIVTy != Step->getType()) {
+    // TODO: Also use VPDerivedIVRecipe when only the step needs truncating, to
+    // avoid separate truncate here.
+    assert(Step->getType()->isIntegerTy() &&
+           "Truncation requires an integer step");
+    Step = State.Builder.CreateTrunc(Step, ScalarIVTy);
+  }
 
   // We build scalar steps for both integer and floating-point induction
   // variables. Here, we determine the kind of arithmetic we will perform.
@@ -2428,8 +2433,14 @@ static Value *CreateStepValue(const SCEV *Step, ScalarEvolution &SE,
 static Value *emitTransformedIndex(IRBuilderBase &B, Value *Index,
                                    Value *StartValue, Value *Step,
                                    const InductionDescriptor &ID) {
-  assert(Index->getType()->getScalarType() == Step->getType() &&
-         "Index scalar type does not match StepValue type");
+  Type *StepTy = Step->getType();
+  Value *CastedIndex = StepTy->isIntegerTy()
+                           ? B.CreateSExtOrTrunc(Index, StepTy)
+                           : B.CreateCast(Instruction::SIToFP, Index, StepTy);
+  if (CastedIndex != Index) {
+    CastedIndex->setName(CastedIndex->getName() + ".cast");
+    Index = CastedIndex;
+  }
 
   // Note: the IR at this point is broken. We cannot use SE to create any new
   // SCEV and then expand it, hoping that SCEV's simplification will give us
@@ -2695,6 +2706,7 @@ void InnerLoopVectorizer::vectorizeInterleaveGroup(
   for (unsigned Part = 0; Part < UF; Part++) {
     // Collect the stored vector from each member.
     SmallVector<Value *, 4> StoredVecs;
+    unsigned StoredIdx = 0;
     for (unsigned i = 0; i < InterleaveFactor; i++) {
       assert((Group->getMember(i) || MaskForGaps) &&
              "Fail to get a member from an interleaved store group");
@@ -2707,7 +2719,8 @@ void InnerLoopVectorizer::vectorizeInterleaveGroup(
         continue;
       }
 
-      Value *StoredVec = State.get(StoredValues[i], Part);
+      Value *StoredVec = State.get(StoredValues[StoredIdx], Part);
+      ++StoredIdx;
 
       if (Group->isReverse())
         StoredVec = Builder.CreateVectorReverse(StoredVec, "reverse");
@@ -3133,25 +3146,19 @@ PHINode *InnerLoopVectorizer::createInductionResumeValue(
     if (II.getInductionBinOp() && isa<FPMathOperator>(II.getInductionBinOp()))
       B.setFastMathFlags(II.getInductionBinOp()->getFastMathFlags());
 
-    Type *StepType = II.getStep()->getType();
-    Instruction::CastOps CastOp =
-        CastInst::getCastOpcode(VectorTripCount, true, StepType, true);
-    Value *VTC = B.CreateCast(CastOp, VectorTripCount, StepType, "cast.vtc");
     Value *Step =
         CreateStepValue(II.getStep(), *PSE.getSE(), &*B.GetInsertPoint());
-    EndValue = emitTransformedIndex(B, VTC, II.getStartValue(), Step, II);
+    EndValue =
+        emitTransformedIndex(B, VectorTripCount, II.getStartValue(), Step, II);
     EndValue->setName("ind.end");
 
     // Compute the end value for the additional bypass (if applicable).
     if (AdditionalBypass.first) {
       B.SetInsertPoint(&(*AdditionalBypass.first->getFirstInsertionPt()));
-      CastOp = CastInst::getCastOpcode(AdditionalBypass.second, true, StepType,
-                                       true);
       Value *Step =
           CreateStepValue(II.getStep(), *PSE.getSE(), &*B.GetInsertPoint());
-      VTC = B.CreateCast(CastOp, AdditionalBypass.second, StepType, "cast.vtc");
-      EndValueFromAdditionalBypass =
-          emitTransformedIndex(B, VTC, II.getStartValue(), Step, II);
+      EndValueFromAdditionalBypass = emitTransformedIndex(
+          B, AdditionalBypass.second, II.getStartValue(), Step, II);
       EndValueFromAdditionalBypass->setName("ind.end");
     }
   }
@@ -3348,17 +3355,11 @@ void InnerLoopVectorizer::fixupIVUsers(PHINode *OrigPhi,
 
       Value *CountMinusOne = B.CreateSub(
           VectorTripCount, ConstantInt::get(VectorTripCount->getType(), 1));
-      Value *CMO =
-          !II.getStep()->getType()->isIntegerTy()
-              ? B.CreateCast(Instruction::SIToFP, CountMinusOne,
-                             II.getStep()->getType())
-              : B.CreateSExtOrTrunc(CountMinusOne, II.getStep()->getType());
-      CMO->setName("cast.cmo");
-
+      CountMinusOne->setName("cmo");
       Value *Step = CreateStepValue(II.getStep(), *PSE.getSE(),
                                     VectorHeader->getTerminator());
       Value *Escape =
-          emitTransformedIndex(B, CMO, II.getStartValue(), Step, II);
+          emitTransformedIndex(B, CountMinusOne, II.getStartValue(), Step, II);
       Escape->setName("ind.escape");
       MissingVals[UI] = Escape;
     }
@@ -9529,6 +9530,32 @@ void VPWidenPointerInductionRecipe::execute(VPTransformState &State) {
   }
 }
 
+void VPDerivedIVRecipe::execute(VPTransformState &State) {
+  assert(!State.Instance && "VPDerivedIVRecipe being replicated.");
+
+  // Fast-math-flags propagate from the original induction instruction.
+  IRBuilder<>::FastMathFlagGuard FMFG(State.Builder);
+  if (IndDesc.getInductionBinOp() &&
+      isa<FPMathOperator>(IndDesc.getInductionBinOp()))
+    State.Builder.setFastMathFlags(
+        IndDesc.getInductionBinOp()->getFastMathFlags());
+
+  Value *Step = State.get(getStepValue(), VPIteration(0, 0));
+  Value *CanonicalIV = State.get(getCanonicalIV(), VPIteration(0, 0));
+  Value *DerivedIV =
+      emitTransformedIndex(State.Builder, CanonicalIV,
+                           getStartValue()->getLiveInIRValue(), Step, IndDesc);
+  DerivedIV->setName("offset.idx");
+  if (ResultTy != DerivedIV->getType()) {
+    assert(Step->getType()->isIntegerTy() &&
+           "Truncation requires an integer step");
+    DerivedIV = State.Builder.CreateTrunc(DerivedIV, ResultTy);
+  }
+  assert(DerivedIV != CanonicalIV && "IV didn't need transforming?");
+
+  State.set(this, DerivedIV, VPIteration(0, 0));
+}
+
 void VPScalarIVStepsRecipe::execute(VPTransformState &State) {
   assert(!State.Instance && "VPScalarIVStepsRecipe being replicated.");
 
@@ -9539,31 +9566,10 @@ void VPScalarIVStepsRecipe::execute(VPTransformState &State) {
     State.Builder.setFastMathFlags(
         IndDesc.getInductionBinOp()->getFastMathFlags());
 
+  Value *BaseIV = State.get(getOperand(0), VPIteration(0, 0));
   Value *Step = State.get(getStepValue(), VPIteration(0, 0));
-  auto CreateScalarIV = [&](Value *&Step) -> Value * {
-    Value *ScalarIV = State.get(getCanonicalIV(), VPIteration(0, 0));
-    auto *CanonicalIV = State.get(getParent()->getPlan()->getCanonicalIV(), 0);
-    if (!isCanonical() || CanonicalIV->getType() != Ty) {
-      ScalarIV =
-          Ty->isIntegerTy()
-              ? State.Builder.CreateSExtOrTrunc(ScalarIV, Ty)
-              : State.Builder.CreateCast(Instruction::SIToFP, ScalarIV, Ty);
-      ScalarIV = emitTransformedIndex(State.Builder, ScalarIV,
-                                      getStartValue()->getLiveInIRValue(), Step,
-                                      IndDesc);
-      ScalarIV->setName("offset.idx");
-    }
-    if (TruncToTy) {
-      assert(Step->getType()->isIntegerTy() &&
-             "Truncation requires an integer step");
-      ScalarIV = State.Builder.CreateTrunc(ScalarIV, TruncToTy);
-      Step = State.Builder.CreateTrunc(Step, TruncToTy);
-    }
-    return ScalarIV;
-  };
 
-  Value *ScalarIV = CreateScalarIV(Step);
-  buildScalarSteps(ScalarIV, Step, IndDesc, this, State);
+  buildScalarSteps(BaseIV, Step, IndDesc, this, State);
 }
 
 void VPInterleaveRecipe::execute(VPTransformState &State) {

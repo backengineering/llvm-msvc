@@ -261,8 +261,7 @@ void llvm::spliceBB(IRBuilderBase::InsertPoint IP, BasicBlock *New,
 
   // Move instructions to new block.
   BasicBlock *Old = IP.getBlock();
-  New->getInstList().splice(New->begin(), Old->getInstList(), IP.getPoint(),
-                            Old->end());
+  New->splice(New->begin(), Old, IP.getPoint(), Old->end());
 
   if (CreateBranch)
     BranchInst::Create(New, Old);
@@ -3950,6 +3949,62 @@ void OpenMPIRBuilder::createTargetDeinit(const LocationDescription &Loc,
   Builder.CreateCall(Fn, {Ident, IsSPMDVal, RequiresFullRuntimeVal});
 }
 
+void OpenMPIRBuilder::setOutlinedTargetRegionFunctionAttributes(
+    Function *OutlinedFn, int32_t NumTeams, int32_t NumThreads) {
+  if (Config.isEmbedded()) {
+    OutlinedFn->setLinkage(GlobalValue::WeakODRLinkage);
+    // TODO: Determine if DSO local can be set to true.
+    OutlinedFn->setDSOLocal(false);
+    OutlinedFn->setVisibility(GlobalValue::ProtectedVisibility);
+    if (Triple(M.getTargetTriple()).isAMDGCN())
+      OutlinedFn->setCallingConv(CallingConv::AMDGPU_KERNEL);
+  }
+
+  if (NumTeams > 0)
+    OutlinedFn->addFnAttr("omp_target_num_teams", std::to_string(NumTeams));
+  if (NumThreads > 0)
+    OutlinedFn->addFnAttr("omp_target_thread_limit",
+                          std::to_string(NumThreads));
+}
+
+Constant *OpenMPIRBuilder::createOutlinedFunctionID(Function *OutlinedFn,
+                                                    StringRef EntryFnIDName) {
+  if (Config.isEmbedded()) {
+    assert(OutlinedFn && "The outlined function must exist if embedded");
+    return ConstantExpr::getBitCast(OutlinedFn, Builder.getInt8PtrTy());
+  }
+
+  return new GlobalVariable(
+      M, Builder.getInt8Ty(), /*isConstant=*/true, GlobalValue::WeakAnyLinkage,
+      Constant::getNullValue(Builder.getInt8Ty()), EntryFnIDName);
+}
+
+Constant *OpenMPIRBuilder::createTargetRegionEntryAddr(Function *OutlinedFn,
+                                                       StringRef EntryFnName) {
+  if (OutlinedFn)
+    return OutlinedFn;
+
+  assert(!M.getGlobalVariable(EntryFnName, true) &&
+         "Named kernel already exists?");
+  return new GlobalVariable(
+      M, Builder.getInt8Ty(), /*isConstant=*/true, GlobalValue::InternalLinkage,
+      Constant::getNullValue(Builder.getInt8Ty()), EntryFnName);
+}
+
+Constant *OpenMPIRBuilder::registerTargetRegionFunction(
+    OffloadEntriesInfoManager &InfoManager, TargetRegionEntryInfo &EntryInfo,
+    Function *OutlinedFn, StringRef EntryFnName, StringRef EntryFnIDName,
+    int32_t NumTeams, int32_t NumThreads) {
+  if (OutlinedFn)
+    setOutlinedTargetRegionFunctionAttributes(OutlinedFn, NumTeams, NumThreads);
+  auto OutlinedFnID = createOutlinedFunctionID(OutlinedFn, EntryFnIDName);
+  auto EntryAddr = createTargetRegionEntryAddr(OutlinedFn, EntryFnName);
+  InfoManager.registerTargetRegionEntryInfo(
+      EntryInfo, EntryAddr, OutlinedFnID,
+      OffloadEntriesInfoManager::OMPTargetRegionEntryTargetRegion);
+  return OutlinedFnID;
+}
+
 std::string OpenMPIRBuilder::getNameWithSeparators(ArrayRef<StringRef> Parts,
                                                    StringRef FirstSeparator,
                                                    StringRef Separator) {
@@ -3961,6 +4016,12 @@ std::string OpenMPIRBuilder::getNameWithSeparators(ArrayRef<StringRef> Parts,
     Sep = Separator;
   }
   return OS.str().str();
+}
+
+std::string
+OpenMPIRBuilder::createPlatformSpecificName(ArrayRef<StringRef> Parts) const {
+  return OpenMPIRBuilder::getNameWithSeparators(Parts, Config.firstSeparator(),
+                                                Config.separator());
 }
 
 GlobalVariable *

@@ -899,9 +899,9 @@ void MipsTargetELFStreamer::finish() {
   MCSection &BSSSection = *OFI.getBSSSection();
   MCA.registerSection(BSSSection);
 
-  TextSection.setAlignment(std::max(Align(16), TextSection.getAlign()));
-  DataSection.setAlignment(std::max(Align(16), DataSection.getAlign()));
-  BSSSection.setAlignment(std::max(Align(16), BSSSection.getAlign()));
+  TextSection.ensureMinAlignment(Align(16));
+  DataSection.ensureMinAlignment(Align(16));
+  BSSSection.ensureMinAlignment(Align(16));
 
   if (RoundSectionSizes) {
     // Make sections sizes a multiple of the alignment. This is useful for
@@ -915,9 +915,9 @@ void MipsTargetELFStreamer::finish() {
       Align Alignment = Section.getAlign();
       OS.switchSection(&Section);
       if (Section.useCodeAlign())
-        OS.emitCodeAlignment(Alignment.value(), &STI, Alignment.value());
+        OS.emitCodeAlignment(Alignment, &STI, Alignment.value());
       else
-        OS.emitValueToAlignment(Alignment.value(), 0, 1, Alignment.value());
+        OS.emitValueToAlignment(Alignment, 0, 1, Alignment.value());
     }
   }
 

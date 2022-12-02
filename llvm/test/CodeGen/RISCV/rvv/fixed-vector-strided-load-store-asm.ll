@@ -847,15 +847,15 @@ define void @strided_load_startval_add_with_splat(i8* noalias nocapture %0, i8* 
 ; CHECK-NEXT:    li a3, 1024
 ; CHECK-NEXT:    beq a2, a3, .LBB13_7
 ; CHECK-NEXT:  # %bb.1:
-; CHECK-NEXT:    li a3, 1023
-; CHECK-NEXT:    subw a4, a3, a2
+; CHECK-NEXT:    li a4, 1023
+; CHECK-NEXT:    subw a4, a4, a2
 ; CHECK-NEXT:    li a5, 31
 ; CHECK-NEXT:    mv a3, a2
 ; CHECK-NEXT:    bltu a4, a5, .LBB13_5
 ; CHECK-NEXT:  # %bb.2:
-; CHECK-NEXT:    slli a3, a4, 32
-; CHECK-NEXT:    srli a3, a3, 32
-; CHECK-NEXT:    addi a4, a3, 1
+; CHECK-NEXT:    slli a4, a4, 32
+; CHECK-NEXT:    srli a4, a4, 32
+; CHECK-NEXT:    addi a4, a4, 1
 ; CHECK-NEXT:    andi a5, a4, -32
 ; CHECK-NEXT:    add a3, a5, a2
 ; CHECK-NEXT:    slli a6, a2, 2

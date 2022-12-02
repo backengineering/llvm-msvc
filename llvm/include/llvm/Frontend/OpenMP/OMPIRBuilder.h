@@ -92,27 +92,52 @@ public:
   /// directive is present or not.
   Optional<bool> HasRequiresUnifiedSharedMemory;
 
+  /// First separator used between the initial two parts of a name.
+  Optional<StringRef> FirstSeparator;
+  /// Separator used between all of the rest consecutive parts of s name
+  Optional<StringRef> Separator;
+
   OpenMPIRBuilderConfig() {}
   OpenMPIRBuilderConfig(bool IsEmbedded, bool IsTargetCodegen,
                         bool HasRequiresUnifiedSharedMemory)
       : IsEmbedded(IsEmbedded), IsTargetCodegen(IsTargetCodegen),
         HasRequiresUnifiedSharedMemory(HasRequiresUnifiedSharedMemory) {}
 
-  // Convenience getter functions that assert if the value is not present.
-  bool isEmbedded() {
+  // Getters functions that assert if the required values are not present.
+  bool isEmbedded() const {
     assert(IsEmbedded.has_value() && "IsEmbedded is not set");
     return IsEmbedded.value();
   }
 
-  bool isTargetCodegen() {
+  bool isTargetCodegen() const {
     assert(IsTargetCodegen.has_value() && "IsTargetCodegen is not set");
     return IsTargetCodegen.value();
   }
 
-  bool hasRequiresUnifiedSharedMemory() {
+  bool hasRequiresUnifiedSharedMemory() const {
     assert(HasRequiresUnifiedSharedMemory.has_value() &&
            "HasUnifiedSharedMemory is not set");
     return HasRequiresUnifiedSharedMemory.value();
+  }
+
+  // Returns the FirstSeparator if set, otherwise use the default
+  // separator depending on isTargetCodegen
+  StringRef firstSeparator() const {
+    if (FirstSeparator.has_value())
+      return FirstSeparator.value();
+    if (isTargetCodegen())
+      return "_";
+    return ".";
+  }
+
+  // Returns the Separator if set, otherwise use the default
+  // separator depending on isTargetCodegen
+  StringRef separator() const {
+    if (Separator.has_value())
+      return Separator.value();
+    if (isTargetCodegen())
+      return "$";
+    return ".";
   }
 
   void setIsEmbedded(bool Value) { IsEmbedded = Value; }
@@ -120,6 +145,8 @@ public:
   void setHasRequiresUnifiedSharedMemory(bool Value) {
     HasRequiresUnifiedSharedMemory = Value;
   }
+  void setFirstSeparator(StringRef FS) { FirstSeparator = FS; }
+  void setSeparator(StringRef S) { Separator = S; }
 };
 
 /// An interface to create LLVM-IR for OpenMP directives.
@@ -149,6 +176,16 @@ public:
 
   /// Type used throughout for insertion points.
   using InsertPointTy = IRBuilder<>::InsertPoint;
+
+  /// Get the create a name using the platform specific separators.
+  /// \param Parts parts of the final name that needs separation
+  /// The created name has a first separator between the first and second part
+  /// and a second separator between all other parts.
+  /// E.g. with FirstSeparator "$" and Separator "." and
+  /// parts: "p1", "p2", "p3", "p4"
+  /// The resulting name is "p1$p2.p3.p4"
+  /// The separators are retrieved from the OpenMPIRBuilderConfig.
+  std::string createPlatformSpecificName(ArrayRef<StringRef> Parts) const;
 
   /// Callback type for variable finalization (think destructors).
   ///
@@ -1423,6 +1460,40 @@ public:
                           bool RequiresFullRuntime);
 
   ///}
+
+private:
+  // Sets the function attributes expected for the outlined function
+  void setOutlinedTargetRegionFunctionAttributes(Function *OutlinedFn,
+                                                 int32_t NumTeams,
+                                                 int32_t NumThreads);
+
+  // Creates the function ID/Address for the given outlined function.
+  // In the case of an embedded device function the address of the function is
+  // used, in the case of a non-offload function a constant is created.
+  Constant *createOutlinedFunctionID(Function *OutlinedFn,
+                                     StringRef EntryFnIDName);
+
+  // Creates the region entry address for the outlined function
+  Constant *createTargetRegionEntryAddr(Function *OutlinedFunction,
+                                        StringRef EntryFnName);
+
+public:
+  /// Registers the given function and sets up the attribtues of the function
+  /// Returns the FunctionID.
+  ///
+  /// \param InfoManager The info manager keeping track of the offload entries
+  /// \param EntryInfo The entry information about the function
+  /// \param OutlinedFunction Pointer to the outlined function
+  /// \param EntryFnName Name of the outlined function
+  /// \param EntryFnIDName Name of the ID o be created
+  /// \param NumTeams Number default teams
+  /// \param NumThreads Number default threads
+  Constant *registerTargetRegionFunction(OffloadEntriesInfoManager &InfoManager,
+                                         TargetRegionEntryInfo &EntryInfo,
+                                         Function *OutlinedFunction,
+                                         StringRef EntryFnName,
+                                         StringRef EntryFnIDName,
+                                         int32_t NumTeams, int32_t NumThreads);
 
   /// Declarations for LLVM-IR types (simple, array, function and structure) are
   /// generated below. Their names are defined and used in OpenMPKinds.def. Here

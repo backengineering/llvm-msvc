@@ -190,30 +190,20 @@ std::set<const FileEntry *> GetAffectingModuleMaps(const HeaderSearch &HS,
     }
   }
 
-  while (!ModulesToProcess.empty()) {
-    auto *CurrentModule = ModulesToProcess.pop_back_val();
-    ProcessedModules.insert(CurrentModule);
+  const ModuleMap &MM = HS.getModuleMap();
 
-    Optional<FileEntryRef> ModuleMapFile =
-        HS.getModuleMap().getModuleMapFileForUniquing(CurrentModule);
-    if (!ModuleMapFile) {
-      continue;
-    }
+  auto ProcessModuleOnce = [&](const Module *Mod) {
+    if (ProcessedModules.insert(Mod).second)
+      if (auto ModuleMapFile = MM.getModuleMapFileForUniquing(Mod))
+        ModuleMaps.insert(*ModuleMapFile);
+  };
 
-    ModuleMaps.insert(*ModuleMapFile);
-
-    for (auto *ImportedModule : (CurrentModule)->Imports) {
-      if (!ImportedModule ||
-          ProcessedModules.find(ImportedModule) != ProcessedModules.end()) {
-        continue;
-      }
-      ModulesToProcess.push_back(ImportedModule);
-    }
-
+  for (const Module *CurrentModule : ModulesToProcess) {
+    ProcessModuleOnce(CurrentModule);
+    for (const Module *ImportedModule : CurrentModule->Imports)
+      ProcessModuleOnce(ImportedModule);
     for (const Module *UndeclaredModule : CurrentModule->UndeclaredUses)
-      if (UndeclaredModule &&
-          ProcessedModules.find(UndeclaredModule) == ProcessedModules.end())
-        ModulesToProcess.push_back(UndeclaredModule);
+      ProcessModuleOnce(UndeclaredModule);
   }
 
   return ModuleMaps;
@@ -3006,7 +2996,9 @@ void ASTWriter::WritePragmaDiagnosticMappings(const DiagnosticsEngine &Diag,
       continue;
     ++NumLocations;
 
-    AddFileID(FileIDAndFile.first, Record);
+    SourceLocation Loc = Diag.SourceMgr->getComposedLoc(FileIDAndFile.first, 0);
+    assert(!Loc.isInvalid() && "start loc for valid FileID is invalid");
+    AddSourceLocation(Loc, Record);
 
     Record.push_back(FileIDAndFile.second.StateTransitions.size());
     for (auto &StatePoint : FileIDAndFile.second.StateTransitions) {
@@ -4370,15 +4362,37 @@ void ASTRecordWriter::AddAttributes(ArrayRef<const Attr *> Attrs) {
 
 void ASTWriter::AddToken(const Token &Tok, RecordDataImpl &Record) {
   AddSourceLocation(Tok.getLocation(), Record);
-  Record.push_back(Tok.getLength());
-
-  // FIXME: When reading literal tokens, reconstruct the literal pointer
-  // if it is needed.
-  AddIdentifierRef(Tok.getIdentifierInfo(), Record);
   // FIXME: Should translate token kind to a stable encoding.
   Record.push_back(Tok.getKind());
   // FIXME: Should translate token flags to a stable encoding.
   Record.push_back(Tok.getFlags());
+
+  if (Tok.isAnnotation()) {
+    AddSourceLocation(Tok.getAnnotationEndLoc(), Record);
+    switch (Tok.getKind()) {
+    case tok::annot_pragma_loop_hint: {
+      auto *Info = static_cast<PragmaLoopHintInfo *>(Tok.getAnnotationValue());
+      AddToken(Info->PragmaName, Record);
+      AddToken(Info->Option, Record);
+      Record.push_back(Info->Toks.size());
+      for (const auto &T : Info->Toks)
+        AddToken(T, Record);
+      break;
+    }
+    // Some annotation tokens do not use the PtrData field.
+    case tok::annot_pragma_openmp:
+    case tok::annot_pragma_openmp_end:
+    case tok::annot_pragma_unused:
+      break;
+    default:
+      llvm_unreachable("missing serialization code for annotation token");
+    }
+  } else {
+    Record.push_back(Tok.getLength());
+    // FIXME: When reading literal tokens, reconstruct the literal pointer if it
+    // is needed.
+    AddIdentifierRef(Tok.getIdentifierInfo(), Record);
+  }
 }
 
 void ASTWriter::AddString(StringRef Str, RecordDataImpl &Record) {

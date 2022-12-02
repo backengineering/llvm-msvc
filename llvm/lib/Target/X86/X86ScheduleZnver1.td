@@ -655,9 +655,6 @@ defm : ZnWriteResPair<WriteMULX64, [ZnALU1, ZnMultiplier], 3, [1, 1], 1, 5, 0>;
 def ZnWriteJCXZ : SchedWriteRes<[ZnALU03]>;
 def : InstRW<[ZnWriteJCXZ], (instrs JCXZ, JECXZ, JRCXZ)>;
 
-// INTO
-def : InstRW<[WriteMicrocoded], (instrs INTO)>;
-
 // LOOP.
 def ZnWriteLOOP : SchedWriteRes<[ZnALU03]>;
 def : InstRW<[ZnWriteLOOP], (instrs LOOP)>;
@@ -754,9 +751,6 @@ def : InstRW<[ZnWriteLEAVE], (instregex "LEAVE")>;
 
 // PAUSE.
 def : InstRW<[WriteMicrocoded], (instrs PAUSE)>;
-
-// RDRAND.
-def : InstRW<[WriteMicrocoded], (instrs RDRAND16r, RDRAND32r, RDRAND64r)>;
 
 // XADD.
 def ZnXADD : SchedWriteRes<[ZnALU]>;
@@ -938,30 +932,10 @@ def : InstRW<[WriteMicrocoded], (instrs FNINIT)>;
 //=== Integer MMX and XMM Instructions ===//
 
 def ZnWriteFPU013 : SchedWriteRes<[ZnFPU013]> ;
-def ZnWriteFPU013Y : SchedWriteRes<[ZnFPU013]> {
-  let Latency = 2;
-}
 def ZnWriteFPU013m : SchedWriteRes<[ZnAGU, ZnFPU013]> {
   let Latency = 8;
   let NumMicroOps = 2;
 }
-def ZnWriteFPU013Ld : SchedWriteRes<[ZnAGU, ZnFPU013]> {
-  let Latency = 8;
-  let NumMicroOps = 2;
-}
-def ZnWriteFPU013LdY : SchedWriteRes<[ZnAGU, ZnFPU013]> {
-  let Latency = 9;
-  let NumMicroOps = 2;
-}
-
-// PBLENDW.
-// ymm
-def : InstRW<[ZnWriteFPU013Y], (instrs VPBLENDWYrri)>;
-
-// x,m,i / v,v,m,i
-def : InstRW<[ZnWriteFPU013Ld], (instregex "(V?)PBLENDWrmi")>;
-// y,m,i
-def : InstRW<[ZnWriteFPU013LdY], (instrs VPBLENDWYrmi)>;
 
 def ZnWriteFPU01 : SchedWriteRes<[ZnFPU01]> ;
 def ZnWriteFPU01Y : SchedWriteRes<[ZnFPU01]> {
