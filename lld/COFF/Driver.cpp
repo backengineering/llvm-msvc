@@ -347,7 +347,7 @@ void LinkerDriver::parseDirectives(InputFile *file) {
   if (s.empty())
     return;
 
-  message("Directives: " + toString(file) + ": " + s);
+  // message("Directives: " + toString(file) + ": " + s);
 
   ArgParser parser;
   // .drectve is always tokenized using Windows shell rules.
