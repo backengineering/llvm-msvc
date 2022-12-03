@@ -37,13 +37,13 @@ jobs:
       with:
         name: llvm-msvc
         path: build/*.zip
-        
+    
     - name: Get lowercase OS name
       id: osname
       uses: ASzc/change-string-case-action@v1
       with:
         string: ${{ runner.os }}
-    
+        
     - name: archive
       run:
         7z a ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip build/*.zip
