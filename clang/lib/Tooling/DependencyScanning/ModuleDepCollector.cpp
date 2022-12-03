@@ -451,9 +451,9 @@ ModuleID ModuleDepCollectorPP::handleTopLevelModule(const Module *M) {
 
   MDC.ScanInstance.getASTReader()->visitTopLevelModuleMaps(
       *MF, [&](FileEntryRef FE) {
-        if (FE.getName().endswith("__inferred_module.map"))
+        if (FE.getNameAsRequested().endswith("__inferred_module.map"))
           return;
-        MD.ModuleMapFileDeps.emplace_back(FE.getName());
+        MD.ModuleMapFileDeps.emplace_back(FE.getNameAsRequested());
       });
 
   CompilerInvocation CI = MDC.makeInvocationForModuleBuildWithoutOutputs(
@@ -582,7 +582,8 @@ bool ModuleDepCollector::isPrebuiltModule(const Module *M) {
 
 static StringRef makeAbsoluteAndPreferred(CompilerInstance &CI, StringRef Path,
                                           SmallVectorImpl<char> &Storage) {
-  if (llvm::sys::path::is_absolute(Path))
+  if (llvm::sys::path::is_absolute(Path) &&
+      !llvm::sys::path::is_style_windows(llvm::sys::path::Style::native))
     return Path;
   Storage.assign(Path.begin(), Path.end());
   CI.getFileManager().makeAbsolutePath(Storage);

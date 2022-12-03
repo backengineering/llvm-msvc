@@ -161,11 +161,13 @@ static TypeCode getTypeCodeForTypeClass(Type::TypeClass id) {
 
 namespace {
 
-std::set<const FileEntry *> GetAffectingModuleMaps(const HeaderSearch &HS,
+std::set<const FileEntry *> GetAffectingModuleMaps(const Preprocessor &PP,
                                                    Module *RootModule) {
   std::set<const FileEntry *> ModuleMaps{};
   std::set<const Module *> ProcessedModules;
   SmallVector<const Module *> ModulesToProcess{RootModule};
+
+  const HeaderSearch &HS = PP.getHeaderSearchInfo();
 
   SmallVector<const FileEntry *, 16> FilesByUID;
   HS.getFileMgr().GetUniqueIDMapping(FilesByUID);
@@ -191,11 +193,27 @@ std::set<const FileEntry *> GetAffectingModuleMaps(const HeaderSearch &HS,
   }
 
   const ModuleMap &MM = HS.getModuleMap();
+  SourceManager &SourceMgr = PP.getSourceManager();
 
-  auto ProcessModuleOnce = [&](const Module *Mod) {
-    if (ProcessedModules.insert(Mod).second)
-      if (auto ModuleMapFile = MM.getModuleMapFileForUniquing(Mod))
-        ModuleMaps.insert(*ModuleMapFile);
+  auto ForIncludeChain = [&](FileEntryRef F,
+                             llvm::function_ref<void(FileEntryRef)> CB) {
+    CB(F);
+    FileID FID = SourceMgr.translateFile(F);
+    SourceLocation Loc = SourceMgr.getIncludeLoc(FID);
+    while (Loc.isValid()) {
+      FID = SourceMgr.getFileID(Loc);
+      CB(*SourceMgr.getFileEntryRefForID(FID));
+      Loc = SourceMgr.getIncludeLoc(FID);
+    }
+  };
+
+  auto ProcessModuleOnce = [&](const Module *M) {
+    for (const Module *Mod = M; Mod; Mod = Mod->Parent)
+      if (ProcessedModules.insert(Mod).second)
+        if (auto ModuleMapFile = MM.getModuleMapFileForUniquing(Mod))
+          ForIncludeChain(*ModuleMapFile, [&](FileEntryRef F) {
+            ModuleMaps.insert(F);
+          });
   };
 
   for (const Module *CurrentModule : ModulesToProcess) {
@@ -1026,6 +1044,7 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(SIGNATURE);
   RECORD(AST_BLOCK_HASH);
   RECORD(DIAGNOSTIC_OPTIONS);
+  RECORD(HEADER_SEARCH_PATHS);
   RECORD(DIAG_PRAGMA_MAPPINGS);
 
 #undef RECORD
@@ -1155,6 +1174,35 @@ ASTFileSignature ASTWriter::writeUnhashedControlBlock(Preprocessor &PP,
   // are generally transient files and will almost always be overridden.
   Stream.EmitRecord(DIAGNOSTIC_OPTIONS, Record);
   Record.clear();
+
+  // Header search paths.
+  Record.clear();
+  const HeaderSearchOptions &HSOpts =
+      PP.getHeaderSearchInfo().getHeaderSearchOpts();
+
+  // Include entries.
+  Record.push_back(HSOpts.UserEntries.size());
+  for (unsigned I = 0, N = HSOpts.UserEntries.size(); I != N; ++I) {
+    const HeaderSearchOptions::Entry &Entry = HSOpts.UserEntries[I];
+    AddString(Entry.Path, Record);
+    Record.push_back(static_cast<unsigned>(Entry.Group));
+    Record.push_back(Entry.IsFramework);
+    Record.push_back(Entry.IgnoreSysRoot);
+  }
+
+  // System header prefixes.
+  Record.push_back(HSOpts.SystemHeaderPrefixes.size());
+  for (unsigned I = 0, N = HSOpts.SystemHeaderPrefixes.size(); I != N; ++I) {
+    AddString(HSOpts.SystemHeaderPrefixes[I].Prefix, Record);
+    Record.push_back(HSOpts.SystemHeaderPrefixes[I].IsSystemHeader);
+  }
+
+  // VFS overlay files.
+  Record.push_back(HSOpts.VFSOverlayFiles.size());
+  for (StringRef VFSOverlayFile : HSOpts.VFSOverlayFiles)
+    AddString(VFSOverlayFile, Record);
+
+  Stream.EmitRecord(HEADER_SEARCH_PATHS, Record);
 
   // Write out the diagnostic/pragma mappings.
   WritePragmaDiagnosticMappings(Diags, /* isModule = */ WritingModule);
@@ -1381,27 +1429,10 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
 
   // Header search options.
   Record.clear();
-  const HeaderSearchOptions &HSOpts
-    = PP.getHeaderSearchInfo().getHeaderSearchOpts();
+  const HeaderSearchOptions &HSOpts =
+      PP.getHeaderSearchInfo().getHeaderSearchOpts();
+
   AddString(HSOpts.Sysroot, Record);
-
-  // Include entries.
-  Record.push_back(HSOpts.UserEntries.size());
-  for (unsigned I = 0, N = HSOpts.UserEntries.size(); I != N; ++I) {
-    const HeaderSearchOptions::Entry &Entry = HSOpts.UserEntries[I];
-    AddString(Entry.Path, Record);
-    Record.push_back(static_cast<unsigned>(Entry.Group));
-    Record.push_back(Entry.IsFramework);
-    Record.push_back(Entry.IgnoreSysRoot);
-  }
-
-  // System header prefixes.
-  Record.push_back(HSOpts.SystemHeaderPrefixes.size());
-  for (unsigned I = 0, N = HSOpts.SystemHeaderPrefixes.size(); I != N; ++I) {
-    AddString(HSOpts.SystemHeaderPrefixes[I].Prefix, Record);
-    Record.push_back(HSOpts.SystemHeaderPrefixes[I].IsSystemHeader);
-  }
-
   AddString(HSOpts.ResourceDir, Record);
   AddString(HSOpts.ModuleCachePath, Record);
   AddString(HSOpts.ModuleUserBuildPath, Record);
@@ -1595,7 +1626,7 @@ void ASTWriter::WriteInputFiles(SourceManager &SourceMgr,
           Entry.IsTransient,
           Entry.IsTopLevelModuleMap};
 
-      EmitRecordWithPath(IFAbbrevCode, Record, Entry.File.getName());
+      EmitRecordWithPath(IFAbbrevCode, Record, Entry.File.getNameAsRequested());
     }
 
     // Emit content hash for this file.
@@ -4544,8 +4575,7 @@ void ASTWriter::collectNonAffectingInputFiles() {
   if (!WritingModule)
     return;
 
-  auto AffectingModuleMaps =
-      GetAffectingModuleMaps(PP->getHeaderSearchInfo(), WritingModule);
+  auto AffectingModuleMaps = GetAffectingModuleMaps(*PP, WritingModule);
 
   unsigned FileIDAdjustment = 0;
   unsigned OffsetAdjustment = 0;
