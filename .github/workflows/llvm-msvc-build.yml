@@ -25,6 +25,7 @@ jobs:
     - name: Checkout Repo
       uses: actions/checkout@v3
       with:
+          path: llvm-msvc
           submodules: 'recursive'
           
     - name: Build llvm
