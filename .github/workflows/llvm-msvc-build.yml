@@ -21,10 +21,15 @@ jobs:
 
     - name: Install ninja-build tool
       uses: seanmiddleditch/gha-setup-ninja@v3
-      
+    
+    - name: Checkout Repo
+      uses: actions/checkout@v3
+      with:
+          path: llvm-msvc
+          submodules: 'recursive'
+          
     - name: Build llvm
       run: |
-        git clone --branch dev --depth 1 https://github.com/NewWorldComingSoon/llvm-msvc
         cmake -Bbuild -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_ZLIB=OFF -DCMAKE_BUILD_TYPE=release -DLLVM_USE_CRT_RELEASE=MT -DCPACK_GENERATOR=ZIP "-DCMAKE_INSTALL_PREFIX=$pwd\\prefix" -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" -DLLVM_ENABLE_PROJECTS="clang;lld" llvm-msvc\\llvm
         cmake --build build --config Release
 
