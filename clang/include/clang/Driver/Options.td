@@ -5588,6 +5588,10 @@ def fexperimental_sanitize_metadata_EQ_atomics
     : Flag<["-"], "fexperimental-sanitize-metadata=atomics">,
       HelpText<"Emit PCs for atomic operations used by binary analysis sanitizers">,
       MarshallingInfoFlag<CodeGenOpts<"SanitizeBinaryMetadataAtomics">>;
+def fexperimental_sanitize_metadata_EQ_uar
+    : Flag<["-"], "fexperimental-sanitize-metadata=uar">,
+      HelpText<"Emit PCs for start of functions that are subject for use-after-return checking.">,
+      MarshallingInfoFlag<CodeGenOpts<"SanitizeBinaryMetadataUAR">>;
 def fpatchable_function_entry_offset_EQ
     : Joined<["-"], "fpatchable-function-entry-offset=">, MetaVarName<"<M>">,
       HelpText<"Generate M NOPs before function entry">,
@@ -5677,6 +5681,14 @@ def module_file_deps : Flag<["-"], "module-file-deps">,
 def header_include_file : Separate<["-"], "header-include-file">,
   HelpText<"Filename (or -) to write header include output to">,
   MarshallingInfoString<DependencyOutputOpts<"HeaderIncludeOutputFile">>;
+def header_include_format_EQ : Joined<["-"], "header-include-format=">,
+  HelpText<"set format in which header info is emitted">,
+  Values<"textual,json">, NormalizedValues<["HIFMT_Textual", "HIFMT_JSON"]>,
+  MarshallingInfoEnum<DependencyOutputOpts<"HeaderIncludeFormat">, "HIFMT_Textual">;
+def header_include_filtering_EQ : Joined<["-"], "header-include-filtering=">,
+  HelpText<"set the flag that enables filtering header information">,
+  Values<"none,only-direct-system">, NormalizedValues<["HIFIL_None", "HIFIL_Only_Direct_System"]>,
+  MarshallingInfoEnum<DependencyOutputOpts<"HeaderIncludeFiltering">, "HIFIL_None">;
 def show_includes : Flag<["--"], "show-includes">,
   HelpText<"Print cl.exe style /showIncludes to stdout">;
 
@@ -6942,6 +6954,7 @@ def _SLASH_AI : CLJoinedOrSeparate<"AI">;
 def _SLASH_Bt : CLFlag<"Bt">;
 def _SLASH_Bt_plus : CLFlag<"Bt+">;
 def _SLASH_clr : CLJoined<"clr">;
+def _SLASH_d1 : CLJoined<"d1">;
 def _SLASH_d2 : CLJoined<"d2">;
 def _SLASH_doc : CLJoined<"doc">;
 def _SLASH_experimental : CLJoined<"experimental:">;

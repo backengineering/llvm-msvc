@@ -276,11 +276,12 @@ struct ConvertAddI final : OpConversionPattern<arith::AddIOp> {
     auto [rhsElem0, rhsElem1] =
         extractLastDimHalves(rewriter, loc, adaptor.getRhs());
 
-    auto lowSum = rewriter.create<arith::AddUICarryOp>(loc, lhsElem0, rhsElem0);
-    Value carryVal =
-        rewriter.create<arith::ExtUIOp>(loc, newElemTy, lowSum.getCarry());
+    auto lowSum =
+        rewriter.create<arith::AddUIExtendedOp>(loc, lhsElem0, rhsElem0);
+    Value overflowVal =
+        rewriter.create<arith::ExtUIOp>(loc, newElemTy, lowSum.getOverflow());
 
-    Value high0 = rewriter.create<arith::AddIOp>(loc, carryVal, lhsElem1);
+    Value high0 = rewriter.create<arith::AddIOp>(loc, overflowVal, lhsElem1);
     Value high = rewriter.create<arith::AddIOp>(loc, high0, rhsElem1);
 
     Value resultVec =
@@ -1064,7 +1065,7 @@ arith::WideIntEmulationConverter::WideIntEmulationConverter(
     if (width == 2 * maxIntWidth)
       return VectorType::get(2, IntegerType::get(ty.getContext(), maxIntWidth));
 
-    return None;
+    return std::nullopt;
   });
 
   // Vector case.
@@ -1085,7 +1086,7 @@ arith::WideIntEmulationConverter::WideIntEmulationConverter(
                              IntegerType::get(ty.getContext(), maxIntWidth));
     }
 
-    return None;
+    return std::nullopt;
   });
 
   // Function case.
@@ -1094,11 +1095,11 @@ arith::WideIntEmulationConverter::WideIntEmulationConverter(
     //   (i2N, i2N) -> i2N --> (vector<2xiN>, vector<2xiN>) -> vector<2xiN>
     SmallVector<Type> inputs;
     if (failed(convertTypes(ty.getInputs(), inputs)))
-      return None;
+      return std::nullopt;
 
     SmallVector<Type> results;
     if (failed(convertTypes(ty.getResults(), results)))
-      return None;
+      return std::nullopt;
 
     return FunctionType::get(ty.getContext(), inputs, results);
   });

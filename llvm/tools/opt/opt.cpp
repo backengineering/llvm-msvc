@@ -57,6 +57,7 @@
 #include "llvm/Transforms/Utils/Debugify.h"
 #include <algorithm>
 #include <memory>
+#include <optional>
 using namespace llvm;
 using namespace opt_tool;
 
@@ -250,12 +251,12 @@ static cl::opt<bool> RemarksWithHotness(
     cl::desc("With PGO, include profile count in optimization remarks"),
     cl::Hidden);
 
-static cl::opt<Optional<uint64_t>, false, remarks::HotnessThresholdParser>
+static cl::opt<std::optional<uint64_t>, false, remarks::HotnessThresholdParser>
     RemarksHotnessThreshold(
         "pass-remarks-hotness-threshold",
         cl::desc("Minimum profile count required for "
                  "an optimization remark to be output. "
-                 "Use 'auto' to apply the threshold from profile summary."),
+                 "Use 'auto' to apply the threshold from profile summary"),
         cl::value_desc("N or 'auto'"), cl::init(0), cl::Hidden);
 
 static cl::opt<std::string>
@@ -513,7 +514,7 @@ int main(int argc, char **argv) {
   std::unique_ptr<ToolOutputFile> RemarksFile = std::move(*RemarksFileOrErr);
 
   // Load the input module...
-  auto SetDataLayout = [](StringRef) -> Optional<std::string> {
+  auto SetDataLayout = [](StringRef) -> std::optional<std::string> {
     if (ClDataLayout.empty())
       return std::nullopt;
     return ClDataLayout;

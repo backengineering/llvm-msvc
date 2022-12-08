@@ -20,6 +20,7 @@
 #include <cassert>
 #include <climits>
 #include <cstring>
+#include <optional>
 #include <utility>
 
 namespace llvm {
@@ -2234,7 +2235,7 @@ APInt RoundingSDiv(const APInt &A, const APInt &B, APInt::Rounding RM);
 /// value to go from [-2^BW, 0) to [0, 2^BW). In that sense, zero is
 /// treated as a special case of an overflow.
 ///
-/// This function returns None if after finding k that minimizes the
+/// This function returns std::nullopt if after finding k that minimizes the
 /// positive solution to q(n) = kR, both solutions are contained between
 /// two consecutive integers.
 ///
@@ -2248,8 +2249,8 @@ APInt RoundingSDiv(const APInt &A, const APInt &B, APInt::Rounding RM);
 ///
 /// The returned value may have a different bit width from the input
 /// coefficients.
-Optional<APInt> SolveQuadraticEquationWrap(APInt A, APInt B, APInt C,
-                                           unsigned RangeWidth);
+std::optional<APInt> SolveQuadraticEquationWrap(APInt A, APInt B, APInt C,
+                                                unsigned RangeWidth);
 
 /// Compare two values, and if they are different, return the position of the
 /// most significant bit that is different in the values.

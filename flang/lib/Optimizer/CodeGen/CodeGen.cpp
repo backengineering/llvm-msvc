@@ -1114,6 +1114,12 @@ struct EmboxCharOpConversion : public FIROpConversion<fir::EmboxCharOp> {
         llvmStructTy.cast<mlir::LLVM::LLVMStructType>().getBody()[1];
     mlir::Value lenAfterCast = integerCast(loc, rewriter, lenTy, charBufferLen);
 
+    mlir::Type addrTy =
+        llvmStructTy.cast<mlir::LLVM::LLVMStructType>().getBody()[0];
+    if (addrTy != charBuffer.getType())
+      charBuffer =
+          rewriter.create<mlir::LLVM::BitcastOp>(loc, addrTy, charBuffer);
+
     auto insertBufferOp = rewriter.create<mlir::LLVM::InsertValueOp>(
         loc, llvmStruct, charBuffer, 0);
     rewriter.replaceOpWithNewOp<mlir::LLVM::InsertValueOp>(
@@ -2047,14 +2053,14 @@ private:
       if (!rebox.getSubstr().empty())
         substringOffset = operands[rebox.substrOffset()];
       base = genBoxOffsetGep(rewriter, loc, base, zero,
-                             /*cstInteriorIndices=*/llvm::None, fieldIndices,
+                             /*cstInteriorIndices=*/std::nullopt, fieldIndices,
                              substringOffset);
     }
 
     if (rebox.getSlice().empty())
       // The array section is of the form array[%component][substring], keep
       // the input array extents and strides.
-      return finalizeRebox(rebox, dest, base, /*lbounds*/ llvm::None,
+      return finalizeRebox(rebox, dest, base, /*lbounds*/ std::nullopt,
                            inputExtents, inputStrides, rewriter);
 
     // Strides from the fir.box are in bytes.
@@ -2104,7 +2110,7 @@ private:
         slicedStrides.emplace_back(stride);
       }
     }
-    return finalizeRebox(rebox, dest, base, /*lbounds*/ llvm::None,
+    return finalizeRebox(rebox, dest, base, /*lbounds*/ std::nullopt,
                          slicedExtents, slicedStrides, rewriter);
   }
 
@@ -3012,7 +3018,7 @@ static void genBrOp(A caseOp, mlir::Block *dest, llvm::Optional<B> destOps,
   if (destOps)
     rewriter.replaceOpWithNewOp<mlir::LLVM::BrOp>(caseOp, *destOps, dest);
   else
-    rewriter.replaceOpWithNewOp<mlir::LLVM::BrOp>(caseOp, llvm::None, dest);
+    rewriter.replaceOpWithNewOp<mlir::LLVM::BrOp>(caseOp, std::nullopt, dest);
 }
 
 static void genCaseLadderStep(mlir::Location loc, mlir::Value cmp,

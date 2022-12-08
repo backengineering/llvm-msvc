@@ -129,7 +129,7 @@ struct SimpleEnumValueTable {
     OS << TableIndex;
   }
 
-  Optional<StringRef> emitValueTable(raw_ostream &OS) const {
+  std::optional<StringRef> emitValueTable(raw_ostream &OS) const {
     if (TableIndex == -1)
       return {};
     OS << "static const SimpleEnumValue " << ValueTableName << "[] = {\n";
@@ -424,6 +424,7 @@ void EmitOptParser(RecordKeeper &Records, raw_ostream &OS) {
                  CmpMarshallingOpts);
 
   std::vector<MarshallingInfo> MarshallingInfos;
+  MarshallingInfos.reserve(OptsWithMarshalling.size());
   for (const auto *R : OptsWithMarshalling)
     MarshallingInfos.push_back(createMarshallingInfo(*R));
 

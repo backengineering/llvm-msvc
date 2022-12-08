@@ -720,7 +720,8 @@ public:
 
   llvm::MDNode *getNoObjCARCExceptionsMetadata() {
     if (!NoObjCARCExceptionsMetadata)
-      NoObjCARCExceptionsMetadata = llvm::MDNode::get(getLLVMContext(), None);
+      NoObjCARCExceptionsMetadata =
+          llvm::MDNode::get(getLLVMContext(), std::nullopt);
     return NoObjCARCExceptionsMetadata;
   }
 
@@ -756,6 +757,10 @@ public:
   CodeGenVTables &getVTables() { return VTables; }
 
   ItaniumVTableContext &getItaniumVTableContext() {
+    return VTables.getItaniumVTableContext();
+  }
+
+  const ItaniumVTableContext &getItaniumVTableContext() const {
     return VTables.getItaniumVTableContext();
   }
 
@@ -1084,7 +1089,8 @@ public:
   llvm::Constant *getBuiltinLibFunction(const FunctionDecl *FD,
                                         unsigned BuiltinID);
 
-  llvm::Function *getIntrinsic(unsigned IID, ArrayRef<llvm::Type*> Tys = None);
+  llvm::Function *getIntrinsic(unsigned IID,
+                               ArrayRef<llvm::Type *> Tys = std::nullopt);
 
   /// Emit code for a single top level declaration.
   void EmitTopLevelDecl(Decl *D);
@@ -1442,6 +1448,8 @@ public:
                               llvm::GlobalVariable *VTable,
                               const VTableLayout &VTLayout);
 
+  llvm::Type *getVTableComponentType() const;
+
   /// Generate a cross-DSO type identifier for MD.
   llvm::ConstantInt *CreateCrossDsoCfiTypeId(llvm::Metadata *MD);
 
@@ -1474,7 +1482,8 @@ public:
 
   /// Whether this function's return type has no side effects, and thus may
   /// be trivially discarded if it is unused.
-  bool MayDropFunctionReturn(const ASTContext &Context, QualType ReturnType);
+  bool MayDropFunctionReturn(const ASTContext &Context,
+                             QualType ReturnType) const;
 
   /// Returns whether this module needs the "all-vtables" type identifier.
   bool NeedAllVtablesTypeId() const;

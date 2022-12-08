@@ -16,13 +16,13 @@
 #define LLVM_TARGET_CODEGENCWRAPPERS_H
 
 #include "llvm-c/TargetMachine.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/ErrorHandling.h"
+#include <optional>
 
 namespace llvm {
 
-inline Optional<CodeModel::Model> unwrap(LLVMCodeModel Model, bool &JIT) {
+inline std::optional<CodeModel::Model> unwrap(LLVMCodeModel Model, bool &JIT) {
   JIT = false;
   switch (Model) {
   case LLVMCodeModelJITDefault:

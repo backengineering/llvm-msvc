@@ -223,7 +223,7 @@ namespace clang {
     template<typename T>
     Expected<Optional<T>> import(Optional<T> From) {
       if (!From)
-        return None;
+        return std::nullopt;
       return import(*From);
     }
 
@@ -7687,9 +7687,16 @@ ExpectedStmt ASTNodeImporter::VisitCXXDefaultArgExpr(CXXDefaultArgExpr *E) {
     if (Error Err = ImportDefaultArgOfParmVarDecl(*FromParam, ToParam))
       return std::move(Err);
   }
-
+  Expr *RewrittenInit = nullptr;
+  if (E->hasRewrittenInit()) {
+    ExpectedExpr ExprOrErr = import(E->getExpr());
+    if (!ExprOrErr)
+      return ExprOrErr.takeError();
+    RewrittenInit = ExprOrErr.get();
+  }
   return CXXDefaultArgExpr::Create(Importer.getToContext(), *ToUsedLocOrErr,
-                                   *ToParamOrErr, *UsedContextOrErr);
+                                   *ToParamOrErr, RewrittenInit,
+                                   *UsedContextOrErr);
 }
 
 ExpectedStmt
@@ -8381,8 +8388,16 @@ ExpectedStmt ASTNodeImporter::VisitCXXDefaultInitExpr(CXXDefaultInitExpr *E) {
     ToField->setInClassInitializer(*ToInClassInitializerOrErr);
   }
 
+  Expr *RewrittenInit = nullptr;
+  if (E->hasRewrittenInit()) {
+    ExpectedExpr ExprOrErr = import(E->getExpr());
+    if (!ExprOrErr)
+      return ExprOrErr.takeError();
+    RewrittenInit = ExprOrErr.get();
+  }
+
   return CXXDefaultInitExpr::Create(Importer.getToContext(), *ToBeginLocOrErr,
-                                    ToField, *UsedContextOrErr);
+                                    ToField, *UsedContextOrErr, RewrittenInit);
 }
 
 ExpectedStmt ASTNodeImporter::VisitCXXNamedCastExpr(CXXNamedCastExpr *E) {
@@ -8544,7 +8559,7 @@ Optional<unsigned> ASTImporter::getFieldIndex(Decl *F) {
 
   auto *Owner = dyn_cast<RecordDecl>(F->getDeclContext());
   if (!Owner)
-    return None;
+    return std::nullopt;
 
   unsigned Index = 0;
   for (const auto *D : Owner->decls()) {
@@ -8557,7 +8572,7 @@ Optional<unsigned> ASTImporter::getFieldIndex(Decl *F) {
 
   llvm_unreachable("Field was not found in its parent context.");
 
-  return None;
+  return std::nullopt;
 }
 
 ASTImporter::FoundDeclsTy
@@ -10022,7 +10037,7 @@ ASTImporter::getImportDeclErrorIfAny(Decl *FromD) const {
   if (Pos != ImportDeclErrors.end())
     return Pos->second;
   else
-    return None;
+    return std::nullopt;
 }
 
 void ASTImporter::setImportDeclError(Decl *From, ASTImportError Error) {

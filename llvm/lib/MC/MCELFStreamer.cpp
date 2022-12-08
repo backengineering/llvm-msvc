@@ -352,12 +352,12 @@ void MCELFStreamer::emitELFSymverDirective(const MCSymbol *OriginalSym,
 }
 
 void MCELFStreamer::emitLocalCommonSymbol(MCSymbol *S, uint64_t Size,
-                                          unsigned ByteAlignment) {
+                                          Align ByteAlignment) {
   auto *Symbol = cast<MCSymbolELF>(S);
   // FIXME: Should this be caught and done earlier?
   getAssembler().registerSymbol(*Symbol);
   Symbol->setBinding(ELF::STB_LOCAL);
-  emitCommonSymbol(Symbol, Size, ByteAlignment);
+  emitCommonSymbol(Symbol, Size, ByteAlignment.value());
 }
 
 void MCELFStreamer::emitValueImpl(const MCExpr *Value, unsigned Size,
@@ -501,7 +501,7 @@ void MCELFStreamer::finalizeCGProfileEntry(const MCSymbolRefExpr *&SRE,
   }
   const MCConstantExpr *MCOffset = MCConstantExpr::create(Offset, getContext());
   MCObjectStreamer::visitUsedExpr(*SRE);
-  if (Optional<std::pair<bool, std::string>> Err =
+  if (std::optional<std::pair<bool, std::string>> Err =
           MCObjectStreamer::emitRelocDirective(
               *MCOffset, "BFD_RELOC_NONE", SRE, SRE->getLoc(),
               *getContext().getSubtargetInfo()))
@@ -727,13 +727,13 @@ void MCELFStreamer::emitSymbolDesc(MCSymbol *Symbol, unsigned DescValue) {
 }
 
 void MCELFStreamer::emitZerofill(MCSection *Section, MCSymbol *Symbol,
-                                 uint64_t Size, unsigned ByteAlignment,
+                                 uint64_t Size, Align ByteAlignment,
                                  SMLoc Loc) {
   llvm_unreachable("ELF doesn't support this directive");
 }
 
 void MCELFStreamer::emitTBSSSymbol(MCSection *Section, MCSymbol *Symbol,
-                                   uint64_t Size, unsigned ByteAlignment) {
+                                   uint64_t Size, Align ByteAlignment) {
   llvm_unreachable("ELF doesn't support this directive");
 }
 

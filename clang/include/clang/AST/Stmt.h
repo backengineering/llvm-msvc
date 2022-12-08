@@ -690,6 +690,9 @@ protected:
 
     unsigned : NumExprBits;
 
+    /// Whether this CXXDefaultArgExpr rewrote its argument and stores a copy.
+    unsigned HasRewrittenInit : 1;
+
     /// The location where the default argument expression was used.
     SourceLocation Loc;
   };
@@ -699,6 +702,10 @@ protected:
     friend class CXXDefaultInitExpr;
 
     unsigned : NumExprBits;
+
+    /// Whether this CXXDefaultInitExprBitfields rewrote its argument and stores
+    /// a copy.
+    unsigned HasRewrittenInit : 1;
 
     /// The location where the default initializer expression was used.
     SourceLocation Loc;
@@ -2140,7 +2147,7 @@ public:
   }
 
   /// If this is an 'if constexpr', determine which substatement will be taken.
-  /// Otherwise, or if the condition is value-dependent, returns None.
+  /// Otherwise, or if the condition is value-dependent, returns std::nullopt.
   Optional<const Stmt*> getNondiscardedCase(const ASTContext &Ctx) const;
   Optional<Stmt *> getNondiscardedCase(const ASTContext &Ctx);
 

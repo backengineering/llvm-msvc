@@ -15,7 +15,6 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
@@ -55,6 +54,7 @@
 #include <deque>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -1448,7 +1448,7 @@ Error MetadataLoader::MetadataLoaderImpl::parseOneMetadata(
 
     // DWARF address space is encoded as N->getDWARFAddressSpace() + 1. 0 means
     // that there is no DWARF address space associated with DIDerivedType.
-    Optional<unsigned> DWARFAddressSpace;
+    std::optional<unsigned> DWARFAddressSpace;
     if (Record.size() > 12 && Record[12])
       DWARFAddressSpace = Record[12] - 1;
 
@@ -1611,7 +1611,7 @@ Error MetadataLoader::MetadataLoaderImpl::parseOneMetadata(
       return error("Invalid record");
 
     IsDistinct = Record[0];
-    Optional<DIFile::ChecksumInfo<MDString *>> Checksum;
+    std::optional<DIFile::ChecksumInfo<MDString *>> Checksum;
     // The BitcodeWriter writes null bytes into Record[3:4] when the Checksum
     // is not present. This matches up with the old internal representation,
     // and the old encoding for CSK_None in the ChecksumKind. The new
@@ -1621,11 +1621,10 @@ Error MetadataLoader::MetadataLoaderImpl::parseOneMetadata(
       Checksum.emplace(static_cast<DIFile::ChecksumKind>(Record[3]),
                        getMDString(Record[4]));
     MetadataList.assignValue(
-        GET_OR_DISTINCT(
-            DIFile,
-            (Context, getMDString(Record[1]), getMDString(Record[2]), Checksum,
-             Record.size() > 5 ? Optional<MDString *>(getMDString(Record[5]))
-                               : std::nullopt)),
+        GET_OR_DISTINCT(DIFile,
+                        (Context, getMDString(Record[1]),
+                         getMDString(Record[2]), Checksum,
+                         Record.size() > 5 ? getMDString(Record[5]) : nullptr)),
         NextMetadataNo);
     NextMetadataNo++;
     break;

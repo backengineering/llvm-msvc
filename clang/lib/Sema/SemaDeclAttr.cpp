@@ -2677,7 +2677,7 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
         if (IOSToWatchOSMapping) {
           if (auto MappedVersion = IOSToWatchOSMapping->map(
-                  Version, MinimumWatchOSVersion, None)) {
+                  Version, MinimumWatchOSVersion, std::nullopt)) {
             return MappedVersion.value();
           }
         }
@@ -2732,8 +2732,8 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
           return Version;
 
         if (IOSToTvOSMapping) {
-          if (auto MappedVersion =
-                  IOSToTvOSMapping->map(Version, VersionTuple(0, 0), None)) {
+          if (auto MappedVersion = IOSToTvOSMapping->map(
+                  Version, VersionTuple(0, 0), std::nullopt)) {
             return *MappedVersion;
           }
         }
@@ -2796,24 +2796,25 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
         // attributes that are inferred from 'ios'.
         NewII = &S.Context.Idents.get("maccatalyst");
         auto RemapMacOSVersion =
-            [&](const VersionTuple &V) -> Optional<VersionTuple> {
+            [&](const VersionTuple &V) -> std::optional<VersionTuple> {
           if (V.empty())
-            return None;
+            return std::nullopt;
           // API_TO_BE_DEPRECATED is 100000.
           if (V.getMajor() == 100000)
             return VersionTuple(100000);
           // The minimum iosmac version is 13.1
-          return MacOStoMacCatalystMapping->map(V, VersionTuple(13, 1), None);
+          return MacOStoMacCatalystMapping->map(V, VersionTuple(13, 1),
+                                                std::nullopt);
         };
-        Optional<VersionTuple> NewIntroduced =
-                                   RemapMacOSVersion(Introduced.Version),
-                               NewDeprecated =
-                                   RemapMacOSVersion(Deprecated.Version),
-                               NewObsoleted =
-                                   RemapMacOSVersion(Obsoleted.Version);
+        std::optional<VersionTuple> NewIntroduced =
+                                        RemapMacOSVersion(Introduced.Version),
+                                    NewDeprecated =
+                                        RemapMacOSVersion(Deprecated.Version),
+                                    NewObsoleted =
+                                        RemapMacOSVersion(Obsoleted.Version);
         if (NewIntroduced || NewDeprecated || NewObsoleted) {
           auto VersionOrEmptyVersion =
-              [](const Optional<VersionTuple> &V) -> VersionTuple {
+              [](const std::optional<VersionTuple> &V) -> VersionTuple {
             return V ? *V : VersionTuple();
           };
           AvailabilityAttr *NewAttr = S.mergeAvailabilityAttr(
@@ -3891,27 +3892,38 @@ static void handleFormatAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   if (!checkUInt32Argument(S, AL, FirstArgExpr, FirstArg, 3))
     return;
 
-  // check if the function is variadic if the 3rd argument non-zero
+  // FirstArg == 0 is is always valid.
   if (FirstArg != 0) {
-    if (isFunctionOrMethodVariadic(D))
-      ++NumArgs; // +1 for ...
-    else
-      S.Diag(D->getLocation(), diag::warn_gcc_requires_variadic_function) << AL;
-  }
-
-  // strftime requires FirstArg to be 0 because it doesn't read from any
-  // variable the input is just the current time + the format string.
-  if (Kind == StrftimeFormat) {
-    if (FirstArg != 0) {
+    if (Kind == StrftimeFormat) {
+      // If the kind is strftime, FirstArg must be 0 because strftime does not
+      // use any variadic arguments.
       S.Diag(AL.getLoc(), diag::err_format_strftime_third_parameter)
-        << FirstArgExpr->getSourceRange();
+          << FirstArgExpr->getSourceRange()
+          << FixItHint::CreateReplacement(FirstArgExpr->getSourceRange(), "0");
       return;
+    } else if (isFunctionOrMethodVariadic(D)) {
+      // Else, if the function is variadic, then FirstArg must be 0 or the
+      // "position" of the ... parameter. It's unusual to use 0 with variadic
+      // functions, so the fixit proposes the latter.
+      if (FirstArg != NumArgs + 1) {
+        S.Diag(AL.getLoc(), diag::err_attribute_argument_out_of_bounds)
+            << AL << 3 << FirstArgExpr->getSourceRange()
+            << FixItHint::CreateReplacement(FirstArgExpr->getSourceRange(),
+                                            std::to_string(NumArgs + 1));
+        return;
+      }
+    } else {
+      // Inescapable GCC compatibility diagnostic.
+      S.Diag(D->getLocation(), diag::warn_gcc_requires_variadic_function) << AL;
+      if (FirstArg <= Idx) {
+        // Else, the function is not variadic, and FirstArg must be 0 or any
+        // parameter after the format parameter. We don't offer a fixit because
+        // there are too many possible good values.
+        S.Diag(AL.getLoc(), diag::err_attribute_argument_out_of_bounds)
+            << AL << 3 << FirstArgExpr->getSourceRange();
+        return;
+      }
     }
-  // if 0 it disables parameter checking (to use with e.g. va_list)
-  } else if (FirstArg != 0 && FirstArg != NumArgs) {
-    S.Diag(AL.getLoc(), diag::err_attribute_argument_out_of_bounds)
-        << AL << 3 << FirstArgExpr->getSourceRange();
-    return;
   }
 
   FormatAttr *NewAttr = S.mergeFormatAttr(D, AL, II, Idx, FirstArg);

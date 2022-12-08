@@ -27,6 +27,7 @@
 #include "clang/Basic/CLWarnings.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/CodeGenOptions.h"
+#include "clang/Basic/HeaderInclude.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/MakeSupport.h"
 #include "clang/Basic/ObjCRuntime.h"
@@ -5556,12 +5557,19 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   }
   Args.AddAllArgs(CmdArgs, options::OPT_fshow_skipped_includes);
 
-  if (D.CCPrintHeaders && !D.CCGenDiagnostics) {
+  if (D.CCPrintHeadersFormat && !D.CCGenDiagnostics) {
     CmdArgs.push_back("-header-include-file");
     CmdArgs.push_back(!D.CCPrintHeadersFilename.empty()
                           ? D.CCPrintHeadersFilename.c_str()
                           : "-");
     CmdArgs.push_back("-sys-header-deps");
+    CmdArgs.push_back(Args.MakeArgString(
+        "-header-include-format=" +
+        std::string(headerIncludeFormatKindToString(D.CCPrintHeadersFormat))));
+    CmdArgs.push_back(
+        Args.MakeArgString("-header-include-filtering=" +
+                           std::string(headerIncludeFilteringKindToString(
+                               D.CCPrintHeadersFiltering))));
   }
   Args.AddLastArg(CmdArgs, options::OPT_P);
   Args.AddLastArg(CmdArgs, options::OPT_print_ivar_layout);
@@ -8175,7 +8183,7 @@ void OffloadBundler::ConstructJob(Compilation &C, const JobAction &JA,
   C.addCommand(std::make_unique<Command>(
       JA, *this, ResponseFileSupport::None(),
       TCArgs.MakeArgString(getToolChain().GetProgramPath(getShortName())),
-      CmdArgs, None, Output));
+      CmdArgs, std::nullopt, Output));
 }
 
 void OffloadBundler::ConstructJobMultipleOutputs(
@@ -8259,7 +8267,7 @@ void OffloadBundler::ConstructJobMultipleOutputs(
   C.addCommand(std::make_unique<Command>(
       JA, *this, ResponseFileSupport::None(),
       TCArgs.MakeArgString(getToolChain().GetProgramPath(getShortName())),
-      CmdArgs, None, Outputs));
+      CmdArgs, std::nullopt, Outputs));
 }
 
 void OffloadPackager::ConstructJob(Compilation &C, const JobAction &JA,

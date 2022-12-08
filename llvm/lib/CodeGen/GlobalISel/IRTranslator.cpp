@@ -84,6 +84,7 @@
 #include <cassert>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -2304,7 +2305,7 @@ bool IRTranslator::translateKnownIntrinsic(const CallInst &CI, Intrinsic::ID ID,
 
     // Convert the metadata argument to a constant integer
     Metadata *MD = cast<MetadataAsValue>(CI.getArgOperand(1))->getMetadata();
-    Optional<RoundingMode> RoundMode =
+    std::optional<RoundingMode> RoundMode =
         convertStrToRoundingMode(cast<MDString>(MD)->getString());
 
     // Add the Rounding mode as an integer
@@ -2598,6 +2599,7 @@ bool IRTranslator::translateInvoke(const User &U,
   // the region covered by the try.
   MCSymbol *BeginSymbol = nullptr;
   if (NeedEHLabel) {
+    MIRBuilder.buildInstr(TargetOpcode::G_INVOKE_REGION_START);
     BeginSymbol = Context.createTempSymbol();
     MIRBuilder.buildInstr(TargetOpcode::EH_LABEL).addSym(BeginSymbol);
   }

@@ -78,16 +78,17 @@ void mlir::getTripCountMapAndOperands(
                             tripCountValueMap.getOperands().end());
 }
 
-/// Returns the trip count of the loop if it's a constant, None otherwise. This
-/// method uses affine expression analysis (in turn using getTripCount) and is
-/// able to determine constant trip count in non-trivial cases.
+/// Returns the trip count of the loop if it's a constant, std::nullopt
+/// otherwise. This method uses affine expression analysis (in turn using
+/// getTripCount) and is able to determine constant trip count in non-trivial
+/// cases.
 Optional<uint64_t> mlir::getConstantTripCount(AffineForOp forOp) {
   SmallVector<Value, 4> operands;
   AffineMap map;
   getTripCountMapAndOperands(forOp, &map, &operands);
 
   if (!map)
-    return None;
+    return std::nullopt;
 
   // Take the min if all trip counts are constant.
   Optional<uint64_t> tripCount;
@@ -99,7 +100,7 @@ Optional<uint64_t> mlir::getConstantTripCount(AffineForOp forOp) {
       else
         tripCount = constExpr.getValue();
     } else
-      return None;
+      return std::nullopt;
   }
   return tripCount;
 }

@@ -22,6 +22,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
 #include "gtest/gtest.h"
+#include <optional>
 using namespace llvm;
 
 namespace {
@@ -1213,7 +1214,7 @@ TEST_F(DILocationTest, discriminatorSpecialCases) {
                         .value()
                         ->getDuplicationFactor());
 
-  // Check we return None for unencodable cases.
+  // Check we return std::nullopt for unencodable cases.
   EXPECT_EQ(std::nullopt, L4->cloneWithBaseDiscriminator(0x1000));
   EXPECT_EQ(std::nullopt, L4->cloneByMultiplyingDuplicationFactor(0x1000));
 }
@@ -2220,6 +2221,20 @@ TEST_F(DIFileTest, get) {
   EXPECT_EQ(N, MDNode::replaceWithUniqued(std::move(Temp)));
 }
 
+TEST_F(DIFileTest, EmptySource) {
+  DIFile *N = DIFile::get(Context, "file", "dir");
+  EXPECT_EQ(std::nullopt, N->getSource());
+
+  std::optional<DIFile::ChecksumInfo<StringRef>> Checksum = std::nullopt;
+  std::optional<StringRef> Source = std::nullopt;
+  N = DIFile::get(Context, "file", "dir", Checksum, Source);
+  EXPECT_EQ(Source, N->getSource());
+
+  Source = "";
+  N = DIFile::get(Context, "file", "dir", Checksum, Source);
+  EXPECT_EQ(Source, N->getSource());
+}
+
 TEST_F(DIFileTest, ScopeGetFile) {
   // Ensure that DIScope::getFile() returns itself.
   DIScope *N = DIFile::get(Context, "file", "dir");
@@ -3016,7 +3031,7 @@ TEST_F(DIExpressionTest, createFragmentExpression) {
   } while (false)
 
   // createFragmentExpression adds correct ops.
-  Optional<DIExpression*> R = DIExpression::createFragmentExpression(
+  std::optional<DIExpression*> R = DIExpression::createFragmentExpression(
     DIExpression::get(Context, {}), 0, 32);
   EXPECT_EQ(R.has_value(), true);
   EXPECT_EQ(3u, (*R)->getNumElements());

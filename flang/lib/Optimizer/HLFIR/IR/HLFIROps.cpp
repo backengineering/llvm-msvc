@@ -351,7 +351,7 @@ getCharacterLengthIfStatic(mlir::Type t) {
           hlfir::getFortranElementType(t).dyn_cast<fir::CharacterType>())
     if (charType.hasConstantLen())
       return charType.getLen();
-  return llvm::None;
+  return std::nullopt;
 }
 
 mlir::LogicalResult hlfir::ConcatOp::verify() {
@@ -413,6 +413,24 @@ void hlfir::EndAssociateOp::build(mlir::OpBuilder &builder,
                                   hlfir::AssociateOp associate) {
   return build(builder, result, associate.getFirBase(),
                associate.getMustFreeStrorageFlag());
+}
+
+//===----------------------------------------------------------------------===//
+// AsExprOp
+//===----------------------------------------------------------------------===//
+
+void hlfir::AsExprOp::build(mlir::OpBuilder &builder,
+                            mlir::OperationState &result, mlir::Value var) {
+  hlfir::ExprType::Shape typeShape;
+  mlir::Type type = getFortranElementOrSequenceType(var.getType());
+  if (auto seqType = type.dyn_cast<fir::SequenceType>()) {
+    typeShape.append(seqType.getShape().begin(), seqType.getShape().end());
+    type = seqType.getEleTy();
+  }
+
+  auto resultType = hlfir::ExprType::get(builder.getContext(), typeShape, type,
+                                         /*isPolymorphic: TODO*/ false);
+  return build(builder, result, resultType, var);
 }
 
 #define GET_OP_CLASSES

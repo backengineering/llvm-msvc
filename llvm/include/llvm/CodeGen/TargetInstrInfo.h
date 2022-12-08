@@ -754,7 +754,7 @@ public:
     ///
     /// Note: This hook is guaranteed to be called from the innermost to the
     /// outermost prologue of the loop being software pipelined.
-    virtual Optional<bool>
+    virtual std::optional<bool>
     createTripCountGreaterCondition(int TC, MachineBasicBlock &MBB,
                                     SmallVectorImpl<MachineOperand> &Cond) = 0;
 
@@ -1009,7 +1009,7 @@ protected:
   /// If the specific machine instruction is a instruction that moves/copies
   /// value from one register to another register return destination and source
   /// registers as machine operands.
-  virtual Optional<DestSourcePair>
+  virtual std::optional<DestSourcePair>
   isCopyInstrImpl(const MachineInstr &MI) const {
     return std::nullopt;
   }
@@ -1032,7 +1032,7 @@ public:
   /// For COPY-instruction the method naturally returns destination and source
   /// registers as machine operands, for all other instructions the method calls
   /// target-dependent implementation.
-  Optional<DestSourcePair> isCopyInstr(const MachineInstr &MI) const {
+  std::optional<DestSourcePair> isCopyInstr(const MachineInstr &MI) const {
     if (MI.isCopy()) {
       return DestSourcePair{MI.getOperand(0), MI.getOperand(1)};
     }
@@ -1043,8 +1043,8 @@ public:
   /// immediate value and a physical register, and stores the result in
   /// the given physical register \c Reg, return a pair of the source
   /// register and the offset which has been added.
-  virtual Optional<RegImmPair> isAddImmediate(const MachineInstr &MI,
-                                              Register Reg) const {
+  virtual std::optional<RegImmPair> isAddImmediate(const MachineInstr &MI,
+                                                   Register Reg) const {
     return std::nullopt;
   }
 
@@ -1170,10 +1170,21 @@ public:
   /// will be set to true.
   bool isReassociationCandidate(const MachineInstr &Inst, bool &Commuted) const;
 
-  /// Return true when \P Inst is both associative and commutative.
-  virtual bool isAssociativeAndCommutative(const MachineInstr &Inst) const {
+  /// Return true when \P Inst is both associative and commutative. If \P Invert
+  /// is true, then the inverse of \P Inst operation must be tested.
+  virtual bool isAssociativeAndCommutative(const MachineInstr &Inst,
+                                           bool Invert = false) const {
     return false;
   }
+
+  /// Return the inverse operation opcode if it exists for \P Opcode (e.g. add
+  /// for sub and vice versa).
+  virtual std::optional<unsigned> getInverseOpcode(unsigned Opcode) const {
+    return std::nullopt;
+  }
+
+  /// Return true when \P Opcode1 or its inversion is equal to \P Opcode2.
+  bool areOpcodesEqualOrInverse(unsigned Opcode1, unsigned Opcode2) const;
 
   /// Return true when \P Inst has reassociable operands in the same \P MBB.
   virtual bool hasReassociableOperands(const MachineInstr &Inst,
@@ -1206,6 +1217,15 @@ public:
                       SmallVectorImpl<MachineInstr *> &InsInstrs,
                       SmallVectorImpl<MachineInstr *> &DelInstrs,
                       DenseMap<unsigned, unsigned> &InstrIdxForVirtReg) const;
+
+  /// Reassociation of some instructions requires inverse operations (e.g.
+  /// (X + A) - Y => (X - Y) + A). This method returns a pair of new opcodes
+  /// (new root opcode, new prev opcode) that must be used to reassociate \P
+  /// Root and \P Prev accoring to \P Pattern.
+  std::pair<unsigned, unsigned>
+  getReassociationOpcodes(MachineCombinerPattern Pattern,
+                          const MachineInstr &Root,
+                          const MachineInstr &Prev) const;
 
   /// The limit on resource length extension we accept in MachineCombiner Pass.
   virtual int getExtendResourceLenLimit() const { return 0; }
@@ -1380,7 +1400,7 @@ public:
   /// MachineInstr that is accessing memory. These values are returned as a
   /// struct ExtAddrMode which contains all relevant information to make up the
   /// address.
-  virtual Optional<ExtAddrMode>
+  virtual std::optional<ExtAddrMode>
   getAddrModeFromMemoryOp(const MachineInstr &MemI,
                           const TargetRegisterInfo *TRI) const {
     return std::nullopt;
@@ -1984,8 +2004,8 @@ public:
   /// Produce the expression describing the \p MI loading a value into
   /// the physical register \p Reg. This hook should only be used with
   /// \p MIs belonging to VReg-less functions.
-  virtual Optional<ParamLoadedValue> describeLoadedValue(const MachineInstr &MI,
-                                                         Register Reg) const;
+  virtual std::optional<ParamLoadedValue>
+  describeLoadedValue(const MachineInstr &MI, Register Reg) const;
 
   /// Given the generic extension instruction \p ExtMI, returns true if this
   /// extension is a likely candidate for being folded into an another

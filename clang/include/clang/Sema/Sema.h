@@ -1330,6 +1330,25 @@ public:
     bool InDiscardedStatement;
     bool InImmediateFunctionContext;
 
+    bool IsCurrentlyCheckingDefaultArgumentOrInitializer = false;
+
+    // When evaluating immediate functions in the initializer of a default
+    // argument or default member initializer, this is the declaration whose
+    // default initializer is being evaluated and the location of the call
+    // or constructor definition.
+    struct InitializationContext {
+      InitializationContext(SourceLocation Loc, ValueDecl *Decl,
+                            DeclContext *Context)
+          : Loc(Loc), Decl(Decl), Context(Context) {
+        assert(Decl && Context && "invalid initialization context");
+      }
+
+      SourceLocation Loc;
+      ValueDecl *Decl = nullptr;
+      DeclContext *Context = nullptr;
+    };
+    llvm::Optional<InitializationContext> DelayedDefaultInitializationContext;
+
     ExpressionEvaluationContextRecord(ExpressionEvaluationContext Context,
                                       unsigned NumCleanupObjects,
                                       CleanupInfo ParentCleanup,
@@ -2886,12 +2905,10 @@ public:
                                     LookupResult &Previous);
   NamedDecl* ActOnTypedefNameDecl(Scope* S, DeclContext* DC, TypedefNameDecl *D,
                                   LookupResult &Previous, bool &Redeclaration);
-  NamedDecl *ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
-                                     TypeSourceInfo *TInfo,
-                                     LookupResult &Previous,
-                                     MultiTemplateParamsArg TemplateParamLists,
-                                     bool &AddToScope,
-                                     ArrayRef<BindingDecl *> Bindings = None);
+  NamedDecl *ActOnVariableDeclarator(
+      Scope *S, Declarator &D, DeclContext *DC, TypeSourceInfo *TInfo,
+      LookupResult &Previous, MultiTemplateParamsArg TemplateParamLists,
+      bool &AddToScope, ArrayRef<BindingDecl *> Bindings = std::nullopt);
   NamedDecl *
   ActOnDecompositionDeclarator(Scope *S, Declarator &D,
                                MultiTemplateParamsArg TemplateParamLists);
@@ -3930,16 +3947,14 @@ public:
 
   using ADLCallKind = CallExpr::ADLCallKind;
 
-  void AddOverloadCandidate(FunctionDecl *Function, DeclAccessPair FoundDecl,
-                            ArrayRef<Expr *> Args,
-                            OverloadCandidateSet &CandidateSet,
-                            bool SuppressUserConversions = false,
-                            bool PartialOverloading = false,
-                            bool AllowExplicit = true,
-                            bool AllowExplicitConversion = false,
-                            ADLCallKind IsADLCandidate = ADLCallKind::NotADL,
-                            ConversionSequenceList EarlyConversions = None,
-                            OverloadCandidateParamOrder PO = {});
+  void AddOverloadCandidate(
+      FunctionDecl *Function, DeclAccessPair FoundDecl, ArrayRef<Expr *> Args,
+      OverloadCandidateSet &CandidateSet, bool SuppressUserConversions = false,
+      bool PartialOverloading = false, bool AllowExplicit = true,
+      bool AllowExplicitConversion = false,
+      ADLCallKind IsADLCandidate = ADLCallKind::NotADL,
+      ConversionSequenceList EarlyConversions = std::nullopt,
+      OverloadCandidateParamOrder PO = {});
   void AddFunctionCandidates(const UnresolvedSetImpl &Functions,
                       ArrayRef<Expr *> Args,
                       OverloadCandidateSet &CandidateSet,
@@ -3954,16 +3969,15 @@ public:
                           OverloadCandidateSet& CandidateSet,
                           bool SuppressUserConversion = false,
                           OverloadCandidateParamOrder PO = {});
-  void AddMethodCandidate(CXXMethodDecl *Method,
-                          DeclAccessPair FoundDecl,
-                          CXXRecordDecl *ActingContext, QualType ObjectType,
-                          Expr::Classification ObjectClassification,
-                          ArrayRef<Expr *> Args,
-                          OverloadCandidateSet& CandidateSet,
-                          bool SuppressUserConversions = false,
-                          bool PartialOverloading = false,
-                          ConversionSequenceList EarlyConversions = None,
-                          OverloadCandidateParamOrder PO = {});
+  void
+  AddMethodCandidate(CXXMethodDecl *Method, DeclAccessPair FoundDecl,
+                     CXXRecordDecl *ActingContext, QualType ObjectType,
+                     Expr::Classification ObjectClassification,
+                     ArrayRef<Expr *> Args, OverloadCandidateSet &CandidateSet,
+                     bool SuppressUserConversions = false,
+                     bool PartialOverloading = false,
+                     ConversionSequenceList EarlyConversions = std::nullopt,
+                     OverloadCandidateParamOrder PO = {});
   void AddMethodTemplateCandidate(FunctionTemplateDecl *MethodTmpl,
                                   DeclAccessPair FoundDecl,
                                   CXXRecordDecl *ActingContext,
@@ -5451,9 +5465,9 @@ public:
   /// referenced. Used when template instantiation instantiates a non-dependent
   /// type -- entities referenced by the type are now referenced.
   void MarkDeclarationsReferencedInType(SourceLocation Loc, QualType T);
-  void MarkDeclarationsReferencedInExpr(Expr *E,
-                                        bool SkipLocalVariables = false,
-                                        ArrayRef<const Expr *> StopAt = None);
+  void MarkDeclarationsReferencedInExpr(
+      Expr *E, bool SkipLocalVariables = false,
+      ArrayRef<const Expr *> StopAt = std::nullopt);
 
   /// Try to recover by turning the given expression into a
   /// call.  Returns true if recovery was attempted or an error was
@@ -5514,7 +5528,8 @@ public:
   DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
                       CorrectionCandidateCallback &CCC,
                       TemplateArgumentListInfo *ExplicitTemplateArgs = nullptr,
-                      ArrayRef<Expr *> Args = None, TypoExpr **Out = nullptr);
+                      ArrayRef<Expr *> Args = std::nullopt,
+                      TypoExpr **Out = nullptr);
 
   DeclResult LookupIvarInObjCMethod(LookupResult &Lookup, Scope *S,
                                     IdentifierInfo *II);
@@ -6212,19 +6227,22 @@ public:
                         bool IsStdInitListInitialization, bool RequiresZeroInit,
                         unsigned ConstructKind, SourceRange ParenRange);
 
+  ExprResult ConvertMemberDefaultInitExpression(FieldDecl *FD, Expr *InitExpr,
+                                                SourceLocation InitLoc);
+
   ExprResult BuildCXXDefaultInitExpr(SourceLocation Loc, FieldDecl *Field);
 
 
   /// Instantiate or parse a C++ default argument expression as necessary.
   /// Return true on error.
   bool CheckCXXDefaultArgExpr(SourceLocation CallLoc, FunctionDecl *FD,
-                              ParmVarDecl *Param);
+                              ParmVarDecl *Param, Expr *Init = nullptr,
+                              bool SkipImmediateInvocations = true);
 
   /// BuildCXXDefaultArgExpr - Creates a CXXDefaultArgExpr, instantiating
   /// the default expr if needed.
-  ExprResult BuildCXXDefaultArgExpr(SourceLocation CallLoc,
-                                    FunctionDecl *FD,
-                                    ParmVarDecl *Param);
+  ExprResult BuildCXXDefaultArgExpr(SourceLocation CallLoc, FunctionDecl *FD,
+                                    ParmVarDecl *Param, Expr *Init = nullptr);
 
   /// FinalizeVarWithDestructor - Prepare for calling destructor on the
   /// constructed variable.
@@ -7061,7 +7079,8 @@ public:
   /// Number lambda for linkage purposes if necessary.
   void handleLambdaNumbering(
       CXXRecordDecl *Class, CXXMethodDecl *Method,
-      Optional<std::tuple<bool, unsigned, unsigned, Decl *>> Mangling = None);
+      Optional<std::tuple<bool, unsigned, unsigned, Decl *>> Mangling =
+          std::nullopt);
 
   /// Endow the lambda scope info with the relevant properties.
   void buildLambdaScope(sema::LambdaScopeInfo *LSI,
@@ -7080,7 +7099,7 @@ public:
       SourceLocation Loc, bool ByRef, SourceLocation EllipsisLoc,
       IdentifierInfo *Id, LambdaCaptureInitKind InitKind, Expr *&Init) {
     return ParsedType::make(buildLambdaInitCaptureInitialization(
-        Loc, ByRef, EllipsisLoc, None, Id,
+        Loc, ByRef, EllipsisLoc, std::nullopt, Id,
         InitKind != LambdaCaptureInitKind::CopyInit, Init));
   }
   QualType buildLambdaInitCaptureInitialization(
@@ -7100,7 +7119,8 @@ public:
                                           unsigned InitStyle, Expr *Init);
 
   /// Add an init-capture to a lambda scope.
-  void addInitCapture(sema::LambdaScopeInfo *LSI, VarDecl *Var);
+  void addInitCapture(sema::LambdaScopeInfo *LSI, VarDecl *Var,
+                      bool isReferenceType);
 
   /// Note that we have finished the explicit captures for the
   /// given lambda.
@@ -7544,8 +7564,9 @@ public:
   bool SetDelegatingInitializer(CXXConstructorDecl *Constructor,
                                 CXXCtorInitializer *Initializer);
 
-  bool SetCtorInitializers(CXXConstructorDecl *Constructor, bool AnyErrors,
-                           ArrayRef<CXXCtorInitializer *> Initializers = None);
+  bool SetCtorInitializers(
+      CXXConstructorDecl *Constructor, bool AnyErrors,
+      ArrayRef<CXXCtorInitializer *> Initializers = std::nullopt);
 
   void SetIvarInitializers(ObjCImplementationDecl *ObjCImplementation);
 
@@ -9574,7 +9595,7 @@ public:
         Sema &SemaRef, CodeSynthesisContext::SynthesisKind Kind,
         SourceLocation PointOfInstantiation, SourceRange InstantiationRange,
         Decl *Entity, NamedDecl *Template = nullptr,
-        ArrayRef<TemplateArgument> TemplateArgs = None,
+        ArrayRef<TemplateArgument> TemplateArgs = std::nullopt,
         sema::TemplateDeductionInfo *DeductionInfo = nullptr);
 
     InstantiatingTemplate(const InstantiatingTemplate&) = delete;
@@ -9626,6 +9647,63 @@ public:
     assert(!ExprEvalContexts.empty() &&
            "Must be in an expression evaluation context");
     return ExprEvalContexts.back().isImmediateFunctionContext();
+  }
+
+  bool isCheckingDefaultArgumentOrInitializer() const {
+    assert(!ExprEvalContexts.empty() &&
+           "Must be in an expression evaluation context");
+    const ExpressionEvaluationContextRecord &Ctx = ExprEvalContexts.back();
+    return (Ctx.Context ==
+            ExpressionEvaluationContext::PotentiallyEvaluatedIfUsed) ||
+           Ctx.IsCurrentlyCheckingDefaultArgumentOrInitializer;
+  }
+
+  bool isCheckingDefaultArgumentOrInitializerOfOuterEntity() const {
+    assert(!ExprEvalContexts.empty() &&
+           "Must be in an expression evaluation context");
+    for (const auto &Ctx : llvm::reverse(ExprEvalContexts)) {
+      if ((Ctx.Context ==
+           ExpressionEvaluationContext::PotentiallyEvaluatedIfUsed) ||
+          Ctx.IsCurrentlyCheckingDefaultArgumentOrInitializer)
+        return true;
+      if (Ctx.isConstantEvaluated() || Ctx.isImmediateFunctionContext() ||
+          Ctx.isUnevaluated())
+        return false;
+    }
+    return false;
+  }
+
+  llvm::Optional<ExpressionEvaluationContextRecord::InitializationContext>
+  InnermostDeclarationWithDelayedImmediateInvocations() const {
+    assert(!ExprEvalContexts.empty() &&
+           "Must be in an expression evaluation context");
+    for (const auto &Ctx : llvm::reverse(ExprEvalContexts)) {
+      if (Ctx.Context == ExpressionEvaluationContext::PotentiallyEvaluated &&
+          Ctx.DelayedDefaultInitializationContext)
+        return Ctx.DelayedDefaultInitializationContext;
+      if (Ctx.isConstantEvaluated() || Ctx.isImmediateFunctionContext() ||
+          Ctx.isUnevaluated())
+        break;
+    }
+    return llvm::None;
+  }
+
+  llvm::Optional<ExpressionEvaluationContextRecord::InitializationContext>
+  OutermostDeclarationWithDelayedImmediateInvocations() const {
+    assert(!ExprEvalContexts.empty() &&
+           "Must be in an expression evaluation context");
+    llvm::Optional<ExpressionEvaluationContextRecord::InitializationContext>
+        Res;
+    for (auto &Ctx : llvm::reverse(ExprEvalContexts)) {
+      if (Ctx.Context == ExpressionEvaluationContext::PotentiallyEvaluated &&
+          !Ctx.DelayedDefaultInitializationContext && Res)
+        break;
+      if (Ctx.isConstantEvaluated() || Ctx.isImmediateFunctionContext() ||
+          Ctx.isUnevaluated())
+        break;
+      Res = Ctx.DelayedDefaultInitializationContext;
+    }
+    return Res;
   }
 
   /// RAII class used to determine whether SFINAE has
@@ -10257,8 +10335,8 @@ public:
                                         ObjCInterfaceDecl *ID);
 
   Decl *ActOnAtEnd(Scope *S, SourceRange AtEnd,
-                   ArrayRef<Decl *> allMethods = None,
-                   ArrayRef<DeclGroupPtrTy> allTUVars = None);
+                   ArrayRef<Decl *> allMethods = std::nullopt,
+                   ArrayRef<DeclGroupPtrTy> allTUVars = std::nullopt);
 
   Decl *ActOnProperty(Scope *S, SourceLocation AtLoc,
                       SourceLocation LParenLoc,
@@ -11592,8 +11670,9 @@ public:
   /// \param TI The trait info object representing the match clause.
   /// \param NumAppendArgs The number of omp_interop_t arguments to account for
   /// in checking.
-  /// \returns None, if the function/variant function are not compatible with
-  /// the pragma, pair of original function/variant ref expression otherwise.
+  /// \returns std::nullopt, if the function/variant function are not compatible
+  /// with the pragma, pair of original function/variant ref expression
+  /// otherwise.
   Optional<std::pair<FunctionDecl *, Expr *>>
   checkOpenMPDeclareVariantFunction(DeclGroupPtrTy DG, Expr *VariantRef,
                                     OMPTraitInfo &TI, unsigned NumAppendArgs,
@@ -11937,21 +12016,21 @@ public:
       SourceLocation ModifierLoc, SourceLocation ColonLoc,
       SourceLocation EndLoc, CXXScopeSpec &ReductionIdScopeSpec,
       const DeclarationNameInfo &ReductionId,
-      ArrayRef<Expr *> UnresolvedReductions = llvm::None);
+      ArrayRef<Expr *> UnresolvedReductions = std::nullopt);
   /// Called on well-formed 'task_reduction' clause.
   OMPClause *ActOnOpenMPTaskReductionClause(
       ArrayRef<Expr *> VarList, SourceLocation StartLoc,
       SourceLocation LParenLoc, SourceLocation ColonLoc, SourceLocation EndLoc,
       CXXScopeSpec &ReductionIdScopeSpec,
       const DeclarationNameInfo &ReductionId,
-      ArrayRef<Expr *> UnresolvedReductions = llvm::None);
+      ArrayRef<Expr *> UnresolvedReductions = std::nullopt);
   /// Called on well-formed 'in_reduction' clause.
   OMPClause *ActOnOpenMPInReductionClause(
       ArrayRef<Expr *> VarList, SourceLocation StartLoc,
       SourceLocation LParenLoc, SourceLocation ColonLoc, SourceLocation EndLoc,
       CXXScopeSpec &ReductionIdScopeSpec,
       const DeclarationNameInfo &ReductionId,
-      ArrayRef<Expr *> UnresolvedReductions = llvm::None);
+      ArrayRef<Expr *> UnresolvedReductions = std::nullopt);
   /// Called on well-formed 'linear' clause.
   OMPClause *
   ActOnOpenMPLinearClause(ArrayRef<Expr *> VarList, Expr *Step,
@@ -12005,7 +12084,7 @@ public:
       OpenMPMapClauseKind MapType, bool IsMapTypeImplicit,
       SourceLocation MapLoc, SourceLocation ColonLoc, ArrayRef<Expr *> VarList,
       const OMPVarListLocTy &Locs, bool NoDiagnose = false,
-      ArrayRef<Expr *> UnresolvedMappers = llvm::None);
+      ArrayRef<Expr *> UnresolvedMappers = std::nullopt);
   /// Called on well-formed 'num_teams' clause.
   OMPClause *ActOnOpenMPNumTeamsClause(Expr *NumTeams, SourceLocation StartLoc,
                                        SourceLocation LParenLoc,
@@ -12036,7 +12115,7 @@ public:
                       CXXScopeSpec &MapperIdScopeSpec,
                       DeclarationNameInfo &MapperId, SourceLocation ColonLoc,
                       ArrayRef<Expr *> VarList, const OMPVarListLocTy &Locs,
-                      ArrayRef<Expr *> UnresolvedMappers = llvm::None);
+                      ArrayRef<Expr *> UnresolvedMappers = std::nullopt);
   /// Called on well-formed 'from' clause.
   OMPClause *
   ActOnOpenMPFromClause(ArrayRef<OpenMPMotionModifierKind> MotionModifiers,
@@ -12044,7 +12123,7 @@ public:
                         CXXScopeSpec &MapperIdScopeSpec,
                         DeclarationNameInfo &MapperId, SourceLocation ColonLoc,
                         ArrayRef<Expr *> VarList, const OMPVarListLocTy &Locs,
-                        ArrayRef<Expr *> UnresolvedMappers = llvm::None);
+                        ArrayRef<Expr *> UnresolvedMappers = std::nullopt);
   /// Called on well-formed 'use_device_ptr' clause.
   OMPClause *ActOnOpenMPUseDevicePtrClause(ArrayRef<Expr *> VarList,
                                            const OMPVarListLocTy &Locs);
@@ -12709,7 +12788,7 @@ public:
     }
     llvm::Optional<bool> getKnownValue() const {
       if (!HasKnownValue)
-        return None;
+        return std::nullopt;
       return KnownValue;
     }
   };
