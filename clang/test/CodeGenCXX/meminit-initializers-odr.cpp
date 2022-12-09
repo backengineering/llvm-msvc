@@ -42,3 +42,26 @@ void test() {
 // CHECK-LABEL: @_ZN21ThisShouldBeCalledTPLIiEC2Ev
 // CHECK-LABEL: @_ZN13WithConstevalC2Ei
 // CHECK-LABEL: @_ZN16WithConstevalTPLIdEC2Ed
+
+namespace check_arrays {
+
+template <typename T>
+struct inner {
+    inner() {}
+};
+
+struct S {
+   inner<int> a {};
+};
+
+class C {
+    S s[1]{};
+};
+
+int f() {
+    C c;
+}
+
+// CHECK-LABEL: @_ZN12check_arrays5innerIiEC2Ev
+
+}
