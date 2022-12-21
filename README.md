@@ -8,7 +8,7 @@
 ## Why do we make this project?
 We want to use clang/llvm as comfortable as msvc.
 
-## How to compile
+## How to compile?
 
 ```batch
 X86：clang+lld+debug
@@ -33,7 +33,7 @@ cmake .. -G "Visual Studio 17 2022" -A X64 -DLLVM_ENABLE_PROJECTS="clang;lld" -D
 msbuild /m -p:Configuration=release INSTALL.vcxproj 
 ```
 
-## How to contribute
+## How to contribute?
 - https://docs.github.com/en/get-started/quickstart/contributing-to-projects
 
 ## Learning
