@@ -33,6 +33,9 @@ cmake .. -G "Visual Studio 17 2022" -A X64 -DLLVM_ENABLE_PROJECTS="clang;lld" -D
 msbuild /m -p:Configuration=release INSTALL.vcxproj 
 ```
 
+## Quickstart
+- https://github.com/NewWorldComingSoon/llvm-msvc-build
+
 ## How to contribute?
 - https://docs.github.com/en/get-started/quickstart/contributing-to-projects
 
