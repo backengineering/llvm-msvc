@@ -1,5 +1,9 @@
 # llvm-msvc
 [![llvm-msvc-build](https://github.com/NewWorldComingSoon/llvm-msvc/actions/workflows/llvm-msvc-build.yml/badge.svg?branch=dev)](https://github.com/NewWorldComingSoon/llvm-msvc/actions/workflows/llvm-msvc-build.yml)
+[![GitHub license](https://img.shields.io/github/license/NewWorldComingSoon/llvm-msvc)](https://github.com/NewWorldComingSoon/llvm-msvc/blob/main/LICENSE)
+
+[![Github All Releases](https://img.shields.io/github/downloads/NewWorldComingSoon/llvm-msvc/total.svg)](https://github.com/NewWorldComingSoon/llvm-msvc/releases) 
+[![GitHub release](https://img.shields.io/github/release/NewWorldComingSoon/llvm-msvc.svg)](https://github.com/NewWorldComingSoon/llvm-msvc/releases) 
 
 ## Why do we make this project?
 We want to use clang/llvm as comfortable as msvc.
