@@ -1,4 +1,7 @@
-# Why do we make this project?
+# llvm-msvc
+[![llvm-msvc-build](https://github.com/NewWorldComingSoon/llvm-msvc/actions/workflows/llvm-msvc-build.yml/badge.svg?branch=dev)](https://github.com/NewWorldComingSoon/llvm-msvc/actions/workflows/llvm-msvc-build.yml)
+
+## Why do we make this project?
 We want to use clang/llvm as comfortable as msvc.
 
 ## How to compile
