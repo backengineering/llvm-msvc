@@ -40,7 +40,7 @@ msbuild /m -p:Configuration=release INSTALL.vcxproj
 - https://docs.github.com/en/get-started/quickstart/contributing-to-projects
 
 ## Learning
-If you don't know how to learn LLVM, you can check out this [repository](https://github.com/gmh5225/awesome-llvm-security) of mine
+If you don't know how to learn LLVM, you can check out this [repository](https://github.com/gmh5225/awesome-llvm-security) of mine.
 
 ## Issues
 If you have any questions, please tell me or send [issues](https://github.com/NewWorldComingSoon/llvm-msvc-issues/issues)
