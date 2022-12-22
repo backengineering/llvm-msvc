@@ -23,7 +23,6 @@
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Constant.h"
@@ -841,6 +840,33 @@ public:
   /// Methods to support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Value *V) {
     return V->getValueID() == ConstantTokenNoneVal;
+  }
+};
+
+/// A constant target extension type default initializer
+class ConstantTargetNone final : public ConstantData {
+  friend class Constant;
+
+  explicit ConstantTargetNone(TargetExtType *T)
+      : ConstantData(T, Value::ConstantTargetNoneVal) {}
+
+  void destroyConstantImpl();
+
+public:
+  ConstantTargetNone(const ConstantTargetNone &) = delete;
+
+  /// Static factory methods - Return objects of the specified value.
+  static ConstantTargetNone *get(TargetExtType *T);
+
+  /// Specialize the getType() method to always return an TargetExtType,
+  /// which reduces the amount of casting needed in parts of the compiler.
+  inline TargetExtType *getType() const {
+    return cast<TargetExtType>(Value::getType());
+  }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Value *V) {
+    return V->getValueID() == ConstantTargetNoneVal;
   }
 };
 

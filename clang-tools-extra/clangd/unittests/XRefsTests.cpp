@@ -17,7 +17,6 @@
 #include "index/MemIndex.h"
 #include "clang/AST/Decl.h"
 #include "clang/Basic/SourceLocation.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
@@ -289,11 +288,11 @@ MATCHER_P3(sym, Name, Decl, DefOrNone, "") {
     return false;
   }
   if (!Def && arg.Definition) {
-    *result_listener << "Definition is " << llvm::to_string(arg.Definition);
+    *result_listener << "Definition is " << llvm::to_string(*arg.Definition);
     return false;
   }
   if (arg.Definition->range != *Def) {
-    *result_listener << "Definition is " << llvm::to_string(arg.Definition);
+    *result_listener << "Definition is " << llvm::to_string(*arg.Definition);
     return false;
   }
   return true;

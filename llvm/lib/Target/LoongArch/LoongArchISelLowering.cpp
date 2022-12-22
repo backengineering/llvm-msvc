@@ -26,6 +26,7 @@
 #include "llvm/IR/IntrinsicsLoongArch.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/KnownBits.h"
+#include "llvm/Support/MathExtras.h"
 
 using namespace llvm;
 
@@ -94,6 +95,7 @@ LoongArchTargetLowering::LoongArchTargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::CTLZ, MVT::i32, Custom);
     setOperationAction(ISD::INTRINSIC_VOID, MVT::i32, Custom);
     setOperationAction(ISD::INTRINSIC_W_CHAIN, MVT::i32, Custom);
+    setOperationAction(ISD::INTRINSIC_W_CHAIN, MVT::Other, Custom);
     setOperationAction(ISD::READ_REGISTER, MVT::i32, Custom);
     setOperationAction(ISD::WRITE_REGISTER, MVT::i32, Custom);
     if (Subtarget.hasBasicF() && !Subtarget.hasBasicD())
@@ -124,6 +126,7 @@ LoongArchTargetLowering::LoongArchTargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::READ_REGISTER, MVT::i64, Custom);
     setOperationAction(ISD::WRITE_REGISTER, MVT::i64, Custom);
     setOperationAction(ISD::INTRINSIC_W_CHAIN, MVT::Other, Custom);
+    setOperationAction(ISD::INTRINSIC_VOID, MVT::i64, Custom);
   }
 
   static const ISD::CondCode FPCCToExpand[] = {
@@ -660,6 +663,47 @@ LoongArchTargetLowering::lowerINTRINSIC_W_CHAIN(SDValue Op,
          Op0},
         DL);
   }
+  case Intrinsic::loongarch_iocsrrd_d: {
+    if (Subtarget.is64Bit())
+      return DAG.getMergeValues(
+          {DAG.getNode(
+               LoongArchISD::IOCSRRD_D, DL, GRLenVT, Op0,
+               DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i64, Op.getOperand(2))),
+           Op0},
+          DL);
+    else {
+      DAG.getContext()->emitError(
+          "llvm.loongarch.crc.w.d.w requires target: loongarch64");
+      return DAG.getMergeValues({DAG.getUNDEF(Op.getValueType()), Op0}, DL);
+    }
+  }
+#define IOCSRRD_CASE(NAME, NODE)                                               \
+  case Intrinsic::loongarch_##NAME: {                                          \
+    return DAG.getMergeValues(                                                 \
+        {DAG.getNode(LoongArchISD::NODE, DL, GRLenVT, Op0, Op.getOperand(2)),  \
+         Op0},                                                                 \
+        DL);                                                                   \
+  }
+    IOCSRRD_CASE(iocsrrd_b, IOCSRRD_B);
+    IOCSRRD_CASE(iocsrrd_h, IOCSRRD_H);
+    IOCSRRD_CASE(iocsrrd_w, IOCSRRD_W);
+#undef IOCSRRD_CASE
+  case Intrinsic::loongarch_cpucfg: {
+    return DAG.getMergeValues(
+        {DAG.getNode(LoongArchISD::CPUCFG, DL, GRLenVT, Op0, Op.getOperand(2)),
+         Op0},
+        DL);
+  }
+  case Intrinsic::loongarch_lddir_d: {
+    unsigned Imm = cast<ConstantSDNode>(Op.getOperand(3))->getZExtValue();
+    if (!isUInt<8>(Imm)) {
+      DAG.getContext()->emitError("argument to '" + Op->getOperationName(0) +
+                                  "' out of range");
+      return DAG.getMergeValues({DAG.getUNDEF(Op.getValueType()), Op0}, DL);
+    }
+
+    return Op;
+  }
   }
 }
 
@@ -716,6 +760,54 @@ SDValue LoongArchTargetLowering::lowerINTRINSIC_VOID(SDValue Op,
 
     return DAG.getNode(LoongArchISD::SYSCALL, DL, MVT::Other, Op0,
                        DAG.getConstant(Imm, DL, GRLenVT));
+  }
+#define IOCSRWR_CASE(NAME, NODE)                                               \
+  case Intrinsic::loongarch_##NAME: {                                          \
+    SDValue Op3 = Op.getOperand(3);                                            \
+    if (Subtarget.is64Bit())                                                   \
+      return DAG.getNode(LoongArchISD::NODE, DL, MVT::Other, Op0,              \
+                         DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i64, Op2),      \
+                         DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i64, Op3));     \
+    else                                                                       \
+      return DAG.getNode(LoongArchISD::NODE, DL, MVT::Other, Op0, Op2, Op3);   \
+  }
+    IOCSRWR_CASE(iocsrwr_b, IOCSRWR_B);
+    IOCSRWR_CASE(iocsrwr_h, IOCSRWR_H);
+    IOCSRWR_CASE(iocsrwr_w, IOCSRWR_W);
+#undef IOCSRWR_CASE
+  case Intrinsic::loongarch_iocsrwr_d: {
+    if (Subtarget.is64Bit())
+      return DAG.getNode(
+          LoongArchISD::IOCSRWR_D, DL, MVT::Other, Op0, Op2,
+          DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i64, Op.getOperand(3)));
+    else {
+      DAG.getContext()->emitError(
+          "llvm.loongarch.iocsrwr.d requires target: loongarch64");
+      return Op.getOperand(0);
+    }
+  }
+#define ASRT_LE_GT_CASE(NAME)                                                  \
+  case Intrinsic::loongarch_##NAME: {                                          \
+    if (!Subtarget.is64Bit()) {                                                \
+      DAG.getContext()->emitError(Op->getOperationName(0) +                    \
+                                  " requires target: loongarch64");            \
+      return Op.getOperand(0);                                                 \
+    }                                                                          \
+    return Op;                                                                 \
+  }
+    ASRT_LE_GT_CASE(asrtle_d)
+    ASRT_LE_GT_CASE(asrtgt_d)
+#undef ASRT_LE_GT_CASE
+  case Intrinsic::loongarch_ldpte_d: {
+    unsigned Imm = cast<ConstantSDNode>(Op.getOperand(3))->getZExtValue();
+    if (!isUInt<8>(Imm))
+      return emitIntrinsicErrorMessage(Op, ErrorMsgOOR, DAG);
+    if (!Subtarget.is64Bit()) {
+      DAG.getContext()->emitError(Op->getOperationName(0) +
+                                  " requires target: loongarch64");
+      return Op.getOperand(0);
+    }
+    return Op;
   }
   }
 }
@@ -1013,6 +1105,7 @@ void LoongArchTargetLowering::ReplaceNodeResults(
       CRC_CASE_EXT_BINARYOP(crcc_w_b_w, CRCC_W_B_W)
       CRC_CASE_EXT_BINARYOP(crcc_w_h_w, CRCC_W_H_W)
       CRC_CASE_EXT_BINARYOP(crcc_w_w_w, CRCC_W_W_W)
+#undef CRC_CASE_EXT_BINARYOP
 
 #define CRC_CASE_EXT_UNARYOP(NAME, NODE)                                       \
   case Intrinsic::loongarch_##NAME: {                                          \
@@ -1026,6 +1119,7 @@ void LoongArchTargetLowering::ReplaceNodeResults(
   }
       CRC_CASE_EXT_UNARYOP(crc_w_d_w, CRC_W_D_W)
       CRC_CASE_EXT_UNARYOP(crcc_w_d_w, CRCC_W_D_W)
+#undef CRC_CASE_EXT_UNARYOP
 #define CSR_CASE(ID)                                                           \
   case Intrinsic::loongarch_##ID: {                                            \
     if (!Subtarget.is64Bit()) {                                                \
@@ -1038,6 +1132,8 @@ void LoongArchTargetLowering::ReplaceNodeResults(
       CSR_CASE(csrrd_d);
       CSR_CASE(csrwr_d);
       CSR_CASE(csrxchg_d);
+      CSR_CASE(iocsrrd_d);
+#undef CSR_CASE
     case Intrinsic::loongarch_csrrd_w: {
       unsigned Imm = cast<ConstantSDNode>(Op2)->getZExtValue();
       if (!isUInt<14>(Imm)) {
@@ -1088,6 +1184,37 @@ void LoongArchTargetLowering::ReplaceNodeResults(
               DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i64, N->getOperand(3)),
               DAG.getConstant(Imm, DL, GRLenVT))));
       Results.push_back(N->getOperand(0));
+      break;
+    }
+#define IOCSRRD_CASE(NAME, NODE)                                               \
+  case Intrinsic::loongarch_##NAME: {                                          \
+    Results.push_back(DAG.getNode(                                             \
+        ISD::TRUNCATE, DL, N->getValueType(0),                                 \
+        DAG.getNode(LoongArchISD::NODE, DL, MVT::i64, Op0,                     \
+                    DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i64, Op2))));        \
+    Results.push_back(N->getOperand(0));                                       \
+    break;                                                                     \
+  }
+      IOCSRRD_CASE(iocsrrd_b, IOCSRRD_B);
+      IOCSRRD_CASE(iocsrrd_h, IOCSRRD_H);
+      IOCSRRD_CASE(iocsrrd_w, IOCSRRD_W);
+#undef IOCSRRD_CASE
+    case Intrinsic::loongarch_cpucfg: {
+      Results.push_back(DAG.getNode(
+          ISD::TRUNCATE, DL, VT,
+          DAG.getNode(LoongArchISD::CPUCFG, DL, GRLenVT, Op0,
+                      DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i64, Op2))));
+      Results.push_back(Op0);
+      break;
+    }
+    case Intrinsic::loongarch_lddir_d: {
+      if (!Subtarget.is64Bit()) {
+        DAG.getContext()->emitError(N->getOperationName(0) +
+                                    " requires target: loongarch64");
+        Results.push_back(DAG.getUNDEF(VT));
+        Results.push_back(Op0);
+        break;
+      }
       break;
     }
     }
@@ -1574,6 +1701,15 @@ const char *LoongArchTargetLowering::getTargetNodeName(unsigned Opcode) const {
     NODE_NAME_CASE(CSRRD)
     NODE_NAME_CASE(CSRWR)
     NODE_NAME_CASE(CSRXCHG)
+    NODE_NAME_CASE(IOCSRRD_B)
+    NODE_NAME_CASE(IOCSRRD_H)
+    NODE_NAME_CASE(IOCSRRD_W)
+    NODE_NAME_CASE(IOCSRRD_D)
+    NODE_NAME_CASE(IOCSRWR_B)
+    NODE_NAME_CASE(IOCSRWR_H)
+    NODE_NAME_CASE(IOCSRWR_W)
+    NODE_NAME_CASE(IOCSRWR_D)
+    NODE_NAME_CASE(CPUCFG)
   }
 #undef NODE_NAME_CASE
   return nullptr;
@@ -2781,4 +2917,25 @@ LoongArchTargetLowering::getRegisterByName(const char *RegName, LLT VT,
     report_fatal_error(Twine("Trying to obtain non-reserved register \"" +
                              StringRef(RegName) + "\"."));
   return Reg;
+}
+
+bool LoongArchTargetLowering::decomposeMulByConstant(LLVMContext &Context,
+                                                     EVT VT, SDValue C) const {
+  // TODO: Support vectors.
+  if (!VT.isScalarInteger())
+    return false;
+
+  // Omit the optimization if the data size exceeds GRLen.
+  if (VT.getSizeInBits() > Subtarget.getGRLen())
+    return false;
+
+  // Break MUL into (SLLI + ADD/SUB) or ALSL.
+  if (auto *ConstNode = dyn_cast<ConstantSDNode>(C.getNode())) {
+    const APInt &Imm = ConstNode->getAPIntValue();
+    if ((Imm + 1).isPowerOf2() || (Imm - 1).isPowerOf2() ||
+        (1 - Imm).isPowerOf2() || (-1 - Imm).isPowerOf2())
+      return true;
+  }
+
+  return false;
 }

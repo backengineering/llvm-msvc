@@ -87,3 +87,31 @@ void csrxchg_w(unsigned int a, unsigned int b) {
     __builtin_loongarch_csrxchg_w(a, b, -1); // expected-error {{argument value 4294967295 is outside the valid range [0, 16383]}}
     __builtin_loongarch_csrxchg_w(a, b, b); // expected-error {{argument to '__builtin_loongarch_csrxchg_w' must be a constant integer}}
 }
+
+unsigned long int iocsrrd_d(unsigned int a) {
+  return __builtin_loongarch_iocsrrd_d(a); // expected-error {{this builtin requires target: loongarch64}}
+}
+
+void iocsrwr_d(unsigned long int a, unsigned int b) {
+  __builtin_loongarch_iocsrwr_d(a, b); // expected-error {{this builtin requires target: loongarch64}}
+}
+
+void asrtle_d(long int a, long int b) {
+  __builtin_loongarch_asrtle_d(a, b); // expected-error {{this builtin requires target: loongarch64}}
+}
+
+void asrtgt_d(long int a, long int b) {
+  __builtin_loongarch_asrtgt_d(a, b); // expected-error {{this builtin requires target: loongarch64}}
+}
+
+void lddir_d(long int a, int b) {
+  __builtin_loongarch_lddir_d(a, 1); // expected-error {{this builtin requires target: loongarch64}}
+}
+
+void ldpte_d(long int a, int b) {
+  __builtin_loongarch_ldpte_d(a, 1); // expected-error {{this builtin requires target: loongarch64}}
+}
+
+void rdtime_d() {
+  __rdtime_d(); // expected-error {{call to undeclared function '__rdtime_d'}}
+}

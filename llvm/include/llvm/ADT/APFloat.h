@@ -393,6 +393,10 @@ public:
   /// magnitude in the current semantics.
   bool isSmallest() const;
 
+  /// Returns true if this is the smallest (by magnitude) normalized finite
+  /// number in the given semantics.
+  bool isSmallestNormalized() const;
+
   /// Returns true if and only if the number has the largest possible finite
   /// magnitude in the current semantics.
   bool isLargest() const;
@@ -517,6 +521,7 @@ private:
   bool isSignificandAllOnesExceptLSB() const;
   /// Return true if the significand excluding the integral bit is all zeros.
   bool isSignificandAllZeros() const;
+  bool isSignificandAllZerosExceptMSB() const;
 
   /// @}
 
@@ -694,6 +699,7 @@ public:
 
   bool isDenormal() const;
   bool isSmallest() const;
+  bool isSmallestNormalized() const;
   bool isLargest() const;
   bool isInteger() const;
 
@@ -1240,10 +1246,16 @@ public:
   bool isFiniteNonZero() const { return isFinite() && !isZero(); }
   bool isPosZero() const { return isZero() && !isNegative(); }
   bool isNegZero() const { return isZero() && isNegative(); }
+  bool isPosInfinity() const { return isInfinity() && !isNegative(); }
+  bool isNegInfinity() const { return isInfinity() && isNegative(); }
   bool isSmallest() const { APFLOAT_DISPATCH_ON_SEMANTICS(isSmallest()); }
   bool isLargest() const { APFLOAT_DISPATCH_ON_SEMANTICS(isLargest()); }
   bool isInteger() const { APFLOAT_DISPATCH_ON_SEMANTICS(isInteger()); }
   bool isIEEE() const { return usesLayout<IEEEFloat>(getSemantics()); }
+
+  bool isSmallestNormalized() const {
+    APFLOAT_DISPATCH_ON_SEMANTICS(isSmallestNormalized());
+  }
 
   APFloat &operator=(const APFloat &RHS) = default;
   APFloat &operator=(APFloat &&RHS) = default;

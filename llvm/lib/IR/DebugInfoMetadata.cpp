@@ -974,6 +974,35 @@ DILocalScope *DILocalScope::getNonLexicalBlockFileScope() const {
   return const_cast<DILocalScope *>(this);
 }
 
+DILocalScope *DILocalScope::cloneScopeForSubprogram(
+    DILocalScope &RootScope, DISubprogram &NewSP, LLVMContext &Ctx,
+    DenseMap<const MDNode *, MDNode *> &Cache) {
+  SmallVector<DIScope *> ScopeChain;
+  DIScope *CachedResult = nullptr;
+
+  for (DIScope *Scope = &RootScope; !isa<DISubprogram>(Scope);
+       Scope = Scope->getScope()) {
+    if (auto It = Cache.find(Scope); It != Cache.end()) {
+      CachedResult = cast<DIScope>(It->second);
+      break;
+    }
+    ScopeChain.push_back(Scope);
+  }
+
+  // Recreate the scope chain, bottom-up, starting at the new subprogram (or a
+  // cached result).
+  DIScope *UpdatedScope = CachedResult ? CachedResult : &NewSP;
+  for (DIScope *ScopeToUpdate : reverse(ScopeChain)) {
+    TempMDNode ClonedScope = ScopeToUpdate->clone();
+    cast<DILexicalBlockBase>(*ClonedScope).replaceScope(UpdatedScope);
+    UpdatedScope =
+        cast<DIScope>(MDNode::replaceWithUniqued(std::move(ClonedScope)));
+    Cache[ScopeToUpdate] = UpdatedScope;
+  }
+
+  return cast<DILocalScope>(UpdatedScope);
+}
+
 DISubprogram::DISPFlags DISubprogram::getFlag(StringRef Flag) {
   return StringSwitch<DISPFlags>(Flag)
 #define HANDLE_DISP_FLAG(ID, NAME) .Case("DISPFlag" #NAME, SPFlag##NAME)
@@ -1410,6 +1439,48 @@ bool DIExpression::isComplex() const {
   }
 
   return false;
+}
+
+void DIExpression::canonicalizeExpressionOps(SmallVectorImpl<uint64_t> &Ops,
+                                             const DIExpression *Expr,
+                                             bool IsIndirect) {
+  // If Expr is not already variadic, insert the implied `DW_OP_LLVM_arg 0`
+  // to the existing expression ops.
+  if (none_of(Expr->expr_ops(), [](auto ExprOp) {
+        return ExprOp.getOp() == dwarf::DW_OP_LLVM_arg;
+      }))
+    Ops.append({dwarf::DW_OP_LLVM_arg, 0});
+  // If Expr is not indirect, we only need to insert the expression elements and
+  // we're done.
+  if (!IsIndirect) {
+    Ops.append(Expr->elements_begin(), Expr->elements_end());
+    return;
+  }
+  // If Expr is indirect, insert the implied DW_OP_deref at the end of the
+  // expression but before DW_OP_{stack_value, LLVM_fragment} if they are
+  // present.
+  for (auto Op : Expr->expr_ops()) {
+    if (Op.getOp() == dwarf::DW_OP_stack_value ||
+        Op.getOp() == dwarf::DW_OP_LLVM_fragment) {
+      Ops.push_back(dwarf::DW_OP_deref);
+      IsIndirect = false;
+    }
+    Op.appendToVector(Ops);
+  }
+  if (IsIndirect)
+    Ops.push_back(dwarf::DW_OP_deref);
+}
+
+bool DIExpression::isEqualExpression(const DIExpression *FirstExpr,
+                                     bool FirstIndirect,
+                                     const DIExpression *SecondExpr,
+                                     bool SecondIndirect) {
+  SmallVector<uint64_t> FirstOps;
+  DIExpression::canonicalizeExpressionOps(FirstOps, FirstExpr, FirstIndirect);
+  SmallVector<uint64_t> SecondOps;
+  DIExpression::canonicalizeExpressionOps(SecondOps, SecondExpr,
+                                          SecondIndirect);
+  return FirstOps == SecondOps;
 }
 
 std::optional<DIExpression::FragmentInfo>

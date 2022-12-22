@@ -208,13 +208,28 @@ SparseTensorLoopEmitter::SparseTensorLoopEmitter(ValueRange tensors,
                                                  StringAttr loopTag,
                                                  bool hasOutput,
                                                  bool isSparseOut,
-                                                 ArrayRef<unsigned> topSort)
-    : loopTag(loopTag), hasOutput(hasOutput), isSparseOut(isSparseOut),
-      tensors(tensors.begin(), tensors.end()), dimTypes(tensors.size()),
-      pidxs(tensors.size()), coord(tensors.size()), highs(tensors.size()),
-      ptrBuffer(tensors.size()), idxBuffer(tensors.size()),
-      valBuffer(tensors.size()), loopStack(),
-      sparsiferLoopLvlMap(topSort.size(), 0) {
+                                                 ArrayRef<unsigned> topSort) {
+  initialize(tensors, loopTag, hasOutput, isSparseOut, topSort);
+}
+
+void SparseTensorLoopEmitter::initialize(ValueRange tensors, StringAttr loopTag,
+                                         bool hasOutput, bool isSparseOut,
+                                         ArrayRef<unsigned> topSort) {
+  // First initializes fields.
+  this->loopTag = loopTag;
+  this->hasOutput = hasOutput;
+  this->isSparseOut = isSparseOut;
+  this->tensors.assign(tensors.begin(), tensors.end());
+  this->dimTypes.assign(tensors.size(), std::vector<DimLevelType>());
+  this->pidxs.assign(tensors.size(), std::vector<Value>());
+  this->coord.assign(tensors.size(), std::vector<Value>());
+  this->highs.assign(tensors.size(), std::vector<Value>());
+  this->ptrBuffer.assign(tensors.size(), std::vector<Value>());
+  this->idxBuffer.assign(tensors.size(), std::vector<Value>());
+  this->valBuffer.assign(tensors.size(), nullptr);
+  this->loopStack.reserve(topSort.size());
+  this->sparsiferLoopLvlMap.assign(topSort.size(), 0);
+
   for (size_t tid = 0, e = tensors.size(); tid < e; tid++) {
     auto t = tensors[tid];
     // a scalar or 0-dimension tensors
@@ -239,6 +254,7 @@ SparseTensorLoopEmitter::SparseTensorLoopEmitter(ValueRange tensors,
     idxBuffer[tid].assign(rank, Value());
   }
 
+  // FIXME: This map should be maintained outside loop emitter.
   for (unsigned i = 0, e = topSort.size(); i < e; i++) {
     // This is an inverse map of the topologically sorted loop index from
     // sparsifier. This is needed to map the AffineDimExpr back to the loopStack
@@ -880,23 +896,23 @@ Type mlir::sparse_tensor::getOverheadType(Builder &builder, OverheadType ot) {
   llvm_unreachable("Unknown OverheadType");
 }
 
-OverheadType mlir::sparse_tensor::pointerOverheadTypeEncoding(
-    const SparseTensorEncodingAttr &enc) {
+OverheadType
+mlir::sparse_tensor::pointerOverheadTypeEncoding(SparseTensorEncodingAttr enc) {
   return overheadTypeEncoding(enc.getPointerBitWidth());
 }
 
-OverheadType mlir::sparse_tensor::indexOverheadTypeEncoding(
-    const SparseTensorEncodingAttr &enc) {
+OverheadType
+mlir::sparse_tensor::indexOverheadTypeEncoding(SparseTensorEncodingAttr enc) {
   return overheadTypeEncoding(enc.getIndexBitWidth());
 }
 
-Type mlir::sparse_tensor::getPointerOverheadType(
-    Builder &builder, const SparseTensorEncodingAttr &enc) {
+Type mlir::sparse_tensor::getPointerOverheadType(Builder &builder,
+                                                 SparseTensorEncodingAttr enc) {
   return getOverheadType(builder, pointerOverheadTypeEncoding(enc));
 }
 
-Type mlir::sparse_tensor::getIndexOverheadType(
-    Builder &builder, const SparseTensorEncodingAttr &enc) {
+Type mlir::sparse_tensor::getIndexOverheadType(Builder &builder,
+                                               SparseTensorEncodingAttr enc) {
   return getOverheadType(builder, indexOverheadTypeEncoding(enc));
 }
 
@@ -1149,6 +1165,18 @@ Value mlir::sparse_tensor::genAlloca(OpBuilder &builder, Location loc, Value sz,
 Value mlir::sparse_tensor::genAllocaScalar(OpBuilder &builder, Location loc,
                                            Type tp) {
   return builder.create<memref::AllocaOp>(loc, MemRefType::get({}, tp));
+}
+
+Value mlir::sparse_tensor::allocaBuffer(OpBuilder &builder, Location loc,
+                                        ValueRange values) {
+  const unsigned sz = values.size();
+  assert(sz >= 1);
+  Value buffer = genAlloca(builder, loc, sz, values[0].getType());
+  for (unsigned i = 0; i < sz; i++) {
+    Value idx = constantIndex(builder, loc, i);
+    builder.create<memref::StoreOp>(loc, values[i], buffer, idx);
+  }
+  return buffer;
 }
 
 Value mlir::sparse_tensor::allocDenseTensor(OpBuilder &builder, Location loc,

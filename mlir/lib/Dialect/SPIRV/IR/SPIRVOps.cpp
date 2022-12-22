@@ -313,8 +313,8 @@ template <typename MemoryOpTy>
 static void printMemoryAccessAttribute(
     MemoryOpTy memoryOp, OpAsmPrinter &printer,
     SmallVectorImpl<StringRef> &elidedAttrs,
-    Optional<spirv::MemoryAccess> memoryAccessAtrrValue = std::nullopt,
-    Optional<uint32_t> alignmentAttrValue = std::nullopt) {
+    std::optional<spirv::MemoryAccess> memoryAccessAtrrValue = std::nullopt,
+    std::optional<uint32_t> alignmentAttrValue = std::nullopt) {
   // Print optional memory access attribute.
   if (auto memAccess = (memoryAccessAtrrValue ? memoryAccessAtrrValue
                                               : memoryOp.getMemoryAccess())) {
@@ -327,7 +327,7 @@ static void printMemoryAccessAttribute(
       if (auto alignment = (alignmentAttrValue ? alignmentAttrValue
                                                : memoryOp.getAlignment())) {
         elidedAttrs.push_back(kAlignmentAttrName);
-        printer << ", " << alignment;
+        printer << ", " << *alignment;
       }
     }
     printer << "]";
@@ -343,8 +343,8 @@ template <typename MemoryOpTy>
 static void printSourceMemoryAccessAttribute(
     MemoryOpTy memoryOp, OpAsmPrinter &printer,
     SmallVectorImpl<StringRef> &elidedAttrs,
-    Optional<spirv::MemoryAccess> memoryAccessAtrrValue = std::nullopt,
-    Optional<uint32_t> alignmentAttrValue = std::nullopt) {
+    std::optional<spirv::MemoryAccess> memoryAccessAtrrValue = std::nullopt,
+    std::optional<uint32_t> alignmentAttrValue = std::nullopt) {
 
   printer << ", ";
 
@@ -360,7 +360,7 @@ static void printSourceMemoryAccessAttribute(
       if (auto alignment = (alignmentAttrValue ? alignmentAttrValue
                                                : memoryOp.getAlignment())) {
         elidedAttrs.push_back(kSourceAlignmentAttrName);
-        printer << ", " << alignment;
+        printer << ", " << *alignment;
       }
     }
     printer << "]";
@@ -912,7 +912,7 @@ static ParseResult parseGroupNonUniformArithmeticOp(OpAsmParser &parser,
       parser.parseOperand(valueInfo))
     return failure();
 
-  Optional<OpAsmParser::UnresolvedOperand> clusterSizeInfo;
+  std::optional<OpAsmParser::UnresolvedOperand> clusterSizeInfo;
   if (succeeded(parser.parseOptionalKeyword(kClusterSize))) {
     clusterSizeInfo = OpAsmParser::UnresolvedOperand();
     if (parser.parseLParen() || parser.parseOperand(*clusterSizeInfo) ||
@@ -2382,7 +2382,7 @@ ParseResult spirv::FuncOp::parse(OpAsmParser &parser, OperationState &result) {
   for (auto &arg : entryArgs)
     argTypes.push_back(arg.type);
   auto fnType = builder.getFunctionType(argTypes, resultTypes);
-  result.addAttribute(FunctionOpInterface::getTypeAttrName(),
+  result.addAttribute(getFunctionTypeAttrName(result.name),
                       TypeAttr::get(fnType));
 
   // Parse the optional function control keyword.
@@ -2396,8 +2396,9 @@ ParseResult spirv::FuncOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // Add the attributes to the function arguments.
   assert(resultAttrs.size() == resultTypes.size());
-  function_interface_impl::addArgAndResultAttrs(builder, result, entryArgs,
-                                                resultAttrs);
+  function_interface_impl::addArgAndResultAttrs(
+      builder, result, entryArgs, resultAttrs, getArgAttrsAttrName(result.name),
+      getResAttrsAttrName(result.name));
 
   // Parse the optional function body.
   auto *body = result.addRegion();
@@ -2417,8 +2418,10 @@ void spirv::FuncOp::print(OpAsmPrinter &printer) {
   printer << " \"" << spirv::stringifyFunctionControl(getFunctionControl())
           << "\"";
   function_interface_impl::printFunctionAttributes(
-      printer, *this, fnType.getNumInputs(), fnType.getNumResults(),
-      {spirv::attributeName<spirv::FunctionControl>()});
+      printer, *this,
+      {spirv::attributeName<spirv::FunctionControl>(),
+       getFunctionTypeAttrName(), getArgAttrsAttrName(), getResAttrsAttrName(),
+       getFunctionControlAttrName()});
 
   // Print the body if this is not an external function.
   Region &body = this->getBody();
@@ -2430,10 +2433,6 @@ void spirv::FuncOp::print(OpAsmPrinter &printer) {
 }
 
 LogicalResult spirv::FuncOp::verifyType() {
-  auto type = getFunctionTypeAttr().getValue();
-  if (!type.isa<FunctionType>())
-    return emitOpError("requires '" + getTypeAttrName() +
-                       "' attribute of function type");
   if (getFunctionType().getNumResults() > 1)
     return emitOpError("cannot have more than one result");
   return success();
@@ -2473,7 +2472,7 @@ void spirv::FuncOp::build(OpBuilder &builder, OperationState &state,
                           ArrayRef<NamedAttribute> attrs) {
   state.addAttribute(SymbolTable::getSymbolAttrName(),
                      builder.getStringAttr(name));
-  state.addAttribute(getTypeAttrName(), TypeAttr::get(type));
+  state.addAttribute(getFunctionTypeAttrName(state.name), TypeAttr::get(type));
   state.addAttribute(spirv::attributeName<spirv::FunctionControl>(),
                      builder.getAttr<spirv::FunctionControlAttr>(control));
   state.attributes.append(attrs.begin(), attrs.end());
@@ -3349,7 +3348,7 @@ LogicalResult spirv::MergeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 void spirv::ModuleOp::build(OpBuilder &builder, OperationState &state,
-                            Optional<StringRef> name) {
+                            std::optional<StringRef> name) {
   OpBuilder::InsertionGuard guard(builder);
   builder.createBlock(state.addRegion());
   if (name) {
@@ -3361,8 +3360,8 @@ void spirv::ModuleOp::build(OpBuilder &builder, OperationState &state,
 void spirv::ModuleOp::build(OpBuilder &builder, OperationState &state,
                             spirv::AddressingModel addressingModel,
                             spirv::MemoryModel memoryModel,
-                            Optional<VerCapExtAttr> vceTriple,
-                            Optional<StringRef> name) {
+                            std::optional<VerCapExtAttr> vceTriple,
+                            std::optional<StringRef> name) {
   state.addAttribute(
       "addressing_model",
       builder.getAttr<spirv::AddressingModelAttr>(addressingModel));
@@ -3415,7 +3414,7 @@ ParseResult spirv::ModuleOp::parse(OpAsmParser &parser,
 }
 
 void spirv::ModuleOp::print(OpAsmPrinter &printer) {
-  if (Optional<StringRef> name = getName()) {
+  if (std::optional<StringRef> name = getName()) {
     printer << ' ';
     printer.printSymbolName(*name);
   }
@@ -3429,7 +3428,7 @@ void spirv::ModuleOp::print(OpAsmPrinter &printer) {
   elidedAttrs.assign({addressingModelAttrName, memoryModelAttrName,
                       mlir::SymbolTable::getSymbolAttrName()});
 
-  if (Optional<spirv::VerCapExtAttr> triple = getVceTriple()) {
+  if (std::optional<spirv::VerCapExtAttr> triple = getVceTriple()) {
     printer << " requires " << *triple;
     elidedAttrs.push_back(spirv::ModuleOp::getVCETripleAttrName());
   }
@@ -3807,7 +3806,7 @@ LogicalResult spirv::UnreachableOp::verify() {
 ParseResult spirv::VariableOp::parse(OpAsmParser &parser,
                                      OperationState &result) {
   // Parse optional initializer
-  Optional<OpAsmParser::UnresolvedOperand> initInfo;
+  std::optional<OpAsmParser::UnresolvedOperand> initInfo;
   if (succeeded(parser.parseOptionalKeyword("init"))) {
     initInfo = OpAsmParser::UnresolvedOperand();
     if (parser.parseLParen() || parser.parseOperand(*initInfo) ||
@@ -4852,11 +4851,11 @@ static LogicalResult verifyIntegerDotProduct(Operation *op) {
   return success();
 }
 
-static Optional<spirv::Version> getIntegerDotProductMinVersion() {
+static std::optional<spirv::Version> getIntegerDotProductMinVersion() {
   return spirv::Version::V_1_0; // Available in SPIR-V >= 1.0.
 }
 
-static Optional<spirv::Version> getIntegerDotProductMaxVersion() {
+static std::optional<spirv::Version> getIntegerDotProductMaxVersion() {
   return spirv::Version::V_1_6; // Available in SPIR-V <= 1.6.
 }
 
@@ -4911,10 +4910,10 @@ getIntegerDotProductCapabilities(Operation *op) {
   SmallVector<ArrayRef<spirv::Capability>, 1> OpName::getCapabilities() {      \
     return getIntegerDotProductCapabilities(*this);                            \
   }                                                                            \
-  Optional<spirv::Version> OpName::getMinVersion() {                           \
+  std::optional<spirv::Version> OpName::getMinVersion() {                      \
     return getIntegerDotProductMinVersion();                                   \
   }                                                                            \
-  Optional<spirv::Version> OpName::getMaxVersion() {                           \
+  std::optional<spirv::Version> OpName::getMaxVersion() {                      \
     return getIntegerDotProductMaxVersion();                                   \
   }
 

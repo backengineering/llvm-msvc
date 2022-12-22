@@ -78,6 +78,19 @@ enum NodeType : unsigned {
   CSRRD,
   CSRWR,
   CSRXCHG,
+
+  // IOCSR access operations
+  IOCSRRD_B,
+  IOCSRRD_W,
+  IOCSRRD_H,
+  IOCSRRD_D,
+  IOCSRWR_B,
+  IOCSRWR_H,
+  IOCSRWR_W,
+  IOCSRWR_D,
+
+  // Read CPU configuration information operation
+  CPUCFG,
 };
 } // end namespace LoongArchISD
 
@@ -158,6 +171,9 @@ public:
 
   Register getRegisterByName(const char *RegName, LLT VT,
                              const MachineFunction &MF) const override;
+
+  bool decomposeMulByConstant(LLVMContext &Context, EVT VT,
+                              SDValue C) const override;
 
 private:
   /// Target-specific function used to lower LoongArch calling conventions.

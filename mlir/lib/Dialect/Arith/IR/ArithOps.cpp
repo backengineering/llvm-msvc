@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <cassert>
+#include <cstdint>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -72,6 +73,29 @@ arith::CmpIPredicate arith::invertPredicate(arith::CmpIPredicate pred) {
 static arith::CmpIPredicateAttr invertPredicate(arith::CmpIPredicateAttr pred) {
   return arith::CmpIPredicateAttr::get(pred.getContext(),
                                        invertPredicate(pred.getValue()));
+}
+
+static int64_t getScalarOrElementWidth(Type type) {
+  Type elemTy = getElementTypeOrSelf(type);
+  if (elemTy.isIntOrFloat())
+    return elemTy.getIntOrFloatBitWidth();
+
+  return -1;
+}
+
+static int64_t getScalarOrElementWidth(Value value) {
+  return getScalarOrElementWidth(value.getType());
+}
+
+static FailureOr<APInt> getIntOrSplatIntValue(Attribute attr) {
+  if (auto intAttr = attr.dyn_cast<IntegerAttr>())
+    return intAttr.getValue();
+
+  if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>())
+    if (splatAttr.getElementType().isa<IntegerType>())
+      return splatAttr.getSplatValue<APInt>();
+
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//
@@ -222,7 +246,8 @@ void arith::AddIOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
 // AddUIExtendedOp
 //===----------------------------------------------------------------------===//
 
-Optional<SmallVector<int64_t, 4>> arith::AddUIExtendedOp::getShapeForUnroll() {
+std::optional<SmallVector<int64_t, 4>>
+arith::AddUIExtendedOp::getShapeForUnroll() {
   if (auto vt = getType(0).dyn_cast<VectorType>())
     return llvm::to_vector<4>(vt.getShape());
   return std::nullopt;
@@ -237,7 +262,7 @@ static APInt calculateUnsignedOverflow(const APInt &sum, const APInt &operand) {
 LogicalResult
 arith::AddUIExtendedOp::fold(ArrayRef<Attribute> operands,
                              SmallVectorImpl<OpFoldResult> &results) {
-  auto overflowTy = getOverflow().getType();
+  Type overflowTy = getOverflow().getType();
   // addui_extended(x, 0) -> x, false
   if (matchPattern(getRhs(), m_Zero())) {
     auto overflowZero = APInt::getZero(1);
@@ -295,6 +320,11 @@ arith::AddUIExtendedOp::fold(ArrayRef<Attribute> operands,
   return failure();
 }
 
+void arith::AddUIExtendedOp::getCanonicalizationPatterns(
+    RewritePatternSet &patterns, MLIRContext *context) {
+  patterns.add<AddUIExtendedToAddI>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // SubIOp
 //===----------------------------------------------------------------------===//
@@ -343,6 +373,109 @@ OpFoldResult arith::MulIOp::fold(ArrayRef<Attribute> operands) {
   // default folder
   return constFoldBinaryOp<IntegerAttr>(
       operands, [](const APInt &a, const APInt &b) { return a * b; });
+}
+
+//===----------------------------------------------------------------------===//
+// MulSIExtendedOp
+//===----------------------------------------------------------------------===//
+
+std::optional<SmallVector<int64_t, 4>>
+arith::MulSIExtendedOp::getShapeForUnroll() {
+  if (auto vt = getType(0).dyn_cast<VectorType>())
+    return llvm::to_vector<4>(vt.getShape());
+  return std::nullopt;
+}
+
+LogicalResult
+arith::MulSIExtendedOp::fold(ArrayRef<Attribute> operands,
+                             SmallVectorImpl<OpFoldResult> &results) {
+  // mulsi_extended(x, 0) -> 0, 0
+  if (matchPattern(getRhs(), m_Zero())) {
+    Attribute zero = operands[1];
+    results.push_back(zero);
+    results.push_back(zero);
+    return success();
+  }
+
+  // mulsi_extended(cst_a, cst_b) -> cst_low, cst_high
+  if (Attribute lowAttr = constFoldBinaryOp<IntegerAttr>(
+          operands, [](const APInt &a, const APInt &b) { return a * b; })) {
+    // Invoke the constant fold helper again to calculate the 'high' result.
+    Attribute highAttr = constFoldBinaryOp<IntegerAttr>(
+        operands, [](const APInt &a, const APInt &b) {
+          unsigned bitWidth = a.getBitWidth();
+          APInt fullProduct = a.sext(bitWidth * 2) * b.sext(bitWidth * 2);
+          return fullProduct.extractBits(bitWidth, bitWidth);
+        });
+    assert(highAttr && "Unexpected constant-folding failure");
+
+    results.push_back(lowAttr);
+    results.push_back(highAttr);
+    return success();
+  }
+
+  return failure();
+}
+
+void arith::MulSIExtendedOp::getCanonicalizationPatterns(
+    RewritePatternSet &patterns, MLIRContext *context) {
+  patterns.add<MulSIExtendedToMulI, MulSIExtendedRHSOne>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// MulUIExtendedOp
+//===----------------------------------------------------------------------===//
+
+std::optional<SmallVector<int64_t, 4>>
+arith::MulUIExtendedOp::getShapeForUnroll() {
+  if (auto vt = getType(0).dyn_cast<VectorType>())
+    return llvm::to_vector<4>(vt.getShape());
+  return std::nullopt;
+}
+
+LogicalResult
+arith::MulUIExtendedOp::fold(ArrayRef<Attribute> operands,
+                             SmallVectorImpl<OpFoldResult> &results) {
+  // mului_extended(x, 0) -> 0, 0
+  if (matchPattern(getRhs(), m_Zero())) {
+    Attribute zero = operands[1];
+    results.push_back(zero);
+    results.push_back(zero);
+    return success();
+  }
+
+  // mului_extended(x, 1) -> x, 0
+  if (matchPattern(getRhs(), m_One())) {
+    Builder builder(getContext());
+    Attribute zero = builder.getZeroAttr(getLhs().getType());
+    results.push_back(getLhs());
+    results.push_back(zero);
+    return success();
+  }
+
+  // mului_extended(cst_a, cst_b) -> cst_low, cst_high
+  if (Attribute lowAttr = constFoldBinaryOp<IntegerAttr>(
+          operands, [](const APInt &a, const APInt &b) { return a * b; })) {
+    // Invoke the constant fold helper again to calculate the 'high' result.
+    Attribute highAttr = constFoldBinaryOp<IntegerAttr>(
+        operands, [](const APInt &a, const APInt &b) {
+          unsigned bitWidth = a.getBitWidth();
+          APInt fullProduct = a.zext(bitWidth * 2) * b.zext(bitWidth * 2);
+          return fullProduct.extractBits(bitWidth, bitWidth);
+        });
+    assert(highAttr && "Unexpected constant-folding failure");
+
+    results.push_back(lowAttr);
+    results.push_back(highAttr);
+    return success();
+  }
+
+  return failure();
+}
+
+void arith::MulUIExtendedOp::getCanonicalizationPatterns(
+    RewritePatternSet &patterns, MLIRContext *context) {
+  patterns.add<MulUIExtendedToMulI>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1143,6 +1276,12 @@ bool arith::TruncIOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
   return checkWidthChangeCast<std::less, IntegerType>(inputs, outputs);
 }
 
+void arith::TruncIOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                                  MLIRContext *context) {
+  patterns.add<TruncIShrSIToTrunciShrUI, TruncIShrUIMulIToMulSIExtended,
+               TruncIShrUIMulIToMulUIExtended>(context);
+}
+
 LogicalResult arith::TruncIOp::verify() {
   return verifyTruncateOp<IntegerType>(*this);
 }
@@ -1503,7 +1642,7 @@ static Attribute getBoolAttribute(Type type, MLIRContext *ctx, bool value) {
   return DenseElementsAttr::get(shapedType, boolAttr);
 }
 
-static Optional<int64_t> getIntegerWidth(Type t) {
+static std::optional<int64_t> getIntegerWidth(Type t) {
   if (auto intType = t.dyn_cast<IntegerType>()) {
     return intType.getWidth();
   }
@@ -1525,7 +1664,7 @@ OpFoldResult arith::CmpIOp::fold(ArrayRef<Attribute> operands) {
   if (matchPattern(getRhs(), m_Zero())) {
     if (auto extOp = getLhs().getDefiningOp<ExtSIOp>()) {
       // extsi(%x : i1 -> iN) != 0  ->  %x
-      Optional<int64_t> integerWidth =
+      std::optional<int64_t> integerWidth =
           getIntegerWidth(extOp.getOperand().getType());
       if (integerWidth && integerWidth.value() == 1 &&
           getPredicate() == arith::CmpIPredicate::ne)
@@ -1533,7 +1672,7 @@ OpFoldResult arith::CmpIOp::fold(ArrayRef<Attribute> operands) {
     }
     if (auto extOp = getLhs().getDefiningOp<ExtUIOp>()) {
       // extui(%x : i1 -> iN) != 0  ->  %x
-      Optional<int64_t> integerWidth =
+      std::optional<int64_t> integerWidth =
           getIntegerWidth(extOp.getOperand().getType());
       if (integerWidth && integerWidth.value() == 1 &&
           getPredicate() == arith::CmpIPredicate::ne)

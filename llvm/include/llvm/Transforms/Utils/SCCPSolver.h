@@ -52,7 +52,17 @@ struct ArgInfo {
   Argument *Formal; // The Formal argument being analysed.
   Constant *Actual; // A corresponding actual constant argument.
 
-  ArgInfo(Argument *F, Constant *A) : Formal(F), Actual(A){};
+  ArgInfo(Argument *F, Constant *A) : Formal(F), Actual(A) {}
+
+  bool operator==(const ArgInfo &Other) const {
+    return Formal == Other.Formal && Actual == Other.Actual;
+  }
+
+  bool operator!=(const ArgInfo &Other) const { return !(*this == Other); }
+
+  friend hash_code hash_value(const ArgInfo &A) {
+    return hash_combine(hash_value(A.Formal), hash_value(A.Actual));
+  }
 };
 
 class SCCPInstVisitor;
@@ -117,6 +127,10 @@ public:
   /// method should be use to handle this.  If this returns true, the solver
   /// should be rerun.
   bool resolvedUndefsIn(Function &F);
+
+  void solveWhileResolvedUndefsIn(Module &M);
+
+  void solveWhileResolvedUndefsIn(SmallVectorImpl<Function *> &WorkList);
 
   bool isBlockExecutable(BasicBlock *BB) const;
 

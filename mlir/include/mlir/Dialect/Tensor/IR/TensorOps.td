@@ -129,7 +129,7 @@ def Tensor_DimOp : Tensor_Op<"dim", [
 
   let extraClassDeclaration = [{
     /// Helper function to get the index as a simple integer if it is constant.
-    Optional<int64_t> getConstantIndex();
+    std::optional<int64_t> getConstantIndex();
 
     /// Interface method of ShapedDimOpInterface: Return the source tensor.
     Value getShapedValue() { return getSource(); }
@@ -380,7 +380,7 @@ def Tensor_ExtractSliceOp : Tensor_OpWithOffsetSizesAndStrides<"extract_slice", 
 
     /// Compute the rank-reduction mask that can be applied to map the source
     /// tensor type to the result tensor type by dropping unit dims.
-    llvm::Optional<llvm::SmallDenseSet<unsigned>>
+    std::optional<llvm::SmallDenseSet<unsigned>>
     computeRankReductionMask() {
       return ::mlir::computeRankReductionMask(getSourceType().getShape(),
                                               getType().getShape());
@@ -435,6 +435,15 @@ def Tensor_ExtractSliceOp : Tensor_OpWithOffsetSizesAndStrides<"extract_slice", 
     /// Return the dimensions of the source that are dropped in the
     /// result when the result is rank-reduced.
     llvm::SmallBitVector getDroppedDims();
+
+    /// Given a `value`, asserted to be of RankedTensorType, build an
+    /// ExtractSliceOp that results in a rank-reducing extract to the desired
+    /// tensor shape and return the new value created.
+    /// If the shape of `value` is already the `desiredShape`, just return
+    /// `value`.
+    /// If the shape of `value` cannot be rank-reduced to `desiredShape`, fail.
+    static FailureOr<Value> rankReduceIfNeeded(
+      OpBuilder &b, Location loc, Value value, ArrayRef<int64_t> desiredShape);
   }];
 
   let hasCanonicalizer = 1;

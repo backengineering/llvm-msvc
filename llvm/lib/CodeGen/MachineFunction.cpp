@@ -187,6 +187,7 @@ void MachineFunction::init() {
     RegInfo = nullptr;
 
   MFInfo = nullptr;
+
   // We can realign the stack if the target supports it and the user hasn't
   // explicitly asked us not to.
   bool CanRealignSP = STI->getFrameLowering()->isStackRealignable() &&
@@ -230,6 +231,12 @@ void MachineFunction::init() {
          "Target-incompatible DataLayout attached\n");
 
   PSVManager = std::make_unique<PseudoSourceValueManager>(getTarget());
+}
+
+void MachineFunction::initTargetMachineFunctionInfo(
+    const TargetSubtargetInfo &STI) {
+  assert(!MFInfo && "MachineFunctionInfo already set");
+  MFInfo = Target.createMachineFunctionInfo(Allocator, F, &STI);
 }
 
 MachineFunction::~MachineFunction() {
@@ -437,16 +444,8 @@ void MachineFunction::deleteMachineInstr(MachineInstr *MI) {
 /// `new MachineBasicBlock'.
 MachineBasicBlock *
 MachineFunction::CreateMachineBasicBlock(const BasicBlock *bb) {
-  MachineBasicBlock *MBB =
-      new (BasicBlockRecycler.Allocate<MachineBasicBlock>(Allocator))
-          MachineBasicBlock(*this, bb);
-  // Set BBID for `-basic-block=sections=labels` and
-  // `-basic-block-sections=list` to allow robust mapping of profiles to basic
-  // blocks.
-  if (Target.getBBSectionsType() == BasicBlockSection::Labels ||
-      Target.getBBSectionsType() == BasicBlockSection::List)
-    MBB->setBBID(NextBBID++);
-  return MBB;
+  return new (BasicBlockRecycler.Allocate<MachineBasicBlock>(Allocator))
+             MachineBasicBlock(*this, bb);
 }
 
 /// Delete the given MachineBasicBlock.

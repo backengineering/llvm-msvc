@@ -21,14 +21,6 @@ T tmain(T argc) {
 }
 
 template <class T>
-T nmain(T argc) {
-  static T a;
-#pragma omp taskwait
-#pragma omp taskwait nowait
-  return a + argc;
-}
-
-template <class T>
 T ndmain(T argc) {
   static T a;
 #pragma omp taskwait
@@ -48,16 +40,6 @@ T ndmain(T argc) {
 
 // CHECK:      static T a;
 // CHECK-NEXT: #pragma omp taskwait{{$}}
-// CHECK-NEXT: #pragma omp taskwait nowait{{$}}
-// CHECK:      static int a;
-// CHECK-NEXT: #pragma omp taskwait
-// CHECK-NEXT: #pragma omp taskwait nowait{{$}}
-// CHECK:      static char a;
-// CHECK-NEXT: #pragma omp taskwait
-// CHECK-NEXT: #pragma omp taskwait nowait{{$}}
-
-// CHECK:      static T a;
-// CHECK-NEXT: #pragma omp taskwait{{$}}
 // CHECK-NEXT: #pragma omp taskwait depend(in : a,argc) nowait{{$}}
 // CHECK:      static int a;
 // CHECK-NEXT: #pragma omp taskwait
@@ -73,7 +55,7 @@ int main(int argc, char **argv) {
 #pragma omp taskwait depend(out:a, argc)
   // CHECK-NEXT: #pragma omp taskwait
   // CHECK-NEXT: #pragma omp taskwait depend(out : a,argc)
-  return tmain(argc) + tmain(argv[0][0]) + a + nmain(argc) + nmain(argv[0][0]) + ndmain(argc) + ndmain(argv[0][0]);
+  return tmain(argc) + tmain(argv[0][0]) + a + ndmain(argc) + ndmain(argv[0][0]);
 }
 
 #endif

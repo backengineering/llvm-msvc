@@ -13,7 +13,6 @@
 
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/ADT/APInt.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
@@ -162,7 +161,7 @@ static const Function *getCalledFunction(const Value *V,
 
 /// Returns the allocation data for the given value if it's a call to a known
 /// allocation function.
-static Optional<AllocFnsTy>
+static std::optional<AllocFnsTy>
 getAllocationDataForFunction(const Function *Callee, AllocType AllocTy,
                              const TargetLibraryInfo *TLI) {
   // Don't perform a slow TLI lookup, if this function doesn't return a pointer
@@ -204,8 +203,9 @@ getAllocationDataForFunction(const Function *Callee, AllocType AllocTy,
   return std::nullopt;
 }
 
-static Optional<AllocFnsTy> getAllocationData(const Value *V, AllocType AllocTy,
-                                              const TargetLibraryInfo *TLI) {
+static std::optional<AllocFnsTy>
+getAllocationData(const Value *V, AllocType AllocTy,
+                  const TargetLibraryInfo *TLI) {
   bool IsNoBuiltinCall;
   if (const Function *Callee = getCalledFunction(V, IsNoBuiltinCall))
     if (!IsNoBuiltinCall)
@@ -213,7 +213,7 @@ static Optional<AllocFnsTy> getAllocationData(const Value *V, AllocType AllocTy,
   return std::nullopt;
 }
 
-static Optional<AllocFnsTy>
+static std::optional<AllocFnsTy>
 getAllocationData(const Value *V, AllocType AllocTy,
                   function_ref<const TargetLibraryInfo &(Function &)> GetTLI) {
   bool IsNoBuiltinCall;
@@ -224,8 +224,8 @@ getAllocationData(const Value *V, AllocType AllocTy,
   return std::nullopt;
 }
 
-static Optional<AllocFnsTy> getAllocationSize(const Value *V,
-                                              const TargetLibraryInfo *TLI) {
+static std::optional<AllocFnsTy>
+getAllocationSize(const Value *V, const TargetLibraryInfo *TLI) {
   bool IsNoBuiltinCall;
   const Function *Callee =
       getCalledFunction(V, IsNoBuiltinCall);
@@ -235,7 +235,7 @@ static Optional<AllocFnsTy> getAllocationSize(const Value *V,
   // Prefer to use existing information over allocsize. This will give us an
   // accurate AllocTy.
   if (!IsNoBuiltinCall)
-    if (Optional<AllocFnsTy> Data =
+    if (std::optional<AllocFnsTy> Data =
             getAllocationDataForFunction(Callee, AnyAlloc, TLI))
       return Data;
 
@@ -340,7 +340,7 @@ bool llvm::isRemovableAlloc(const CallBase *CB, const TargetLibraryInfo *TLI) {
 
 Value *llvm::getAllocAlignment(const CallBase *V,
                                const TargetLibraryInfo *TLI) {
-  const Optional<AllocFnsTy> FnData = getAllocationData(V, AnyAlloc, TLI);
+  const std::optional<AllocFnsTy> FnData = getAllocationData(V, AnyAlloc, TLI);
   if (FnData && FnData->AlignParam >= 0) {
     return V->getOperand(FnData->AlignParam);
   }
@@ -363,12 +363,12 @@ static bool CheckedZextOrTrunc(APInt &I, unsigned IntTyBits) {
   return true;
 }
 
-Optional<APInt>
+std::optional<APInt>
 llvm::getAllocSize(const CallBase *CB, const TargetLibraryInfo *TLI,
                    function_ref<const Value *(const Value *)> Mapper) {
   // Note: This handles both explicitly listed allocation functions and
   // allocsize.  The code structure could stand to be cleaned up a bit.
-  Optional<AllocFnsTy> FnData = getAllocationSize(CB, TLI);
+  std::optional<AllocFnsTy> FnData = getAllocationSize(CB, TLI);
   if (!FnData)
     return std::nullopt;
 
@@ -485,8 +485,8 @@ static const std::pair<LibFunc, FreeFnsTy> FreeFnData[] = {
 };
 // clang-format on
 
-Optional<FreeFnsTy> getFreeFunctionDataForFunction(const Function *Callee,
-                                                   const LibFunc TLIFn) {
+std::optional<FreeFnsTy> getFreeFunctionDataForFunction(const Function *Callee,
+                                                        const LibFunc TLIFn) {
   const auto *Iter =
       find_if(FreeFnData, [TLIFn](const std::pair<LibFunc, FreeFnsTy> &P) {
         return P.first == TLIFn;
@@ -496,8 +496,8 @@ Optional<FreeFnsTy> getFreeFunctionDataForFunction(const Function *Callee,
   return Iter->second;
 }
 
-Optional<StringRef> llvm::getAllocationFamily(const Value *I,
-                                              const TargetLibraryInfo *TLI) {
+std::optional<StringRef>
+llvm::getAllocationFamily(const Value *I, const TargetLibraryInfo *TLI) {
   bool IsNoBuiltin;
   const Function *Callee = getCalledFunction(I, IsNoBuiltin);
   if (Callee == nullptr || IsNoBuiltin)
@@ -508,10 +508,10 @@ Optional<StringRef> llvm::getAllocationFamily(const Value *I,
     // Callee is some known library function.
     const auto AllocData = getAllocationDataForFunction(Callee, AnyAlloc, TLI);
     if (AllocData)
-      return mangledNameForMallocFamily(AllocData.value().Family);
+      return mangledNameForMallocFamily(AllocData->Family);
     const auto FreeData = getFreeFunctionDataForFunction(Callee, TLIFn);
     if (FreeData)
-      return mangledNameForMallocFamily(FreeData.value().Family);
+      return mangledNameForMallocFamily(FreeData->Family);
   }
   // Callee isn't a known library function, still check attributes.
   if (checkFnAllocKind(I, AllocFnKind::Free | AllocFnKind::Alloc |
@@ -525,7 +525,7 @@ Optional<StringRef> llvm::getAllocationFamily(const Value *I,
 
 /// isLibFreeFunction - Returns true if the function is a builtin free()
 bool llvm::isLibFreeFunction(const Function *F, const LibFunc TLIFn) {
-  Optional<FreeFnsTy> FnData = getFreeFunctionDataForFunction(F, TLIFn);
+  std::optional<FreeFnsTy> FnData = getFreeFunctionDataForFunction(F, TLIFn);
   if (!FnData)
     return checkFnAllocKind(F, AllocFnKind::Free);
 
@@ -781,7 +781,7 @@ SizeOffsetType ObjectSizeOffsetVisitor::visitArgument(Argument &A) {
 }
 
 SizeOffsetType ObjectSizeOffsetVisitor::visitCallBase(CallBase &CB) {
-  if (Optional<APInt> Size = getAllocSize(&CB, TLI))
+  if (std::optional<APInt> Size = getAllocSize(&CB, TLI))
     return std::make_pair(*Size, Zero);
   return unknown();
 }
@@ -904,7 +904,7 @@ SizeOffsetType ObjectSizeOffsetVisitor::findLoadSizeOffset(
       // Is the error status of posix_memalign correctly checked? If not it
       // would be incorrect to assume it succeeds and load doesn't see the
       // previous value.
-      Optional<bool> Checked = isImpliedByDomCondition(
+      std::optional<bool> Checked = isImpliedByDomCondition(
           ICmpInst::ICMP_EQ, CB, ConstantInt::get(CB->getType(), 0), &Load, DL);
       if (!Checked || !*Checked)
         return Unknown();
@@ -1113,7 +1113,7 @@ SizeOffsetEvalType ObjectSizeOffsetEvaluator::visitAllocaInst(AllocaInst &I) {
 }
 
 SizeOffsetEvalType ObjectSizeOffsetEvaluator::visitCallBase(CallBase &CB) {
-  Optional<AllocFnsTy> FnData = getAllocationSize(&CB, TLI);
+  std::optional<AllocFnsTy> FnData = getAllocationSize(&CB, TLI);
   if (!FnData)
     return unknown();
 

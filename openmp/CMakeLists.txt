@@ -12,6 +12,13 @@ list(INSERT CMAKE_MODULE_PATH 0
 if (OPENMP_STANDALONE_BUILD OR "${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
   set(OPENMP_STANDALONE_BUILD TRUE)
   project(openmp C CXX)
+  if ("${CMAKE_VERSION}" VERSION_LESS "3.20.0")
+    message(WARNING
+      "Your CMake version is ${CMAKE_VERSION}. Starting with LLVM 17.0.0, the "
+      "minimum version of CMake required to build LLVM will become 3.20.0, and "
+      "using an older CMake will become an error. Please upgrade your CMake to "
+      "at least 3.20.0 now to avoid issues in the future!")
+  endif()
 endif()
 
 # Must go below project(..)
@@ -95,7 +102,7 @@ if (OPENMP_ENABLE_LIBOMPTARGET)
   if (APPLE OR WIN32)
     message(FATAL_ERROR "libomptarget cannot be built on Windows and MacOS X!")
   elseif (NOT OPENMP_HAVE_STD_CPP17_FLAG)
-    message(FATAL_ERROR "Host compiler must support C++14 to build libomptarget!")
+    message(FATAL_ERROR "Host compiler must support C++17 to build libomptarget!")
   endif()
 
   add_subdirectory(libomptarget)

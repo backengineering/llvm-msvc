@@ -456,8 +456,8 @@ void MachineBasicBlock::print(raw_ostream &OS, ModuleSlotTracker &MST,
 
   if (IrrLoopHeaderWeight && IsStandalone) {
     if (Indexes) OS << '\t';
-    OS.indent(2) << "; Irreducible loop header weight: "
-                 << IrrLoopHeaderWeight.value() << '\n';
+    OS.indent(2) << "; Irreducible loop header weight: " << *IrrLoopHeaderWeight
+                 << '\n';
   }
 }
 
@@ -561,11 +561,6 @@ void MachineBasicBlock::printName(raw_ostream &os, unsigned printNameFlags,
       default:
         os << getSectionID().Number;
       }
-      hasAttributes = true;
-    }
-    if (getBBID().has_value()) {
-      os << (hasAttributes ? ", " : " (");
-      os << "bb_id " << *getBBID();
       hasAttributes = true;
     }
   }
@@ -1654,11 +1649,6 @@ bool MachineBasicBlock::sizeWithoutDebugLargerThan(unsigned Limit) const {
       return true;
   }
   return false;
-}
-
-unsigned MachineBasicBlock::getBBIDOrNumber() const {
-  uint8_t BBAddrMapVersion = getParent()->getContext().getBBAddrMapVersion();
-  return BBAddrMapVersion < 2 ? getNumber() : *getBBID();
 }
 
 const MBBSectionID MBBSectionID::ColdSectionID(MBBSectionID::SectionType::Cold);
