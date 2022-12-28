@@ -25,7 +25,7 @@
             "name": "debug lld",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Debug/bin/lld-link.exe",
+            "program": "${workspaceFolder}/build/Debug/bin/lld.exe",
             "args": [
                 "/MAP",
                 "/DEBUG"
