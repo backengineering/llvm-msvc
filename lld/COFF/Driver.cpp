@@ -417,9 +417,6 @@ void LinkerDriver::parseDirectives(InputFile *file) {
     case OPT_nodefaultlib:
       config->noDefaultLibs.insert(doFindLib(arg->getValue()).lower());
       break;
-    case OPT_release:
-      config->writeCheckSum = true;
-      break;
     case OPT_section:
       parseSection(arg->getValue());
       break;
