@@ -1,3 +1,6 @@
 {
-    "cmake.sourceDirectory": "${workspaceFolder}/llvm"
+    "cmake.sourceDirectory": "${workspaceFolder}/llvm",
+    "files.associations": {
+        "*.inc": "cpp"
+    }
 }

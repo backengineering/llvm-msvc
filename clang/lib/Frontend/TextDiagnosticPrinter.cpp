@@ -108,6 +108,14 @@ static void printDiagnosticOptions(raw_ostream &OS,
 
 void TextDiagnosticPrinter::HandleDiagnostic(DiagnosticsEngine::Level Level,
                                              const Diagnostic &Info) {
+  // Filter out 'win-sdk' warnings that are not needed.
+  auto LocationStr = Info.getLocation().printToString(Info.getSourceManager());
+  for (auto &Str : WinSDKWarningList) {
+    if (LocationStr.find(Str) != std::string::npos) {
+      return;
+    }
+  }
+
   // Default implementation (Warnings/errors count).
   DiagnosticConsumer::HandleDiagnostic(Level, Info);
 
