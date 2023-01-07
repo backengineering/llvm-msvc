@@ -557,6 +557,14 @@ bool RISCVRegisterInfo::needsFrameBaseReg(MachineInstr *MI,
 bool RISCVRegisterInfo::isFrameOffsetLegal(const MachineInstr *MI,
                                            Register BaseReg,
                                            int64_t Offset) const {
+  unsigned FIOperandNum = 0;
+  while (!MI->getOperand(FIOperandNum).isFI()) {
+    FIOperandNum++;
+    assert(FIOperandNum < MI->getNumOperands() &&
+           "Instr does not have a FrameIndex operand!");
+  }
+
+  Offset += getFrameIndexInstrOffset(MI, FIOperandNum);
   return isInt<12>(Offset);
 }
 
@@ -586,10 +594,12 @@ Register RISCVRegisterInfo::materializeFrameBaseRegister(MachineBasicBlock *MBB,
 void RISCVRegisterInfo::resolveFrameIndex(MachineInstr &MI, Register BaseReg,
                                           int64_t Offset) const {
   unsigned FIOperandNum = 0;
-  while (!MI.getOperand(FIOperandNum).isFI())
+  while (!MI.getOperand(FIOperandNum).isFI()) {
     FIOperandNum++;
-  assert(FIOperandNum < MI.getNumOperands() &&
-         "Instr does not have a FrameIndex operand!");
+    assert(FIOperandNum < MI.getNumOperands() &&
+           "Instr does not have a FrameIndex operand!");
+  }
+
   Offset += getFrameIndexInstrOffset(&MI, FIOperandNum);
   // FrameIndex Operands are always represented as a
   // register followed by an immediate.

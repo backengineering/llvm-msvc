@@ -2557,6 +2557,26 @@ bool SelectionDAG::MaskedValueIsAllOnes(SDValue V, const APInt &Mask,
   return Mask.isSubsetOf(computeKnownBits(V, Depth).One);
 }
 
+APInt SelectionDAG::computeVectorKnownZeroElements(SDValue Op,
+                                                   const APInt &DemandedElts,
+                                                   unsigned Depth) const {
+  EVT VT = Op.getValueType();
+  assert(VT.isVector() && !VT.isScalableVector() && "Only for fixed vectors!");
+
+  unsigned NumElts = VT.getVectorNumElements();
+  assert(DemandedElts.getBitWidth() == NumElts && "Unexpected demanded mask.");
+
+  APInt KnownZeroElements = APInt::getNullValue(NumElts);
+  for (unsigned EltIdx = 0; EltIdx != NumElts; ++EltIdx) {
+    if (!DemandedElts[EltIdx])
+      continue; // Don't query elements that are not demanded.
+    APInt Mask = APInt::getOneBitSet(NumElts, EltIdx);
+    if (MaskedVectorIsZero(Op, Mask, Depth))
+      KnownZeroElements.setBit(EltIdx);
+  }
+  return KnownZeroElements;
+}
+
 /// isSplatValue - Return true if the vector V has the same value
 /// across all DemandedElts. For scalable vectors, we don't know the
 /// number of lanes at compile time.  Instead, we use a 1 bit APInt
@@ -2957,17 +2977,11 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
                             Depth + 1);
   case ISD::SPLAT_VECTOR: {
     SDValue SrcOp = Op.getOperand(0);
-    if (SrcOp.getValueSizeInBits() != BitWidth) {
-      assert(SrcOp.getValueSizeInBits() > BitWidth &&
-             "Expected SPLAT_VECTOR implicit truncation");
-      // FIXME: We should be able to truncate the known bits here to match
-      // the official semantics of SPLAT_VECTOR, but doing so exposes a
-      // Hexagon target bug which results in an infinite loop during
-      // DAGCombine.  (See D137140 for repo).  Once that's fixed, we can
-      // strengthen this.
-      break;
-    }
-    Known = computeKnownBits(SrcOp, Depth + 1);
+    assert(SrcOp.getValueSizeInBits() >= BitWidth &&
+           "Expected SPLAT_VECTOR implicit truncation");
+    // Implicitly truncate the bits to match the official semantics of
+    // SPLAT_VECTOR.
+    Known = computeKnownBits(SrcOp, Depth + 1).trunc(BitWidth);
     break;
   }
   case ISD::BUILD_VECTOR:
@@ -4736,6 +4750,7 @@ bool SelectionDAG::canCreateUndefOrPoison(SDValue Op, const APInt &DemandedElts,
   case ISD::SIGN_EXTEND_VECTOR_INREG:
   case ISD::ZERO_EXTEND_VECTOR_INREG:
   case ISD::BITCAST:
+  case ISD::BUILD_VECTOR:
     return false;
 
   case ISD::ADD:

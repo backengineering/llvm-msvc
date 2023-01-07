@@ -485,6 +485,7 @@ public:
   bool parsePredicateOperand(MachineOperand &Dest);
   bool parseShuffleMaskOperand(MachineOperand &Dest);
   bool parseTargetIndexOperand(MachineOperand &Dest);
+  bool parseDbgInstrRefOperand(MachineOperand &Dest);
   bool parseCustomRegisterMaskOperand(MachineOperand &Dest);
   bool parseLiveoutRegisterMaskOperand(MachineOperand &Dest);
   bool parseMachineOperand(const unsigned OpCode, const unsigned OpIdx,
@@ -1393,11 +1394,11 @@ bool MIParser::verifyImplicitOperands(ArrayRef<ParsedMachineOperand> Operands,
 
   // Gather all the expected implicit operands.
   SmallVector<MachineOperand, 4> ImplicitOperands;
-  if (MCID.ImplicitDefs)
+  if (MCID.getImplicitDefs())
     for (const MCPhysReg *ImpDefs = MCID.getImplicitDefs(); *ImpDefs; ++ImpDefs)
       ImplicitOperands.push_back(
           MachineOperand::CreateReg(*ImpDefs, true, true));
-  if (MCID.ImplicitUses)
+  if (MCID.getImplicitUses())
     for (const MCPhysReg *ImpUses = MCID.getImplicitUses(); *ImpUses; ++ImpUses)
       ImplicitOperands.push_back(
           MachineOperand::CreateReg(*ImpUses, false, true));
@@ -1847,7 +1848,7 @@ bool MIParser::parseIRConstant(StringRef::iterator Loc, const Constant *&C) {
   return false;
 }
 
-// See LLT implemntation for bit size limits.
+// See LLT implementation for bit size limits.
 static bool verifyScalarSize(uint64_t Size) {
   return Size != 0 && isUInt<16>(Size);
 }
@@ -2715,6 +2716,37 @@ bool MIParser::parseShuffleMaskOperand(MachineOperand &Dest) {
   return false;
 }
 
+bool MIParser::parseDbgInstrRefOperand(MachineOperand &Dest) {
+  assert(Token.is(MIToken::kw_dbg_instr_ref));
+
+  lex();
+  if (expectAndConsume(MIToken::lparen))
+    return error("expected syntax dbg-instr-ref(<unsigned>, <unsigned>)");
+
+  if (Token.isNot(MIToken::IntegerLiteral) || Token.integerValue().isNegative())
+    return error("expected unsigned integer for instruction index");
+  uint64_t InstrIdx = Token.integerValue().getZExtValue();
+  assert(InstrIdx <= std::numeric_limits<unsigned>::max() &&
+         "Instruction reference's instruction index is too large");
+  lex();
+
+  if (expectAndConsume(MIToken::comma))
+    return error("expected syntax dbg-instr-ref(<unsigned>, <unsigned>)");
+
+  if (Token.isNot(MIToken::IntegerLiteral) || Token.integerValue().isNegative())
+    return error("expected unsigned integer for operand index");
+  uint64_t OpIdx = Token.integerValue().getZExtValue();
+  assert(OpIdx <= std::numeric_limits<unsigned>::max() &&
+         "Instruction reference's operand index is too large");
+  lex();
+
+  if (expectAndConsume(MIToken::rparen))
+    return error("expected syntax dbg-instr-ref(<unsigned>, <unsigned>)");
+
+  Dest = MachineOperand::CreateDbgInstrRef(InstrIdx, OpIdx);
+  return false;
+}
+
 bool MIParser::parseTargetIndexOperand(MachineOperand &Dest) {
   assert(Token.is(MIToken::kw_target_index));
   lex();
@@ -2866,6 +2898,8 @@ bool MIParser::parseMachineOperand(const unsigned OpCode, const unsigned OpIdx,
     return parsePredicateOperand(Dest);
   case MIToken::kw_shufflemask:
     return parseShuffleMaskOperand(Dest);
+  case MIToken::kw_dbg_instr_ref:
+    return parseDbgInstrRefOperand(Dest);
   case MIToken::Error:
     return true;
   case MIToken::Identifier:

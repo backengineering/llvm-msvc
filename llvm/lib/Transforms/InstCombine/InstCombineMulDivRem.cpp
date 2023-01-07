@@ -888,9 +888,13 @@ static Instruction *foldIDivShl(BinaryOperator &I,
     auto *Shl0 = cast<OverflowingBinaryOperator>(Op0);
     auto *Shl1 = cast<OverflowingBinaryOperator>(Op1);
 
-    // For unsigned div, we need 'nuw' on both shifts.
+    // For unsigned div, we need 'nuw' on both shifts or
+    // 'nsw' on both shifts + 'nuw' on the dividend.
     // (X << Z) / (Y << Z) --> X / Y
-    if (!IsSigned && Shl0->hasNoUnsignedWrap() && Shl1->hasNoUnsignedWrap())
+    if (!IsSigned &&
+        ((Shl0->hasNoUnsignedWrap() && Shl1->hasNoUnsignedWrap()) ||
+         (Shl0->hasNoUnsignedWrap() && Shl0->hasNoSignedWrap() &&
+          Shl1->hasNoSignedWrap())))
       Ret = BinaryOperator::CreateUDiv(X, Y);
 
     // For signed div, we need 'nsw' on both shifts + 'nuw' on the divisor.
@@ -1053,6 +1057,18 @@ Instruction *InstCombinerImpl::commonIDivTransforms(BinaryOperator &I) {
     }
   }
 
+  // (X << Z) / (X * Y) -> (1 << Z) / Y
+  // TODO: Handle sdiv.
+  if (!IsSigned && Op1->hasOneUse() &&
+      match(Op0, m_NUWShl(m_Value(X), m_Value(Z))) &&
+      match(Op1, m_c_Mul(m_Specific(X), m_Value(Y))))
+    if (cast<OverflowingBinaryOperator>(Op1)->hasNoUnsignedWrap()) {
+      Instruction *NewDiv = BinaryOperator::CreateUDiv(
+          Builder.CreateShl(ConstantInt::get(Ty, 1), Z, "", /*NUW*/ true), Y);
+      NewDiv->setIsExact(I.isExact());
+      return NewDiv;
+    }
+
   if (Instruction *R = foldIDivShl(I, Builder))
     return R;
 
@@ -1191,7 +1207,7 @@ static Instruction *narrowUDivURem(BinaryOperator &I,
 }
 
 Instruction *InstCombinerImpl::visitUDiv(BinaryOperator &I) {
-  if (Value *V = simplifyUDivInst(I.getOperand(0), I.getOperand(1),
+  if (Value *V = simplifyUDivInst(I.getOperand(0), I.getOperand(1), I.isExact(),
                                   SQ.getWithInstruction(&I)))
     return replaceInstUsesWith(I, V);
 
@@ -1271,7 +1287,7 @@ Instruction *InstCombinerImpl::visitUDiv(BinaryOperator &I) {
 }
 
 Instruction *InstCombinerImpl::visitSDiv(BinaryOperator &I) {
-  if (Value *V = simplifySDivInst(I.getOperand(0), I.getOperand(1),
+  if (Value *V = simplifySDivInst(I.getOperand(0), I.getOperand(1), I.isExact(),
                                   SQ.getWithInstruction(&I)))
     return replaceInstUsesWith(I, V);
 

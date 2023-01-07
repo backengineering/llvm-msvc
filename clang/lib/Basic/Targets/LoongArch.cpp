@@ -158,9 +158,15 @@ void LoongArchTargetInfo::getTargetDefines(const LangOptions &Opts,
   } else if (ABI == "lp64s" || ABI == "ilp32s") {
     Builder.defineMacro("__loongarch_soft_float");
   }
+
+  Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1");
+  Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2");
+  Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4");
+  if (GRLen == 64)
+    Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8");
 }
 
-const Builtin::Info LoongArchTargetInfo::BuiltinInfo[] = {
+static constexpr Builtin::Info BuiltinInfo[] = {
 #define BUILTIN(ID, TYPE, ATTRS)                                               \
   {#ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, nullptr},
 #define TARGET_BUILTIN(ID, TYPE, ATTRS, FEATURE)                               \
@@ -173,6 +179,8 @@ bool LoongArchTargetInfo::initFeatureMap(
     const std::vector<std::string> &FeaturesVec) const {
   if (getTriple().getArch() == llvm::Triple::loongarch64)
     Features["64bit"] = true;
+  if (getTriple().getArch() == llvm::Triple::loongarch32)
+    Features["32bit"] = true;
 
   return TargetInfo::initFeatureMap(Features, Diags, CPU, FeaturesVec);
 }

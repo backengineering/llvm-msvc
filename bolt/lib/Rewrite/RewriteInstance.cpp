@@ -58,6 +58,7 @@
 #include <algorithm>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <system_error>
 
 #undef  DEBUG_TYPE
@@ -1882,7 +1883,7 @@ uint32_t getRelocationSymbol(const ELFObjectFileBase *Obj,
 } // anonymous namespace
 
 bool RewriteInstance::analyzeRelocation(
-    const RelocationRef &Rel, uint64_t RType, std::string &SymbolName,
+    const RelocationRef &Rel, uint64_t &RType, std::string &SymbolName,
     bool &IsSectionRelocation, uint64_t &SymbolAddress, int64_t &Addend,
     uint64_t &ExtractedValue, bool &Skip) const {
   Skip = false;
@@ -2554,7 +2555,8 @@ void RewriteInstance::handleRelocation(const SectionRef &RelocatedSection,
   }
 
   if (ForceRelocation) {
-    std::string Name = Relocation::isGOT(RType) ? "Zero" : SymbolName;
+    std::string Name =
+        Relocation::isGOT(RType) ? "__BOLT_got_zero" : SymbolName;
     ReferencedSymbol = BC->registerNameAtAddress(Name, 0, 0, 0);
     SymbolAddress = 0;
     if (Relocation::isGOT(RType))
@@ -2755,6 +2757,13 @@ void RewriteInstance::selectFunctionsToProcess() {
   LiteThresholdExecCount = std::max(
       LiteThresholdExecCount, static_cast<uint64_t>(opts::LiteThresholdCount));
 
+  StringSet<> ReorderFunctionsUserSet;
+  if (opts::ReorderFunctions == ReorderFunctions::RT_USER) {
+    for (const std::string &Function :
+         ReorderFunctions::readFunctionOrderFile())
+      ReorderFunctionsUserSet.insert(Function);
+  }
+
   uint64_t NumFunctionsToProcess = 0;
   auto shouldProcess = [&](const BinaryFunction &Function) {
     if (opts::MaxFunctions && NumFunctionsToProcess > opts::MaxFunctions)
@@ -2780,6 +2789,16 @@ void RewriteInstance::selectFunctionsToProcess() {
         return false;
 
     if (opts::Lite) {
+      // Forcibly include functions specified in the -function-order file.
+      if (opts::ReorderFunctions == ReorderFunctions::RT_USER) {
+        std::optional<StringRef> Match =
+            Function.forEachName([&](StringRef Name) {
+              return ReorderFunctionsUserSet.contains(Name);
+            });
+        if (Match.has_value())
+          return true;
+      }
+
       if (ProfileReader && !ProfileReader->mayHaveProfileData(Function))
         return false;
 
@@ -4762,7 +4781,7 @@ void RewriteInstance::updateELFSymbolTable(
     assert(SymbolName && "cannot get symbol name");
 
     auto updateSymbolValue = [&](const StringRef Name,
-                                 Optional<uint64_t> Value = std::nullopt) {
+                                 std::optional<uint64_t> Value = std::nullopt) {
       NewSymbol.st_value = Value ? *Value : getNewValueForSymbol(Name);
       NewSymbol.st_shndx = ELF::SHN_ABS;
       outs() << "BOLT-INFO: setting " << Name << " to 0x"

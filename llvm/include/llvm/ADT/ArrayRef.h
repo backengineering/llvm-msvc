@@ -74,12 +74,12 @@ namespace llvm {
       : Data(&OneElt), Length(1) {}
 
     /// Construct an ArrayRef from a pointer and length.
-    /*implicit*/ ArrayRef(const T *data, size_t length)
-      : Data(data), Length(length) {}
+    constexpr /*implicit*/ ArrayRef(const T *data, size_t length)
+        : Data(data), Length(length) {}
 
     /// Construct an ArrayRef from a range.
-    ArrayRef(const T *begin, const T *end)
-      : Data(begin), Length(end - begin) {}
+    constexpr ArrayRef(const T *begin, const T *end)
+        : Data(begin), Length(end - begin) {}
 
     /// Construct an ArrayRef from a SmallVector. This is templated in order to
     /// avoid instantiating SmallVectorTemplateCommon<T> whenever we
@@ -111,9 +111,9 @@ namespace llvm {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winit-list-lifetime"
 #endif
-    /*implicit*/ ArrayRef(const std::initializer_list<T> &Vec)
-    : Data(Vec.begin() == Vec.end() ? (T*)nullptr : Vec.begin()),
-      Length(Vec.size()) {}
+    constexpr /*implicit*/ ArrayRef(const std::initializer_list<T> &Vec)
+        : Data(Vec.begin() == Vec.end() ? (T *)nullptr : Vec.begin()),
+          Length(Vec.size()) {}
 #if LLVM_GNUC_PREREQ(9, 0, 0)
 #pragma GCC diagnostic pop
 #endif
@@ -466,9 +466,44 @@ namespace llvm {
     ~OwningArrayRef() { delete[] this->data(); }
   };
 
+  /// @name ArrayRef Deduction guides
+  /// @{
+  /// Deduction guide to construct an ArrayRef from a single element.
+  template <typename T> ArrayRef(const T &OneElt) -> ArrayRef<T>;
+
+  /// Deduction guide to construct an ArrayRef from a pointer and length
+  template <typename T> ArrayRef(const T *data, size_t length) -> ArrayRef<T>;
+
+  /// Deduction guide to construct an ArrayRef from a range
+  template <typename T> ArrayRef(const T *data, const T *end) -> ArrayRef<T>;
+
+  /// Deduction guide to construct an ArrayRef from a SmallVector
+  template <typename T> ArrayRef(const SmallVectorImpl<T> &Vec) -> ArrayRef<T>;
+
+  /// Deduction guide to construct an ArrayRef from a SmallVector
+  template <typename T, unsigned N>
+  ArrayRef(const SmallVector<T, N> &Vec) -> ArrayRef<T>;
+
+  /// Deduction guide to construct an ArrayRef from a std::vector
+  template <typename T> ArrayRef(const std::vector<T> &Vec) -> ArrayRef<T>;
+
+  /// Deduction guide to construct an ArrayRef from a std::array
+  template <typename T, std::size_t N>
+  ArrayRef(const std::array<T, N> &Vec) -> ArrayRef<T>;
+
+  /// Deduction guide to construct an ArrayRef from an ArrayRef (no-op) (const)
+  template <typename T> ArrayRef(const ArrayRef<T> &Vec) -> ArrayRef<T>;
+
+  /// Deduction guide to construct an ArrayRef from an ArrayRef (no-op)
+  template <typename T> ArrayRef(ArrayRef<T> &Vec) -> ArrayRef<T>;
+
+  /// Deduction guide to construct an ArrayRef from a C array.
+  template <typename T, size_t N> ArrayRef(const T (&Arr)[N]) -> ArrayRef<T>;
+
+  /// @}
+
   /// @name ArrayRef Convenience constructors
   /// @{
-
   /// Construct an ArrayRef from a single element.
   template<typename T>
   ArrayRef<T> makeArrayRef(const T &OneElt) {

@@ -982,6 +982,15 @@ The AMDGPU backend supports the following LLVM IR attributes.
      "amdgpu-no-multigrid-sync-arg"          Similar to amdgpu-no-implicitarg-ptr, except specific to the implicit
                                              kernel argument that holds the multigrid synchronization pointer. If this
                                              attribute is absent, then the amdgpu-no-implicitarg-ptr is also removed.
+
+     "amdgpu-no-default-queue"               Similar to amdgpu-no-implicitarg-ptr, except specific to the implicit
+                                             kernel argument that holds the default queue pointer. If this
+                                             attribute is absent, then the amdgpu-no-implicitarg-ptr is also removed.
+
+     "amdgpu-no-completion-action"           Similar to amdgpu-no-implicitarg-ptr, except specific to the implicit
+                                             kernel argument that holds the completion action pointer. If this
+                                             attribute is absent, then the amdgpu-no-implicitarg-ptr is also removed.
+
      ======================================= ==========================================================
 
 .. _amdgpu-elf-code-object:
@@ -3580,6 +3589,26 @@ Code object V5 metadata is the same as
      ".workgroup_processor_mode"   boolean                  (GFX10+) Controls ENABLE_WGP_MODE in
                                                             :ref:`amdgpu-amdhsa-kernel-descriptor-v3-table`.
      ============================= ============= ========== =======================================
+
+..
+
+  .. table:: AMDHSA Code Object V5 Kernel Attribute Metadata Map
+     :name: amdgpu-amdhsa-code-object-kernel-attribute-metadata-map-v5-table
+
+     =========================== ============== ========= ==============================
+     String Key                  Value Type     Required? Description
+     =========================== ============== ========= ==============================
+     ".uniform_work_group_size"  integer                  Indicates if the kernel
+                                                          requires that each dimension
+                                                          of global size is a multiple
+                                                          of corresponding dimension of
+                                                          work-group size. Value of 1
+                                                          implies true and value of 0
+                                                          implies false. Metadata is
+                                                          only emitted when value is 1.
+     =========================== ============== ========= ==============================
+
+..
 
 ..
 

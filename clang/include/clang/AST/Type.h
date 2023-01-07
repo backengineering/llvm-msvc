@@ -763,6 +763,8 @@ public:
   unsigned getLocalFastQualifiers() const { return Value.getInt(); }
   void setLocalFastQualifiers(unsigned Quals) { Value.setInt(Quals); }
 
+  bool UseExcessPrecision(const ASTContext &Ctx);
+
   /// Retrieves a pointer to the underlying (unqualified) type.
   ///
   /// This function requires that the type not be NULL. If the type might be
@@ -2548,8 +2550,6 @@ public:
   /// system, not as part of the canonical type, so nullability will
   /// be lost by canonicalization and desugaring.
   Optional<NullabilityKind> getNullability() const;
-  // TODO: Remove overload.
-  Optional<NullabilityKind> getNullability(const ASTContext &) const;
 
   /// Determine whether the given type can have a nullability
   /// specifier applied to it, i.e., if it is any kind of pointer type.

@@ -176,6 +176,14 @@ Changes to the Windows Target
   This roughly makes hidden visibility work like it does for other object
   file formats.
 
+* When using multi-threaded LLVM tools (such as LLD) on a Windows host with a
+  large number of processors or CPU sockets, previously the LLVM ThreadPool
+  would span out threads to use all processors.
+  Starting with Windows Server 2022 and Windows 11, the behavior has changed,
+  the OS now spans out threads automatically to all processors. This also fixes
+  an affinity mask issue.
+  (`D138747 <https://reviews.llvm.org/D138747>`_)
+
 Changes to the X86 Backend
 --------------------------
 
@@ -186,7 +194,7 @@ Changes to the X86 Backend
 * Support ISA of ``AVX-IFMA``.
 * Support ISA of ``AVX-VNNI-INT8``.
 * Support ISA of ``AVX-NE-CONVERT``.
-* ``-mcpu=raptorlake`` and ``-mcpu=meteorlake`` are now supported.
+* ``-mcpu=raptorlake``, ``-mcpu=meteorlake`` and ``-mcpu=emeraldrapids`` are now supported.
 * ``-mcpu=sierraforest``, ``-mcpu=graniterapids`` and ``-mcpu=grandridge`` are now supported.
 
 Changes to the OCaml bindings
@@ -218,10 +226,6 @@ Changes to the C API
   * ``LLVMConstGEP`` -> ``LLVMConstGEP2``
   * ``LLVMConstInBoundsGEP`` -> ``LLVMConstInBoundsGEP2``
   * ``LLVMAddAlias`` -> ``LLVMAddAlias2``
-
-Changes to the Go bindings
---------------------------
-
 
 Changes to the FastISel infrastructure
 --------------------------------------

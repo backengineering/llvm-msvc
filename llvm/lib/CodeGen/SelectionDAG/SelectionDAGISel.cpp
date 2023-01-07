@@ -552,9 +552,9 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
     MachineInstr *MI = FuncInfo->ArgDbgValues[e - i - 1];
     assert(MI->getOpcode() != TargetOpcode::DBG_VALUE_LIST &&
            "Function parameters should not be described by DBG_VALUE_LIST.");
-    bool hasFI = MI->getOperand(0).isFI();
+    bool hasFI = MI->getDebugOperand(0).isFI();
     Register Reg =
-        hasFI ? TRI.getFrameRegister(*MF) : MI->getOperand(0).getReg();
+        hasFI ? TRI.getFrameRegister(*MF) : MI->getDebugOperand(0).getReg();
     if (Register::isPhysicalRegister(Reg))
       EntryMBB->insert(EntryMBB->begin(), MI);
     else {
@@ -584,7 +584,7 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
       DebugLoc DL = MI->getDebugLoc();
       bool IsIndirect = MI->isIndirectDebugValue();
       if (IsIndirect)
-        assert(MI->getOperand(1).getImm() == 0 &&
+        assert(MI->getDebugOffset().getImm() == 0 &&
                "DBG_VALUE with nonzero offset");
       assert(cast<DILocalVariable>(Variable)->isValidLocationForIntrinsic(DL) &&
              "Expected inlined-at fields to agree");
@@ -1390,7 +1390,7 @@ static void processDbgDeclares(FunctionLoweringInfo &FuncInfo) {
         if (!Address) {
           LLVM_DEBUG(dbgs() << "processDbgDeclares skipping " << *DI
                             << " (bad address)\n");
-          return;
+          continue;
         }
         processDbgDeclare(FuncInfo, Address, DI->getExpression(),
                           DI->getVariable(), DI->getDebugLoc());

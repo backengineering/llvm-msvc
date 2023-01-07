@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++20 -Wunsafe-buffer-usage -include %s -verify %s
+// RUN: %clang_cc1 -std=c++20 -Wunsafe-buffer-usage -fblocks -include %s -verify %s
 #ifndef INCLUDED
 #define INCLUDED
 #pragma clang system_header
@@ -141,15 +141,15 @@ void testStructMembers(struct T * sp, struct T s, T_t * sp2, T_t s2) {
 
 int garray[10];
 int * gp = garray;
-int gvar = gp[1];  // TODO: this is not warned
+int gvar = gp[1];  // FIXME: file scope unsafe buffer access is not warned
 
 void testLambdaCaptureAndGlobal(int * p) {
   int a[10];
 
   auto Lam = [p, a]() {
-    return p[1] // expected-warning2{{unchecked operation on raw buffer in expression}}
+    return p[1] // expected-warning{{unchecked operation on raw buffer in expression}}
       + a[1] + garray[1]
-      + gp[1];  // expected-warning2{{unchecked operation on raw buffer in expression}}
+      + gp[1];  // expected-warning{{unchecked operation on raw buffer in expression}}
   };
 }
 
@@ -169,10 +169,36 @@ template<typename T, int N> T f(T t, T * pt, T a[N], T (&b)[N]) {
   return &t[1]; // expected-warning{{unchecked operation on raw buffer in expression}}
 }
 
+// Testing pointer arithmetic for pointer-to-int, qualified multi-level
+// pointer, pointer to a template type, and auto type
+T_ptr_t getPtr();
+
+template<typename T>
+void testPointerArithmetic(int * p, const int **q, T * x) {
+  int a[10];
+  auto y = &a[0];
+
+  foo(p + 1, 1 + p, p - 1,      // expected-warning3{{unchecked operation on raw buffer in expression}}
+      *q + 1, 1 + *q, *q - 1,   // expected-warning3{{unchecked operation on raw buffer in expression}}
+      x + 1, 1 + x, x - 1,      // expected-warning3{{unchecked operation on raw buffer in expression}}
+      y + 1, 1 + y, y - 1,      // expected-warning3{{unchecked operation on raw buffer in expression}}
+      getPtr() + 1, 1 + getPtr(), getPtr() - 1 // expected-warning3{{unchecked operation on raw buffer in expression}}
+      );
+
+  p += 1;  p -= 1;  // expected-warning2{{unchecked operation on raw buffer in expression}}
+  *q += 1; *q -= 1; // expected-warning2{{unchecked operation on raw buffer in expression}}
+  y += 1; y -= 1;   // expected-warning2{{unchecked operation on raw buffer in expression}}
+  x += 1; x -= 1;   // expected-warning2{{unchecked operation on raw buffer in expression}}
+}
+
 void testTemplate(int * p) {
   int *a[10];
   foo(f(p, &p, a, a)[1]); // expected-warning{{unchecked operation on raw buffer in expression}}, \
                              expected-note{{in instantiation of function template specialization 'f<int *, 10>' requested here}}
+
+  const int **q = const_cast<const int **>(&p);
+
+  testPointerArithmetic(p, q, p); //expected-note{{in instantiation of function template specialization 'testPointerArithmetic<int>' requested here}}
 }
 
 void testPointerToMember() {
@@ -187,4 +213,66 @@ void testPointerToMember() {
   foo(S.*p,
       (S.*q)[1]);  // expected-warning{{unchecked operation on raw buffer in expression}}
 }
+
+// test that nested callable definitions are scanned only once
+void testNestedCallableDefinition(int * p) {
+  class A {
+    void inner(int * p) {
+      p++; // expected-warning{{unchecked operation on raw buffer in expression}}
+    }
+
+    static void innerStatic(int * p) {
+      p++; // expected-warning{{unchecked operation on raw buffer in expression}}
+    }
+
+    void innerInner(int * p) {
+      auto Lam = [p]() {
+        int * q = p;
+        q++;   // expected-warning{{unchecked operation on raw buffer in expression}}
+        return *q;
+      };
+    }
+  };
+
+  auto Lam = [p]() {
+    int * q = p;
+    q++;  // expected-warning{{unchecked operation on raw buffer in expression}}
+    return *q;
+  };
+
+  auto LamLam = [p]() {
+    auto Lam = [p]() {
+      int * q = p;
+      q++;  // expected-warning{{unchecked operation on raw buffer in expression}}
+      return *q;
+    };
+  };
+
+  void (^Blk)(int*) = ^(int *p) {
+    p++;   // expected-warning{{unchecked operation on raw buffer in expression}}
+  };
+
+  void (^BlkBlk)(int*) = ^(int *p) {
+    void (^Blk)(int*) = ^(int *p) {
+      p++;   // expected-warning{{unchecked operation on raw buffer in expression}}
+    };
+    Blk(p);
+  };
+
+  // lambda and block as call arguments...
+  foo( [p]() { int * q = p;
+              q++;  // expected-warning{{unchecked operation on raw buffer in expression}}
+              return *q;
+       },
+       ^(int *p) { p++;   // expected-warning{{unchecked operation on raw buffer in expression}}
+       }
+     );
+}
+
+void testVariableDecls(int * p) {
+  int * q = p++;      // expected-warning{{unchecked operation on raw buffer in expression}}
+  int a[p[1]];        // expected-warning{{unchecked operation on raw buffer in expression}}
+  int b = p[1];       // expected-warning{{unchecked operation on raw buffer in expression}}
+}
+
 #endif

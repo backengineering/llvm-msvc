@@ -62,7 +62,7 @@ class LLVM_FloatArithmeticOp<string mnemonic, string instName,
   let arguments = !con(commonArgs, fmfArg);
   string mlirBuilder = [{
     auto op = $_builder.create<$_qualCppClassName>($_location, $lhs, $rhs);
-    setFastmathFlagsAttr(inst, op);
+    moduleImport.setFastmathFlagsAttr(inst, op);
     $res = op;
   }];
 }
@@ -82,7 +82,7 @@ class LLVM_UnaryFloatArithmeticOp<Type type, string mnemonic,
   string llvmInstName = instName;
   string mlirBuilder = [{
     auto op = $_builder.create<$_qualCppClassName>($_location, $operand);
-    setFastmathFlagsAttr(inst, op);
+    moduleImport.setFastmathFlagsAttr(inst, op);
     $res = op;
    }];
 }
@@ -157,7 +157,7 @@ def LLVM_FCmpOp : LLVM_ArithmeticCmpOp<"fcmp", [
     auto *fCmpInst = cast<llvm::FCmpInst>(inst);
     auto op = $_builder.create<$_qualCppClassName>(
       $_location, getFCmpPredicate(fCmpInst->getPredicate()), $lhs, $rhs);
-    setFastmathFlagsAttr(inst, op);
+    moduleImport.setFastmathFlagsAttr(inst, op);
     $res = op;
   }];
   // Set the $predicate index to -1 to indicate there is no matching operand
@@ -205,6 +205,10 @@ class MemoryOpWithAlignmentAndAttributes : MemoryOpWithAlignmentBase {
   code setAliasScopeMetadataCode = [{
     moduleTranslation.setAliasScopeMetadata(op, inst);
   }];
+
+  code setTBAAMetadataCode = [{
+    moduleTranslation.setTBAAMetadata(op, inst);
+  }];
 }
 
 // Memory-related operations.
@@ -227,7 +231,8 @@ def LLVM_AllocaOp : LLVM_Op<"alloca">, MemoryOpWithAlignmentBase {
   // FIXME: Import attributes.
   string mlirBuilder = [{
     auto *allocaInst = cast<llvm::AllocaInst>(inst);
-    Type allocatedType = convertType(allocaInst->getAllocatedType());
+    Type allocatedType =
+      moduleImport.convertType(allocaInst->getAllocatedType());
     unsigned alignment = allocaInst->getAlign().value();
     $res = $_builder.create<LLVM::AllocaOp>(
       $_location, $_resultType, allocatedType, $arraySize, alignment);
@@ -359,6 +364,7 @@ def LLVM_LoadOp : LLVM_Op<"load">, MemoryOpWithAlignmentAndAttributes {
      # setNonTemporalMetadataCode
      # setAccessGroupsMetadataCode
      # setAliasScopeMetadataCode
+     # setTBAAMetadataCode
      # [{
     $res = inst;
   }];
@@ -396,10 +402,11 @@ def LLVM_StoreOp : LLVM_Op<"store">, MemoryOpWithAlignmentAndAttributes {
   }] # setAlignmentCode
      # setNonTemporalMetadataCode
      # setAccessGroupsMetadataCode
-     # setAliasScopeMetadataCode;
+     # setAliasScopeMetadataCode
+     # setTBAAMetadataCode;
   // FIXME: Import attributes.
   string mlirBuilder = [{
-    $_builder.create<LLVM::StoreOp>($_location, $value, $addr);
+    $_op = $_builder.create<LLVM::StoreOp>($_location, $value, $addr);
   }];
   let builders = [
     OpBuilder<(ins "Value":$value, "Value":$addr,
@@ -825,10 +832,11 @@ def LLVM_ReturnOp : LLVM_TerminatorOp<"return", [Pure, ReturnLike]> {
       builder.CreateRetVoid();
   }];
   string mlirBuilder = [{
-    FailureOr<SmallVector<Value>> mlirOperands = convertValues(llvmOperands);
+    FailureOr<SmallVector<Value>> mlirOperands =
+      moduleImport.convertValues(llvmOperands);
     if (failed(mlirOperands))
       return failure();
-    $_builder.create<LLVM::ReturnOp>($_location, *mlirOperands);
+    $_op = $_builder.create<LLVM::ReturnOp>($_location, *mlirOperands);
   }];
 }
 
@@ -839,7 +847,7 @@ def LLVM_ResumeOp : LLVM_TerminatorOp<"resume"> {
   string llvmInstName = "Resume";
   string llvmBuilder = [{ builder.CreateResume($value); }];
   string mlirBuilder = [{
-    $_builder.create<LLVM::ResumeOp>($_location, $value);
+    $_op = $_builder.create<LLVM::ResumeOp>($_location, $value);
   }];
 }
 def LLVM_UnreachableOp : LLVM_TerminatorOp<"unreachable"> {
@@ -847,7 +855,7 @@ def LLVM_UnreachableOp : LLVM_TerminatorOp<"unreachable"> {
   string llvmInstName = "Unreachable";
   string llvmBuilder = [{ builder.CreateUnreachable(); }];
   string mlirBuilder = [{
-    $_builder.create<LLVM::UnreachableOp>($_location);
+    $_op = $_builder.create<LLVM::UnreachableOp>($_location);
   }];
 }
 
@@ -990,6 +998,7 @@ def LLVM_MetadataOp : LLVM_Op<"metadata", [
   }];
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = "$sym_name attr-dict-with-keyword $body";
+  let hasRegionVerifier = 1;
 }
 
 def LLVM_AliasScopeDomainMetadataOp : LLVM_Op<"alias_scope_domain", [
@@ -1068,6 +1077,152 @@ def LLVM_AccessGroupMetadataOp : LLVM_Op<"access_group", [
 
     See the following link for more details:
     https://llvm.org/docs/LangRef.html#llvm-access-group-metadata
+  }];
+  let assemblyFormat = "$sym_name attr-dict";
+}
+
+def LLVM_TBAARootMetadataOp : LLVM_Op<"tbaa_root", [
+  HasParent<"MetadataOp">, Symbol
+]> {
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    StrAttr:$identity
+  );
+  let summary = "LLVM dialect TBAA root node metadata.";
+  let description = [{
+    Defines a TBAA root node.
+
+    Example:
+      llvm.metadata @tbaa {
+        llvm.tbaa_root @tbaa_root_0 {identity = "Simple C/C++ TBAA"}
+        llvm.return
+      }
+
+    See the following link for more details:
+    https://llvm.org/docs/LangRef.html#tbaa-metadata
+  }];
+  let assemblyFormat = [{
+    $sym_name ` ` `{` `id` `=` $identity `}` attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+def LLVM_TBAATypeDescriptorOp : LLVM_Op<"tbaa_type_desc", [
+  HasParent<"MetadataOp">, Symbol
+]> {
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    OptionalAttr<StrAttr>:$identity,
+    FlatSymbolRefArrayAttr:$members,
+    DenseI64ArrayAttr:$offsets
+  );
+  let summary = "LLVM dialect TBAA node describing a type.";
+  let description = [{
+    Defines a TBAA node describing a type.
+
+    Example:
+      llvm.metadata @tbaa {
+        llvm.tbaa_root @tbaa_root_0 {identity = "Simple C/C++ TBAA"}
+        llvm.tbaa_type_desc @tbaa_type_desc_1 {
+            identity = "omnipotent char",
+            members = [@tbaa_root_0],
+            offsets = array<i64: 0>
+        }
+        llvm.tbaa_type_desc @tbaa_type_desc_2 {
+            identity = "long long",
+            members = [@tbaa_type_desc_1],
+            offsets = array<i64: 0>
+        }
+        llvm.tbaa_type_desc @tbaa_type_desc_3 {
+            identity = "agg2_t",
+            members = [@tbaa_type_desc_2, @tbaa_type_desc_2],
+            offsets = array<i64: 0, 8>
+        }
+        llvm.tbaa_type_desc @tbaa_type_desc_5 {
+            identity = "int",
+            members = [@tbaa_type_desc_1],
+            offsets = array<i64: 0>
+        }
+        llvm.tbaa_type_desc @tbaa_type_desc_6 {
+            identity = "agg1_t",
+            members = [@tbaa_type_desc_5, @tbaa_type_desc_5],
+            offsets = array<i64: 0, 4>
+        }
+        llvm.return
+      }
+
+    See the following link for more details:
+    https://llvm.org/docs/LangRef.html#tbaa-metadata
+  }];
+
+  // Interleave member types and offsets for better matching
+  // LLVM IR text representation.
+  let assemblyFormat = [{
+    $sym_name ` ` `{`
+      ( `id` `=` $identity^ )? `,`
+      `members` `=` `{` custom<TBAAMembers>($members, $offsets) `}`
+    `}` attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+def LLVM_TBAATagOp : LLVM_Op<"tbaa_tag", [
+  HasParent<"MetadataOp">, Symbol
+]> {
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    FlatSymbolRefAttr:$base_type,
+    FlatSymbolRefAttr:$access_type,
+    I64Attr:$offset,
+    UnitAttr:$constant
+  );
+  let summary = "LLVM dialect TBAA node describing a memory access.";
+  let description = [{
+    Defines a TBAA node describing a memory access.
+
+    Example:
+      llvm.metadata @tbaa {
+        llvm.tbaa_root @tbaa_root_0 {identity = "Simple C/C++ TBAA"}
+        llvm.tbaa_type_desc @tbaa_type_desc_1 {
+            identity = "omnipotent char",
+            members = [@tbaa_root_0],
+            offsets = array<i64: 0>
+        }
+        llvm.tbaa_type_desc @tbaa_type_desc_2 {
+            identity = "long long",
+            members = [@tbaa_type_desc_1],
+            offsets = array<i64: 0>
+        }
+        llvm.tbaa_type_desc @tbaa_type_desc_3 {
+            identity = "agg2_t",
+            members = [@tbaa_type_desc_2, @tbaa_type_desc_2],
+            offsets = array<i64: 0, 8>
+        }
+        llvm.tbaa_tag @tbaa_tag_4 {
+            access_type = @tbaa_type_desc_2,
+            base_type = @tbaa_type_desc_3,
+            offset = 8 : i64
+        }
+        llvm.tbaa_type_desc @tbaa_type_desc_5 {
+            identity = "int",
+            members = [@tbaa_type_desc_1],
+            offsets = array<i64: 0>
+        }
+        llvm.tbaa_type_desc @tbaa_type_desc_6 {
+            identity = "agg1_t",
+            members = [@tbaa_type_desc_5, @tbaa_type_desc_5],
+            offsets = array<i64: 0, 4>
+        }
+        llvm.tbaa_tag @tbaa_tag_7 {
+            access_type = @tbaa_type_desc_5,
+            base_type = @tbaa_type_desc_6,
+            offset = 0 : i64
+        }
+        llvm.return
+      }
+
+    See the following link for more details:
+    https://llvm.org/docs/LangRef.html#tbaa-metadata
   }];
   let assemblyFormat = "$sym_name attr-dict";
 }
@@ -1328,7 +1483,8 @@ def LLVM_LLVMFuncOp : LLVM_Op<"func", [
     OptionalAttr<StrAttr>:$garbageCollector,
     OptionalAttr<ArrayAttr>:$passthrough,
     OptionalAttr<DictArrayAttr>:$arg_attrs,
-    OptionalAttr<DictArrayAttr>:$res_attrs
+    OptionalAttr<DictArrayAttr>:$res_attrs,
+    OptionalAttr<I64Attr>:$function_entry_count
   );
 
   let regions = (region AnyRegion:$body);
@@ -1341,7 +1497,8 @@ def LLVM_LLVMFuncOp : LLVM_Op<"func", [
       CArg<"bool", "false">:$dsoLocal,
       CArg<"CConv", "CConv::C">:$cconv,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs,
-      CArg<"ArrayRef<DictionaryAttr>", "{}">:$argAttrs)>
+      CArg<"ArrayRef<DictionaryAttr>", "{}">:$argAttrs,
+      CArg<"Optional<uint64_t>", "{}">:$functionEntryCount)>
   ];
 
   let extraClassDeclaration = [{
@@ -1557,7 +1714,7 @@ def LLVM_FenceOp : LLVM_Op<"fence"> {
   }];
   string mlirBuilder = [{
     llvm::FenceInst *fenceInst = cast<llvm::FenceInst>(inst);
-    $_builder.create<LLVM::FenceOp>(
+    $_op = $_builder.create<LLVM::FenceOp>(
       $_location,
       getLLVMAtomicOrdering(fenceInst->getOrdering()),
       getLLVMSyncScope(fenceInst));

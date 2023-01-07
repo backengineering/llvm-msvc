@@ -1,7 +1,7 @@
 .. raw:: html
 
       <style type="text/css">
-        .versionbadge { background-color: #1c913d; height: 20px; display: inline-block; width: 120px; text-align: center; border-radius: 5px; color: #FFFFFF; font-family="Verdana,Geneva,DejaVu Sans,sans-serif" }
+        .versionbadge { background-color: #1c913d; height: 20px; display: inline-block; width: 120px; text-align: center; border-radius: 5px; color: #FFFFFF; font-family: "Verdana,Geneva,DejaVu Sans,sans-serif"; }
       </style>
 
 .. role:: versionbadge
@@ -1762,6 +1762,41 @@ the configuration (without a prefix: ``Auto``).
                            }
 
 
+**BreakAfterAttributes** (``AttributeBreakingStyle``) :versionbadge:`clang-format 16`
+  Break after a group of C++11 attributes before a function
+  declaration/definition name.
+
+  Possible values:
+
+  * ``ABS_Always`` (in configuration: ``Always``)
+    Always break after attributes.
+
+    .. code-block:: c++
+
+      [[nodiscard]]
+      inline int f();
+      [[gnu::const]] [[nodiscard]]
+      int g();
+
+  * ``ABS_Leave`` (in configuration: ``Leave``)
+    Leave the line breaking after attributes as is.
+
+    .. code-block:: c++
+
+      [[nodiscard]] inline int f();
+      [[gnu::const]] [[nodiscard]]
+      int g();
+
+  * ``ABS_Never`` (in configuration: ``Never``)
+    Never break after attributes.
+
+    .. code-block:: c++
+
+      [[nodiscard]] inline int f();
+      [[gnu::const]] [[nodiscard]] int g();
+
+
+
 **BreakAfterJavaFieldAnnotations** (``Boolean``) :versionbadge:`clang-format 3.8`
   Break after each annotation on a field in Java files.
 
@@ -3127,6 +3162,9 @@ the configuration (without a prefix: ``Auto``).
       --i;                                      --i;
     while (i);                                } while (i);
 
+**InsertNewlineAtEOF** (``Boolean``) :versionbadge:`clang-format 16`
+  Insert a newline at end of file if missing.
+
 **InsertTrailingCommas** (``TrailingCommaStyle``) :versionbadge:`clang-format 11`
   If set to ``TCS_Wrapped`` will insert trailing commas in container
   literals (arrays and objects) that wrap across multiple lines.
@@ -3157,6 +3195,37 @@ the configuration (without a prefix: ``Auto``).
     that a container should be formatted one-per-line (i.e. not bin-packed).
     So inserting a trailing comma counteracts bin-packing.
 
+
+
+**IntegerLiteralSeparator** (``IntegerLiteralSeparatorStyle``) :versionbadge:`clang-format 16`
+  Format integer literal separators (``'`` for C++ and ``_`` for C#, Java,
+  and JavaScript).
+
+  Nested configuration flags:
+
+  Separator format of integer literals of different bases.
+  If <0: Remove separators.
+  If  0: Leave the literal as is.
+  If >0: Insert separators between digits starting from the rightmost digit.
+
+  * ``int8_t Binary`` .. code-block:: c++
+
+       -1: 0b100111101101
+        0: 0b10011'11'0110'1
+        3: 0b100'111'101'101
+        4: 0b1001'1110'1101
+
+  * ``int8_t Decimal`` .. code-block:: c++
+
+       -1: 18446744073709550592ull
+        0: 184467'440737'0'95505'92ull
+        3: 18'446'744'073'709'550'592ull
+
+  * ``int8_t Hex`` .. code-block:: c++
+
+       -1: 0xDEADBEEFDEADBEEFuz
+        0: 0xDEAD'BEEF'DE'AD'BEE'Fuz
+        2: 0xDE'AD'BE'EF'DE'AD'BE'EFuz
 
 
 **JavaImportGroups** (``List of Strings``) :versionbadge:`clang-format 8`
