@@ -1946,8 +1946,6 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   config->mapFile = getMapFile(args, OPT_map, OPT_map_file);
 
   if (config->lldmapFile != "" && config->lldmapFile == config->mapFile) {
-    message("/lldmap and /map have the same output file '" + config->mapFile +
-         "'.\n>>> ignoring /lldmap");
     config->lldmapFile.clear();
   }
 
@@ -2202,8 +2200,6 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   }
 
   if (config->lldmapFile != "" && config->lldmapFile == config->mapFile) {
-    warn("/lldmap and /map have the same output file '" + config->mapFile +
-         "'.\n>>> ignoring /lldmap");
     config->lldmapFile.clear();
   }
 
