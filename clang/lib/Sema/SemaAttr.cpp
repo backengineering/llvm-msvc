@@ -463,13 +463,13 @@ void Sema::DiagnoseNonDefaultPragmaAlignPack(PragmaAlignPackDiagnoseKind Kind,
   // pragmas.
   if (PrevAlignPackState.ShouldWarnOnInclude) {
     // Emit the delayed non-default alignment at #include warning.
-    Diag(IncludeLoc, diag::warn_pragma_pack_non_default_at_include);
-    Diag(PrevAlignPackState.CurrentPragmaLocation, diag::note_pragma_pack_here);
+    // Diag(IncludeLoc, diag::warn_pragma_pack_non_default_at_include);
+    // Diag(PrevAlignPackState.CurrentPragmaLocation, diag::note_pragma_pack_here);
   }
   // Warn about modified alignment after #includes.
   if (PrevAlignPackState.CurrentValue != AlignPackStack.CurrentValue) {
-    Diag(IncludeLoc, diag::warn_pragma_pack_modified_after_include);
-    Diag(AlignPackStack.CurrentPragmaLocation, diag::note_pragma_pack_here);
+    // Diag(IncludeLoc, diag::warn_pragma_pack_modified_after_include);
+    // Diag(AlignPackStack.CurrentPragmaLocation, diag::note_pragma_pack_here);
   }
 }
 
