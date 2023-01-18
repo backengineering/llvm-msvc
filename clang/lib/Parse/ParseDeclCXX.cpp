@@ -27,6 +27,7 @@
 #include "clang/Sema/Scope.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/TimeProfiler.h"
+#include <optional>
 
 using namespace clang;
 
@@ -3191,7 +3192,11 @@ ExprResult Parser::ParseCXXMemberInitializer(Decl *D, bool IsFunction,
          "Data member initializer not starting with '=' or '{'");
 
   EnterExpressionEvaluationContext Context(
-      Actions, Sema::ExpressionEvaluationContext::PotentiallyEvaluated, D);
+      Actions,
+      isa_and_present<FieldDecl>(D)
+          ? Sema::ExpressionEvaluationContext::PotentiallyEvaluatedIfUsed
+          : Sema::ExpressionEvaluationContext::PotentiallyEvaluated,
+      D);
   if (TryConsumeToken(tok::equal, EqualLoc)) {
     if (Tok.is(tok::kw_delete)) {
       // In principle, an initializer of '= delete p;' is legal, but it will
@@ -4067,7 +4072,7 @@ void Parser::ParseTrailingRequiresClause(Declarator &D) {
 
   Actions.ActOnStartTrailingRequiresClause(getCurScope(), D);
 
-  llvm::Optional<Sema::CXXThisScopeRAII> ThisScope;
+  std::optional<Sema::CXXThisScopeRAII> ThisScope;
   InitCXXThisScopeForDeclaratorIfRelevant(D, D.getDeclSpec(), ThisScope);
 
   TrailingRequiresClause =

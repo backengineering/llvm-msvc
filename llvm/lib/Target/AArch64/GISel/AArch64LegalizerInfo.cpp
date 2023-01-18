@@ -749,10 +749,14 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST)
         .libcall();
   }
 
-  // FIXME: Legal types are only legal with NEON.
-  getActionDefinitionsBuilder(G_ABS)
-      .lowerIf(isScalar(0))
-      .legalFor(PackedVectorAllTypeList);
+  // FIXME: Legal vector types are only legal with NEON.
+  auto &ABSActions = getActionDefinitionsBuilder(G_ABS);
+  if (HasCSSC)
+    ABSActions
+        .legalFor({s32, s64});
+  ABSActions
+      .legalFor(PackedVectorAllTypeList)
+      .lowerIf(isScalar(0));
 
   getActionDefinitionsBuilder(G_VECREDUCE_FADD)
       // We only have FADDP to do reduction-like operations. Lower the rest.
@@ -1193,7 +1197,8 @@ bool AArch64LegalizerInfo::legalizeLoadStore(
     MachineInstrBuilder NewI;
     if (MI.getOpcode() == TargetOpcode::G_LOAD) {
       NewI = MIRBuilder.buildInstr(AArch64::LDPXi, {s64, s64}, {});
-      MIRBuilder.buildMerge(ValReg, {NewI->getOperand(0), NewI->getOperand(1)});
+      MIRBuilder.buildMergeLikeInstr(
+          ValReg, {NewI->getOperand(0), NewI->getOperand(1)});
     } else {
       auto Split = MIRBuilder.buildUnmerge(s64, MI.getOperand(0));
       NewI = MIRBuilder.buildInstr(
@@ -1495,7 +1500,7 @@ bool AArch64LegalizerInfo::legalizeAtomicCmpxchg128(
                                    *MRI.getTargetRegisterInfo(),
                                    *ST->getRegBankInfo());
 
-  MIRBuilder.buildMerge(MI.getOperand(0), {DstLo, DstHi});
+  MIRBuilder.buildMergeLikeInstr(MI.getOperand(0), {DstLo, DstHi});
   MI.eraseFromParent();
   return true;
 }

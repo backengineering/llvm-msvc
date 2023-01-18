@@ -119,9 +119,6 @@ def LLVM_ICmpOp : LLVM_ArithmeticCmpOp<"icmp", [Pure]> {
                               LLVM_ScalarOrVectorOf<LLVM_AnyPointer>]>:$lhs,
                    AnyTypeOf<[LLVM_ScalarOrVectorOf<AnyInteger>,
                               LLVM_ScalarOrVectorOf<LLVM_AnyPointer>]>:$rhs);
-  let builders = [
-    OpBuilder<(ins "ICmpPredicate":$predicate, "Value":$lhs, "Value":$rhs)>
-  ];
   let hasCustomAssemblyFormat = 1;
   string llvmInstName = "ICmp";
   string llvmBuilder = [{
@@ -145,9 +142,6 @@ def LLVM_FCmpOp : LLVM_ArithmeticCmpOp<"fcmp", [
                    LLVM_ScalarOrVectorOf<LLVM_AnyFloat>:$rhs,
                    DefaultValuedAttr<LLVM_FastmathFlagsAttr,
                                      "{}">:$fastmathFlags);
-  let builders = [
-    OpBuilder<(ins "FCmpPredicate":$predicate, "Value":$lhs, "Value":$rhs)>
-  ];
   let hasCustomAssemblyFormat = 1;
   string llvmInstName = "FCmp";
   string llvmBuilder = [{
@@ -483,7 +477,8 @@ def LLVM_InvokeOp : LLVM_Op<"invoke", [
   let arguments = (ins OptionalAttr<FlatSymbolRefAttr>:$callee,
                    Variadic<LLVM_Type>:$callee_operands,
                    Variadic<LLVM_Type>:$normalDestOperands,
-                   Variadic<LLVM_Type>:$unwindDestOperands);
+                   Variadic<LLVM_Type>:$unwindDestOperands,
+                   OptionalAttr<ElementsAttr>:$branch_weights);
   let results = (outs Variadic<LLVM_Type>);
   let successors = (successor AnySuccessor:$normalDest,
                               AnySuccessor:$unwindDest);
@@ -500,7 +495,7 @@ def LLVM_InvokeOp : LLVM_Op<"invoke", [
       "ValueRange":$normalOps, "Block*":$unwind, "ValueRange":$unwindOps),
     [{
       build($_builder, $_state, tys, /*callee=*/FlatSymbolRefAttr(), ops, normalOps,
-            unwindOps, normal, unwind);
+            unwindOps, nullptr, normal, unwind);
     }]>];
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
@@ -553,12 +548,15 @@ def LLVM_CallOp : LLVM_Op<"call",
   let arguments = (ins OptionalAttr<FlatSymbolRefAttr>:$callee,
                        Variadic<LLVM_Type>,
                        DefaultValuedAttr<LLVM_FastmathFlagsAttr,
-                                         "{}">:$fastmathFlags);
+                                         "{}">:$fastmathFlags,
+                       OptionalAttr<ElementsAttr>:$branch_weights);
   let results = (outs Optional<LLVM_Type>:$result);
 
   let builders = [
     OpBuilder<(ins "LLVMFuncOp":$func, "ValueRange":$args)>,
     OpBuilder<(ins "TypeRange":$results, "StringAttr":$callee,
+                   CArg<"ValueRange", "{}">:$args)>,
+    OpBuilder<(ins "TypeRange":$results, "FlatSymbolRefAttr":$callee,
                    CArg<"ValueRange", "{}">:$args)>,
     OpBuilder<(ins "TypeRange":$results, "StringRef":$callee,
                    CArg<"ValueRange", "{}">:$args)>
@@ -578,11 +576,6 @@ def LLVM_ExtractElementOp : LLVM_Op<"extractelement", [Pure,
 
   let arguments = (ins LLVM_AnyVector:$vector, AnyInteger:$position);
   let results = (outs LLVM_Type:$res);
-
-  let builders = [
-    OpBuilder<(ins "Value":$vector, "Value":$position,
-                   CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
-  ];
 
   let assemblyFormat = [{
     $vector `[` $position `:` type($position) `]` attr-dict `:` type($vector)
@@ -768,7 +761,12 @@ def LLVM_BrOp : LLVM_TerminatorOp<"br",
   let assemblyFormat = [{
     $dest (`(` $destOperands^ `:` type($destOperands) `)`)? attr-dict
   }];
-  let builders = [LLVM_TerminatorPassthroughOpBuilder];
+  let builders = [
+    OpBuilder<(ins "Block *":$dest), [{
+      build($_builder, $_state, ValueRange(), dest);
+    }]>,
+    LLVM_TerminatorPassthroughOpBuilder
+  ];
 }
 def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br",
     [AttrSizedOperandSegments, DeclareOpInterfaceMethods<BranchOpInterface>,
@@ -789,7 +787,7 @@ def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br",
     OpBuilder<(ins "Value":$condition, "Block *":$trueDest,
       "ValueRange":$trueOperands, "Block *":$falseDest,
       "ValueRange":$falseOperands,
-      CArg<"Optional<std::pair<uint32_t, uint32_t>>", "{}">:$weights),
+      CArg<"std::optional<std::pair<uint32_t, uint32_t>>", "{}">:$weights),
     [{
         ElementsAttr weightsAttr;
         if (weights) {
@@ -980,7 +978,7 @@ def LLVM_AddressOfOp : LLVM_Op<"mlir.addressof",
 }
 
 def LLVM_MetadataOp : LLVM_Op<"metadata", [
-   NoRegionArguments, SymbolTable, Symbol
+   NoRegionArguments, NoTerminator, SymbolTable, Symbol
 ]> {
   let arguments = (ins
     SymbolNameAttr:$sym_name
@@ -993,11 +991,19 @@ def LLVM_MetadataOp : LLVM_Op<"metadata", [
       llvm.metadata @metadata {
         llvm.access_group @group1
         llvm.access_group @group2
-        llvm.return
       }
   }];
   let regions = (region SizedRegion<1>:$body);
-  let assemblyFormat = "$sym_name attr-dict-with-keyword $body";
+
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    OpBuilder<(ins "StringRef":$symName,
+        CArg<"bool", "true">:$createBodyBlock,
+        CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>
+  ];
+
+  let hasCustomAssemblyFormat = 1;
   let hasRegionVerifier = 1;
 }
 
@@ -1051,7 +1057,6 @@ def LLVM_AliasScopeMetadataOp : LLVM_Op<"alias_scope", [
           llvm.alias_scope_domain @domain { description = "Optional domain description"}
           llvm.alias_scope @scope1 { domain = @domain }
           llvm.alias_scope @scope2 { domain = @domain, description = "Optional scope description" }
-          llvm.return
         }
       }
 
@@ -1095,7 +1100,6 @@ def LLVM_TBAARootMetadataOp : LLVM_Op<"tbaa_root", [
     Example:
       llvm.metadata @tbaa {
         llvm.tbaa_root @tbaa_root_0 {identity = "Simple C/C++ TBAA"}
-        llvm.return
       }
 
     See the following link for more details:
@@ -1148,7 +1152,6 @@ def LLVM_TBAATypeDescriptorOp : LLVM_Op<"tbaa_type_desc", [
             members = [@tbaa_type_desc_5, @tbaa_type_desc_5],
             offsets = array<i64: 0, 4>
         }
-        llvm.return
       }
 
     See the following link for more details:
@@ -1218,7 +1221,6 @@ def LLVM_TBAATagOp : LLVM_Op<"tbaa_tag", [
             base_type = @tbaa_type_desc_6,
             offset = 0 : i64
         }
-        llvm.return
       }
 
     See the following link for more details:
@@ -1498,7 +1500,7 @@ def LLVM_LLVMFuncOp : LLVM_Op<"func", [
       CArg<"CConv", "CConv::C">:$cconv,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs,
       CArg<"ArrayRef<DictionaryAttr>", "{}">:$argAttrs,
-      CArg<"Optional<uint64_t>", "{}">:$functionEntryCount)>
+      CArg<"std::optional<uint64_t>", "{}">:$functionEntryCount)>
   ];
 
   let extraClassDeclaration = [{

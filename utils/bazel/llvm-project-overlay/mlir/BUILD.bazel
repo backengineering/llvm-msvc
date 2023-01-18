@@ -24,6 +24,7 @@ licenses(["notice"])
 exports_files([
     "LICENSE.TXT",
     "run_lit.sh",
+    "utils/textmate/mlir.json",
 ])
 
 filegroup(
@@ -1201,13 +1202,16 @@ cc_library(
     hdrs = glob(["include/mlir/Dialect/Affine/TransformOps/*.h"]),
     includes = ["include"],
     deps = [
+        ":AffineAnalysis",
         ":AffineDialect",
         ":AffineTransformOpsIncGen",
         ":AffineTransforms",
         ":AffineUtils",
         ":FuncDialect",
         ":IR",
+        ":PDLDialect",
         ":TransformDialect",
+        ":Transforms",
         ":VectorDialect",
     ],
 )
@@ -2392,6 +2396,21 @@ cc_library(
 )
 
 cc_library(
+    name = "NVGPUUtils",
+    srcs = ["lib/Dialect/NVGPU/Utils/MMAUtils.cpp"],
+    hdrs = ["include/mlir/Dialect/NVGPU/Utils/MMAUtils.h"],
+    includes = ["include"],
+    deps = [
+        ":AffineDialect",
+        ":ArithDialect",
+        ":IR",
+        ":NVGPUDialect",
+        ":NVVMDialect",
+        ":VectorDialect",
+    ],
+)
+
+cc_library(
     name = "NVGPUTransforms",
     srcs = [
         "lib/Dialect/NVGPU/Transforms/MmaSyncTF32Transform.cpp",
@@ -3419,11 +3438,39 @@ cc_library(
         ":TransformDialect",
         ":TransformUtils",
         ":VectorDialect",
+        ":VectorEnumsIncGen",
         ":VectorToSCF",
         ":VectorTransformOpsIncGen",
         ":VectorTransforms",
         ":X86VectorTransforms",
         "//llvm:Support",
+    ],
+)
+
+td_library(
+    name = "VectorTransformsTdFiles",
+    srcs = ["include/mlir/Dialect/Vector/Transforms/VectorTransformsBase.td"],
+    includes = ["include"],
+    deps = [":OpBaseTdFiles"],
+)
+
+gentbl_cc_library(
+    name = "VectorEnumsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-enum-decls"],
+            "include/mlir/Dialect/Vector/Transforms/VectorTransformsEnums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "include/mlir/Dialect/Vector/Transforms/VectorTransformsEnums.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Vector/Transforms/VectorTransformsBase.td",
+    deps = [
+        ":OpBaseTdFiles",
     ],
 )
 
@@ -3474,6 +3521,7 @@ cc_library(
         ":TensorDialect",
         ":Transforms",
         ":VectorDialect",
+        ":VectorEnumsIncGen",
         ":VectorInterfaces",
         ":VectorPassIncGen",
         ":VectorUtils",
@@ -6430,6 +6478,7 @@ cc_library(
         ":IR",
         ":InferIntRangeInterface",
         ":LoopLikeInterface",
+        ":Pass",
         ":SideEffectInterfaces",
         ":Support",
         ":ViewLikeInterface",
@@ -8513,6 +8562,7 @@ td_library(
         ":PDLDialectTdFiles",
         ":SCFTdFiles",
         ":TransformDialectTdFiles",
+        ":VectorTransformsTdFiles",
     ],
 )
 
@@ -8694,8 +8744,6 @@ cc_library(
     srcs = glob([
         "lib/Conversion/VectorToGPU/*.cpp",
         "lib/Conversion/VectorToGPU/*.h",
-        "lib/Dialect/NVGPU/Utils/*.cpp",
-        "include/mlir/Dialect/NVGPU/Utils/*.h",
     ]),
     hdrs = glob([
         "include/mlir/Conversion/VectorToGPU/*.h",
@@ -8714,6 +8762,7 @@ cc_library(
         ":LLVMDialect",
         ":MemRefDialect",
         ":NVGPUDialect",
+        ":NVGPUUtils",
         ":NVVMDialect",
         ":Pass",
         ":SCFDialect",

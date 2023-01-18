@@ -505,7 +505,7 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
       To = J->second;
     }
     // Make sure the new register has a sufficiently constrained register class.
-    if (Register::isVirtualRegister(From) && Register::isVirtualRegister(To))
+    if (From.isVirtual() && To.isVirtual())
       MRI.constrainRegClass(To, MRI.getRegClass(From));
     // Replace it.
 
@@ -555,7 +555,7 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
     bool hasFI = MI->getDebugOperand(0).isFI();
     Register Reg =
         hasFI ? TRI.getFrameRegister(*MF) : MI->getDebugOperand(0).getReg();
-    if (Register::isPhysicalRegister(Reg))
+    if (Reg.isPhysical())
       EntryMBB->insert(EntryMBB->begin(), MI);
     else {
       MachineInstr *Def = RegInfo->getVRegDef(Reg);
@@ -2287,6 +2287,11 @@ void SelectionDAGISel::Select_ARITH_FENCE(SDNode *N) {
                        N->getOperand(0));
 }
 
+void SelectionDAGISel::Select_MEMBARRIER(SDNode *N) {
+  CurDAG->SelectNodeTo(N, TargetOpcode::MEMBARRIER, N->getValueType(0),
+                       N->getOperand(0));
+}
+
 void SelectionDAGISel::pushStackMapLiveVariable(SmallVectorImpl<SDValue> &Ops,
                                                 SDValue OpVal, SDLoc DL) {
   SDNode *OpNode = OpVal.getNode();
@@ -2940,6 +2945,9 @@ void SelectionDAGISel::SelectCodeCommon(SDNode *NodeToMatch,
     return;
   case ISD::ARITH_FENCE:
     Select_ARITH_FENCE(NodeToMatch);
+    return;
+  case ISD::MEMBARRIER:
+    Select_MEMBARRIER(NodeToMatch);
     return;
   case ISD::STACKMAP:
     Select_STACKMAP(NodeToMatch);

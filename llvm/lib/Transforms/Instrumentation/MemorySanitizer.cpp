@@ -1533,7 +1533,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
   Type *getShadowTyNoVec(Type *ty) {
     if (VectorType *vt = dyn_cast<VectorType>(ty))
       return IntegerType::get(*MS.C,
-                              vt->getPrimitiveSizeInBits().getFixedSize());
+                              vt->getPrimitiveSizeInBits().getFixedValue());
     return ty;
   }
 
@@ -1899,7 +1899,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
             // argument shadow to the underlying memory.
             // Figure out maximal valid memcpy alignment.
             const Align ArgAlign = DL.getValueOrABITypeAlignment(
-                MaybeAlign(FArg.getParamAlignment()), FArg.getParamByValType());
+                FArg.getParamAlign(), FArg.getParamByValType());
             Value *CpShadowPtr, *CpOriginPtr;
             std::tie(CpShadowPtr, CpOriginPtr) =
                 getShadowOriginPtr(V, EntryIRB, EntryIRB.getInt8Ty(), ArgAlign,

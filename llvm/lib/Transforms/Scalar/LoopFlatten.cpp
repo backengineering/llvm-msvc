@@ -100,6 +100,7 @@ static cl::opt<bool>
             cl::desc("Widen the loop induction variables, if possible, so "
                      "overflow checks won't reject flattening"));
 
+namespace {
 // We require all uses of both induction variables to match this pattern:
 //
 //   (OuterPHI * InnerTripCount) + InnerPHI
@@ -288,6 +289,7 @@ struct FlattenInfo {
     return true;
   }
 };
+} // namespace
 
 static bool
 setLoopComponents(Value *&TC, Value *&TripCount, BinaryOperator *&Increment,
@@ -784,9 +786,8 @@ static bool DoFlattenLoopPair(FlattenInfo &FI, DominatorTree *DT, LoopInfo *LI,
   }
 
   // Tell LoopInfo, SCEV and the pass manager that the inner loop has been
-  // deleted, and any information that have about the outer loop invalidated.
+  // deleted, and invalidate any outer loop information.
   SE->forgetLoop(FI.OuterLoop);
-  SE->forgetLoop(FI.InnerLoop);
   SE->forgetBlockAndLoopDispositions();
   if (U)
     U->markLoopAsDeleted(*FI.InnerLoop, FI.InnerLoop->getName());

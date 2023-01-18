@@ -22,6 +22,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SymbolManager.h"
 #include <functional>
+#include <optional>
 
 using namespace clang;
 using namespace ento;
@@ -209,7 +210,6 @@ ProgramStateRef bindInt(uint64_t Value, ProgramStateRef State,
 
 class StreamChecker : public Checker<check::PreCall, eval::Call,
                                      check::DeadSymbols, check::PointerEscape> {
-  BugType BT_FileNull{this, "NULL stream pointer", "Stream handling error"};
   BugType BT_UseAfterClose{this, "Closed stream", "Stream handling error"};
   BugType BT_UseAfterOpenFailed{this, "Invalid stream",
                                 "Stream handling error"};
@@ -284,7 +284,7 @@ private:
         0}},
   };
 
-  mutable Optional<int> EofVal;
+  mutable std::optional<int> EofVal;
 
   void evalFopen(const FnDescription *Desc, const CallEvent &Call,
                  CheckerContext &C) const;
@@ -338,7 +338,7 @@ private:
                          const StreamErrorState &ErrorKind) const;
 
   /// Check that the stream (in StreamVal) is not NULL.
-  /// If it can only be NULL a fatal error is emitted and nullptr returned.
+  /// If it can only be NULL a sink node is generated and nullptr returned.
   /// Otherwise the return value is a new state where the stream is constrained
   /// to be non-null.
   ProgramStateRef ensureStreamNonNull(SVal StreamVal, const Expr *StreamE,
@@ -435,7 +435,7 @@ private:
     if (EofVal)
       return;
 
-    if (const llvm::Optional<int> OptInt =
+    if (const std::optional<int> OptInt =
             tryExpandAsInteger("EOF", C.getPreprocessor()))
       EofVal = *OptInt;
     else
@@ -558,7 +558,7 @@ void StreamChecker::evalFreopen(const FnDescription *Desc,
   if (!CE)
     return;
 
-  Optional<DefinedSVal> StreamVal =
+  std::optional<DefinedSVal> StreamVal =
       getStreamArg(Desc, Call).getAs<DefinedSVal>();
   if (!StreamVal)
     return;
@@ -684,10 +684,10 @@ void StreamChecker::evalFreadFwrite(const FnDescription *Desc,
   if (!CE)
     return;
 
-  Optional<NonLoc> SizeVal = Call.getArgSVal(1).getAs<NonLoc>();
+  std::optional<NonLoc> SizeVal = Call.getArgSVal(1).getAs<NonLoc>();
   if (!SizeVal)
     return;
-  Optional<NonLoc> NMembVal = Call.getArgSVal(2).getAs<NonLoc>();
+  std::optional<NonLoc> NMembVal = Call.getArgSVal(2).getAs<NonLoc>();
   if (!NMembVal)
     return;
 
@@ -1039,13 +1039,11 @@ StreamChecker::ensureStreamNonNull(SVal StreamVal, const Expr *StreamE,
   std::tie(StateNotNull, StateNull) = CM.assumeDual(C.getState(), *Stream);
 
   if (!StateNotNull && StateNull) {
-    if (ExplodedNode *N = C.generateErrorNode(StateNull)) {
-      auto R = std::make_unique<PathSensitiveBugReport>(
-          BT_FileNull, "Stream pointer might be NULL.", N);
-      if (StreamE)
-        bugreporter::trackExpressionValue(N, StreamE, *R);
-      C.emitReport(std::move(R));
-    }
+    // Stream argument is NULL, stop analysis on this path.
+    // This case should occur only if StdLibraryFunctionsChecker (or ModelPOSIX
+    // option of it) is not turned on, otherwise that checker ensures non-null
+    // argument.
+    C.generateSink(StateNull, C.getPredecessor());
     return nullptr;
   }
 
@@ -1146,7 +1144,8 @@ ProgramStateRef StreamChecker::ensureNoFilePositionIndeterminate(
 ProgramStateRef
 StreamChecker::ensureFseekWhenceCorrect(SVal WhenceVal, CheckerContext &C,
                                         ProgramStateRef State) const {
-  Optional<nonloc::ConcreteInt> CI = WhenceVal.getAs<nonloc::ConcreteInt>();
+  std::optional<nonloc::ConcreteInt> CI =
+      WhenceVal.getAs<nonloc::ConcreteInt>();
   if (!CI)
     return State;
 

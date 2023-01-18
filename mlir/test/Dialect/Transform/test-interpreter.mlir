@@ -775,6 +775,53 @@ transform.sequence failures(propagate) {
 
 // -----
 
+func.func @get_consumer(%arg0: index, %arg1: index) {
+  %0 = arith.muli %arg0, %arg1 : index
+  // expected-remark @below {{found addi}}
+  arith.addi %0, %arg1 : index
+  return
+}
+
+transform.sequence failures(propagate) {
+^bb1(%arg1: !pdl.operation):
+  %muli = transform.structured.match ops{["arith.muli"]} in %arg1
+  %addi = get_consumers_of_result %muli[0] : (!pdl.operation) -> !pdl.operation
+  transform.test_print_remark_at_operand %addi, "found addi" : !pdl.operation
+}
+
+// -----
+
+func.func @get_consumer_fail_1(%arg0: index, %arg1: index) {
+  %0 = arith.muli %arg0, %arg1 : index
+  %1 = arith.muli %arg0, %arg1 : index
+  return
+}
+
+transform.sequence failures(propagate) {
+^bb1(%arg1: !pdl.operation):
+  %muli = transform.structured.match ops{["arith.muli"]} in %arg1
+  // expected-error @below {{handle must be mapped to exactly one payload op}}
+  %bbarg = get_consumers_of_result %muli[0] : (!pdl.operation) -> !pdl.operation
+
+}
+
+// -----
+
+func.func @get_consumer_fail_2(%arg0: index, %arg1: index) {
+  %0 = arith.muli %arg0, %arg1 : index
+  return
+}
+
+transform.sequence failures(propagate) {
+^bb1(%arg1: !pdl.operation):
+  %muli = transform.structured.match ops{["arith.muli"]} in %arg1
+  // expected-error @below {{result number overflow}}
+  %bbarg = get_consumers_of_result %muli[1] : (!pdl.operation) -> !pdl.operation
+
+}
+
+// -----
+
 func.func @split_handles(%a: index, %b: index, %c: index) {
   %0 = arith.muli %a, %b : index
   %1 = arith.muli %a, %c : index
@@ -1023,4 +1070,20 @@ transform.sequence failures(propagate) {
   transform.test_produce_transform_param_or_forward_operand %arg0
     { second_result_is_handle }
     : (!transform.any_op) -> (!transform.any_op, !transform.param<i64>)
+}
+
+// -----
+
+transform.sequence failures(propagate) {
+^bb0(%arg0: !transform.any_op):
+  // expected-error @below {{attempting to assign a null payload op to this transform value}}
+  %0 = transform.test_produce_null_payload : !transform.any_op
+}
+
+// -----
+
+transform.sequence failures(propagate) {
+^bb0(%arg0: !transform.any_op):
+  // expected-error @below {{attempting to assign a null parameter to this transform value}}
+  %0 = transform.test_produce_null_param : !transform.param<i64>
 }

@@ -176,8 +176,8 @@ public:
   void addStore(int64_t OffsetFromFirst, StoreInst *SI) {
     TypeSize StoreSize = DL.getTypeStoreSize(SI->getOperand(0)->getType());
     assert(!StoreSize.isScalable() && "Can't track scalable-typed stores");
-    addRange(OffsetFromFirst, StoreSize.getFixedSize(), SI->getPointerOperand(),
-             SI->getAlign(), SI);
+    addRange(OffsetFromFirst, StoreSize.getFixedValue(),
+             SI->getPointerOperand(), SI->getAlign(), SI);
   }
 
   void addMemSet(int64_t OffsetFromFirst, MemSetInst *MSI) {
@@ -1431,7 +1431,7 @@ bool MemCpyOptPass::performMemCpyToMemSetOptzn(MemCpyInst *MemCpy,
   IRBuilder<> Builder(MemCpy);
   Instruction *NewM =
       Builder.CreateMemSet(MemCpy->getRawDest(), MemSet->getOperand(1),
-                           CopySize, MaybeAlign(MemCpy->getDestAlignment()));
+                           CopySize, MemCpy->getDestAlign());
   auto *LastDef =
       cast<MemoryDef>(MSSAU->getMemorySSA()->getMemoryAccess(MemCpy));
   auto *NewAccess = MSSAU->createMemoryAccessAfter(NewM, LastDef, LastDef);
@@ -1462,9 +1462,8 @@ bool MemCpyOptPass::processMemCpy(MemCpyInst *M, BasicBlock::iterator &BBI) {
       if (Value *ByteVal = isBytewiseValue(GV->getInitializer(),
                                            M->getModule()->getDataLayout())) {
         IRBuilder<> Builder(M);
-        Instruction *NewM =
-            Builder.CreateMemSet(M->getRawDest(), ByteVal, M->getLength(),
-                                 MaybeAlign(M->getDestAlignment()), false);
+        Instruction *NewM = Builder.CreateMemSet(
+            M->getRawDest(), ByteVal, M->getLength(), M->getDestAlign(), false);
         auto *LastDef =
             cast<MemoryDef>(MSSAU->getMemorySSA()->getMemoryAccess(M));
         auto *NewAccess =

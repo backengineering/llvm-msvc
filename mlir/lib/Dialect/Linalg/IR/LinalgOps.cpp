@@ -39,6 +39,7 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
+#include <optional>
 
 using namespace mlir;
 using namespace mlir::linalg;
@@ -94,7 +95,7 @@ static void fillStructuredOpRegion(OpBuilder &opBuilder, Region &region,
 /// The body of the operation is filled using `regionBuilder`. All ods-gen
 /// created structured operations use the method to implement their builders.
 static void buildStructuredOp(OpBuilder &b, OperationState &state,
-                              llvm::Optional<TypeRange> resultTensorTypes,
+                              std::optional<TypeRange> resultTensorTypes,
                               ValueRange inputs, ValueRange outputs,
                               ArrayRef<NamedAttribute> attributes,
                               RegionBuilderFn regionBuilder) {
@@ -463,36 +464,6 @@ struct FoldFillWithTensorReshape : OpRewritePattern<TensorReshapeOp> {
   }
 };
 
-/// Swap extract_slice(fill) to fill(extract_slice).
-///
-/// Only swap the two ops if the extract_slice is the only user of the fill.
-struct SwapExtractSliceOfFill : OpRewritePattern<tensor::ExtractSliceOp> {
-  using OpRewritePattern<tensor::ExtractSliceOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(tensor::ExtractSliceOp extractSliceOp,
-                                PatternRewriter &rewriter) const override {
-    auto oldFill = extractSliceOp.getSource().getDefiningOp<FillOp>();
-    if (!oldFill)
-      return failure();
-    // Only swap the ops if there is no other user of the fill.
-    if (!extractSliceOp.getSource().hasOneUse())
-      return failure();
-    // Extract from the old fill's source.
-    rewriter.updateRootInPlace(extractSliceOp, [&]() {
-      extractSliceOp.getSourceMutable().assign(oldFill.output());
-    });
-    // Create a new fill and remove the old one.
-    rewriter.setInsertionPointAfter(extractSliceOp);
-    auto newFill =
-        rewriter.create<FillOp>(oldFill.getLoc(), ValueRange{oldFill.value()},
-                                ValueRange{extractSliceOp.getResult()});
-    rewriter.eraseOp(oldFill);
-    // Use the new fill instead of the extract_slice.
-    rewriter.replaceAllUsesExcept(extractSliceOp.getResult(),
-                                  newFill.getResult(0), newFill);
-    return success();
-  }
-};
-
 /// Fold tensor.pad(linalg.fill) into linalg.fill if the padding value and the
 /// filling value are the same.
 struct FoldFillWithPad final : public OpRewritePattern<tensor::PadOp> {
@@ -637,7 +608,7 @@ void FillOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results
       .add<FoldFillWithPad, FoldFillWithTensorReshape<tensor::CollapseShapeOp>,
            FoldFillWithTensorReshape<tensor::ExpandShapeOp>,
-           FoldInsertPadIntoFill, SwapExtractSliceOfFill>(context);
+           FoldInsertPadIntoFill>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -980,8 +951,7 @@ void GenericOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<EraseIdentityGenericOp>(context);
 }
 
-LogicalResult GenericOp::fold(ArrayRef<Attribute>,
-                              SmallVectorImpl<OpFoldResult> &) {
+LogicalResult GenericOp::fold(FoldAdaptor, SmallVectorImpl<OpFoldResult> &) {
   return memref::foldMemRefCast(*this);
 }
 
@@ -1046,7 +1016,8 @@ void MapOp::build(
 static void addBodyWithPayloadOp(OpAsmParser &parser, OperationState &result,
                                  const OperationName &payloadOpName,
                                  const NamedAttrList &payloadOpAttrs,
-                                 ArrayRef<Value> operands) {
+                                 ArrayRef<Value> operands,
+                                 bool initFirst = false) {
   OpBuilder b(parser.getContext());
   Region *body = result.addRegion();
   Block &block = body->emplaceBlock();
@@ -1056,14 +1027,24 @@ static void addBodyWithPayloadOp(OpAsmParser &parser, OperationState &result,
     block.addArgument(operand.getType().cast<ShapedType>().getElementType(),
                       b.getUnknownLoc());
   }
+  SmallVector<Value> payloadOpOperands;
+  // If initFirst flag is enabled, we consider init as the first position of
+  // payload operands.
+  if (initFirst) {
+    payloadOpOperands.push_back(block.getArguments().back());
+    for (const auto &arg : block.getArguments().drop_back())
+      payloadOpOperands.push_back(arg);
+  } else {
+    payloadOpOperands = {block.getArguments().begin(),
+                         block.getArguments().end()};
+  }
 
   Operation *payloadOp = b.create(
       result.location, b.getStringAttr(payloadOpName.getStringRef()),
-      block.getArguments(),
+      payloadOpOperands,
       TypeRange{
           result.operands.back().getType().cast<ShapedType>().getElementType()},
       payloadOpAttrs);
-
   b.create<YieldOp>(result.location, payloadOp->getResults());
 }
 
@@ -1086,7 +1067,7 @@ ParseResult MapOp::parse(OpAsmParser &parser, OperationState &result) {
 
   if (payloadOpName.has_value()) {
     addBodyWithPayloadOp(parser, result, payloadOpName.value(), payloadOpAttrs,
-                         makeArrayRef(result.operands).drop_back());
+                         ArrayRef(result.operands).drop_back());
   } else {
     SmallVector<OpAsmParser::Argument> regionArgs;
     if (parser.parseArgumentList(regionArgs, OpAsmParser::Delimiter::Paren,
@@ -1102,7 +1083,9 @@ ParseResult MapOp::parse(OpAsmParser &parser, OperationState &result) {
 
 // Retrieve the operation from the body, if it is the only one (except
 // yield) and if it gets the same amount of arguments as the body does.
-static Operation *findPayloadOp(Block *body) {
+// If initFirst flag is enabled, we check that init takes the first position in
+// operands of payload.
+static Operation *findPayloadOp(Block *body, bool initFirst = false) {
   if (body->getOperations().size() != 2)
     return nullptr;
   Operation &payload = body->getOperations().front();
@@ -1111,10 +1094,22 @@ static Operation *findPayloadOp(Block *body) {
   if (payload.getNumOperands() == 0 ||
       payload.getNumOperands() != body->getNumArguments())
     return nullptr;
-  for (const auto &[bbArg, operand] :
-       llvm::zip(payload.getOperands(), body->getArguments())) {
-    if (bbArg != operand)
+  if (initFirst) {
+    // check init
+    if (payload.getOperands().back() != body->getArgument(0))
       return nullptr;
+    // check rest
+    for (const auto &[operand, bbArg] :
+         llvm::zip(payload.getOperands(), body->getArguments().drop_front())) {
+      if (bbArg != operand)
+        return nullptr;
+    }
+  } else {
+    for (const auto &[operand, bbArg] :
+         llvm::zip(payload.getOperands(), body->getArguments())) {
+      if (bbArg != operand)
+        return nullptr;
+    }
   }
   return &payload;
 }
@@ -1313,7 +1308,7 @@ ParseResult ReduceOp::parse(OpAsmParser &parser, OperationState &result) {
 
   if (payloadOpName.has_value()) {
     addBodyWithPayloadOp(parser, result, payloadOpName.value(), payloadOpAttrs,
-                         makeArrayRef(result.operands));
+                         ArrayRef(result.operands), /*initFirst=*/true);
   } else {
     SmallVector<OpAsmParser::Argument> regionArgs;
     if (parser.parseArgumentList(regionArgs, OpAsmParser::Delimiter::Paren,
@@ -1336,7 +1331,7 @@ static void printDenseI64ArrayAttr(OpAsmPrinter &p, StringRef attributeName,
 
 void ReduceOp::print(OpAsmPrinter &p) {
   Block *mapper = getBody();
-  Operation *payloadOp = findPayloadOp(mapper);
+  Operation *payloadOp = findPayloadOp(mapper, /*initFirst=*/true);
   if (payloadOp) {
     printShortForm(p, payloadOp);
   }
@@ -1772,7 +1767,7 @@ LogicalResult IndexOp::verify() {
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Linalg/IR/LinalgStructuredOps.cpp.inc"
 
-AffineMap mlir::linalg::extractOrIdentityMap(Optional<AffineMap> maybeMap,
+AffineMap mlir::linalg::extractOrIdentityMap(std::optional<AffineMap> maybeMap,
                                              unsigned rank,
                                              MLIRContext *context) {
   if (maybeMap)

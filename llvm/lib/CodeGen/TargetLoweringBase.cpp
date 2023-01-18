@@ -1627,7 +1627,7 @@ unsigned TargetLoweringBase::getVectorTypeBreakdown(LLVMContext &Context,
   if (EVT(DestVT).bitsLT(NewVT)) {  // Value is expanded, e.g. i64 -> i16.
     TypeSize NewVTSize = NewVT.getSizeInBits();
     // Convert sizes such as i33 to i64.
-    if (!isPowerOf2_32(NewVTSize.getKnownMinSize()))
+    if (!isPowerOf2_32(NewVTSize.getKnownMinValue()))
       NewVTSize = NewVTSize.coefficientNextPowerOf2();
     return NumVectorRegs*(NewVTSize/DestVT.getSizeInBits());
   }
@@ -2246,9 +2246,9 @@ void TargetLoweringBase::finalizeLowering(MachineFunction &MF) const {
   MF.getRegInfo().freezeReservedRegs(MF);
 }
 
-MachineMemOperand::Flags
-TargetLoweringBase::getLoadMemOperandFlags(const LoadInst &LI,
-                                           const DataLayout &DL) const {
+MachineMemOperand::Flags TargetLoweringBase::getLoadMemOperandFlags(
+    const LoadInst &LI, const DataLayout &DL, AssumptionCache *AC,
+    const TargetLibraryInfo *LibInfo) const {
   MachineMemOperand::Flags Flags = MachineMemOperand::MOLoad;
   if (LI.isVolatile())
     Flags |= MachineMemOperand::MOVolatile;
@@ -2259,7 +2259,9 @@ TargetLoweringBase::getLoadMemOperandFlags(const LoadInst &LI,
   if (LI.hasMetadata(LLVMContext::MD_invariant_load))
     Flags |= MachineMemOperand::MOInvariant;
 
-  if (isDereferenceablePointer(LI.getPointerOperand(), LI.getType(), DL))
+  if (isDereferenceableAndAlignedPointer(LI.getPointerOperand(), LI.getType(),
+                                         LI.getAlign(), DL, &LI, AC,
+                                         /*DT=*/nullptr, LibInfo))
     Flags |= MachineMemOperand::MODereferenceable;
 
   Flags |= getTargetMMOFlags(LI);

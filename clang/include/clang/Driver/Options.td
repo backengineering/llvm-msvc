@@ -1006,6 +1006,8 @@ def hip_path_EQ : Joined<["--"], "hip-path=">, Group<i_Group>,
   HelpText<"HIP runtime installation path, used for finding HIP version and adding HIP include path.">;
 def amdgpu_arch_tool_EQ : Joined<["--"], "amdgpu-arch-tool=">, Group<i_Group>,
   HelpText<"Tool used for detecting AMD GPU arch in the system.">;
+def nvptx_arch_tool_EQ : Joined<["--"], "nvptx-arch-tool=">, Group<i_Group>,
+  HelpText<"Tool used for detecting NVIDIA GPU arch in the system.">;
 def rocm_device_lib_path_EQ : Joined<["--"], "rocm-device-lib-path=">, Group<Link_Group>,
   HelpText<"ROCm device library path. Alternative to rocm-path.">;
 def : Joined<["--"], "hip-device-lib-path=">, Alias<rocm_device_lib_path_EQ>;
@@ -1958,7 +1960,7 @@ def ffp_contract : Joined<["-"], "ffp-contract=">, Group<f_Group>,
   " fast (fuses across statements disregarding pragmas)"
   " | on (only fuses in the same statement unless dictated by pragmas)"
   " | off (never fuses)"
-  " | fast-honor-pragmas (fuses across statements unless diectated by pragmas)."
+  " | fast-honor-pragmas (fuses across statements unless dictated by pragmas)."
   " Default is 'fast' for CUDA, 'fast-honor-pragmas' for HIP, and 'on' otherwise.">,
   HelpText<"Form fused FP ops (e.g. FMAs)">,
   Values<"fast,on,off,fast-honor-pragmas">;
@@ -2309,6 +2311,11 @@ defm prebuilt_implicit_modules : BoolFOption<"prebuilt-implicit-modules",
   HeaderSearchOpts<"EnablePrebuiltImplicitModules">, DefaultFalse,
   PosFlag<SetTrue, [], "Look up implicit modules in the prebuilt module path">,
   NegFlag<SetFalse>, BothFlags<[NoXarchOption, CC1Option]>>;
+
+def fmodule_output_EQ : Joined<["-"], "fmodule-output=">, Flags<[NoXarchOption, CC1Option]>,
+  HelpText<"Save intermediate module file results when compiling a standard C++ module unit.">;
+def fmodule_output : Flag<["-"], "fmodule-output">, Flags<[NoXarchOption, CC1Option]>,
+  HelpText<"Save intermediate module file results when compiling a standard C++ module unit.">;
 
 def fmodules_prune_interval : Joined<["-"], "fmodules-prune-interval=">, Group<i_Group>,
   Flags<[CC1Option]>, MetaVarName<"<seconds>">,
@@ -4256,7 +4263,7 @@ def std_default_EQ : Joined<["-"], "std-default=">;
 def std_EQ : Joined<["-", "--"], "std=">, Flags<[CC1Option,FlangOption,FC1Option]>,
   Group<CompileOnly_Group>, HelpText<"Language standard to compile for">,
   ValuesCode<[{
-    const char *Values =
+    static constexpr const char VALUES_CODE [] =
     #define LANGSTANDARD(id, name, lang, desc, features) name ","
     #define LANGSTANDARD_ALIAS(id, alias) alias ","
     #include "clang/Basic/LangStandards.def"
@@ -5267,7 +5274,7 @@ def analyzer_stats : Flag<["-"], "analyzer-stats">,
 def analyzer_checker : Separate<["-"], "analyzer-checker">,
   HelpText<"Choose analyzer checkers to enable">,
   ValuesCode<[{
-    const char *Values =
+    static constexpr const char VALUES_CODE [] =
     #define GET_CHECKERS
     #define CHECKER(FULLNAME, CLASS, HT, DOC_URI, IS_HIDDEN)  FULLNAME ","
     #include "clang/StaticAnalyzer/Checkers/Checkers.inc"

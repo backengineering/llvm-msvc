@@ -10,6 +10,7 @@
 #include "SparseTensorStorageLayout.h"
 
 #include "mlir/Dialect/SparseTensor/Transforms/Passes.h"
+#include <optional>
 
 using namespace mlir;
 using namespace sparse_tensor;
@@ -138,8 +139,8 @@ public:
                           op.getDim().value().getZExtValue());
     } else {
       auto enc = op.getSpecifier().getType().getEncoding();
-      StorageLayout<true> layout(enc);
-      Optional<unsigned> dim = std::nullopt;
+      StorageLayout layout(enc);
+      std::optional<unsigned> dim;
       if (op.getDim())
         dim = op.getDim().value().getZExtValue();
       unsigned idx = layout.getMemRefFieldIndex(op.getSpecifierKind(), dim);

@@ -37,6 +37,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cstring>
+#include <optional>
 using namespace clang;
 
 const Expr *Expr::getBestDynamicClassTypeExpr() const {
@@ -644,7 +645,7 @@ std::string SYCLUniqueStableNameExpr::ComputeName(ASTContext &Context) const {
 std::string SYCLUniqueStableNameExpr::ComputeName(ASTContext &Context,
                                                   QualType Ty) {
   auto MangleCallback = [](ASTContext &Ctx,
-                           const NamedDecl *ND) -> llvm::Optional<unsigned> {
+                           const NamedDecl *ND) -> std::optional<unsigned> {
     if (const auto *RD = dyn_cast<CXXRecordDecl>(ND))
       return RD->getDeviceLambdaManglingNumber();
     return std::nullopt;
@@ -3644,6 +3645,7 @@ bool Expr::HasSideEffects(const ASTContext &Ctx,
   case ShuffleVectorExprClass:
   case ConvertVectorExprClass:
   case AsTypeExprClass:
+  case CXXParenListInitExprClass:
     // These have a side-effect if any subexpression does.
     break;
 

@@ -3953,7 +3953,7 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
           DAG.getDataLayout().getTypeAllocSize(GTI.getIndexedType());
       // We intentionally mask away the high bits here; ElementSize may not
       // fit in IdxTy.
-      APInt ElementMul(IdxSize, ElementSize.getKnownMinSize());
+      APInt ElementMul(IdxSize, ElementSize.getKnownMinValue());
       bool ElementScalable = ElementSize.isScalable();
 
       // If this is a scalar constant or a splat vector of constants,
@@ -4139,7 +4139,7 @@ void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
   const MDNode *Ranges = I.getMetadata(LLVMContext::MD_range);
   bool isVolatile = I.isVolatile();
   MachineMemOperand::Flags MMOFlags =
-      TLI.getLoadMemOperandFlags(I, DAG.getDataLayout());
+      TLI.getLoadMemOperandFlags(I, DAG.getDataLayout(), AC, LibInfo);
 
   SDValue Root;
   bool ConstantMemory = false;
@@ -4161,10 +4161,6 @@ void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
     // Do not serialize non-volatile loads against each other.
     Root = DAG.getRoot();
   }
-
-  if (isDereferenceableAndAlignedPointer(SV, Ty, Alignment, DAG.getDataLayout(),
-                                         &I, AC, nullptr, LibInfo))
-    MMOFlags |= MachineMemOperand::MODereferenceable;
 
   SDLoc dl = getCurSDLoc();
 
@@ -4736,7 +4732,7 @@ void SelectionDAGBuilder::visitAtomicLoad(const LoadInst &I) {
       I.getAlign().value() < MemVT.getSizeInBits() / 8)
     report_fatal_error("Cannot generate unaligned atomic load");
 
-  auto Flags = TLI.getLoadMemOperandFlags(I, DAG.getDataLayout());
+  auto Flags = TLI.getLoadMemOperandFlags(I, DAG.getDataLayout(), AC, LibInfo);
 
   MachineMemOperand *MMO = DAG.getMachineFunction().getMachineMemOperand(
       MachinePointerInfo(I.getPointerOperand()), Flags, MemVT.getStoreSize(),
@@ -5595,6 +5591,8 @@ bool SelectionDAGBuilder::EmitFuncArgumentDbgValue(
       // the DIExpression.
       if (Indirect)
         NewDIExpr = DIExpression::prepend(FragExpr, DIExpression::DerefBefore);
+      SmallVector<uint64_t, 2> Ops({dwarf::DW_OP_LLVM_arg, 0});
+      NewDIExpr = DIExpression::prependOpcodes(NewDIExpr, Ops);
       return BuildMI(MF, DL, Inst, false, MOs, Variable, NewDIExpr);
     } else {
       // Create a completely standard DBG_VALUE.
@@ -10148,7 +10146,7 @@ TargetLowering::LowerCallTo(TargetLowering::CallLoweringInfo &CLI) const {
         ISD::OutputArg MyFlags(
             Flags, Parts[j].getValueType().getSimpleVT(), VT,
             i < CLI.NumFixedArgs, i,
-            j * Parts[j].getValueType().getStoreSize().getKnownMinSize());
+            j * Parts[j].getValueType().getStoreSize().getKnownMinValue());
         if (NumParts > 1 && j == 0)
           MyFlags.Flags.setSplit();
         else if (j != 0) {
@@ -10675,8 +10673,9 @@ void SelectionDAGISel::LowerArguments(const Function &F) {
         // For scalable vectors, use the minimum size; individual targets
         // are responsible for handling scalable vector arguments and
         // return values.
-        ISD::InputArg MyFlags(Flags, RegisterVT, VT, isArgValueUsed,
-                 ArgNo, PartBase+i*RegisterVT.getStoreSize().getKnownMinSize());
+        ISD::InputArg MyFlags(
+            Flags, RegisterVT, VT, isArgValueUsed, ArgNo,
+            PartBase + i * RegisterVT.getStoreSize().getKnownMinValue());
         if (NumRegs > 1 && i == 0)
           MyFlags.Flags.setSplit();
         // if it isn't first piece, alignment must be 1
@@ -10689,7 +10688,7 @@ void SelectionDAGISel::LowerArguments(const Function &F) {
       }
       if (NeedsRegBlock && Value == NumValues - 1)
         Ins[Ins.size() - 1].Flags.setInConsecutiveRegsLast();
-      PartBase += VT.getStoreSize().getKnownMinSize();
+      PartBase += VT.getStoreSize().getKnownMinValue();
     }
   }
 

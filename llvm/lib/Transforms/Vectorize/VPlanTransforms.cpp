@@ -126,10 +126,10 @@ bool VPlanTransforms::sinkScalarOperands(VPlan &Plan) {
 
   bool ScalarVFOnly = Plan.hasScalarVFOnly();
   // Try to sink each replicate or scalar IV steps recipe in the worklist.
-  while (!WorkList.empty()) {
+  for (unsigned I = 0; I != WorkList.size(); ++I) {
     VPBasicBlock *SinkTo;
     VPRecipeBase *SinkCandidate;
-    std::tie(SinkTo, SinkCandidate) = WorkList.pop_back_val();
+    std::tie(SinkTo, SinkCandidate) = WorkList[I];
     if (SinkCandidate->getParent() == SinkTo ||
         SinkCandidate->mayHaveSideEffects() ||
         SinkCandidate->mayReadOrWriteMemory())
@@ -170,9 +170,7 @@ bool VPlanTransforms::sinkScalarOperands(VPlan &Plan) {
       // TODO: add ".cloned" suffix to name of Clone's VPValue.
 
       Clone->insertBefore(SinkCandidate);
-      SmallVector<VPUser *, 4> Users(
-          SinkCandidate->getVPSingleValue()->users());
-      for (auto *U : Users) {
+      for (auto *U : to_vector(SinkCandidate->getVPSingleValue()->users())) {
         auto *UI = cast<VPRecipeBase>(U);
         if (UI->getParent() == SinkTo)
           continue;
@@ -285,8 +283,7 @@ bool VPlanTransforms::mergeReplicateRegionsIntoSuccessors(VPlan &Plan) {
       VPValue *PredInst1 =
           cast<VPPredInstPHIRecipe>(&Phi1ToMove)->getOperand(0);
       VPValue *Phi1ToMoveV = Phi1ToMove.getVPSingleValue();
-      SmallVector<VPUser *> Users(Phi1ToMoveV->users());
-      for (VPUser *U : Users) {
+      for (VPUser *U : to_vector(Phi1ToMoveV->users())) {
         auto *UI = dyn_cast<VPRecipeBase>(U);
         if (!UI || UI->getParent() != Then2)
           continue;
@@ -332,8 +329,7 @@ bool VPlanTransforms::mergeBlocksIntoPredecessors(VPlan &Plan) {
     auto *ParentRegion = cast_or_null<VPRegionBlock>(VPBB->getParent());
     if (ParentRegion && ParentRegion->getExiting() == VPBB)
       ParentRegion->setExiting(PredVPBB);
-    SmallVector<VPBlockBase *> Successors(VPBB->successors());
-    for (auto *Succ : Successors) {
+    for (auto *Succ : to_vector(VPBB->successors())) {
       VPBlockUtils::disconnectBlocks(VPBB, Succ);
       VPBlockUtils::connectBlocks(PredVPBB, Succ);
     }

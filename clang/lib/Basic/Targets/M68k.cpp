@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <optional>
 
 namespace clang {
 namespace targets {
@@ -137,7 +138,7 @@ const char *const M68kTargetInfo::GCCRegNames[] = {
     "pc"};
 
 ArrayRef<const char *> M68kTargetInfo::getGCCRegNames() const {
-  return llvm::makeArrayRef(GCCRegNames);
+  return llvm::ArrayRef(GCCRegNames);
 }
 
 ArrayRef<TargetInfo::GCCRegAlias> M68kTargetInfo::getGCCRegAliases() const {
@@ -197,7 +198,7 @@ bool M68kTargetInfo::validateAsmConstraint(
   return false;
 }
 
-llvm::Optional<std::string>
+std::optional<std::string>
 M68kTargetInfo::handleAsmEscapedChar(char EscChar) const {
   char C;
   switch (EscChar) {

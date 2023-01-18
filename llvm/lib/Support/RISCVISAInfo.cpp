@@ -37,7 +37,7 @@ struct RISCVSupportedExtension {
 
 } // end anonymous namespace
 
-static constexpr StringLiteral AllStdExts = "mafdqlcbkjtpvn";
+static constexpr StringLiteral AllStdExts = "mafdqlcbkjtpvnh";
 
 static const RISCVSupportedExtension SupportedExtensions[] = {
     {"i", RISCVExtensionVersion{2, 0}},
@@ -47,6 +47,8 @@ static const RISCVSupportedExtension SupportedExtensions[] = {
     {"f", RISCVExtensionVersion{2, 0}},
     {"d", RISCVExtensionVersion{2, 0}},
     {"c", RISCVExtensionVersion{2, 0}},
+
+    {"h", RISCVExtensionVersion{1, 0}},
 
     {"zihintpause", RISCVExtensionVersion{2, 0}},
 
@@ -284,17 +286,14 @@ static int multiLetterExtensionRank(const std::string &ExtName) {
   case 's':
     HighOrder = 0;
     break;
-  case 'h':
-    HighOrder = 1;
-    break;
   case 'z':
-    HighOrder = 2;
+    HighOrder = 1;
     // `z` extension must be sorted by canonical order of second letter.
     // e.g. zmx has higher rank than zax.
     LowOrder = singleLetterExtensionRank(ExtName[1]);
     break;
   case 'x':
-    HighOrder = 3;
+    HighOrder = 2;
     break;
   default:
     llvm_unreachable("Unknown prefix for multi-char extension");
@@ -332,7 +331,8 @@ bool RISCVISAInfo::compareExtension(const std::string &LHS,
 
 void RISCVISAInfo::toFeatures(
     std::vector<StringRef> &Features,
-    std::function<StringRef(const Twine &)> StrAlloc) const {
+    llvm::function_ref<StringRef(const Twine &)> StrAlloc,
+    bool AddAllExtensions) const {
   for (auto const &Ext : Exts) {
     StringRef ExtName = Ext.first;
 
@@ -343,6 +343,19 @@ void RISCVISAInfo::toFeatures(
       Features.push_back(StrAlloc("+experimental-" + ExtName));
     } else {
       Features.push_back(StrAlloc("+" + ExtName));
+    }
+  }
+  if (AddAllExtensions) {
+    for (const RISCVSupportedExtension &Ext : SupportedExtensions) {
+      if (Exts.count(Ext.Name))
+        continue;
+      Features.push_back(StrAlloc(Twine("-") + Ext.Name));
+    }
+
+    for (const RISCVSupportedExtension &Ext : SupportedExperimentalExtensions) {
+      if (Exts.count(Ext.Name))
+        continue;
+      Features.push_back(StrAlloc(Twine("-experimental-") + Ext.Name));
     }
   }
 }
@@ -491,7 +504,8 @@ RISCVISAInfo::parseFeatures(unsigned XLen,
 
 llvm::Expected<std::unique_ptr<RISCVISAInfo>>
 RISCVISAInfo::parseArchString(StringRef Arch, bool EnableExperimentalExtension,
-                              bool ExperimentalExtensionVersionCheck) {
+                              bool ExperimentalExtensionVersionCheck,
+                              bool IgnoreUnknown) {
   // RISC-V ISA strings must be lowercase.
   if (llvm::any_of(Arch, isupper)) {
     return createStringError(errc::invalid_argument,
@@ -576,6 +590,11 @@ RISCVISAInfo::parseArchString(StringRef Arch, bool EnableExperimentalExtension,
 
   auto StdExtsItr = StdExts.begin();
   auto StdExtsEnd = StdExts.end();
+  auto GoToNextExt = [](StringRef::iterator &I, unsigned ConsumeLength) {
+    I += 1 + ConsumeLength;
+    if (*I == '_')
+      ++I;
+  };
   for (auto I = Exts.begin(), E = Exts.end(); I != E;) {
     char C = *I;
 
@@ -606,25 +625,32 @@ RISCVISAInfo::parseArchString(StringRef Arch, bool EnableExperimentalExtension,
       Next = std::string(std::next(I), E);
     if (auto E = getExtensionVersion(std::string(1, C), Next, Major, Minor,
                                      ConsumeLength, EnableExperimentalExtension,
-                                     ExperimentalExtensionVersionCheck))
+                                     ExperimentalExtensionVersionCheck)) {
+      if (IgnoreUnknown) {
+        consumeError(std::move(E));
+        GoToNextExt(I, ConsumeLength);
+        continue;
+      }
       return std::move(E);
+    }
 
     // The order is OK, then push it into features.
     // TODO: Use version number when setting target features
-    // Currently LLVM supports only "mafdcv".
-    StringRef SupportedStandardExtension = "mafdcv";
-    if (!SupportedStandardExtension.contains(C))
+    // Currently LLVM supports only "mafdcvh".
+    if (!isSupportedExtension(StringRef(&C, 1))) {
+      if (IgnoreUnknown) {
+        GoToNextExt(I, ConsumeLength);
+        continue;
+      }
       return createStringError(errc::invalid_argument,
                                "unsupported standard user-level extension '%c'",
                                C);
+    }
     ISAInfo->addExtension(std::string(1, C), Major, Minor);
 
     // Consume full extension name and version, including any optional '_'
     // between this extension and the next
-    ++I;
-    I += ConsumeLength;
-    if (*I == '_')
-      ++I;
+    GoToNextExt(I, ConsumeLength);
   }
 
   // Handle other types of extensions other than the standard
@@ -658,20 +684,28 @@ RISCVISAInfo::parseArchString(StringRef Arch, bool EnableExperimentalExtension,
       StringRef Name(Ext.substr(0, Pos));
       StringRef Vers(Ext.substr(Pos));
 
-      if (Type.empty())
+      if (Type.empty()) {
+        if (IgnoreUnknown)
+          continue;
         return createStringError(errc::invalid_argument,
                                  "invalid extension prefix '" + Ext + "'");
+      }
 
       // Check ISA extensions are specified in the canonical order.
       while (I != E && *I != Type)
         ++I;
 
-      if (I == E)
+      if (I == E) {
+        if (IgnoreUnknown)
+          continue;
         return createStringError(errc::invalid_argument,
                                  "%s not given in canonical order '%s'",
                                  Desc.str().c_str(), Ext.str().c_str());
+      }
 
-      if (Name.size() == Type.size()) {
+      if (!IgnoreUnknown && Name.size() == Type.size()) {
+        if (IgnoreUnknown)
+          continue;
         return createStringError(errc::invalid_argument,
                                  "%s name missing after '%s'",
                                  Desc.str().c_str(), Type.str().c_str());
@@ -680,13 +714,21 @@ RISCVISAInfo::parseArchString(StringRef Arch, bool EnableExperimentalExtension,
       unsigned Major, Minor, ConsumeLength;
       if (auto E = getExtensionVersion(Name, Vers, Major, Minor, ConsumeLength,
                                        EnableExperimentalExtension,
-                                       ExperimentalExtensionVersionCheck))
+                                       ExperimentalExtensionVersionCheck)) {
+        if (IgnoreUnknown) {
+          consumeError(std::move(E));
+          continue;
+        }
         return std::move(E);
+      }
 
       // Check if duplicated extension.
-      if (llvm::is_contained(AllExts, Name))
+      if (!IgnoreUnknown && llvm::is_contained(AllExts, Name)) {
+        if (IgnoreUnknown)
+          continue;
         return createStringError(errc::invalid_argument, "duplicated %s '%s'",
                                  Desc.str().c_str(), Name.str().c_str());
+      }
 
       ISAInfo->addExtension(Name, Major, Minor);
       // Extension format is correct, keep parsing the extensions.

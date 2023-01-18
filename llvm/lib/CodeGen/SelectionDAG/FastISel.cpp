@@ -405,11 +405,6 @@ void FastISel::recomputeInsertPt() {
     ++FuncInfo.InsertPt;
   } else
     FuncInfo.InsertPt = FuncInfo.MBB->getFirstNonPHI();
-
-  // Now skip past any EH_LABELs, which must remain at the beginning.
-  while (FuncInfo.InsertPt != FuncInfo.MBB->end() &&
-         FuncInfo.InsertPt->getOpcode() == TargetOpcode::EH_LABEL)
-    ++FuncInfo.InsertPt;
 }
 
 void FastISel::removeDeadCode(MachineBasicBlock::iterator I,
@@ -1256,8 +1251,9 @@ bool FastISel::selectIntrinsicCall(const IntrinsicInst *II) {
         // If using instruction referencing, produce this as a DBG_INSTR_REF,
         // to be later patched up by finalizeDebugInstrRefs. Tack a deref onto
         // the expression, we don't have an "indirect" flag in DBG_INSTR_REF.
-        auto *NewExpr =
-           DIExpression::prepend(DI->getExpression(), DIExpression::DerefBefore);
+        SmallVector<uint64_t, 3> Ops(
+            {dwarf::DW_OP_LLVM_arg, 0, dwarf::DW_OP_deref});
+        auto *NewExpr = DIExpression::prependOpcodes(DI->getExpression(), Ops);
         BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, MIMD.getDL(),
                 TII.get(TargetOpcode::DBG_INSTR_REF), /*IsIndirect*/ false, *Op,
                 DI->getVariable(), NewExpr);
@@ -1325,9 +1321,11 @@ bool FastISel::selectIntrinsicCall(const IntrinsicInst *II) {
             /* isKill */ false, /* isDead */ false,
             /* isUndef */ false, /* isEarlyClobber */ false,
             /* SubReg */ 0, /* isDebug */ true)});
+        SmallVector<uint64_t, 2> Ops({dwarf::DW_OP_LLVM_arg, 0});
+        auto *NewExpr = DIExpression::prependOpcodes(DI->getExpression(), Ops);
         BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, MIMD.getDL(),
                 TII.get(TargetOpcode::DBG_INSTR_REF), /*IsIndirect*/ false, MOs,
-                DI->getVariable(), DI->getExpression());
+                DI->getVariable(), NewExpr);
       }
     } else {
       // We don't know how to handle other cases, so we drop.

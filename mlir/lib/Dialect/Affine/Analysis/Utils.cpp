@@ -23,6 +23,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include <optional>
 
 #define DEBUG_TYPE "analysis-utils"
 
@@ -31,9 +32,7 @@ using namespace presburger;
 
 using llvm::SmallDenseMap;
 
-/// Populates 'loops' with IVs of the loops surrounding 'op' ordered from
-/// the outermost 'affine.for' operation to the innermost one.
-void mlir::getLoopIVs(Operation &op, SmallVectorImpl<AffineForOp> *loops) {
+void mlir::getAffineForIVs(Operation &op, SmallVectorImpl<AffineForOp> *loops) {
   auto *currOp = op.getParentOp();
   AffineForOp currAffineForOp;
   // Traverse up the hierarchy collecting all 'affine.for' operation while
@@ -148,7 +147,7 @@ void ComputationSliceState::dump() const {
 /// and the dst loops for those dimensions have the same bounds. Returns false
 /// if both the src and the dst loops don't have the same bounds. Returns
 /// std::nullopt if none of the above can be proven.
-Optional<bool> ComputationSliceState::isSliceMaximalFastCheck() const {
+std::optional<bool> ComputationSliceState::isSliceMaximalFastCheck() const {
   assert(lbs.size() == ubs.size() && !lbs.empty() && !ivs.empty() &&
          "Unexpected number of lbs, ubs and ivs in slice");
 
@@ -216,7 +215,7 @@ Optional<bool> ComputationSliceState::isSliceMaximalFastCheck() const {
 /// Returns true if it is deterministically verified that the original iteration
 /// space of the slice is contained within the new iteration space that is
 /// created after fusing 'this' slice into its destination.
-Optional<bool> ComputationSliceState::isSliceValid() {
+std::optional<bool> ComputationSliceState::isSliceValid() {
   // Fast check to determine if the slice is valid. If the following conditions
   // are verified to be true, slice is declared valid by the fast check:
   // 1. Each slice loop is a single iteration loop bound in terms of a single
@@ -227,7 +226,7 @@ Optional<bool> ComputationSliceState::isSliceValid() {
   // expensive analysis.
   // TODO: Store the result of the fast check, as it might be used again in
   // `canRemoveSrcNodeAfterFusion`.
-  Optional<bool> isValidFastCheck = isSliceMaximalFastCheck();
+  std::optional<bool> isValidFastCheck = isSliceMaximalFastCheck();
   if (isValidFastCheck && *isValidFastCheck)
     return true;
 
@@ -286,10 +285,10 @@ Optional<bool> ComputationSliceState::isSliceValid() {
 /// Returns true if the computation slice encloses all the iterations of the
 /// sliced loop nest. Returns false if it does not. Returns std::nullopt if it
 /// cannot determine if the slice is maximal or not.
-Optional<bool> ComputationSliceState::isMaximal() const {
+std::optional<bool> ComputationSliceState::isMaximal() const {
   // Fast check to determine if the computation slice is maximal. If the result
   // is inconclusive, we proceed with a more expensive analysis.
-  Optional<bool> isMaximalFastCheck = isSliceMaximalFastCheck();
+  std::optional<bool> isMaximalFastCheck = isSliceMaximalFastCheck();
   if (isMaximalFastCheck)
     return isMaximalFastCheck;
 
@@ -340,7 +339,7 @@ unsigned MemRefRegion::getRank() const {
   return memref.getType().cast<MemRefType>().getRank();
 }
 
-Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
+std::optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
     SmallVectorImpl<int64_t> *shape, std::vector<SmallVector<int64_t, 4>> *lbs,
     SmallVectorImpl<int64_t> *lbDivisors) const {
   auto memRefType = memref.getType().cast<MemRefType>();
@@ -371,7 +370,7 @@ Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
   int64_t lbDivisor;
   for (unsigned d = 0; d < rank; d++) {
     SmallVector<int64_t, 4> lb;
-    Optional<int64_t> diff =
+    std::optional<int64_t> diff =
         cstWithShapeBounds.getConstantBoundOnDimSize64(d, &lb, &lbDivisor);
     if (diff.has_value()) {
       diffConstant = *diff;
@@ -460,7 +459,7 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
   // 0-d memrefs.
   if (rank == 0) {
     SmallVector<AffineForOp, 4> ivs;
-    getLoopIVs(*op, &ivs);
+    getAffineForIVs(*op, &ivs);
     assert(loopDepth <= ivs.size() && "invalid 'loopDepth'");
     // The first 'loopDepth' IVs are symbols for this region.
     ivs.resize(loopDepth);
@@ -554,7 +553,7 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
   // Eliminate any loop IVs other than the outermost 'loopDepth' IVs, on which
   // this memref region is symbolic.
   SmallVector<AffineForOp, 4> enclosingIVs;
-  getLoopIVs(*op, &enclosingIVs);
+  getAffineForIVs(*op, &enclosingIVs);
   assert(loopDepth <= enclosingIVs.size() && "invalid loop depth");
   enclosingIVs.resize(loopDepth);
   SmallVector<Value, 4> vars;
@@ -612,7 +611,7 @@ static unsigned getMemRefEltSizeInBytes(MemRefType memRefType) {
 }
 
 // Returns the size of the region.
-Optional<int64_t> MemRefRegion::getRegionSize() {
+std::optional<int64_t> MemRefRegion::getRegionSize() {
   auto memRefType = memref.getType().cast<MemRefType>();
 
   if (!memRefType.getLayout().isIdentity()) {
@@ -627,7 +626,7 @@ Optional<int64_t> MemRefRegion::getRegionSize() {
   SmallVector<Value, 4> bufIndices;
 
   // Compute the extents of the buffer.
-  Optional<int64_t> numElements = getConstantBoundingSizeAndShape();
+  std::optional<int64_t> numElements = getConstantBoundingSizeAndShape();
   if (!numElements) {
     LLVM_DEBUG(llvm::dbgs() << "Dynamic shapes not yet supported\n");
     return std::nullopt;
@@ -639,7 +638,7 @@ Optional<int64_t> MemRefRegion::getRegionSize() {
 /// std::nullopt otherwise.  If the element of the memref has vector type, takes
 /// into account size of the vector as well.
 //  TODO: improve/complete this when we have target data.
-Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
+std::optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
   if (!memRefType.hasStaticShape())
     return std::nullopt;
   auto elementType = memRefType.getElementType();
@@ -763,7 +762,7 @@ static LogicalResult addMissingLoopIVBounds(SmallPtrSet<Value, 8> &ivs,
   for (unsigned i = 0, e = cst->getNumDimVars(); i < e; ++i) {
     auto value = cst->getValue(i);
     if (ivs.count(value) == 0) {
-      assert(isForInductionVar(value));
+      assert(isAffineForInductionVar(value));
       auto loop = getForInductionVarOwner(value);
       if (failed(cst->addAffineForOpDomain(loop)))
         return failure();
@@ -782,7 +781,7 @@ unsigned mlir::getInnermostCommonLoopDepth(
   std::vector<SmallVector<AffineForOp, 4>> loops(numOps);
   unsigned loopDepthLimit = std::numeric_limits<unsigned>::max();
   for (unsigned i = 0; i < numOps; ++i) {
-    getLoopIVs(*ops[i], &loops[i]);
+    getAffineForIVs(*ops[i], &loops[i]);
     loopDepthLimit =
         std::min(loopDepthLimit, static_cast<unsigned>(loops[i].size()));
   }
@@ -957,7 +956,7 @@ mlir::computeSliceUnion(ArrayRef<Operation *> opsA, ArrayRef<Operation *> opsB,
 
   // Check if the slice computed is valid. Return success only if it is verified
   // that the slice is valid, otherwise return appropriate failure status.
-  Optional<bool> isSliceValid = sliceUnion->isSliceValid();
+  std::optional<bool> isSliceValid = sliceUnion->isSliceValid();
   if (!isSliceValid) {
     LLVM_DEBUG(llvm::dbgs() << "Cannot determine if the slice is valid\n");
     return SliceComputationResult::GenericFailure;
@@ -969,7 +968,8 @@ mlir::computeSliceUnion(ArrayRef<Operation *> opsA, ArrayRef<Operation *> opsB,
 }
 
 // TODO: extend this to handle multiple result maps.
-static Optional<uint64_t> getConstDifference(AffineMap lbMap, AffineMap ubMap) {
+static std::optional<uint64_t> getConstDifference(AffineMap lbMap,
+                                                  AffineMap ubMap) {
   assert(lbMap.getNumResults() == 1 && "expected single result bound map");
   assert(ubMap.getNumResults() == 1 && "expected single result bound map");
   assert(lbMap.getNumDims() == ubMap.getNumDims());
@@ -1009,14 +1009,14 @@ bool mlir::buildSliceTripCountMap(
             forOp.getConstantUpperBound() - forOp.getConstantLowerBound();
         continue;
       }
-      Optional<uint64_t> maybeConstTripCount = getConstantTripCount(forOp);
+      std::optional<uint64_t> maybeConstTripCount = getConstantTripCount(forOp);
       if (maybeConstTripCount.has_value()) {
         (*tripCountMap)[op] = *maybeConstTripCount;
         continue;
       }
       return false;
     }
-    Optional<uint64_t> tripCount = getConstDifference(lbMap, ubMap);
+    std::optional<uint64_t> tripCount = getConstDifference(lbMap, ubMap);
     // Slice bounds are created with a constant ub - lb difference.
     if (!tripCount.has_value())
       return false;
@@ -1046,12 +1046,12 @@ void mlir::getComputationSliceState(
     bool isBackwardSlice, ComputationSliceState *sliceState) {
   // Get loop nest surrounding src operation.
   SmallVector<AffineForOp, 4> srcLoopIVs;
-  getLoopIVs(*depSourceOp, &srcLoopIVs);
+  getAffineForIVs(*depSourceOp, &srcLoopIVs);
   unsigned numSrcLoopIVs = srcLoopIVs.size();
 
   // Get loop nest surrounding dst operation.
   SmallVector<AffineForOp, 4> dstLoopIVs;
-  getLoopIVs(*depSinkOp, &dstLoopIVs);
+  getAffineForIVs(*depSinkOp, &dstLoopIVs);
   unsigned numDstLoopIVs = dstLoopIVs.size();
 
   assert((!isBackwardSlice && loopDepth <= numSrcLoopIVs) ||
@@ -1130,7 +1130,7 @@ void mlir::getComputationSliceState(
     //    1. Slice is  single trip count.
     //    2. Loop bounds of the source and destination match.
     //    3. Is being inserted at the innermost insertion point.
-    Optional<bool> isMaximal = sliceState->isMaximal();
+    std::optional<bool> isMaximal = sliceState->isMaximal();
     if (isLoopParallelAndContainsReduction(getSliceLoop(i)) &&
         isInnermostInsertion() && srcIsUnitSlice() && isMaximal && *isMaximal)
       continue;
@@ -1160,12 +1160,12 @@ mlir::insertBackwardComputationSlice(Operation *srcOpInst, Operation *dstOpInst,
                                      ComputationSliceState *sliceState) {
   // Get loop nest surrounding src operation.
   SmallVector<AffineForOp, 4> srcLoopIVs;
-  getLoopIVs(*srcOpInst, &srcLoopIVs);
+  getAffineForIVs(*srcOpInst, &srcLoopIVs);
   unsigned numSrcLoopIVs = srcLoopIVs.size();
 
   // Get loop nest surrounding dst operation.
   SmallVector<AffineForOp, 4> dstLoopIVs;
-  getLoopIVs(*dstOpInst, &dstLoopIVs);
+  getAffineForIVs(*dstOpInst, &dstLoopIVs);
   unsigned dstLoopIVsSize = dstLoopIVs.size();
   if (dstLoopDepth > dstLoopIVsSize) {
     dstOpInst->emitError("invalid destination loop depth");
@@ -1188,7 +1188,7 @@ mlir::insertBackwardComputationSlice(Operation *srcOpInst, Operation *dstOpInst,
       getInstAtPosition(positions, /*level=*/0, sliceLoopNest.getBody());
   // Get loop nest surrounding 'sliceInst'.
   SmallVector<AffineForOp, 4> sliceSurroundingLoops;
-  getLoopIVs(*sliceInst, &sliceSurroundingLoops);
+  getAffineForIVs(*sliceInst, &sliceSurroundingLoops);
 
   // Sanity check.
   unsigned sliceSurroundingLoopsSize = sliceSurroundingLoops.size();
@@ -1264,27 +1264,44 @@ bool MemRefAccess::operator==(const MemRefAccess &rhs) const {
                       [](AffineExpr e) { return e == 0; });
 }
 
+/// Populates 'loops' with IVs of the surrounding affine.for and affine.parallel
+/// ops ordered from the outermost one to the innermost.
+static void getAffineIVs(Operation &op, SmallVectorImpl<Value> &loops) {
+  auto *currOp = op.getParentOp();
+  AffineForOp currAffineForOp;
+  // Traverse up the hierarchy collecting all 'affine.for' operation while
+  // skipping over 'affine.if' operations.
+  while (currOp) {
+    if (AffineForOp currAffineForOp = dyn_cast<AffineForOp>(currOp))
+      loops.push_back(currAffineForOp.getInductionVar());
+    else if (auto parOp = dyn_cast<AffineParallelOp>(currOp))
+      llvm::append_range(loops, parOp.getIVs());
+    currOp = currOp->getParentOp();
+  }
+  std::reverse(loops.begin(), loops.end());
+}
+
 /// Returns the number of surrounding loops common to 'loopsA' and 'loopsB',
 /// where each lists loops from outer-most to inner-most in loop nest.
 unsigned mlir::getNumCommonSurroundingLoops(Operation &a, Operation &b) {
-  SmallVector<AffineForOp, 4> loopsA, loopsB;
-  getLoopIVs(a, &loopsA);
-  getLoopIVs(b, &loopsB);
+  SmallVector<Value, 4> loopsA, loopsB;
+  getAffineIVs(a, loopsA);
+  getAffineIVs(b, loopsB);
 
   unsigned minNumLoops = std::min(loopsA.size(), loopsB.size());
   unsigned numCommonLoops = 0;
   for (unsigned i = 0; i < minNumLoops; ++i) {
-    if (loopsA[i].getOperation() != loopsB[i].getOperation())
+    if (loopsA[i] != loopsB[i])
       break;
     ++numCommonLoops;
   }
   return numCommonLoops;
 }
 
-static Optional<int64_t> getMemoryFootprintBytes(Block &block,
-                                                 Block::iterator start,
-                                                 Block::iterator end,
-                                                 int memorySpace) {
+static std::optional<int64_t> getMemoryFootprintBytes(Block &block,
+                                                      Block::iterator start,
+                                                      Block::iterator end,
+                                                      int memorySpace) {
   SmallDenseMap<Value, std::unique_ptr<MemRefRegion>, 4> regions;
 
   // Walk this 'affine.for' operation to gather all memory regions.
@@ -1317,7 +1334,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
 
   int64_t totalSizeInBytes = 0;
   for (const auto &region : regions) {
-    Optional<int64_t> size = region.second->getRegionSize();
+    std::optional<int64_t> size = region.second->getRegionSize();
     if (!size.has_value())
       return std::nullopt;
     totalSizeInBytes += *size;
@@ -1325,8 +1342,8 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
   return totalSizeInBytes;
 }
 
-Optional<int64_t> mlir::getMemoryFootprintBytes(AffineForOp forOp,
-                                                int memorySpace) {
+std::optional<int64_t> mlir::getMemoryFootprintBytes(AffineForOp forOp,
+                                                     int memorySpace) {
   auto *forInst = forOp.getOperation();
   return ::getMemoryFootprintBytes(
       *forInst->getBlock(), Block::iterator(forInst),
@@ -1364,11 +1381,12 @@ IntegerSet mlir::simplifyIntegerSet(IntegerSet set) {
   return simplifiedSet;
 }
 
-static void unpackOptionalValues(ArrayRef<Optional<Value>> source,
+static void unpackOptionalValues(ArrayRef<std::optional<Value>> source,
                                  SmallVector<Value> &target) {
-  target = llvm::to_vector<4>(llvm::map_range(source, [](Optional<Value> val) {
-    return val.has_value() ? *val : Value();
-  }));
+  target =
+      llvm::to_vector<4>(llvm::map_range(source, [](std::optional<Value> val) {
+        return val.has_value() ? *val : Value();
+      }));
 }
 
 /// Bound an identifier `pos` in a given FlatAffineValueConstraints with

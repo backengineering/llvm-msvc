@@ -25,6 +25,7 @@ def ROCDL_Dialect : Dialect {
   let cppNamespace = "::mlir::ROCDL";
   let dependentDialects = ["LLVM::LLVMDialect"];
   let hasOperationAttrVerify = 1;
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 
   let extraClassDeclaration = [{
     /// Get the name of the attribute used to annotate external kernel
@@ -36,6 +37,13 @@ def ROCDL_Dialect : Dialect {
     static constexpr ::llvm::StringLiteral getReqdWorkGroupSizeAttrName() {
       return ::llvm::StringLiteral("rocdl.reqd_work_group_size");
     }
+
+    /// The address space value that represents global memory.
+    static constexpr unsigned kGlobalMemoryAddressSpace = 1;
+    /// The address space value that represents shared memory.
+    static constexpr unsigned kSharedMemoryAddressSpace = 3;
+    /// The address space value that represents private memory.
+    static constexpr unsigned kPrivateMemoryAddressSpace = 5;
   }];
 }
 

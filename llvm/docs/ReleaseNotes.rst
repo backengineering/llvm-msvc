@@ -47,6 +47,8 @@ Non-comprehensive list of changes in this release
    is not a constant in coroutines. This decision may cause unnecessary
    performance regressions and we plan to fix it in later versions.
 
+*  The LoongArch target is promoted to "official" (see below for more details).
+
 * ...
 
 Update on required toolchains to build LLVM
@@ -114,11 +116,21 @@ Changes to building LLVM
 Changes to TableGen
 -------------------
 
+Changes to Interprocedural Optimizations
+----------------------------------------
+
+* Function Specialization has been integrated into IPSCCP.
+* Specialization of functions has been enabled by default at all
+  optimization levels except Os, Oz. This has exposed a mis-compilation
+  in SPEC/CINT2017rate/502.gcc_r when built via the LLVM Test Suite with
+  both LTO and PGO enabled, but without the option -fno-strict-aliasing.
+
 Changes to the AArch64 Backend
 ------------------------------
 
 * Added support for the Cortex-A715 CPU.
 * Added support for the Cortex-X3 CPU.
+* Added support for the Neoverse V2 CPU.
 * Added support for assembly for RME MEC (Memory Encryption Contexts).
 
 Changes to the AMDGPU Backend
@@ -143,6 +155,19 @@ Changes to the Hexagon Backend
 ------------------------------
 
 * ...
+
+Changes to the LoongArch Backend
+--------------------------------
+
+* The LoongArch target is no longer "experimental"! It's now built by default,
+  rather than needing to be enabled with ``LLVM_EXPERIMENTAL_TARGETS_TO_BUILD``.
+
+* The backend has full codegen support for the base (both integer and
+  floating-point) instruction set and it conforms to psABI v2. Testing has been
+  performed with Linux, including native compilation of a large corpus of Linux
+  applications.
+
+* Support GHC calling convention.
 
 Changes to the MIPS Backend
 ---------------------------
@@ -269,9 +294,13 @@ Changes to the LLVM tools
 Changes to LLDB
 ---------------------------------
 
+* Initial support for debugging Linux LoongArch 64-bit binaries.
+
 Changes to Sanitizers
 ---------------------
 
+* Many Sanitizers (asan, fuzzer, lsan, safestack, scudo, tsan, ubsan) have
+  support for Linux LoongArch 64-bit variant. Some of them may be rudimentary.
 
 Other Changes
 -------------

@@ -128,9 +128,10 @@ Type getOpaquePointerType(OpBuilder &builder);
 Value genAlloca(OpBuilder &builder, Location loc, Value sz, Type tp);
 
 /// Generates an uninitialized temporary buffer of the given size and
-/// type, but returns it as type `memref<? x $tp>` (rather than as type
-/// `memref<$sz x $tp>`).
-Value genAlloca(OpBuilder &builder, Location loc, unsigned sz, Type tp);
+/// type, and returns it as type `memref<? x $tp>` (staticShape=false) or
+/// `memref<$sz x $tp>` (staticShape=true).
+Value genAlloca(OpBuilder &builder, Location loc, unsigned sz, Type tp,
+                bool staticShape = false);
 
 /// Generates an uninitialized temporary buffer with room for one value
 /// of the given type, and returns the `memref<$tp>`.
@@ -216,6 +217,20 @@ Operation *getTop(Operation *op);
 void foreachInSparseConstant(
     Location loc, RewriterBase &rewriter, SparseElementsAttr attr,
     function_ref<void(ArrayRef<Value>, Value)> callback);
+
+/// Converts the vector indices and store it into the memory pointed by
+/// `ind`, apply (optional) `offset` on `offsetDim`.
+void storeIndices(OpBuilder &builder, Location loc, unsigned rank, Value ind,
+                  ValueRange ivs, unsigned offsetDim = 0,
+                  Value offset = Value());
+
+/// Reshapes the linear values buffer for an annotated all dense sparse tensor
+/// to match the shape of the corresponding dense tensor to support direct
+/// access of the buffer through indices.
+Value reshapeValuesToLevels(OpBuilder &builder, Location loc,
+                            SparseTensorEncodingAttr enc,
+                            const SmallVectorImpl<Value> &dimSizes,
+                            Value valuesBuffer, Value idxBuffer);
 
 //===----------------------------------------------------------------------===//
 // Inlined constant generators.

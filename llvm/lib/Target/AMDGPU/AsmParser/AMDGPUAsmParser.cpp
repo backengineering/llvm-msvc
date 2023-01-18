@@ -358,7 +358,7 @@ public:
   bool isUNorm() const { return isImmTy(ImmTyUNorm); }
   bool isDA() const { return isImmTy(ImmTyDA); }
   bool isR128A16() const { return isImmTy(ImmTyR128A16); }
-  bool isGFX10A16() const { return isImmTy(ImmTyA16); }
+  bool isA16() const { return isImmTy(ImmTyA16); }
   bool isLWE() const { return isImmTy(ImmTyLWE); }
   bool isOff() const { return isImmTy(ImmTyOff); }
   bool isExpTgt() const { return isImmTy(ImmTyExpTgt); }
@@ -381,7 +381,7 @@ public:
   bool isFORMAT() const { return isImmTy(ImmTyFORMAT) && isUInt<7>(getImm()); }
   bool isBankMask() const { return isImmTy(ImmTyDppBankMask); }
   bool isRowMask() const { return isImmTy(ImmTyDppRowMask); }
-  bool isBoundCtrl() const { return isImmTy(ImmTyDppBoundCtrl); }
+  bool isDppBoundCtrl() const { return isImmTy(ImmTyDppBoundCtrl); }
   bool isFI() const { return isImmTy(ImmTyDppFi); }
   bool isSDWADstSel() const { return isImmTy(ImmTySdwaDstSel); }
   bool isSDWASrc0Sel() const { return isImmTy(ImmTySdwaSrc0Sel); }
@@ -1406,9 +1406,7 @@ public:
     return AMDGPU::hasPackedD16(getSTI());
   }
 
-  bool hasGFX10A16() const {
-    return AMDGPU::hasGFX10A16(getSTI());
-  }
+  bool hasA16() const { return AMDGPU::hasA16(getSTI()); }
 
   bool hasG16() const { return AMDGPU::hasG16(getSTI()); }
 
@@ -1580,6 +1578,8 @@ public:
   OperandMatchResultTy parseFORMAT(OperandVector &Operands);
   OperandMatchResultTy parseSymbolicOrNumericFormat(int64_t &Format);
   OperandMatchResultTy parseNumericFormat(int64_t &Format);
+  OperandMatchResultTy parseFlatOffset(OperandVector &Operands);
+  OperandMatchResultTy parseR128A16(OperandVector &Operands);
   bool tryParseFmt(const char *Pref, int64_t MaxVal, int64_t &Val);
   bool matchDfmtNfmt(int64_t &Dfmt, int64_t &Nfmt, StringRef FormatStr, SMLoc Loc);
 
@@ -1780,7 +1780,7 @@ public:
   int64_t parseDPPCtrlPerm();
   AMDGPUOperand::Ptr defaultRowMask() const;
   AMDGPUOperand::Ptr defaultBankMask() const;
-  AMDGPUOperand::Ptr defaultBoundCtrl() const;
+  AMDGPUOperand::Ptr defaultDppBoundCtrl() const;
   AMDGPUOperand::Ptr defaultFI() const;
   void cvtDPP(MCInst &Inst, const OperandVector &Operands, bool IsDPP8 = false);
   void cvtDPP8(MCInst &Inst, const OperandVector &Operands) {
@@ -4120,20 +4120,15 @@ bool AMDGPUAsmParser::validateFlatOffset(const MCInst &Inst,
 
   // For FLAT segment the offset must be positive;
   // MSB is ignored and forced to zero.
-  if (TSFlags & (SIInstrFlags::FlatGlobal | SIInstrFlags::FlatScratch)) {
-    unsigned OffsetSize = AMDGPU::getNumFlatOffsetBits(getSTI(), true);
-    if (!isIntN(OffsetSize, Op.getImm())) {
-      Error(getFlatOffsetLoc(Operands),
-            Twine("expected a ") + Twine(OffsetSize) + "-bit signed offset");
-      return false;
-    }
-  } else {
-    unsigned OffsetSize = AMDGPU::getNumFlatOffsetBits(getSTI(), false);
-    if (!isUIntN(OffsetSize, Op.getImm())) {
-      Error(getFlatOffsetLoc(Operands),
-            Twine("expected a ") + Twine(OffsetSize) + "-bit unsigned offset");
-      return false;
-    }
+  unsigned OffsetSize = AMDGPU::getNumFlatOffsetBits(getSTI());
+  bool AllowNegative =
+      TSFlags & (SIInstrFlags::FlatGlobal | SIInstrFlags::FlatScratch);
+  if (!isIntN(OffsetSize, Op.getImm()) || (!AllowNegative && Op.getImm() < 0)) {
+    Error(getFlatOffsetLoc(Operands),
+          Twine("expected a ") +
+              (AllowNegative ? Twine(OffsetSize) + "-bit signed offset"
+                             : Twine(OffsetSize - 1) + "-bit unsigned offset"));
+    return false;
   }
 
   return true;
@@ -5999,7 +5994,7 @@ AMDGPUAsmParser::parseNamedBit(StringRef Name, OperandVector &Operands,
     Error(S, "r128 modifier is not supported on this GPU");
     return MatchOperand_ParseFail;
   }
-  if (Name == "a16" && !isGFX9() && !hasGFX10A16()) {
+  if (Name == "a16" && !hasA16()) {
     Error(S, "a16 modifier is not supported on this GPU");
     return MatchOperand_ParseFail;
   }
@@ -6364,6 +6359,24 @@ AMDGPUAsmParser::parseFORMAT(OperandVector &Operands) {
     return MatchOperand_ParseFail;
   }
   return MatchOperand_Success;
+}
+
+OperandMatchResultTy AMDGPUAsmParser::parseFlatOffset(OperandVector &Operands) {
+  OperandMatchResultTy Res =
+      parseIntWithPrefix("offset", Operands, AMDGPUOperand::ImmTyOffset);
+  if (Res == MatchOperand_NoMatch) {
+    Res = parseIntWithPrefix("inst_offset", Operands,
+                             AMDGPUOperand::ImmTyInstOffset);
+  }
+  return Res;
+}
+
+OperandMatchResultTy AMDGPUAsmParser::parseR128A16(OperandVector &Operands) {
+  OperandMatchResultTy Res =
+      parseNamedBit("r128", Operands, AMDGPUOperand::ImmTyR128A16);
+  if (Res == MatchOperand_NoMatch)
+    Res = parseNamedBit("a16", Operands, AMDGPUOperand::ImmTyA16);
+  return Res;
 }
 
 //===----------------------------------------------------------------------===//
@@ -7988,7 +8001,7 @@ static bool ConvertOmodDiv(int64_t &Div) {
 // Both bound_ctrl:0 and bound_ctrl:1 are encoded as 1.
 // This is intentional and ensures compatibility with sp3.
 // See bug 35397 for details.
-static bool ConvertBoundCtrl(int64_t &BoundCtrl) {
+static bool ConvertDppBoundCtrl(int64_t &BoundCtrl) {
   if (BoundCtrl == 0 || BoundCtrl == 1) {
     BoundCtrl = 1;
     return true;
@@ -8679,7 +8692,7 @@ AMDGPUOperand::Ptr AMDGPUAsmParser::defaultBankMask() const {
   return AMDGPUOperand::CreateImm(this, 0xf, SMLoc(), AMDGPUOperand::ImmTyDppBankMask);
 }
 
-AMDGPUOperand::Ptr AMDGPUAsmParser::defaultBoundCtrl() const {
+AMDGPUOperand::Ptr AMDGPUAsmParser::defaultDppBoundCtrl() const {
   return AMDGPUOperand::CreateImm(this, 0, SMLoc(), AMDGPUOperand::ImmTyDppBoundCtrl);
 }
 
@@ -9100,59 +9113,22 @@ AMDGPUAsmParser::parseCustomOperand(OperandVector &Operands, unsigned MCK) {
     }
     return Res;
   }
-  case MCK_ImmBoundCtrl:
-    return parseIntWithPrefix("bound_ctrl", Operands,
-                              AMDGPUOperand::ImmTyDppBoundCtrl,
-                              ConvertBoundCtrl);
   case MCK_ImmCBSZ:
     return parseIntWithPrefix("cbsz", Operands, AMDGPUOperand::ImmTyCBSZ);
-  case MCK_ImmClampSI:
-    return parseNamedBit("clamp", Operands, AMDGPUOperand::ImmTyClampSI);
   case MCK_ImmCPol:
     return parseCPol(Operands);
-  case MCK_ImmD16:
-    return parseNamedBit("d16", Operands, AMDGPUOperand::ImmTyD16);
-  case MCK_ImmDA:
-    return parseNamedBit("da", Operands, AMDGPUOperand::ImmTyDA);
-  case MCK_ImmDMask:
-    return parseIntWithPrefix("dmask", Operands, AMDGPUOperand::ImmTyDMask);
-  case MCK_ImmExpCompr:
-    return parseNamedBit("compr", Operands, AMDGPUOperand::ImmTyExpCompr);
-  case MCK_ImmExpVM:
-    return parseNamedBit("vm", Operands, AMDGPUOperand::ImmTyExpVM);
   case MCK_ImmFI:
     return parseIntWithPrefix("fi", Operands, AMDGPUOperand::ImmTyDppFi);
   case MCK_gds:
-  case MCK_ImmGDS:
     return parseNamedBit("gds", Operands, AMDGPUOperand::ImmTyGDS);
-  case MCK_ImmGFX10A16:
-    return parseNamedBit("a16", Operands, AMDGPUOperand::ImmTyA16);
-  case MCK_ImmHigh:
-    return parseNamedBit("high", Operands, AMDGPUOperand::ImmTyHigh);
-  case MCK_ImmLWE:
-    return parseNamedBit("lwe", Operands, AMDGPUOperand::ImmTyLWE);
   case MCK_ImmNegHi:
     return parseOperandArrayWithPrefix("neg_hi", Operands,
                                        AMDGPUOperand::ImmTyNegHi);
   case MCK_ImmNegLo:
     return parseOperandArrayWithPrefix("neg_lo", Operands,
                                        AMDGPUOperand::ImmTyNegLo);
-  case MCK_ImmOffset:
   case MCK_ImmSMEMOffset:
     return parseIntWithPrefix("offset", Operands, AMDGPUOperand::ImmTyOffset);
-  case MCK_ImmFlatOffset: {
-    OperandMatchResultTy Res =
-        parseIntWithPrefix("offset", Operands, AMDGPUOperand::ImmTyOffset);
-    if (Res == MatchOperand_NoMatch) {
-      Res = parseIntWithPrefix("inst_offset", Operands,
-                               AMDGPUOperand::ImmTyInstOffset);
-    }
-    return Res;
-  }
-  case MCK_ImmOffset0:
-    return parseIntWithPrefix("offset0", Operands, AMDGPUOperand::ImmTyOffset0);
-  case MCK_ImmOffset1:
-    return parseIntWithPrefix("offset1", Operands, AMDGPUOperand::ImmTyOffset1);
   case MCK_ImmOModSI:
     return parseOModOperand(Operands);
   case MCK_ImmOpSel:
@@ -9161,13 +9137,6 @@ AMDGPUAsmParser::parseCustomOperand(OperandVector &Operands, unsigned MCK) {
   case MCK_ImmOpSelHi:
     return parseOperandArrayWithPrefix("op_sel_hi", Operands,
                                        AMDGPUOperand::ImmTyOpSelHi);
-  case MCK_ImmR128A16: {
-    OperandMatchResultTy Res =
-        parseNamedBit("r128", Operands, AMDGPUOperand::ImmTyR128A16);
-    if (Res == MatchOperand_NoMatch)
-      Res = parseNamedBit("a16", Operands, AMDGPUOperand::ImmTyA16);
-    return Res;
-  }
   case MCK_ImmRowMask:
     return parseIntWithPrefix("row_mask", Operands,
                               AMDGPUOperand::ImmTyDppRowMask);
@@ -9179,19 +9148,8 @@ AMDGPUAsmParser::parseCustomOperand(OperandVector &Operands, unsigned MCK) {
     return parseSDWASel(Operands, "src0_sel", AMDGPUOperand::ImmTySdwaSrc0Sel);
   case MCK_ImmSDWASrc1Sel:
     return parseSDWASel(Operands, "src1_sel", AMDGPUOperand::ImmTySdwaSrc1Sel);
-  case MCK_ImmSWZ:
-    return parseNamedBit("swz", Operands, AMDGPUOperand::ImmTySWZ);
   case MCK_tfe:
-  case MCK_ImmTFE:
     return parseNamedBit("tfe", Operands, AMDGPUOperand::ImmTyTFE);
-  case MCK_ImmUNorm:
-    return parseNamedBit("unorm", Operands, AMDGPUOperand::ImmTyUNorm);
-  case MCK_ImmWaitEXP:
-    return parseIntWithPrefix("wait_exp", Operands,
-                              AMDGPUOperand::ImmTyWaitEXP);
-  case MCK_ImmWaitVDST:
-    return parseIntWithPrefix("wait_vdst", Operands,
-                              AMDGPUOperand::ImmTyWaitVDST);
   }
   return tryCustomParseOperand(Operands, MCK);
 }
@@ -9217,7 +9175,6 @@ unsigned AMDGPUAsmParser::validateTargetOperandClass(MCParsedAsmOperand &Op,
   case MCK_offen:
     return Operand.isOffen() ? Match_Success : Match_InvalidOperand;
   case MCK_tfe:
-  case MCK_ImmTFE:
     return Operand.isTFE() ? Match_Success : Match_InvalidOperand;
   case MCK_SSrcB32:
     // When operands have expression values, they will return true for isToken,

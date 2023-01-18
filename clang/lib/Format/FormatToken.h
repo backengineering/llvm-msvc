@@ -20,6 +20,7 @@
 #include "clang/Format/Format.h"
 #include "clang/Lex/Lexer.h"
 #include <memory>
+#include <optional>
 #include <unordered_set>
 
 namespace clang {
@@ -70,6 +71,8 @@ namespace format {
   TYPE(FunctionLBrace)                                                         \
   TYPE(FunctionLikeOrFreestandingMacro)                                        \
   TYPE(FunctionTypeLParen)                                                     \
+  /* The colons as part of a C11 _Generic selection */                         \
+  TYPE(GenericSelectionColon)                                                  \
   /* The colon at the end of a goto label or a case label. Currently only used \
    * for Verilog. */                                                           \
   TYPE(GotoLabelColon)                                                         \
@@ -518,7 +521,7 @@ public:
 
   // Contains all attributes related to how this token takes part
   // in a configured macro expansion.
-  llvm::Optional<MacroExpansion> MacroCtx;
+  std::optional<MacroExpansion> MacroCtx;
 
   /// When macro expansion introduces nodes with children, those are marked as
   /// \c MacroParent.

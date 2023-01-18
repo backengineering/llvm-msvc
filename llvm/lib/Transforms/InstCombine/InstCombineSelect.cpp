@@ -803,19 +803,31 @@ static Value *canonicalizeSaturatedSubtract(const ICmpInst *ICI,
                                             const Value *FalseVal,
                                             InstCombiner::BuilderTy &Builder) {
   ICmpInst::Predicate Pred = ICI->getPredicate();
-  if (!ICmpInst::isUnsigned(Pred))
-    return nullptr;
+  Value *A = ICI->getOperand(0);
+  Value *B = ICI->getOperand(1);
 
   // (b > a) ? 0 : a - b -> (b <= a) ? a - b : 0
+  // (a == 0) ? 0 : a - 1 -> (a != 0) ? a - 1 : 0
   if (match(TrueVal, m_Zero())) {
     Pred = ICmpInst::getInversePredicate(Pred);
     std::swap(TrueVal, FalseVal);
   }
+
   if (!match(FalseVal, m_Zero()))
     return nullptr;
 
-  Value *A = ICI->getOperand(0);
-  Value *B = ICI->getOperand(1);
+  // ugt 0 is canonicalized to ne 0 and requires special handling
+  // (a != 0) ? a + -1 : 0 -> usub.sat(a, 1)
+  if (Pred == ICmpInst::ICMP_NE) {
+    if (match(B, m_Zero()) && match(TrueVal, m_Add(m_Specific(A), m_AllOnes())))
+      return Builder.CreateBinaryIntrinsic(Intrinsic::usub_sat, A,
+                                           ConstantInt::get(A->getType(), 1));
+    return nullptr;
+  }
+
+  if (!ICmpInst::isUnsigned(Pred))
+    return nullptr;
+
   if (Pred == ICmpInst::ICMP_ULE || Pred == ICmpInst::ICMP_ULT) {
     // (b < a) ? a - b : 0 -> (a > b) ? a - b : 0
     std::swap(A, B);
@@ -2737,6 +2749,85 @@ foldRoundUpIntegerWithPow2Alignment(SelectInst &SI,
   return R;
 }
 
+namespace {
+struct DecomposedSelect {
+  Value *Cond = nullptr;
+  Value *TrueVal = nullptr;
+  Value *FalseVal = nullptr;
+};
+} // namespace
+
+/// Look for patterns like
+///   %outer.cond = select i1 %inner.cond, i1 %alt.cond, i1 false
+///   %inner.sel = select i1 %inner.cond, i8 %inner.sel.t, i8 %inner.sel.f
+///   %outer.sel = select i1 %outer.cond, i8 %outer.sel.t, i8 %inner.sel
+/// and rewrite it as
+///   %inner.sel = select i1 %cond.alternative, i8 %sel.outer.t, i8 %sel.inner.t
+///   %sel.outer = select i1 %cond.inner, i8 %inner.sel, i8 %sel.inner.f
+static Instruction *foldNestedSelects(SelectInst &OuterSelVal,
+                                      InstCombiner::BuilderTy &Builder) {
+  // We must start with a `select`.
+  DecomposedSelect OuterSel;
+  match(&OuterSelVal,
+        m_Select(m_Value(OuterSel.Cond), m_Value(OuterSel.TrueVal),
+                 m_Value(OuterSel.FalseVal)));
+
+  // Canonicalize inversion of the outermost `select`'s condition.
+  if (match(OuterSel.Cond, m_Not(m_Value(OuterSel.Cond))))
+    std::swap(OuterSel.TrueVal, OuterSel.FalseVal);
+
+  // The condition of the outermost select must be an `and`/`or`.
+  if (!match(OuterSel.Cond, m_c_LogicalOp(m_Value(), m_Value())))
+    return nullptr;
+
+  // Depending on the logical op, inner select might be in different hand.
+  bool IsAndVariant = match(OuterSel.Cond, m_LogicalAnd());
+  Value *InnerSelVal = IsAndVariant ? OuterSel.FalseVal : OuterSel.TrueVal;
+
+  // Profitability check - avoid increasing instruction count.
+  if (none_of(ArrayRef<Value *>({OuterSelVal.getCondition(), InnerSelVal}),
+              [](Value *V) { return V->hasOneUse(); }))
+    return nullptr;
+
+  // The appropriate hand of the outermost `select` must be a select itself.
+  DecomposedSelect InnerSel;
+  if (!match(InnerSelVal,
+             m_Select(m_Value(InnerSel.Cond), m_Value(InnerSel.TrueVal),
+                      m_Value(InnerSel.FalseVal))))
+    return nullptr;
+
+  // Canonicalize inversion of the innermost `select`'s condition.
+  if (match(InnerSel.Cond, m_Not(m_Value(InnerSel.Cond))))
+    std::swap(InnerSel.TrueVal, InnerSel.FalseVal);
+
+  Value *AltCond = nullptr;
+  auto matchOuterCond = [OuterSel, &AltCond](auto m_InnerCond) {
+    return match(OuterSel.Cond, m_c_LogicalOp(m_InnerCond, m_Value(AltCond)));
+  };
+
+  // Finally, match the condition that was driving the outermost `select`,
+  // it should be a logical operation between the condition that was driving
+  // the innermost `select` (after accounting for the possible inversions
+  // of the condition), and some other condition.
+  if (matchOuterCond(m_Specific(InnerSel.Cond))) {
+    // Done!
+  } else if (Value * NotInnerCond; matchOuterCond(m_CombineAnd(
+                 m_Not(m_Specific(InnerSel.Cond)), m_Value(NotInnerCond)))) {
+    // Done!
+    std::swap(InnerSel.TrueVal, InnerSel.FalseVal);
+    InnerSel.Cond = NotInnerCond;
+  } else // Not the pattern we were looking for.
+    return nullptr;
+
+  Value *SelInner = Builder.CreateSelect(
+      AltCond, IsAndVariant ? OuterSel.TrueVal : InnerSel.FalseVal,
+      IsAndVariant ? InnerSel.TrueVal : OuterSel.FalseVal);
+  SelInner->takeName(InnerSelVal);
+  return SelectInst::Create(InnerSel.Cond,
+                            IsAndVariant ? SelInner : InnerSel.TrueVal,
+                            !IsAndVariant ? SelInner : InnerSel.FalseVal);
+}
+
 Instruction *InstCombinerImpl::foldSelectOfBools(SelectInst &SI) {
   Value *CondVal = SI.getCondition();
   Value *TrueVal = SI.getTrueValue();
@@ -2775,20 +2866,26 @@ Instruction *InstCombinerImpl::foldSelectOfBools(SelectInst &SI) {
         (CondVal->hasOneUse() || FalseVal->hasOneUse())) {
       bool CondLogicAnd = isa<SelectInst>(CondVal);
       bool FalseLogicAnd = isa<SelectInst>(FalseVal);
-      if (CondLogicAnd && FalseLogicAnd) {
-        // (A ? B : 0) ? 1 : (A ? D : 0) --> A ? (B ? 1 : D) : 0
-        if (A == C)
-          return SelectInst::Create(A, Builder.CreateSelect(B, One, D), Zero);
-        // (A ? B : 0) ? 1 : (C ? A : 0) --> A ? (B ? 1 : C) : 0
-        if (A == D)
-          return SelectInst::Create(A, Builder.CreateSelect(B, One, C), Zero);
-        // (A ? B : 0) ? 1 : (B ? D : 0) --> B ? (A ? 1 : D) : 0
-        if (B == C)
-          return SelectInst::Create(B, Builder.CreateSelect(A, One, D), Zero);
-        // (A ? B : 0) ? 1 : (C ? B : 0) --> (A ? 1 : C) ? B : 0
-        if (B == D)
-          return SelectInst::Create(Builder.CreateSelect(A, One, C), B, Zero);
-      }
+      auto AndFactorization = [&](Value *Common, Value *InnerCond,
+                                  Value *InnerVal,
+                                  bool SelFirst = false) -> Instruction * {
+        Value *InnerSel = Builder.CreateSelect(InnerCond, One, InnerVal);
+        if (SelFirst)
+          std::swap(Common, InnerSel);
+        if (FalseLogicAnd || (CondLogicAnd && Common == A))
+          return SelectInst::Create(Common, InnerSel, Zero);
+        else
+          return BinaryOperator::CreateAnd(Common, InnerSel);
+      };
+
+      if (A == C)
+        return AndFactorization(A, B, D);
+      if (A == D)
+        return AndFactorization(A, B, C);
+      if (B == C)
+        return AndFactorization(B, A, D);
+      if (B == D)
+        return AndFactorization(B, A, C, CondLogicAnd && FalseLogicAnd);
     }
   }
 
@@ -2810,20 +2907,26 @@ Instruction *InstCombinerImpl::foldSelectOfBools(SelectInst &SI) {
         (CondVal->hasOneUse() || TrueVal->hasOneUse())) {
       bool CondLogicOr = isa<SelectInst>(CondVal);
       bool TrueLogicOr = isa<SelectInst>(TrueVal);
-      if (CondLogicOr && TrueLogicOr) {
-        // (A ? 1 : B) ? (A ? 1 : D) : 0 --> A ? 1 : (B ? D : 0)
-        if (A == C)
-          return SelectInst::Create(A, One, Builder.CreateSelect(B, D, Zero));
-        // (A ? 1 : B) ? (C ? 1 : A) : 0 --> A ? 1 : (B ? C : 0)
-        if (A == D)
-          return SelectInst::Create(A, One, Builder.CreateSelect(B, C, Zero));
-        // (A ? 1 : B) ? (B ? 1 : D) : 0 --> B ? 1 : (A ? D : 0)
-        if (B == C)
-          return SelectInst::Create(B, One, Builder.CreateSelect(A, D, Zero));
-        // (A ? 1 : B) ? (C ? 1 : B) : 0 --> (A ? C : 0) ? 1 : B
-        if (B == D)
-          return SelectInst::Create(Builder.CreateSelect(A, C, Zero), One, B);
-      }
+      auto OrFactorization = [&](Value *Common, Value *InnerCond,
+                                 Value *InnerVal,
+                                 bool SelFirst = false) -> Instruction * {
+        Value *InnerSel = Builder.CreateSelect(InnerCond, InnerVal, Zero);
+        if (SelFirst)
+          std::swap(Common, InnerSel);
+        if (TrueLogicOr || (CondLogicOr && Common == A))
+          return SelectInst::Create(Common, One, InnerSel);
+        else
+          return BinaryOperator::CreateOr(Common, InnerSel);
+      };
+
+      if (A == C)
+        return OrFactorization(A, B, D);
+      if (A == D)
+        return OrFactorization(A, B, C);
+      if (B == C)
+        return OrFactorization(B, A, D);
+      if (B == D)
+        return OrFactorization(B, A, C, CondLogicOr && TrueLogicOr);
     }
   }
 
@@ -3402,6 +3505,9 @@ Instruction *InstCombinerImpl::visitSelectInst(SelectInst &SI) {
       return replaceInstUsesWith(SI, MaskedInst);
     }
   }
+
+  if (Instruction *I = foldNestedSelects(SI, Builder))
+    return I;
 
   // Match logical variants of the pattern,
   // and transform them iff that gets rid of inversions.

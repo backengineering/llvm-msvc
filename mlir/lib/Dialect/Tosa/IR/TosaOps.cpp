@@ -50,13 +50,13 @@ struct TosaInlinerInterface : public DialectInlinerInterface {
 
   /// All operations can be inlined by default.
   bool isLegalToInline(Operation *op, Region *region, bool wouldBeCloned,
-                       BlockAndValueMapping &map) const final {
+                       IRMapping &map) const final {
     return true;
   }
 
   /// All regions with If and While parent operators can be inlined.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       BlockAndValueMapping &map) const final {
+                       IRMapping &map) const final {
     return (isa<tosa::IfOp>(dest->getParentOp()) ||
             isa<tosa::WhileOp>(dest->getParentOp()));
   }
@@ -686,6 +686,20 @@ mlir::LogicalResult tosa::ReshapeOp::verify() {
     }
   }
   return mlir::success();
+}
+
+LogicalResult tosa::TransposeOp::getConstantPerms(SmallVector<int64_t> &perms) {
+  // Perms must be constants.
+  DenseIntElementsAttr permsAttr;
+  if (!matchPattern(getPerms(), m_Constant(&permsAttr)))
+    return failure();
+
+  // Transpose is not the identity transpose.
+  perms = llvm::to_vector(
+      llvm::map_range(permsAttr.getValues<APInt>(),
+                      [](const APInt &val) { return val.getSExtValue(); }));
+
+  return success();
 }
 
 LogicalResult tosa::TransposeOp::inferReturnTypeComponents(

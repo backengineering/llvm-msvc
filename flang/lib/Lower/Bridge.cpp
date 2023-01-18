@@ -58,6 +58,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include <optional>
 
 #define DEBUG_TYPE "flang-lower-bridge"
 
@@ -472,36 +473,13 @@ public:
   }
 
   fir::ExtendedValue
-  translateToExtendedValue(mlir::Location loc,
-                           hlfir::EntityWithAttributes entity,
-                           Fortran::lower::StatementContext &context) {
-    auto [exv, exvCleanup] =
-        hlfir::translateToExtendedValue(loc, getFirOpBuilder(), entity);
-    if (exvCleanup)
-      context.attachCleanup(*exvCleanup);
-    return exv;
-  }
-
-  fir::ExtendedValue
   genExprAddr(const Fortran::lower::SomeExpr &expr,
               Fortran::lower::StatementContext &context,
               mlir::Location *locPtr = nullptr) override final {
     mlir::Location loc = locPtr ? *locPtr : toLocation();
-    if (bridge.getLoweringOptions().getLowerToHighLevelFIR()) {
-      hlfir::EntityWithAttributes loweredExpr =
-          Fortran::lower::convertExprToHLFIR(loc, *this, expr, localSymbols,
-                                             context);
-      if (expr.Rank() > 0 &&
-          !Fortran::evaluate::IsSimplyContiguous(expr, getFoldingContext()))
-        TODO(loc, "genExprAddr of non contiguous variables in HLFIR");
-      fir::ExtendedValue exv =
-          translateToExtendedValue(loc, loweredExpr, context);
-      if (fir::isa_trivial(fir::getBase(exv).getType()))
-        TODO(loc, "place trivial in memory");
-      if (const auto *mutableBox = exv.getBoxOf<fir::MutableBoxValue>())
-        exv = fir::factory::genMutableBoxRead(*builder, loc, *mutableBox);
-      return exv;
-    }
+    if (bridge.getLoweringOptions().getLowerToHighLevelFIR())
+      return Fortran::lower::convertExprToAddress(loc, *this, expr,
+                                                  localSymbols, context);
     return Fortran::lower::createSomeExtendedAddress(loc, *this, expr,
                                                      localSymbols, context);
   }
@@ -511,35 +489,9 @@ public:
                Fortran::lower::StatementContext &context,
                mlir::Location *locPtr = nullptr) override final {
     mlir::Location loc = locPtr ? *locPtr : toLocation();
-    if (bridge.getLoweringOptions().getLowerToHighLevelFIR()) {
-      hlfir::EntityWithAttributes loweredExpr =
-          Fortran::lower::convertExprToHLFIR(loc, *this, expr, localSymbols,
-                                             context);
-      fir::ExtendedValue exv =
-          translateToExtendedValue(loc, loweredExpr, context);
-      // Load scalar references to integer, logical, real, or complex value
-      // to an mlir value, dereference allocatable and pointers, and get rid
-      // of fir.box that are no needed or create a copy into contiguous memory.
-      return exv.match(
-          [&](const fir::UnboxedValue &box) -> fir::ExtendedValue {
-            if (mlir::Type elementType = fir::dyn_cast_ptrEleTy(box.getType()))
-              if (fir::isa_trivial(elementType))
-                return getFirOpBuilder().create<fir::LoadOp>(loc, box);
-            return box;
-          },
-          [&](const fir::CharBoxValue &box) -> fir::ExtendedValue {
-            return box;
-          },
-          [&](const fir::ArrayBoxValue &box) -> fir::ExtendedValue {
-            return box;
-          },
-          [&](const fir::CharArrayBoxValue &box) -> fir::ExtendedValue {
-            return box;
-          },
-          [&](const auto &) -> fir::ExtendedValue {
-            TODO(loc, "lower descriptor designator to HLFIR value");
-          });
-    }
+    if (bridge.getLoweringOptions().getLowerToHighLevelFIR())
+      return Fortran::lower::convertExprToValue(loc, *this, expr, localSymbols,
+                                                context);
     return Fortran::lower::createSomeExtendedExpression(loc, *this, expr,
                                                         localSymbols, context);
   }
@@ -547,15 +499,9 @@ public:
   fir::ExtendedValue
   genExprBox(mlir::Location loc, const Fortran::lower::SomeExpr &expr,
              Fortran::lower::StatementContext &stmtCtx) override final {
-    if (bridge.getLoweringOptions().getLowerToHighLevelFIR()) {
-      hlfir::EntityWithAttributes loweredExpr =
-          Fortran::lower::convertExprToHLFIR(loc, *this, expr, localSymbols,
-                                             stmtCtx);
-      auto exv = translateToExtendedValue(loc, loweredExpr, stmtCtx);
-      if (fir::isa_trivial(fir::getBase(exv).getType()))
-        TODO(loc, "place trivial in memory");
-      return fir::factory::createBoxValue(getFirOpBuilder(), loc, exv);
-    }
+    if (bridge.getLoweringOptions().getLowerToHighLevelFIR())
+      return Fortran::lower::convertExprToBox(loc, *this, expr, localSymbols,
+                                              stmtCtx);
     return Fortran::lower::createBoxValue(loc, *this, expr, localSymbols,
                                           stmtCtx);
   }
@@ -822,7 +768,7 @@ private:
   Fortran::lower::SymbolBox
   lookupSymbol(const Fortran::semantics::Symbol &sym) {
     if (bridge.getLoweringOptions().getLowerToHighLevelFIR()) {
-      if (llvm::Optional<fir::FortranVariableOpInterface> var =
+      if (std::optional<fir::FortranVariableOpInterface> var =
               localSymbols.lookupVariableDefinition(sym)) {
         auto exv =
             hlfir::translateToExtendedValue(toLocation(), *builder, *var);
@@ -1097,7 +1043,7 @@ private:
     assert(stmt.typedCall && "Call was not analyzed");
     mlir::Value res{};
     if (bridge.getLoweringOptions().getLowerToHighLevelFIR()) {
-      llvm::Optional<mlir::Type> resultType = std::nullopt;
+      std::optional<mlir::Type> resultType;
       if (stmt.typedCall->hasAlternateReturns())
         resultType = builder->getIndexType();
       auto hlfirRes = Fortran::lower::convertCallToHLFIR(
@@ -2543,8 +2489,8 @@ private:
   void genArrayAssignment(
       const Fortran::evaluate::Assignment &assign,
       Fortran::lower::StatementContext &localStmtCtx,
-      llvm::Optional<llvm::SmallVector<mlir::Value>> lbounds = std::nullopt,
-      llvm::Optional<llvm::SmallVector<mlir::Value>> ubounds = std::nullopt) {
+      std::optional<llvm::SmallVector<mlir::Value>> lbounds = std::nullopt,
+      std::optional<llvm::SmallVector<mlir::Value>> ubounds = std::nullopt) {
 
     Fortran::lower::StatementContext &stmtCtx =
         explicitIterationSpace()
@@ -2696,8 +2642,8 @@ private:
                                            : genExprAddr(assign.rhs, stmtCtx);
               const bool lhsIsWholeAllocatable =
                   Fortran::lower::isWholeAllocatable(assign.lhs);
-              llvm::Optional<fir::factory::MutableBoxReallocation> lhsRealloc;
-              llvm::Optional<fir::MutableBoxValue> lhsMutableBox;
+              std::optional<fir::factory::MutableBoxReallocation> lhsRealloc;
+              std::optional<fir::MutableBoxValue> lhsMutableBox;
               auto lhs = [&]() -> fir::ExtendedValue {
                 if (lhsIsWholeAllocatable) {
                   lhsMutableBox = genExprMutableBox(loc, assign.lhs);
@@ -3820,7 +3766,8 @@ Fortran::lower::LoweringBridge::LoweringBridge(
     const Fortran::parser::AllCookedSources &cooked, llvm::StringRef triple,
     fir::KindMapping &kindMap,
     const Fortran::lower::LoweringOptions &loweringOptions,
-    const std::vector<Fortran::lower::EnvironmentDefault> &envDefaults)
+    const std::vector<Fortran::lower::EnvironmentDefault> &envDefaults,
+    llvm::StringRef filePath)
     : semanticsContext{semanticsContext}, defaultKinds{defaultKinds},
       intrinsics{intrinsics}, targetCharacteristics{targetCharacteristics},
       cooked{&cooked}, context{context}, kindMap{kindMap},
@@ -3850,7 +3797,8 @@ Fortran::lower::LoweringBridge::LoweringBridge(
 
   // Create the module and attach the attributes.
   module = std::make_unique<mlir::ModuleOp>(
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
+      mlir::ModuleOp::create(mlir::FileLineColLoc::get(
+          &getMLIRContext(), filePath, /*line=*/0, /*col=*/0)));
   assert(module.get() && "module was not created");
   fir::setTargetTriple(*module.get(), triple);
   fir::setKindMapping(*module.get(), kindMap);

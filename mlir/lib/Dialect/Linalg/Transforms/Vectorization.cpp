@@ -31,6 +31,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include <type_traits>
+#include <optional>
 
 using namespace mlir;
 using namespace mlir::linalg;
@@ -77,9 +78,9 @@ struct VectorizationState {
   /// masking. Returns the masked operation or the original operation if masking
   /// is not needed. If provided, the canonical mask for this operation is
   /// permuted using `maybeMaskingMap`.
-  Operation *maskOperation(RewriterBase &rewriter, Operation *opToMask,
-                           LinalgOp linalgOp,
-                           Optional<AffineMap> maybeMaskingMap = std::nullopt);
+  Operation *
+  maskOperation(RewriterBase &rewriter, Operation *opToMask, LinalgOp linalgOp,
+                std::optional<AffineMap> maybeMaskingMap = std::nullopt);
 
 private:
   /// Initializes the iteration space static sizes using the Linalg op
@@ -100,7 +101,7 @@ private:
   /// cached for future users.
   Value getOrCreateMaskFor(RewriterBase &rewriter, Operation *opToMask,
                            LinalgOp linalgOp,
-                           Optional<AffineMap> maybeMaskingMap);
+                           std::optional<AffineMap> maybeMaskingMap);
 
   // Holds the compile-time static sizes of the iteration space to vectorize.
   // Dynamic dimensions are represented using ShapedType::kDynamicSize.
@@ -199,7 +200,7 @@ VectorizationState::initState(RewriterBase &rewriter, LinalgOp linalgOp,
 /// future users.
 Value VectorizationState::getOrCreateMaskFor(
     RewriterBase &rewriter, Operation *opToMask, LinalgOp linalgOp,
-    Optional<AffineMap> maybeMaskingMap) {
+    std::optional<AffineMap> maybeMaskingMap) {
   // No mask is needed if the operation is not maskable.
   auto maskableOp = dyn_cast<vector::MaskableOpInterface>(opToMask);
   if (!maskableOp)
@@ -278,7 +279,7 @@ Value VectorizationState::getOrCreateMaskFor(
 Operation *
 VectorizationState::maskOperation(RewriterBase &rewriter, Operation *opToMask,
                                   LinalgOp linalgOp,
-                                  Optional<AffineMap> maybeMaskingMap) {
+                                  std::optional<AffineMap> maybeMaskingMap) {
   LDBG("Trying to mask: " << *opToMask << "\n");
 
   // Create or retrieve mask for this operation.
@@ -292,25 +293,8 @@ VectorizationState::maskOperation(RewriterBase &rewriter, Operation *opToMask,
 
   // Wrap the operation with a new `vector.mask` and update D-U chain.
   assert(opToMask && "Expected a valid operation to mask");
-  auto opResults = opToMask->getResultTypes();
-  auto createRegionMask = [opToMask](OpBuilder &builder, Location loc) {
-    Block *insBlock = builder.getInsertionBlock();
-    // Create a block, put an op in that block. Look for a utility.
-    // Maybe in conversion pattern rewriter. Way to avoid splice.
-    // Set insertion point.
-    insBlock->getOperations().splice(
-        insBlock->begin(), opToMask->getBlock()->getOperations(), opToMask);
-    builder.create<vector::YieldOp>(loc, opToMask->getResults());
-  };
-  // TODO: Allow multiple results in vector.mask.
-  auto maskOp =
-      opResults.empty()
-          ? rewriter.create<vector::MaskOp>(opToMask->getLoc(), mask,
-                                            createRegionMask)
-          : rewriter.create<vector::MaskOp>(opToMask->getLoc(),
-                                            opToMask->getResultTypes().front(),
-                                            mask, createRegionMask);
-
+  auto maskOp = cast<vector::MaskOp>(
+      mlir::vector::maskOperation(rewriter, opToMask, mask));
   Operation *maskOpTerminator = &maskOp.getMaskRegion().front().back();
 
   for (auto [resIdx, resVal] : llvm::enumerate(opToMask->getResults()))
@@ -440,17 +424,16 @@ static Value broadcastIfNeeded(OpBuilder &b, Value value,
 /// initial value.buildMultiDimReduce
 // Note: this is a true builder that notifies the OpBuilder listener.
 // TODO: Consider moving as a static helper on the ReduceOp.
-static Operation *buildMultiDimReduce(OpBuilder &b,
-                                      Operation *reduceOp, Value valueToReduce,
-                                      Value acc,
-                                      const SmallVector<bool> &reductionMask) {
+static Operation *buildMultiDimReduce(OpBuilder &b, Operation *reduceOp,
+                                      Value valueToReduce, Value acc,
+                                      ArrayRef<bool> dimsToMask) {
   auto maybeKind = getCombinerOpKind(reduceOp);
   assert(maybeKind && "Failed precondition: could not get reduction kind");
   return b.create<vector::MultiDimReductionOp>(
-      reduceOp->getLoc(), valueToReduce, acc, reductionMask, *maybeKind);
+      reduceOp->getLoc(), valueToReduce, acc, dimsToMask, *maybeKind);
 }
 
-static SmallVector<bool> getReductionMask(LinalgOp linalgOp) {
+static SmallVector<bool> getDimsToReduce(LinalgOp linalgOp) {
   return llvm::to_vector(
       llvm::map_range(linalgOp.getIteratorTypesArray(), isReductionIterator));
 }
@@ -473,7 +456,7 @@ static Value buildVectorWrite(RewriterBase &rewriter, Value value,
 
   Operation *write;
   if (vectorType.getRank() > 0) {
-    AffineMap writeMap = reindexIndexingMap(opOperandMap);
+    AffineMap writeMap = inversePermutation(reindexIndexingMap(opOperandMap));
     SmallVector<Value> indices(linalgOp.getRank(outputOperand),
                                rewriter.create<arith::ConstantIndexOp>(loc, 0));
     value = broadcastIfNeeded(rewriter, value, vectorType.getShape());
@@ -511,10 +494,10 @@ using CustomVectorizationPrecondition =
     std::function<LogicalResult(Operation *, bool)>;
 
 // Custom vectorization function type. Produce a vector form of Operation*
-// assuming all its vectorized operands are already in the BlockAndValueMapping.
+// assuming all its vectorized operands are already in the IRMapping.
 // Return nullptr if the Operation cannot be vectorized.
-using CustomVectorizationHook = std::function<VectorizationResult(
-    Operation *, const BlockAndValueMapping &)>;
+using CustomVectorizationHook =
+    std::function<VectorizationResult(Operation *, const IRMapping &)>;
 
 /// Helper function to vectorize the terminator of a `linalgOp`. New result
 /// vector values are appended to `newResults`. Return
@@ -525,7 +508,7 @@ using CustomVectorizationHook = std::function<VectorizationResult(
 /// CustomVectorizationHook.
 static VectorizationResult
 vectorizeLinalgYield(RewriterBase &rewriter, Operation *op,
-                     const BlockAndValueMapping &bvm, VectorizationState &state,
+                     const IRMapping &bvm, VectorizationState &state,
                      LinalgOp linalgOp, SmallVectorImpl<Value> &newResults) {
   auto yieldOp = dyn_cast<linalg::YieldOp>(op);
   if (!yieldOp)
@@ -615,7 +598,7 @@ tensorExtractVectorizationPrecondition(Operation *op, bool vectorizeNDExtract) {
 ///  offset = ( ( 1 ) * 80 +  2 ) * 15  + 3
 static Value
 calculateGatherOffset(OpBuilder &b, tensor::ExtractOp extractOp,
-                      const BlockAndValueMapping &bvm,
+                      const IRMapping &bvm,
                       const SmallVectorImpl<int64_t> &targetShape) {
   // The vector of indices for GatherOp should be shaped as the output vector
   auto indexVecType = VectorType::get(targetShape, b.getIndexType());
@@ -626,23 +609,19 @@ calculateGatherOffset(OpBuilder &b, tensor::ExtractOp extractOp,
 
   const size_t numIndices = extractOp.getIndices().size();
   for (size_t i = 1; i < numIndices; i++) {
-    auto dimSizeBcast = b.create<vector::BroadcastOp>(
-        loc, indexVecType,
+    auto dimSize = broadcastIfNeeded(
+        b,
         b.create<arith::ConstantIndexOp>(
             loc,
-            extractOp.getTensor().getType().cast<ShapedType>().getDimSize(i)));
-    offset = b.create<arith::MulIOp>(loc, offset, dimSizeBcast);
+            extractOp.getTensor().getType().cast<ShapedType>().getDimSize(i)),
+        indexVecType.getShape());
 
-    auto originalIndexBcast = bvm.lookup(extractOp.getIndices()[i]);
-    if (i == numIndices - 1) {
-      // We only need an additional broadcast for the trailing index. All other
-      // indices have already been broadcast by `vectorizeLinalgIndex` to match
-      // the output size.
-      originalIndexBcast = b.create<vector::BroadcastOp>(
-          loc, indexVecType, bvm.lookup(extractOp.getIndices()[i]));
-    }
+    offset = b.create<arith::MulIOp>(loc, offset, dimSize);
 
-    offset = b.create<arith::AddIOp>(loc, originalIndexBcast, offset);
+    auto extractOpIndex = broadcastIfNeeded(
+        b, bvm.lookup(extractOp.getIndices()[i]), indexVecType.getShape());
+
+    offset = b.create<arith::AddIOp>(loc, extractOpIndex, offset);
   }
 
   return offset;
@@ -652,9 +631,10 @@ calculateGatherOffset(OpBuilder &b, tensor::ExtractOp extractOp,
 /// VectorizationStatus::NewOp to signal the vectorization algorithm that it
 /// should map the produced operations. This function is meant to be used as a
 /// CustomVectorizationHook.
-static VectorizationResult
-vectorizeTensorExtract(RewriterBase &rewriter, Operation *op, LinalgOp linalgOp,
-                       const BlockAndValueMapping &bvm) {
+static VectorizationResult vectorizeTensorExtract(RewriterBase &rewriter,
+                                                  Operation *op,
+                                                  LinalgOp linalgOp,
+                                                  const IRMapping &bvm) {
   tensor::ExtractOp extractOp = dyn_cast<tensor::ExtractOp>(op);
   if (!extractOp)
     return VectorizationResult{VectorizationStatus::Failure, nullptr};
@@ -692,10 +672,9 @@ vectorizeTensorExtract(RewriterBase &rewriter, Operation *op, LinalgOp linalgOp,
 /// that the result shape.
 // Note: this is a true builder that notifies the OpBuilder listener.
 // TODO: Consider moving as a static helper on the ReduceOp.
-static Operation *reduceIfNeeded(OpBuilder &b, LinalgOp linalgOp,
-                                 Operation *op, Value reduceValue,
-                                 Value initialValue,
-                                 const BlockAndValueMapping &bvm) {
+static Operation *reduceIfNeeded(OpBuilder &b, LinalgOp linalgOp, Operation *op,
+                                 Value reduceValue, Value initialValue,
+                                 const IRMapping &bvm) {
   Value reduceVec = bvm.lookup(reduceValue);
   Value outputVec = bvm.lookup(initialValue);
   auto reduceType = reduceVec.getType().dyn_cast<VectorType>();
@@ -705,8 +684,8 @@ static Operation *reduceIfNeeded(OpBuilder &b, LinalgOp linalgOp,
   if (!reduceType ||
       (outputType && reduceType.getShape() == outputType.getShape()))
     return nullptr;
-  SmallVector<bool> reductionMask = getReductionMask(linalgOp);
-  return buildMultiDimReduce(b, op, reduceVec, outputVec, reductionMask);
+  SmallVector<bool> dimsToMask = getDimsToReduce(linalgOp);
+  return buildMultiDimReduce(b, op, reduceVec, outputVec, dimsToMask);
 }
 
 /// Generic vectorization for a single operation `op`, given already vectorized
@@ -730,7 +709,7 @@ static Operation *reduceIfNeeded(OpBuilder &b, LinalgOp linalgOp,
 /// instructs the caller what `bvm` update needs to occur.
 static VectorizationResult
 vectorizeOneOp(RewriterBase &rewriter, LinalgOp linalgOp, Operation *op,
-               const BlockAndValueMapping &bvm,
+               const IRMapping &bvm,
                ArrayRef<CustomVectorizationHook> customVectorizationHooks) {
   LDBG("vectorize op " << *op << "\n");
 
@@ -756,13 +735,14 @@ vectorizeOneOp(RewriterBase &rewriter, LinalgOp linalgOp, Operation *op,
   // 4 . Check if the operation is a reduction.
   SmallVector<std::pair<Value, Value>> reductionOperands;
   for (Value operand : op->getOperands()) {
-    auto arg = operand.dyn_cast<BlockArgument>();
-    if (!arg || arg.getArgNumber() < linalgOp.getNumDpsInputs())
+    auto blockArg = operand.dyn_cast<BlockArgument>();
+    if (!blockArg || blockArg.getOwner() != linalgOp.getBlock() ||
+        blockArg.getArgNumber() < linalgOp.getNumDpsInputs())
       continue;
     SmallVector<Operation *> reductionOps;
     Value reduceValue = matchReduction(
         linalgOp.getRegionOutputArgs(),
-        arg.getArgNumber() - linalgOp.getNumDpsInputs(), reductionOps);
+        blockArg.getArgNumber() - linalgOp.getNumDpsInputs(), reductionOps);
     if (!reduceValue)
       continue;
     reductionOperands.push_back(std::make_pair(reduceValue, operand));
@@ -837,7 +817,7 @@ vectorizeAsLinalgGeneric(RewriterBase &rewriter, VectorizationState &state,
 
   // 2. Values defined above the region can only be broadcast for now. Make them
   // map to themselves.
-  BlockAndValueMapping bvm;
+  IRMapping bvm;
   SetVector<Value> valuesSet;
   mlir::getUsedValuesDefinedAbove(linalgOp->getRegion(0), valuesSet);
   bvm.map(valuesSet.getArrayRef(), valuesSet.getArrayRef());
@@ -915,24 +895,21 @@ vectorizeAsLinalgGeneric(RewriterBase &rewriter, VectorizationState &state,
   SmallVector<CustomVectorizationHook> hooks;
   // 4a. Register CustomVectorizationHook for yieldOp.
   CustomVectorizationHook vectorizeYield =
-      [&](Operation *op,
-          const BlockAndValueMapping &bvm) -> VectorizationResult {
+      [&](Operation *op, const IRMapping &bvm) -> VectorizationResult {
     return vectorizeLinalgYield(rewriter, op, bvm, state, linalgOp, newResults);
   };
   hooks.push_back(vectorizeYield);
 
   // 4b. Register CustomVectorizationHook for indexOp.
   CustomVectorizationHook vectorizeIndex =
-      [&](Operation *op,
-          const BlockAndValueMapping &bvm) -> VectorizationResult {
+      [&](Operation *op, const IRMapping &bvm) -> VectorizationResult {
     return vectorizeLinalgIndex(rewriter, op, linalgOp);
   };
   hooks.push_back(vectorizeIndex);
 
   // 4c. Register CustomVectorizationHook for extractOp.
   CustomVectorizationHook vectorizeExtract =
-      [&](Operation *op,
-          const BlockAndValueMapping &bvm) -> VectorizationResult {
+      [&](Operation *op, const IRMapping &bvm) -> VectorizationResult {
     return vectorizeTensorExtract(rewriter, op, linalgOp, bvm);
   };
   hooks.push_back(vectorizeExtract);
@@ -978,11 +955,8 @@ static LogicalResult reductionPreconditions(LinalgOp op) {
 }
 
 static LogicalResult vectorizeDynamicLinalgOpPrecondition(linalg::LinalgOp op) {
-  // TODO: Masking only supports dynamic generic ops without reductions for now.
-  if (!isElementwise(op) &&
-      llvm::any_of(op.getIteratorTypesArray(), [](utils::IteratorType itType) {
-        return itType != utils::IteratorType::parallel;
-      }))
+  // TODO: Masking only supports dynamic generic ops for now.
+  if (!isa<linalg::GenericOp>(op))
     return failure();
 
   // TODO: 0-d vectors are not supported yet.
@@ -1872,8 +1846,8 @@ struct Conv1DGenerator
     if (!setOperKind(reduceOp))
       return;
     auto maybeKind = getCombinerOpKind(reduceOp);
-    if (!(maybeKind && (*maybeKind == vector::CombiningKind::ADD ||
-                        (oper == Pool && isSupportedPoolKind(*maybeKind))))) {
+    if (!maybeKind || (*maybeKind != vector::CombiningKind::ADD &&
+                       (oper != Pool || !isSupportedPoolKind(*maybeKind)))) {
       return;
     }
 

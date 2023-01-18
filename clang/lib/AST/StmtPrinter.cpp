@@ -54,6 +54,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
+#include <optional>
 #include <string>
 
 using namespace clang;
@@ -2275,7 +2276,7 @@ void StmtPrinter::VisitCXXNewExpr(CXXNewExpr *E) {
   if (E->isArray()) {
     llvm::raw_string_ostream s(TypeS);
     s << '[';
-    if (Optional<Expr *> Size = E->getArraySize())
+    if (std::optional<Expr *> Size = E->getArraySize())
       (*Size)->printPretty(s, Helper, Policy);
     s << ']';
   }
@@ -2462,6 +2463,13 @@ void StmtPrinter::VisitCXXFoldExpr(CXXFoldExpr *E) {
     OS << " " << BinaryOperator::getOpcodeStr(E->getOperator()) << " ";
     PrintExpr(E->getRHS());
   }
+  OS << ")";
+}
+
+void StmtPrinter::VisitCXXParenListInitExpr(CXXParenListInitExpr *Node) {
+  OS << "(";
+  llvm::interleaveComma(Node->getInitExprs(), OS,
+                        [&](Expr *E) { PrintExpr(E); });
   OS << ")";
 }
 
