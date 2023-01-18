@@ -384,7 +384,7 @@ std::string LinkerDriver::createDefaultXml() {
   os << "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n"
      << "<assembly xmlns='urn:schemas-microsoft-com:asm.v1' "
         "manifestVersion='1.0'>\n";
-  if (ctx.config->manifestUAC) {
+  if (ctx.config.manifestUAC) {
     os << "  <trustInfo xmlns=\"urn:schemas-microsoft-com:asm.v3\">\n"
        << "    <security>\n"
        << "      <requestedPrivileges>\n"

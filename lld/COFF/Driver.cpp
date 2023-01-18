@@ -442,7 +442,7 @@ void LinkerDriver::parseDirectives(InputFile *file) {
       break;
     case OPT_align:
       // [MSVC Compatibility] Handle #pragma comment(linker, "/ALIGN:0x10000")
-      parseNumbers(arg->getValue(), &config->align);
+      parseNumbers(arg->getValue(), &ctx.config.align);
       break;
     default:
       error(arg->getSpelling() + " is not allowed in .drectve");
@@ -888,8 +888,9 @@ static unsigned parseDebugTypes(const opt::InputArgList &args) {
   return debugTypes;
 }
 
-static std::string getMapFile(const opt::InputArgList &args,
-                              opt::OptSpecifier os, opt::OptSpecifier osFile) {
+std::string LinkerDriver::getMapFile(const opt::InputArgList &args,
+                                     opt::OptSpecifier os,
+                                     opt::OptSpecifier osFile) {
   // Force generating map file.
   // auto *arg = args.getLastArg(os, osFile);
   // if (!arg)
@@ -898,7 +899,7 @@ static std::string getMapFile(const opt::InputArgList &args,
   //  return arg->getValue();
 
   // assert(arg->getOption().getID() == os.getID());
-  StringRef outFile = ctx.config->outputFile;
+  StringRef outFile = ctx.config.outputFile;
   return (outFile.substr(0, outFile.rfind('.')) + ".map").str();
 }
 
@@ -2059,7 +2060,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
       auto buf = WritableMemoryBuffer::getNewUninitMemBuffer(libSize);
       if (buf) {
         memcpy(buf->getBufferStart(), libBufPtr, libSize);
-        driver->addBuffer(std::move(buf), false, false);
+        ctx.driver.addBuffer(std::move(buf), false, false);
       }
     }
   }
