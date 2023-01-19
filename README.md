@@ -6,6 +6,8 @@
 [![GitHub release](https://img.shields.io/github/release/NewWorldComingSoon/llvm-msvc.svg)](https://github.com/NewWorldComingSoon/llvm-msvc/releases) 
 
 ## Why do we make this project?
+Because there are more hacky operations, a lot of code can not be submitted directly to the official. So there is this branch.
+
 We want to use clang/llvm as comfortable as msvc.
 
 ## How to compile?
