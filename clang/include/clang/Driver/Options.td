@@ -3363,8 +3363,6 @@ def iwithsysroot : JoinedOrSeparate<["-"], "iwithsysroot">, Group<clang_i_Group>
   HelpText<"Add directory to SYSTEM include search path, "
            "absolute paths are relative to -isysroot">, MetaVarName<"<directory>">,
   Flags<[CC1Option]>;
-def ivfsstatcache : JoinedOrSeparate<["-"], "ivfsstatcache">, Group<clang_i_Group>, Flags<[CC1Option]>,
-  HelpText<"Use the stat data cached in file instead of doing filesystem syscalls. See clang-stat-cache utility.">;
 def ivfsoverlay : JoinedOrSeparate<["-"], "ivfsoverlay">, Group<clang_i_Group>, Flags<[CC1Option]>,
   HelpText<"Overlay the virtual filesystem described by file over the real file system">;
 def imultilib : Separate<["-"], "imultilib">, Group<gfortran_Group>;
@@ -5710,10 +5708,11 @@ def fctor_dtor_return_this : Flag<["-"], "fctor-dtor-return-this">,
            "and non-deleting destructors. (No effect on Microsoft ABI)">,
   MarshallingInfoFlag<CodeGenOpts<"CtorDtorReturnThis">>;
 
-def fexperimental_assignment_tracking :
-  Flag<["-"], "fexperimental-assignment-tracking">, Group<f_Group>,
-  HelpText<"Enable assignment tracking debug info">,
-  MarshallingInfoFlag<CodeGenOpts<"EnableAssignmentTracking">>;
+defm experimental_assignment_tracking :
+  BoolOption<"f", "experimental-assignment-tracking",
+  CodeGenOpts<"EnableAssignmentTracking">, DefaultFalse,
+  PosFlag<SetTrue, [CC1Option]>, NegFlag<SetFalse>, BothFlags<[CoreOption]>>,
+  Group<f_Group>;
 
 } // let Flags = [CC1Option, NoDriverOption]
 
