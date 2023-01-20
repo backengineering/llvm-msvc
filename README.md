@@ -43,6 +43,7 @@ msbuild /m -p:Configuration=release INSTALL.vcxproj
 - https://github.com/NewWorldComingSoon/llvm-msvc-build
 
 ## How to contribute?
+- https://github.com/HyunCafe/contribute-practice
 - https://docs.github.com/en/get-started/quickstart/contributing-to-projects
 
 ## Learning
