@@ -203,22 +203,38 @@ ContentCache::getBufferOrNone(DiagnosticsEngine &Diag, FileManager &FM,
   // http://en.wikipedia.org/wiki/Byte_order_mark for more information.
   StringRef BufStr = Buffer->getBuffer();
   const char *InvalidBOM = getInvalidBOM(BufStr);
-  
+
+  auto moveBuffer = [this](const std::string &StrUtf8) {
+    auto NewBuf =
+        llvm::WritableMemoryBuffer::getNewUninitMemBuffer(StrUtf8.size());
+    if (NewBuf) {
+      memcpy(NewBuf->getBufferStart(), StrUtf8.data(), StrUtf8.size());
+      Buffer = std::move(NewBuf);
+    }
+  };
+
   // [MSVC Compatibility] Trying to convert UTF16 to UTF8.
+  std::string StrUtf8;
   if (InvalidBOM && checkBufUTF16(BufStr)) {
-    std::string StrUtf8;
     if (llvm::convertUTF16ToUTF8String(
             llvm::makeArrayRef(BufStr.data(), BufStr.size()), StrUtf8)) {
-      char *NewBuf = new char[StrUtf8.size() + 4]{0};
-      memcpy(NewBuf, StrUtf8.data(), StrUtf8.size());
-      Buffer->BufferStart = NewBuf;
-      Buffer->BufferEnd = NewBuf + StrUtf8.size();
+      moveBuffer(StrUtf8);
       BufStr = Buffer->getBuffer();
+	
+      // Verify it again.
+      InvalidBOM = getInvalidBOM(BufStr);
+    }
+  } else {
+    // Trying to convert GBK to UTF8.
+    if (llvm::convertGBKToUTF8String(BufStr, StrUtf8)) {
+      moveBuffer(StrUtf8);
+      BufStr = Buffer->getBuffer();
+	
       // Verify it again.
       InvalidBOM = getInvalidBOM(BufStr);
     }
   }
-
+ 
   if (InvalidBOM) {
     Diag.Report(Loc, diag::err_unsupported_bom)
       << InvalidBOM << ContentsEntry->getName();
