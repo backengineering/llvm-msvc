@@ -2233,12 +2233,15 @@ void Parser::ParseCXXSimpleTypeSpecifier(DeclSpec &DS) {
       Actions.getASTContext().getPrintingPolicy();
 
   auto ConsumeLParenToken = [&]() -> bool {
-    if (PP.LookAhead(1).getKind() == tok::l_paren) {
-        ConsumeAnyToken();
-        ConsumeAnyToken();
-        DS.SetRangeEnd(PrevTokLocation);
-        DS.Finish(Actions, Policy);
-        return true;
+    if (NextToken().isOneOf(tok::kw_char, tok::kw_short, tok::kw_int,
+                            tok::kw___int64, tok::kw___int128, tok::kw_long)) {
+        if (PP.LookAhead(1).getKind() == tok::l_paren) {
+            ConsumeAnyToken();
+            ConsumeAnyToken();
+            DS.SetRangeEnd(PrevTokLocation);
+            DS.Finish(Actions, Policy);
+            return true;
+        }
     }
     return false;
   };
