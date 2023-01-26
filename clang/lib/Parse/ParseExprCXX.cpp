@@ -2232,6 +2232,17 @@ void Parser::ParseCXXSimpleTypeSpecifier(DeclSpec &DS) {
   const clang::PrintingPolicy &Policy =
       Actions.getASTContext().getPrintingPolicy();
 
+  auto ConsumeLParenToken = [&]() -> bool {
+    if (PP.LookAhead(1).getKind() == tok::l_paren) {
+        ConsumeAnyToken();
+        ConsumeAnyToken();
+        DS.SetRangeEnd(PrevTokLocation);
+        DS.Finish(Actions, Policy);
+        return true;
+    }
+    return false;
+  };
+
   switch (Tok.getKind()) {
   case tok::identifier:   // foo::bar
   case tok::coloncolon:   // ::foo::bar
@@ -2280,9 +2291,11 @@ void Parser::ParseCXXSimpleTypeSpecifier(DeclSpec &DS) {
     break;
   case tok::kw_signed:
     DS.SetTypeSpecSign(TypeSpecifierSign::Signed, Loc, PrevSpec, DiagID);
+    if (ConsumeLParenToken()) return;
     break;
   case tok::kw_unsigned:
     DS.SetTypeSpecSign(TypeSpecifierSign::Unsigned, Loc, PrevSpec, DiagID);
+    if (ConsumeLParenToken()) return;
     break;
   case tok::kw_void:
     DS.SetTypeSpecType(DeclSpec::TST_void, Loc, PrevSpec, DiagID, Policy);
