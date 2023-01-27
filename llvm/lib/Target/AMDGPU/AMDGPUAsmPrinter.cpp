@@ -761,7 +761,7 @@ void AMDGPUAsmPrinter::getSIProgramInfo(SIProgramInfo &ProgInfo,
       // There are some rare circumstances where InputAddr is non-zero and
       // InputEna can be set to 0. In this case we default to setting LastEna
       // to 1.
-      LastEna = InputEna ? findLastSet(InputEna) + 1 : 1;
+      LastEna = InputEna ? llvm::Log2_32(InputEna) + 1 : 1;
     }
 
     // FIXME: We should be using the number of registers determined during
@@ -842,11 +842,12 @@ void AMDGPUAsmPrinter::getSIProgramInfo(SIProgramInfo &ProgInfo,
     Ctx.diagnose(Diag);
   }
 
-  if (MFI->getLDSSize() > static_cast<unsigned>(STM.getLocalMemorySize())) {
+  if (MFI->getLDSSize() >
+      static_cast<unsigned>(STM.getAddressableLocalMemorySize())) {
     LLVMContext &Ctx = MF.getFunction().getContext();
-    DiagnosticInfoResourceLimit Diag(MF.getFunction(), "local memory",
-                                     MFI->getLDSSize(),
-                                     STM.getLocalMemorySize(), DS_Error);
+    DiagnosticInfoResourceLimit Diag(
+        MF.getFunction(), "local memory", MFI->getLDSSize(),
+        STM.getAddressableLocalMemorySize(), DS_Error);
     Ctx.diagnose(Diag);
   }
 

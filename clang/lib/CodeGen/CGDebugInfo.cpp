@@ -1288,9 +1288,21 @@ llvm::DIType *CGDebugInfo::CreateType(const TemplateSpecializationType *Ty,
 
   SmallString<128> NS;
   llvm::raw_svector_ostream OS(NS);
-  Ty->getTemplateName().print(OS, getPrintingPolicy(),
-                              TemplateName::Qualified::None);
-  printTemplateArgumentList(OS, Ty->template_arguments(), getPrintingPolicy());
+
+  auto PP = getPrintingPolicy();
+  Ty->getTemplateName().print(OS, PP, TemplateName::Qualified::None);
+
+  // Disable PrintCanonicalTypes here because we want
+  // the DW_AT_name to benefit from the TypePrinter's ability
+  // to skip defaulted template arguments.
+  //
+  // FIXME: Once -gsimple-template-names is enabled by default
+  // and we attach template parameters to alias template DIEs
+  // we don't need to worry about customizing the PrintingPolicy
+  // here anymore.
+  PP.PrintCanonicalTypes = false;
+  printTemplateArgumentList(OS, Ty->template_arguments(), PP,
+                            TD->getTemplateParameters());
 
   SourceLocation Loc = AliasDecl->getLocation();
   return DBuilder.createTypedef(Src, OS.str(), getOrCreateFile(Loc),
@@ -1998,14 +2010,9 @@ CGDebugInfo::CollectTemplateParams(std::optional<TemplateArgs> OArgs,
   for (unsigned i = 0, e = Args.Args.size(); i != e; ++i) {
     const TemplateArgument &TA = Args.Args[i];
     StringRef Name;
-    bool defaultParameter = false;
-    if (Args.TList) {
+    const bool defaultParameter = TA.getIsDefaulted();
+    if (Args.TList)
       Name = Args.TList->getParam(i)->getName();
-
-      NamedDecl const *ND = Args.TList->getParam(i);
-      defaultParameter = clang::isSubstitutedDefaultArgument(
-          CGM.getContext(), TA, ND, Args.Args, Args.TList->getDepth());
-    }
 
     switch (TA.getKind()) {
     case TemplateArgument::Type: {
@@ -5401,10 +5408,18 @@ void CGDebugInfo::EmitGlobalVariable(const ValueDecl *VD, const APValue &Init) {
   llvm::DIExpression *InitExpr = nullptr;
   if (CGM.getContext().getTypeSize(VD->getType()) <= 64) {
     // FIXME: Add a representation for integer constants wider than 64 bits.
-    if (Init.isInt())
-      InitExpr =
-          DBuilder.createConstantValueExpression(Init.getInt().getExtValue());
-    else if (Init.isFloat())
+    if (Init.isInt()) {
+      const llvm::APSInt &InitInt = Init.getInt();
+      std::optional<uint64_t> InitIntOpt;
+      if (InitInt.isUnsigned())
+        InitIntOpt = InitInt.tryZExtValue();
+      else if (auto tmp = InitInt.trySExtValue(); tmp.has_value())
+        // Transform a signed optional to unsigned optional. When cpp 23 comes,
+        // use std::optional::transform
+        InitIntOpt = (uint64_t)tmp.value();
+      if (InitIntOpt)
+        InitExpr = DBuilder.createConstantValueExpression(InitIntOpt.value());
+    } else if (Init.isFloat())
       InitExpr = DBuilder.createConstantValueExpression(
           Init.getFloat().bitcastToAPInt().getZExtValue());
   }

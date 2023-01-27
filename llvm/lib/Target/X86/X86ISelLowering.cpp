@@ -104,6 +104,20 @@ static void errorUnsupported(SelectionDAG &DAG, const SDLoc &dl,
       DiagnosticInfoUnsupported(MF.getFunction(), Msg, dl.getDebugLoc()));
 }
 
+/// Returns true if a CC can dynamically exclude a register from the list of
+/// callee-saved-registers (TargetRegistryInfo::getCalleeSavedRegs()) based on
+/// params/returns.
+static bool shouldDisableCalleeSavedRegisterCC(CallingConv::ID CC) {
+  switch (CC) {
+  default:
+    return false;
+  case CallingConv::X86_RegCall:
+  case CallingConv::PreserveMost:
+  case CallingConv::PreserveAll:
+    return true;
+  }
+}
+
 X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
                                      const X86Subtarget &STI)
     : TargetLowering(TM), Subtarget(STI) {
@@ -2688,7 +2702,7 @@ EVT X86TargetLowering::getOptimalMemOpType(
       }
       // FIXME: Check if unaligned 32-byte accesses are slow.
       if (Op.size() >= 32 && Subtarget.hasAVX() &&
-          (Subtarget.getPreferVectorWidth() >= 256)) {
+          Subtarget.useLight256BitInstructions()) {
         // Although this isn't a well-supported type for AVX1, we'll let
         // legalization and shuffle lowering produce the optimal codegen. If we
         // choose an optimal type with a vector element larger than a byte,
@@ -2730,24 +2744,30 @@ bool X86TargetLowering::isSafeMemOpType(MVT VT) const {
   return true;
 }
 
+static bool isBitAligned(Align Alignment, uint64_t SizeInBits) {
+  return (8 * Alignment.value()) % SizeInBits == 0;
+}
+
+bool X86TargetLowering::isMemoryAccessFast(EVT VT, Align Alignment) const {
+  if (isBitAligned(Alignment, VT.getSizeInBits()))
+    return true;
+  switch (VT.getSizeInBits()) {
+  default:
+    // 8-byte and under are always assumed to be fast.
+    return true;
+  case 128:
+    return !Subtarget.isUnalignedMem16Slow();
+  case 256:
+    return !Subtarget.isUnalignedMem32Slow();
+    // TODO: What about AVX-512 (512-bit) accesses?
+  }
+}
+
 bool X86TargetLowering::allowsMisalignedMemoryAccesses(
     EVT VT, unsigned, Align Alignment, MachineMemOperand::Flags Flags,
     unsigned *Fast) const {
-  if (Fast) {
-    switch (VT.getSizeInBits()) {
-    default:
-      // 8-byte and under are always assumed to be fast.
-      *Fast = 1;
-      break;
-    case 128:
-      *Fast = !Subtarget.isUnalignedMem16Slow();
-      break;
-    case 256:
-      *Fast = !Subtarget.isUnalignedMem32Slow();
-      break;
-    // TODO: What about AVX-512 (512-bit) accesses?
-    }
-  }
+  if (Fast)
+    *Fast = isMemoryAccessFast(VT, Alignment);
   // NonTemporal vector memory ops must be aligned.
   if (!!(Flags & MachineMemOperand::MONonTemporal) && VT.isVector()) {
     // NT loads can only be vector aligned, so if its less aligned than the
@@ -2759,6 +2779,44 @@ bool X86TargetLowering::allowsMisalignedMemoryAccesses(
     return false;
   }
   // Misaligned accesses of any size are always allowed.
+  return true;
+}
+
+bool X86TargetLowering::allowsMemoryAccess(LLVMContext &Context,
+                                           const DataLayout &DL, EVT VT,
+                                           unsigned AddrSpace, Align Alignment,
+                                           MachineMemOperand::Flags Flags,
+                                           unsigned *Fast) const {
+  if (Fast)
+    *Fast = isMemoryAccessFast(VT, Alignment);
+  if (!!(Flags & MachineMemOperand::MONonTemporal) && VT.isVector()) {
+    if (allowsMisalignedMemoryAccesses(VT, AddrSpace, Alignment, Flags,
+                                       /*Fast=*/nullptr))
+      return true;
+    // NonTemporal vector memory ops are special, and must be aligned.
+    if (!isBitAligned(Alignment, VT.getSizeInBits()))
+      return false;
+    switch (VT.getSizeInBits()) {
+    case 128:
+      if (!!(Flags & MachineMemOperand::MOLoad) && Subtarget.hasSSE41())
+        return true;
+      if (!!(Flags & MachineMemOperand::MOStore) && Subtarget.hasSSE2())
+        return true;
+      return false;
+    case 256:
+      if (!!(Flags & MachineMemOperand::MOLoad) && Subtarget.hasAVX2())
+        return true;
+      if (!!(Flags & MachineMemOperand::MOStore) && Subtarget.hasAVX())
+        return true;
+      return false;
+    case 512:
+      if (Subtarget.hasAVX512())
+        return true;
+      return false;
+    default:
+      return false; // Don't have NonTemporal vector memory ops of this size.
+    }
+  }
   return true;
 }
 
@@ -3053,6 +3111,13 @@ const MCPhysReg *X86TargetLowering::getScratchRegisters(CallingConv::ID) const {
   return ScratchRegs;
 }
 
+const MCPhysReg *X86TargetLowering::getRoundingControlRegisters() const {
+  // FIXME: We should def X86::FPCW for x87 as well. But it affects a lot of lit
+  // tests at the moment, which is not what we expected.
+  static const MCPhysReg RCRegs[] = { X86::MXCSR, 0 };
+  return RCRegs;
+}
+
 /// Lowers masks values (v*i1) to the local register values
 /// \returns DAG node after lowering to register type
 static SDValue lowerMasksToReg(const SDValue &ValArg, const EVT &ValLoc,
@@ -3123,7 +3188,7 @@ X86TargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
   // In some cases we need to disable registers from the default CSR list.
   // For example, when they are used for argument passing.
   bool ShouldDisableCalleeSavedRegister =
-      CallConv == CallingConv::X86_RegCall ||
+      shouldDisableCalleeSavedRegisterCC(CallConv) ||
       MF.getFunction().hasFnAttribute("no_caller_saved_registers");
 
   if (CallConv == CallingConv::X86_INTR && !Outs.empty())
@@ -4275,7 +4340,7 @@ SDValue X86TargetLowering::LowerFormalArguments(
     }
   }
 
-  if (CallConv == CallingConv::X86_RegCall ||
+  if (shouldDisableCalleeSavedRegisterCC(CallConv) ||
       F.hasFnAttribute("no_caller_saved_registers")) {
     MachineRegisterInfo &MRI = MF.getRegInfo();
     for (std::pair<Register, Register> Pair : MRI.liveins())
@@ -4836,7 +4901,7 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   // In some calling conventions we need to remove the used physical registers
   // from the reg mask.
-  if (CallConv == CallingConv::X86_RegCall || HasNCSR) {
+  if (shouldDisableCalleeSavedRegisterCC(CallConv) || HasNCSR) {
     const TargetRegisterInfo *TRI = Subtarget.getRegisterInfo();
 
     // Allocate a new Reg Mask and copy Mask.
@@ -11166,19 +11231,17 @@ X86TargetLowering::LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG) const {
     }
   }
 
-  // All undef vector. Return an UNDEF. All zero vectors were handled above.
-  unsigned NumFrozenUndefElts = FrozenUndefMask.countPopulation();
-  if (NonZeroMask == 0 && NumFrozenUndefElts != NumElems) {
-    assert(UndefMask.isAllOnes() && "Fully undef mask expected");
+  // All undef vector. Return an UNDEF.
+  if (UndefMask.isAllOnes())
     return DAG.getUNDEF(VT);
-  }
 
   // If we have multiple FREEZE-UNDEF operands, we are likely going to end up
   // lowering into a suboptimal insertion sequence. Instead, thaw the UNDEF in
   // our source BUILD_VECTOR, create another FREEZE-UNDEF splat BUILD_VECTOR,
   // and blend the FREEZE-UNDEF operands back in.
   // FIXME: is this worthwhile even for a single FREEZE-UNDEF operand?
-  if (NumFrozenUndefElts >= 2 && NumFrozenUndefElts < NumElems) {
+  if (unsigned NumFrozenUndefElts = FrozenUndefMask.countPopulation();
+      NumFrozenUndefElts >= 2 && NumFrozenUndefElts < NumElems) {
     SmallVector<int, 16> BlendMask(NumElems, -1);
     SmallVector<SDValue, 16> Elts(NumElems, DAG.getUNDEF(OpEltVT));
     for (unsigned i = 0; i < NumElems; ++i) {
@@ -11676,7 +11739,7 @@ static SDValue LowerCONCAT_VECTORSvXi1(SDValue Op,
     return DAG.getNode(ISD::CONCAT_VECTORS, dl, ResVT, Lo, Hi);
   }
 
-  assert(countPopulation(NonZeros) == 2 && "Simple cases not handled?");
+  assert(llvm::popcount(NonZeros) == 2 && "Simple cases not handled?");
 
   if (ResVT.getVectorNumElements() >= 16)
     return Op; // The operation is legal with KUNPCK
@@ -29130,7 +29193,7 @@ SDValue X86TargetLowering::LowerSET_ROUNDING(SDValue Op,
 
   // Update rounding mode bits and store the new FP Control Word into stack.
   CWD = DAG.getNode(ISD::OR, DL, MVT::i16, CWD, RMBits);
-  Chain = DAG.getStore(Chain, DL, CWD, StackSlot, MPI, /* Alignment = */ 2);
+  Chain = DAG.getStore(Chain, DL, CWD, StackSlot, MPI, Align(2));
 
   // Load FP control word from the slot.
   SDValue OpsLD[] = {Chain, StackSlot};
@@ -29161,7 +29224,7 @@ SDValue X86TargetLowering::LowerSET_ROUNDING(SDValue Op,
 
     // Update rounding mode bits and store the new FP Control Word into stack.
     CWD = DAG.getNode(ISD::OR, DL, MVT::i32, CWD, RMBits);
-    Chain = DAG.getStore(Chain, DL, CWD, StackSlot, MPI, /* Alignment = */ 4);
+    Chain = DAG.getStore(Chain, DL, CWD, StackSlot, MPI, Align(4));
 
     // Load MXCSR from the slot.
     Chain = DAG.getNode(
@@ -31463,7 +31526,11 @@ static std::pair<Value *, BitTestKind> FindSingleBitChange(Value *V) {
         match(I, m_Sub(m_AllOnes(), m_Value(PeekI)))) {
       Not = true;
       I = dyn_cast<Instruction>(PeekI);
-      assert(I != nullptr);
+
+      // If I is constant, it will fold and we can evaluate later. If its an
+      // argument or something of that nature, we can't analyze.
+      if (I == nullptr)
+        return {nullptr, UndefBit};
     }
     // We can only use 1 << X without more sophisticated analysis. C << X where
     // C is a power of 2 but not 1 can result in zero which cannot be translated
@@ -31522,12 +31589,16 @@ X86TargetLowering::shouldExpandLogicAtomicRMWInIR(AtomicRMWInst *AI) const {
       AI->getParent() != I->getParent())
     return AtomicExpansionKind::CmpXChg;
 
-  assert(I->getOperand(0) == AI);
+  unsigned OtherIdx = I->getOperand(0) == AI ? 1 : 0;
+
+  // This is a redundant AND, it should get cleaned up elsewhere.
+  if (AI == I->getOperand(OtherIdx))
+    return AtomicExpansionKind::CmpXChg;
+
   // The following instruction must be a AND single bit.
   if (BitChange.second == ConstantBit || BitChange.second == NotConstantBit) {
-    auto *C1 = dyn_cast<ConstantInt>(AI->getValOperand());
-    assert(C1 != nullptr);
-    auto *C2 = dyn_cast<ConstantInt>(I->getOperand(1));
+    auto *C1 = cast<ConstantInt>(AI->getValOperand());
+    auto *C2 = dyn_cast<ConstantInt>(I->getOperand(OtherIdx));
     if (!C2 || !isPowerOf2_64(C2->getZExtValue())) {
       return AtomicExpansionKind::CmpXChg;
     }
@@ -31542,7 +31613,7 @@ X86TargetLowering::shouldExpandLogicAtomicRMWInIR(AtomicRMWInst *AI) const {
 
   assert(BitChange.second == ShiftBit || BitChange.second == NotShiftBit);
 
-  auto BitTested = FindSingleBitChange(I->getOperand(1));
+  auto BitTested = FindSingleBitChange(I->getOperand(OtherIdx));
   if (BitTested.second != ShiftBit && BitTested.second != NotShiftBit)
     return AtomicExpansionKind::CmpXChg;
 
@@ -31593,9 +31664,9 @@ void X86TargetLowering::emitBitTestAtomicRMWIntrinsic(AtomicRMWInst *AI) const {
   Value *Result = nullptr;
   auto BitTested = FindSingleBitChange(AI->getValOperand());
   assert(BitTested.first != nullptr);
+
   if (BitTested.second == ConstantBit || BitTested.second == NotConstantBit) {
-    auto *C = dyn_cast<ConstantInt>(I->getOperand(1));
-    assert(C != nullptr);
+    auto *C = cast<ConstantInt>(I->getOperand(I->getOperand(0) == AI ? 1 : 0));
 
     BitTest = Intrinsic::getDeclaration(AI->getModule(), IID_C, AI->getType());
 
@@ -31781,8 +31852,6 @@ X86TargetLowering::shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const {
 
   AtomicRMWInst::BinOp Op = AI->getOperation();
   switch (Op) {
-  default:
-    llvm_unreachable("Unknown atomic operation");
   case AtomicRMWInst::Xchg:
     return AtomicExpansionKind::None;
   case AtomicRMWInst::Add:
@@ -31806,6 +31875,9 @@ X86TargetLowering::shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const {
   case AtomicRMWInst::FSub:
   case AtomicRMWInst::FMax:
   case AtomicRMWInst::FMin:
+  case AtomicRMWInst::UIncWrap:
+  case AtomicRMWInst::UDecWrap:
+  default:
     // These always require a non-trivial set of data operations on x86. We must
     // use a cmpxchg loop.
     return AtomicExpansionKind::CmpXChg;
@@ -37642,7 +37714,7 @@ X86TargetLowering::targetShrinkDemandedConstant(SDValue Op,
     return false;
 
   // Find the next power of 2 width, rounding up to a byte.
-  Width = PowerOf2Ceil(std::max(Width, 8U));
+  Width = llvm::bit_ceil(std::max(Width, 8U));
   // Truncate the width to size to handle illegal types.
   Width = std::min(Width, EltSize);
 

@@ -745,28 +745,9 @@ DWARFASTParserClang::GetDIEClassTemplateParams(const DWARFDIE &die) {
   if (llvm::StringRef(die.GetName()).contains("<"))
     return ConstString();
 
-  clang::DeclContext *decl_ctx = GetClangDeclContextContainingDIE(die, nullptr);
   TypeSystemClang::TemplateParameterInfos template_param_infos;
   if (ParseTemplateParameterInfos(die, template_param_infos)) {
-    // Most of the parameters here don't matter, but we make sure the base name
-    // is empty so when we print the name we only get the template parameters.
-    clang::ClassTemplateDecl *class_template_decl =
-        m_ast.ParseClassTemplateDecl(decl_ctx, GetOwningClangModule(die),
-                                     eAccessPublic, "", clang::TTK_Struct,
-                                     template_param_infos);
-    if (!class_template_decl)
-      return ConstString();
-
-    clang::ClassTemplateSpecializationDecl *class_specialization_decl =
-        m_ast.CreateClassTemplateSpecializationDecl(
-            decl_ctx, GetOwningClangModule(die), class_template_decl,
-            clang::TTK_Struct, template_param_infos);
-    if (!class_specialization_decl)
-      return ConstString();
-    CompilerType clang_type =
-        m_ast.CreateClassTemplateSpecializationType(class_specialization_decl);
-    ConstString name = clang_type.GetTypeName(/*BaseOnly*/ true);
-    return name;
+    return ConstString(m_ast.PrintTemplateParams(template_param_infos));
   }
   return ConstString();
 }
@@ -1541,9 +1522,9 @@ DWARFASTParserClang::GetCPlusPlusQualifiedName(const DWARFDIE &die) {
   DWARFDIE parent_decl_ctx_die = die.GetParentDeclContextDIE();
   // TODO: change this to get the correct decl context parent....
   while (parent_decl_ctx_die) {
-    // The name may not contain template parameters due to simplified template
-    // names; we must reconstruct the full name from child template parameter
-    // dies via GetTemplateParametersString().
+    // The name may not contain template parameters due to
+    // -gsimple-template-names; we must reconstruct the full name from child
+    // template parameter dies via GetDIEClassTemplateParams().
     const dw_tag_t parent_tag = parent_decl_ctx_die.Tag();
     switch (parent_tag) {
     case DW_TAG_namespace: {
@@ -1999,14 +1980,14 @@ bool DWARFASTParserClang::ParseTemplateDIE(
 
   switch (tag) {
   case DW_TAG_GNU_template_parameter_pack: {
-    template_param_infos.packed_args =
-        std::make_unique<TypeSystemClang::TemplateParameterInfos>();
+    template_param_infos.SetParameterPack(
+        std::make_unique<TypeSystemClang::TemplateParameterInfos>());
     for (DWARFDIE child_die : die.children()) {
-      if (!ParseTemplateDIE(child_die, *template_param_infos.packed_args))
+      if (!ParseTemplateDIE(child_die, template_param_infos.GetParameterPack()))
         return false;
     }
     if (const char *name = die.GetName()) {
-      template_param_infos.pack_name = name;
+      template_param_infos.SetPackName(name);
     }
     return true;
   }
@@ -2022,6 +2003,7 @@ bool DWARFASTParserClang::ParseTemplateDIE(
     CompilerType clang_type;
     uint64_t uval64 = 0;
     bool uval64_valid = false;
+    bool is_default_template_arg = false;
     if (num_attributes > 0) {
       DWARFFormValue form_value;
       for (size_t i = 0; i < num_attributes; ++i) {
@@ -2052,6 +2034,10 @@ bool DWARFASTParserClang::ParseTemplateDIE(
             uval64 = form_value.Unsigned();
           }
           break;
+        case DW_AT_default_value:
+          if (attributes.ExtractFormValueAtIndex(i, form_value))
+            is_default_template_arg = form_value.Boolean();
+          break;
         default:
           break;
         }
@@ -2063,31 +2049,33 @@ bool DWARFASTParserClang::ParseTemplateDIE(
 
       if (!is_template_template_argument) {
         bool is_signed = false;
-        if (name && name[0])
-          template_param_infos.names.push_back(name);
-        else
-          template_param_infos.names.push_back(nullptr);
-
         // Get the signed value for any integer or enumeration if available
         clang_type.IsIntegerOrEnumerationType(is_signed);
+
+        if (name && !name[0])
+          name = nullptr;
 
         if (tag == DW_TAG_template_value_parameter && uval64_valid) {
           std::optional<uint64_t> size = clang_type.GetBitSize(nullptr);
           if (!size)
             return false;
           llvm::APInt apint(*size, uval64, is_signed);
-          template_param_infos.args.push_back(
+          template_param_infos.InsertArg(
+              name,
               clang::TemplateArgument(ast, llvm::APSInt(apint, !is_signed),
-                                      ClangUtil::GetQualType(clang_type)));
+                                      ClangUtil::GetQualType(clang_type),
+                                      is_default_template_arg));
         } else {
-          template_param_infos.args.push_back(
-              clang::TemplateArgument(ClangUtil::GetQualType(clang_type)));
+          template_param_infos.InsertArg(
+              name, clang::TemplateArgument(ClangUtil::GetQualType(clang_type),
+                                            /*isNullPtr*/ false,
+                                            is_default_template_arg));
         }
       } else {
         auto *tplt_type = m_ast.CreateTemplateTemplateParmDecl(template_name);
-        template_param_infos.names.push_back(name);
-        template_param_infos.args.push_back(
-            clang::TemplateArgument(clang::TemplateName(tplt_type)));
+        template_param_infos.InsertArg(
+            name, clang::TemplateArgument(clang::TemplateName(tplt_type),
+                                          is_default_template_arg));
       }
     }
   }
@@ -2121,10 +2109,9 @@ bool DWARFASTParserClang::ParseTemplateParameterInfos(
       break;
     }
   }
-  return template_param_infos.args.size() ==
-             template_param_infos.names.size() &&
-         (!template_param_infos.args.empty() ||
-          template_param_infos.packed_args);
+
+  return !template_param_infos.IsEmpty() ||
+         template_param_infos.hasParameterPack();
 }
 
 bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,

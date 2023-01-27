@@ -141,15 +141,10 @@ void AMDGPUInstPrinter::printFlatOffset(const MCInst *MI, unsigned OpNo,
     bool IsFlatSeg = !(Desc.TSFlags &
                        (SIInstrFlags::FlatGlobal | SIInstrFlags::FlatScratch));
 
-    if (IsFlatSeg) { // Unsigned offset
+    if (IsFlatSeg) // Unsigned offset
       printU16ImmDecOperand(MI, OpNo, O);
-    } else {         // Signed offset
-      if (AMDGPU::isGFX10(STI)) {
-        O << formatDec(SignExtend32<12>(MI->getOperand(OpNo).getImm()));
-      } else {
-        O << formatDec(SignExtend32<13>(MI->getOperand(OpNo).getImm()));
-      }
-    }
+    else // Signed offset
+      O << formatDec(SignExtend32(Imm, AMDGPU::getNumFlatOffsetBits(STI)));
   }
 }
 
@@ -671,7 +666,7 @@ void AMDGPUInstPrinter::printRegularOperand(const MCInst *MI, unsigned OpNo,
     // Check if operand register class contains register used.
     // Intention: print disassembler message when invalid code is decoded,
     // for example sgpr register used in VReg or VISrc(VReg or imm) operand.
-    int RCID = Desc.OpInfo[OpNo].RegClass;
+    int RCID = Desc.operands()[OpNo].RegClass;
     if (RCID != -1) {
       const MCRegisterClass RC = MRI.getRegClass(RCID);
       auto Reg = mc2PseudoReg(Op.getReg());
@@ -681,7 +676,7 @@ void AMDGPUInstPrinter::printRegularOperand(const MCInst *MI, unsigned OpNo,
       }
     }
   } else if (Op.isImm()) {
-    const uint8_t OpTy = Desc.OpInfo[OpNo].OperandType;
+    const uint8_t OpTy = Desc.operands()[OpNo].OperandType;
     switch (OpTy) {
     case AMDGPU::OPERAND_REG_IMM_INT32:
     case AMDGPU::OPERAND_REG_IMM_FP32:
@@ -758,7 +753,7 @@ void AMDGPUInstPrinter::printRegularOperand(const MCInst *MI, unsigned OpNo,
       O << "0.0";
     else {
       const MCInstrDesc &Desc = MII.get(MI->getOpcode());
-      int RCID = Desc.OpInfo[OpNo].RegClass;
+      int RCID = Desc.operands()[OpNo].RegClass;
       unsigned RCBits = AMDGPU::getRegBitWidth(MRI.getRegClass(RCID));
       if (RCBits == 32)
         printImmediate32(FloatToBits(Value), STI, O);
@@ -925,7 +920,7 @@ void AMDGPUInstPrinter::printDPPCtrl(const MCInst *MI, unsigned OpNo,
                                            AMDGPU::OpName::src0);
 
   if (Src0Idx >= 0 &&
-      Desc.OpInfo[Src0Idx].RegClass == AMDGPU::VReg_64RegClassID &&
+      Desc.operands()[Src0Idx].RegClass == AMDGPU::VReg_64RegClassID &&
       !AMDGPU::isLegal64BitDPPControl(Imm)) {
     O << " /* 64 bit dpp only supports row_newbcast */";
     return;
@@ -1454,17 +1449,14 @@ void AMDGPUInstPrinter::printSwizzle(const MCInst *MI, unsigned OpNo,
     uint16_t OrMask  = (Imm >> BITMASK_OR_SHIFT)  & BITMASK_MASK;
     uint16_t XorMask = (Imm >> BITMASK_XOR_SHIFT) & BITMASK_MASK;
 
-    if (AndMask == BITMASK_MAX &&
-        OrMask == 0 &&
-        countPopulation(XorMask) == 1) {
+    if (AndMask == BITMASK_MAX && OrMask == 0 && llvm::popcount(XorMask) == 1) {
 
       O << "swizzle(" << IdSymbolic[ID_SWAP];
       O << ",";
       O << formatDec(XorMask);
       O << ")";
 
-    } else if (AndMask == BITMASK_MAX &&
-               OrMask == 0 && XorMask > 0 &&
+    } else if (AndMask == BITMASK_MAX && OrMask == 0 && XorMask > 0 &&
                isPowerOf2_64(XorMask + 1)) {
 
       O << "swizzle(" << IdSymbolic[ID_REVERSE];

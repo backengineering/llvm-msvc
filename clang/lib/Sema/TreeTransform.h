@@ -1987,15 +1987,16 @@ public:
   /// By default, performs semantic analysis to build the new OpenMP clause.
   /// Subclasses may override this routine to provide different behavior.
   OMPClause *RebuildOMPMapClause(
-      ArrayRef<OpenMPMapModifierKind> MapTypeModifiers,
+      Expr *IteratorModifier, ArrayRef<OpenMPMapModifierKind> MapTypeModifiers,
       ArrayRef<SourceLocation> MapTypeModifiersLoc,
       CXXScopeSpec MapperIdScopeSpec, DeclarationNameInfo MapperId,
       OpenMPMapClauseKind MapType, bool IsMapTypeImplicit,
       SourceLocation MapLoc, SourceLocation ColonLoc, ArrayRef<Expr *> VarList,
       const OMPVarListLocTy &Locs, ArrayRef<Expr *> UnresolvedMappers) {
     return getSema().ActOnOpenMPMapClause(
-        MapTypeModifiers, MapTypeModifiersLoc, MapperIdScopeSpec, MapperId,
-        MapType, IsMapTypeImplicit, MapLoc, ColonLoc, VarList, Locs,
+        IteratorModifier, MapTypeModifiers, MapTypeModifiersLoc,
+        MapperIdScopeSpec, MapperId, MapType, IsMapTypeImplicit, MapLoc,
+        ColonLoc, VarList, Locs,
         /*NoDiagnose=*/false, UnresolvedMappers);
   }
 
@@ -2341,6 +2342,17 @@ public:
                                   SourceLocation EndLoc) {
     return getSema().ActOnOpenMPBindClause(Kind, KindLoc, StartLoc, LParenLoc,
                                            EndLoc);
+  }
+
+  /// Build a new OpenMP 'ompx_dyn_cgroup_mem' clause.
+  ///
+  /// By default, performs semantic analysis to build the new OpenMP clause.
+  /// Subclasses may override this routine to provide different behavior.
+  OMPClause *RebuildOMPXDynCGroupMemClause(Expr *Size, SourceLocation StartLoc,
+                                           SourceLocation LParenLoc,
+                                           SourceLocation EndLoc) {
+    return getSema().ActOnOpenMPXDynCGroupMemClause(Size, StartLoc, LParenLoc,
+                                                    EndLoc);
   }
 
   /// Build a new OpenMP 'align' clause.
@@ -10307,6 +10319,13 @@ template <typename Derived>
 OMPClause *TreeTransform<Derived>::TransformOMPMapClause(OMPMapClause *C) {
   OMPVarListLocTy Locs(C->getBeginLoc(), C->getLParenLoc(), C->getEndLoc());
   llvm::SmallVector<Expr *, 16> Vars;
+  Expr *IteratorModifier = C->getIteratorModifier();
+  if (IteratorModifier) {
+    ExprResult MapModRes = getDerived().TransformExpr(IteratorModifier);
+    if (MapModRes.isInvalid())
+      return nullptr;
+    IteratorModifier = MapModRes.get();
+  }
   CXXScopeSpec MapperIdScopeSpec;
   DeclarationNameInfo MapperIdInfo;
   llvm::SmallVector<Expr *, 16> UnresolvedMappers;
@@ -10314,9 +10333,9 @@ OMPClause *TreeTransform<Derived>::TransformOMPMapClause(OMPMapClause *C) {
           *this, C, Vars, MapperIdScopeSpec, MapperIdInfo, UnresolvedMappers))
     return nullptr;
   return getDerived().RebuildOMPMapClause(
-      C->getMapTypeModifiers(), C->getMapTypeModifiersLoc(), MapperIdScopeSpec,
-      MapperIdInfo, C->getMapType(), C->isImplicitMapType(), C->getMapLoc(),
-      C->getColonLoc(), Vars, Locs, UnresolvedMappers);
+      IteratorModifier, C->getMapTypeModifiers(), C->getMapTypeModifiersLoc(),
+      MapperIdScopeSpec, MapperIdInfo, C->getMapType(), C->isImplicitMapType(),
+      C->getMapLoc(), C->getColonLoc(), Vars, Locs, UnresolvedMappers);
 }
 
 template <typename Derived>
@@ -10623,6 +10642,16 @@ OMPClause *TreeTransform<Derived>::TransformOMPBindClause(OMPBindClause *C) {
   return getDerived().RebuildOMPBindClause(
       C->getBindKind(), C->getBindKindLoc(), C->getBeginLoc(),
       C->getLParenLoc(), C->getEndLoc());
+}
+
+template <typename Derived>
+OMPClause *TreeTransform<Derived>::TransformOMPXDynCGroupMemClause(
+    OMPXDynCGroupMemClause *C) {
+  ExprResult Size = getDerived().TransformExpr(C->getSize());
+  if (Size.isInvalid())
+    return nullptr;
+  return getDerived().RebuildOMPXDynCGroupMemClause(
+      Size.get(), C->getBeginLoc(), C->getLParenLoc(), C->getEndLoc());
 }
 
 //===----------------------------------------------------------------------===//

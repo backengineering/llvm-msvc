@@ -157,8 +157,9 @@ public:
                                      const Instruction *I = nullptr);
 
   using BaseT::getVectorInstrCost;
-  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index,
-                                     Value *Op0, Value *Op1);
+  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val,
+                                     TTI::TargetCostKind CostKind,
+                                     unsigned Index, Value *Op0, Value *Op1);
 
   InstructionCost getArithmeticInstrCost(
       unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
@@ -335,6 +336,9 @@ public:
     }
     llvm_unreachable("unknown register class");
   }
+
+  bool isLSRCostLess(const TargetTransformInfo::LSRCost &C1,
+                     const TargetTransformInfo::LSRCost &C2);
 };
 
 } // end namespace llvm

@@ -1807,7 +1807,7 @@ bool AMDGPUInstructionSelector::selectImageIntrinsic(
     }
   } else {
     DMask = MI.getOperand(ArgOffset + Intr->DMaskIndex).getImm();
-    DMaskLanes = BaseOpcode->Gather4 ? 4 : countPopulation(DMask);
+    DMaskLanes = BaseOpcode->Gather4 ? 4 : llvm::popcount(DMask);
 
     if (BaseOpcode->Store) {
       VDataIn = MI.getOperand(1).getReg();
@@ -2137,7 +2137,7 @@ static int sizeToSubRegIndex(unsigned Size) {
       return AMDGPU::sub0;
     if (Size > 256)
       return -1;
-    return sizeToSubRegIndex(PowerOf2Ceil(Size));
+    return sizeToSubRegIndex(llvm::bit_ceil(Size));
   }
 }
 

@@ -21,12 +21,12 @@ namespace __llvm_libc {
 namespace fputil {
 namespace generic {
 
-template <typename T> static inline T fma(T x, T y, T z);
+template <typename T> LIBC_INLINE T fma(T x, T y, T z);
 
 // TODO(lntue): Implement fmaf that is correctly rounded to all rounding modes.
 // The implementation below only is only correct for the default rounding mode,
 // round-to-nearest tie-to-even.
-template <> inline float fma<float>(float x, float y, float z) {
+template <> LIBC_INLINE float fma<float>(float x, float y, float z) {
   // Product is exact.
   double prod = static_cast<double>(x) * static_cast<double>(y);
   double z_d = static_cast<double>(z);
@@ -78,7 +78,7 @@ namespace internal {
 
 // Extract the sticky bits and shift the `mantissa` to the right by
 // `shift_length`.
-static inline bool shift_mantissa(int shift_length, UInt128 &mant) {
+LIBC_INLINE bool shift_mantissa(int shift_length, UInt128 &mant) {
   if (shift_length >= 128) {
     mant = 0;
     return true; // prod_mant is non-zero.
@@ -91,7 +91,7 @@ static inline bool shift_mantissa(int shift_length, UInt128 &mant) {
 
 } // namespace internal
 
-template <> inline double fma<double>(double x, double y, double z) {
+template <> LIBC_INLINE double fma<double>(double x, double y, double z) {
   using FPBits = fputil::FPBits<double>;
   using FloatProp = fputil::FloatProperties<double>;
 

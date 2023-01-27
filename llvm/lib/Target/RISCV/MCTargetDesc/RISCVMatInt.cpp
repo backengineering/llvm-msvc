@@ -111,7 +111,7 @@ static void generateInstSeqImpl(int64_t Val,
 
   // Val might now be valid for LUI without needing a shift.
   if (!isInt<32>(Val)) {
-    ShiftAmount = findFirstSet((uint64_t)Val, ZB_Undefined);
+    ShiftAmount = llvm::countr_zero((uint64_t)Val);
     Val >>= ShiftAmount;
 
     // If the remaining bits don't fit in 12 bits, we might be able to reduce the
@@ -279,16 +279,16 @@ InstSeq generateInstSeq(int64_t Val, const FeatureBitset &ActiveFeatures) {
     RISCVMatInt::InstSeq TmpSeq;
     generateInstSeqImpl(Lo, ActiveFeatures, TmpSeq);
     // Check if it is profitable to use BCLRI/BSETI.
-    if (Lo > 0 && TmpSeq.size() + countPopulation(Hi) < Res.size()) {
+    if (Lo > 0 && TmpSeq.size() + llvm::popcount(Hi) < Res.size()) {
       Opc = RISCV::BSETI;
-    } else if (Lo < 0 && TmpSeq.size() + countPopulation(~Hi) < Res.size()) {
+    } else if (Lo < 0 && TmpSeq.size() + llvm::popcount(~Hi) < Res.size()) {
       Opc = RISCV::BCLRI;
       Hi = ~Hi;
     }
     // Search for each bit and build corresponding BCLRI/BSETI.
     if (Opc > 0) {
       while (Hi != 0) {
-        unsigned Bit = findFirstSet(Hi, ZB_Undefined);
+        unsigned Bit = llvm::countr_zero(Hi);
         TmpSeq.emplace_back(Opc, Bit + 32);
         Hi &= (Hi - 1); // Clear lowest set bit.
       }

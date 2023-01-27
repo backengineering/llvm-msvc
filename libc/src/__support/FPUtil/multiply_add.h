@@ -10,6 +10,8 @@
 #define LLVM_LIBC_SRC_SUPPORT_FPUTIL_MULTIPLY_ADD_H
 
 #include "src/__support/architectures.h"
+#include "src/__support/common.h"
+#include "src/__support/cpu_features.h"
 
 namespace __llvm_libc {
 namespace fputil {
@@ -18,7 +20,7 @@ namespace fputil {
 //   multiply_add(x, y, z) = x*y + z
 // which uses FMA instructions to speed up if available.
 
-template <typename T> static inline T multiply_add(T x, T y, T z) {
+template <typename T> LIBC_INLINE T multiply_add(T x, T y, T z) {
   return x * y + z;
 }
 
@@ -33,11 +35,12 @@ template <typename T> static inline T multiply_add(T x, T y, T z) {
 namespace __llvm_libc {
 namespace fputil {
 
-template <> inline float multiply_add<float>(float x, float y, float z) {
+template <> LIBC_INLINE float multiply_add<float>(float x, float y, float z) {
   return fma(x, y, z);
 }
 
-template <> inline double multiply_add<double>(double x, double y, double z) {
+template <>
+LIBC_INLINE double multiply_add<double>(double x, double y, double z) {
   return fma(x, y, z);
 }
 

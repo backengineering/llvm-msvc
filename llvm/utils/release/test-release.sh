@@ -404,12 +404,17 @@ function configure_llvmCore() {
             ;;
     esac
 
-    project_list=${projects// /;}
-    # Leading spaces will result in ";<runtime name>". This causes a CMake
-    # error because the empty string before the first ';' is treated as an
-    # unknown runtime name.
-    runtimes=$(echo $runtimes | sed -e 's/^\s*//')
-    runtime_list=${runtimes// /;}
+    if [ "$Phase" -eq "3" ]; then
+      project_list=${projects// /;}
+      # Leading spaces will result in ";<runtime name>". This causes a CMake
+      # error because the empty string before the first ';' is treated as an
+      # unknown runtime name.
+      runtimes=$(echo $runtimes | sed -e 's/^\s*//')
+      runtime_list=${runtimes// /;}
+    else
+      project_list="clang"
+      runtime_list=""
+    fi
     echo "# Using C compiler: $c_compiler"
     echo "# Using C++ compiler: $cxx_compiler"
 
@@ -528,7 +533,7 @@ function package_release() {
     if [ "$use_gzip" = "yes" ]; then
       tar cf - $Package | gzip -9c > $BuildDir/$Package.tar.gz
     else
-      tar cf - $Package | xz -9ce > $BuildDir/$Package.tar.xz
+      tar cf - $Package | xz -9ce -T $NumJobs > $BuildDir/$Package.tar.xz
     fi
     mv $Package llvmCore-$Release-$RC.install/usr/local
     cd $cwd

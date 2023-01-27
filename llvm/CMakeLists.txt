@@ -16,7 +16,7 @@ include(${LLVM_COMMON_CMAKE_UTILS}/Modules/CMakePolicy.cmake
 set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 
 if(NOT DEFINED LLVM_VERSION_MAJOR)
-  set(LLVM_VERSION_MAJOR 16)
+  set(LLVM_VERSION_MAJOR 17)
 endif()
 if(NOT DEFINED LLVM_VERSION_MINOR)
   set(LLVM_VERSION_MINOR 0)
@@ -709,7 +709,7 @@ option(LLVM_BUILD_EXAMPLES
 option(LLVM_INCLUDE_EXAMPLES "Generate build targets for the LLVM examples" ON)
 
 if(LLVM_BUILD_EXAMPLES)
-  add_definitions(-DBUILD_EXAMPLES)
+  add_compile_definitions(BUILD_EXAMPLES)
 endif(LLVM_BUILD_EXAMPLES)
 
 if (LLVM_ENABLE_PATCHMAN)
@@ -1070,8 +1070,8 @@ endif()
 # Build with _XOPEN_SOURCE on AIX, as stray macros in _ALL_SOURCE mode tend to
 # break things. In this case we need to enable the large-file API as well.
 if (UNIX AND ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-          add_definitions("-D_XOPEN_SOURCE=700")
-          add_definitions("-D_LARGE_FILE_API")
+          add_compile_definitions(_XOPEN_SOURCE=700)
+          add_compile_definitions(_LARGE_FILE_API)
 
   # CMake versions less than 3.16 set default linker flags to include -brtl, as
   # well as setting -G when building libraries, so clear them out. Note we only
@@ -1106,14 +1106,14 @@ endif()
 
 # Build with _XOPEN_SOURCE on z/OS.
 if (CMAKE_SYSTEM_NAME MATCHES "OS390")
-  add_definitions("-D_XOPEN_SOURCE=600")
-  add_definitions("-D_OPEN_SYS") # Needed for process information.
-  add_definitions("-D_OPEN_SYS_FILE_EXT") # Needed for EBCDIC I/O.
+  add_compile_definitions(_XOPEN_SOURCE=600)
+  add_compile_definitions(_OPEN_SYS) # Needed for process information.
+  add_compile_definitions(_OPEN_SYS_FILE_EXT) # Needed for EBCDIC I/O.
 endif()
 
 # Build with _FILE_OFFSET_BITS=64 on Solaris to match g++ >= 9.
 if (UNIX AND ${CMAKE_SYSTEM_NAME} MATCHES "SunOS")
-          add_definitions("-D_FILE_OFFSET_BITS=64")
+          add_compile_definitions(_FILE_OFFSET_BITS=64)
 endif()
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)

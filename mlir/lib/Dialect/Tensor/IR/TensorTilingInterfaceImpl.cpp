@@ -632,7 +632,7 @@ Operation *tensor::bubbleUpPadSlice(OpBuilder &b, tensor::PadOp padOp,
   // creating SliceOps with result dimensions of size 0 at runtime.
   if (generateZeroSliceGuard && dynHasZeroLenCond) {
     auto result = b.create<scf::IfOp>(
-        loc, resultType, dynHasZeroLenCond,
+        loc, dynHasZeroLenCond,
         /*thenBuilder=*/
         [&](OpBuilder &b, Location loc) {
           b.create<scf::YieldOp>(loc, createGenerateOp()->getResult(0));
@@ -650,6 +650,14 @@ void mlir::tensor::registerTilingInterfaceExternalModels(
     DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, TensorDialect *dialect) {
     tensor::PadOp::attachInterface<PadOpTiling>(*ctx);
+    tensor::PackOp::attachInterface<PackOpTiling>(*ctx);
+    tensor::UnPackOp::attachInterface<UnPackOpTiling>(*ctx);
+  });
+}
+
+void mlir::tensor::registerTilingInterfaceExternalModelsForPackUnPackOps(
+    DialectRegistry &registry) {
+  registry.addExtension(+[](MLIRContext *ctx, TensorDialect *dialect) {
     tensor::PackOp::attachInterface<PackOpTiling>(*ctx);
     tensor::UnPackOp::attachInterface<UnPackOpTiling>(*ctx);
   });

@@ -25,19 +25,19 @@ namespace targets {
 
 static constexpr Builtin::Info BuiltinInfoX86[] = {
 #define BUILTIN(ID, TYPE, ATTRS)                                               \
-  {#ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, nullptr},
+  {#ID, TYPE, ATTRS, nullptr, HeaderDesc::NO_HEADER, ALL_LANGUAGES},
 #define TARGET_BUILTIN(ID, TYPE, ATTRS, FEATURE)                               \
-  {#ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, FEATURE},
+  {#ID, TYPE, ATTRS, FEATURE, HeaderDesc::NO_HEADER, ALL_LANGUAGES},
 #define TARGET_HEADER_BUILTIN(ID, TYPE, ATTRS, HEADER, LANGS, FEATURE)         \
-  {#ID, TYPE, ATTRS, HEADER, LANGS, FEATURE},
+  {#ID, TYPE, ATTRS, FEATURE, HeaderDesc::HEADER, LANGS},
 #include "clang/Basic/BuiltinsX86.def"
 
 #define BUILTIN(ID, TYPE, ATTRS)                                               \
-  {#ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, nullptr},
+  {#ID, TYPE, ATTRS, nullptr, HeaderDesc::NO_HEADER, ALL_LANGUAGES},
 #define TARGET_BUILTIN(ID, TYPE, ATTRS, FEATURE)                               \
-  {#ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, FEATURE},
+  {#ID, TYPE, ATTRS, FEATURE, HeaderDesc::NO_HEADER, ALL_LANGUAGES},
 #define TARGET_HEADER_BUILTIN(ID, TYPE, ATTRS, HEADER, LANGS, FEATURE)         \
-  {#ID, TYPE, ATTRS, HEADER, LANGS, FEATURE},
+  {#ID, TYPE, ATTRS, FEATURE, HeaderDesc::HEADER, LANGS},
 #include "clang/Basic/BuiltinsX86_64.def"
 };
 
@@ -399,9 +399,6 @@ bool X86TargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
         << (FPMath == FP_SSE ? "sse" : "387");
     return false;
   }
-
-  SimdDefaultAlign =
-      hasFeature("avx512f") ? 512 : hasFeature("avx") ? 256 : 128;
 
   // FIXME: We should allow long double type on 32-bits to match with GCC.
   // This requires backend to be able to lower f80 without x87 first.

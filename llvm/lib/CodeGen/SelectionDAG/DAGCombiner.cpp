@@ -387,6 +387,10 @@ namespace {
     SDValue PromoteExtend(SDValue Op);
     bool PromoteLoad(SDValue Op);
 
+    SDValue combineMinNumMaxNum(const SDLoc &DL, EVT VT, SDValue LHS,
+                                SDValue RHS, SDValue True, SDValue False,
+                                ISD::CondCode CC);
+
     /// Call the node-specific routine that knows how to fold each
     /// particular type of node. If that doesn't do anything, try the
     /// target-specific DAG combines.
@@ -561,6 +565,7 @@ namespace {
     SDValue foldLogicOfSetCCs(bool IsAnd, SDValue N0, SDValue N1,
                               const SDLoc &DL);
     SDValue foldSubToUSubSat(EVT DstVT, SDNode *N);
+    SDValue foldABSToABD(SDNode *N);
     SDValue unfoldMaskedMerge(SDNode *N);
     SDValue unfoldExtremeBitClearingToShifts(SDNode *N);
     SDValue SimplifySetCC(EVT VT, SDValue N0, SDValue N1, ISD::CondCode Cond,
@@ -5103,7 +5108,7 @@ SDValue DAGCombiner::visitMULO(SDNode *N) {
 // same as SimplifySelectCC. N0<N1 ? N2 : N3.
 static SDValue isSaturatingMinMax(SDValue N0, SDValue N1, SDValue N2,
                                   SDValue N3, ISD::CondCode CC, unsigned &BW,
-                                  bool &Unsigned) {
+                                  bool &Unsigned, SelectionDAG &DAG) {
   auto isSignedMinMax = [&](SDValue N0, SDValue N1, SDValue N2, SDValue N3,
                             ISD::CondCode CC) {
     // The compare and select operand should be the same or the select operands
@@ -5126,6 +5131,26 @@ static SDValue isSaturatingMinMax(SDValue N0, SDValue N1, SDValue N2,
   unsigned Opcode0 = isSignedMinMax(N0, N1, N2, N3, CC);
   if (!Opcode0)
     return SDValue();
+
+  // We could only need one range check, if the fptosi could never produce
+  // the upper value.
+  if (N0.getOpcode() == ISD::FP_TO_SINT && Opcode0 == ISD::SMAX) {
+    if (isNullOrNullSplat(N3)) {
+      EVT IntVT = N0.getValueType();
+      EVT FPVT = N0.getOperand(0).getValueType();
+      if (FPVT.isSimple()) {
+        Type *InputTy = FPVT.getTypeForEVT(*DAG.getContext())->getScalarType();
+        const fltSemantics &Semantics = InputTy->getFltSemantics();
+        uint32_t MinBitWidth =
+          APFloatBase::semanticsIntSizeInBits(Semantics, /*isSigned*/ true);
+        if (IntVT.getSizeInBits() >= MinBitWidth) {
+          Unsigned = true;
+          BW = PowerOf2Ceil(MinBitWidth);
+          return N0;
+        }
+      }
+    }
+  }
 
   SDValue N00, N01, N02, N03;
   ISD::CondCode N0CC;
@@ -5189,7 +5214,7 @@ static SDValue PerformMinMaxFpToSatCombine(SDValue N0, SDValue N1, SDValue N2,
                                            SelectionDAG &DAG) {
   unsigned BW;
   bool Unsigned;
-  SDValue Fp = isSaturatingMinMax(N0, N1, N2, N3, CC, BW, Unsigned);
+  SDValue Fp = isSaturatingMinMax(N0, N1, N2, N3, CC, BW, Unsigned, DAG);
   if (!Fp || Fp.getOpcode() != ISD::FP_TO_SINT)
     return SDValue();
   EVT FPVT = Fp.getOperand(0).getValueType();
@@ -6332,14 +6357,6 @@ SDValue DAGCombiner::visitAND(SDNode *N) {
   if (SDValue RAND = reassociateOps(ISD::AND, SDLoc(N), N0, N1, N->getFlags()))
     return RAND;
 
-  // Try to convert a constant mask AND into a shuffle clear mask.
-  if (VT.isVector())
-    if (SDValue Shuffle = XformToShuffleWithZero(N))
-      return Shuffle;
-
-  if (SDValue Combined = combineCarryDiamond(DAG, TLI, N0, N1, N))
-    return Combined;
-
   // fold (and (or x, C), D) -> D if (C & D) == D
   auto MatchSubset = [](ConstantSDNode *LHS, ConstantSDNode *RHS) {
     return RHS->getAPIntValue().isSubsetOf(LHS->getAPIntValue());
@@ -6347,6 +6364,7 @@ SDValue DAGCombiner::visitAND(SDNode *N) {
   if (N0.getOpcode() == ISD::OR &&
       ISD::matchBinaryPredicate(N0.getOperand(1), N1, MatchSubset))
     return N1;
+
   // fold (and (any_ext V), c) -> (zero_ext V) if 'and' only clears top bits.
   if (N1C && N0.getOpcode() == ISD::ANY_EXTEND) {
     SDValue N0Op0 = N0.getOperand(0);
@@ -6354,6 +6372,25 @@ SDValue DAGCombiner::visitAND(SDNode *N) {
     Mask = Mask.trunc(N0Op0.getScalarValueSizeInBits());
     if (DAG.MaskedValueIsZero(N0Op0, Mask))
       return DAG.getNode(ISD::ZERO_EXTEND, SDLoc(N), N0.getValueType(), N0Op0);
+  }
+
+  // fold (and (ext (and V, c1)), c2) -> (and (ext V), (and c1, (ext c2)))
+  if (ISD::isExtOpcode(N0.getOpcode())) {
+    unsigned ExtOpc = N0.getOpcode();
+    SDValue N0Op0 = N0.getOperand(0);
+    if (N0Op0.getOpcode() == ISD::AND &&
+        (ExtOpc != ISD::ZERO_EXTEND || !TLI.isZExtFree(N0Op0, VT)) &&
+        DAG.isConstantIntBuildVectorOrConstantInt(N1) &&
+        DAG.isConstantIntBuildVectorOrConstantInt(N0Op0.getOperand(1)) &&
+        N0->hasOneUse() && N0Op0->hasOneUse()) {
+      SDLoc DL(N);
+      SDValue NewMask =
+          DAG.getNode(ISD::AND, DL, VT, N1,
+                      DAG.getNode(ExtOpc, DL, VT, N0Op0.getOperand(1)));
+      return DAG.getNode(ISD::AND, DL, VT,
+                         DAG.getNode(ExtOpc, DL, VT, N0Op0.getOperand(0)),
+                         NewMask);
+    }
   }
 
   // similarly fold (and (X (load ([non_ext|any_ext|zero_ext] V))), c) ->
@@ -6460,6 +6497,14 @@ SDValue DAGCombiner::visitAND(SDNode *N) {
       return SDValue(N, 0); // Return N so it doesn't get rechecked!
     }
   }
+
+  // Try to convert a constant mask AND into a shuffle clear mask.
+  if (VT.isVector())
+    if (SDValue Shuffle = XformToShuffleWithZero(N))
+      return Shuffle;
+
+  if (SDValue Combined = combineCarryDiamond(DAG, TLI, N0, N1, N))
+    return Combined;
 
   if (N0.getOpcode() == ISD::EXTRACT_SUBVECTOR && N0.hasOneUse() && N1C &&
       ISD::isExtOpcode(N0.getOperand(0).getOpcode())) {
@@ -10116,8 +10161,7 @@ SDValue DAGCombiner::visitSHLSAT(SDNode *N) {
 // Given a ABS node, detect the following pattern:
 // (ABS (SUB (EXTEND a), (EXTEND b))).
 // Generates UABD/SABD instruction.
-static SDValue combineABSToABD(SDNode *N, SelectionDAG &DAG,
-                               const TargetLowering &TLI) {
+SDValue DAGCombiner::foldABSToABD(SDNode *N) {
   EVT VT = N->getValueType(0);
   SDValue AbsOp1 = N->getOperand(0);
   SDValue Op0, Op1;
@@ -10175,7 +10219,7 @@ SDValue DAGCombiner::visitABS(SDNode *N) {
   if (DAG.SignBitIsZero(N0))
     return N0;
 
-  if (SDValue ABD = combineABSToABD(N, DAG, TLI))
+  if (SDValue ABD = foldABSToABD(N))
     return ABD;
 
   // fold (abs (sign_extend_inreg x)) -> (zero_extend (abs (truncate x)))
@@ -10346,14 +10390,11 @@ static bool isLegalToCombineMinNumMaxNum(SelectionDAG &DAG, SDValue LHS,
          DAG.isKnownNeverNaN(LHS) && DAG.isKnownNeverNaN(RHS);
 }
 
-/// Generate Min/Max node
-static SDValue combineMinNumMaxNum(const SDLoc &DL, EVT VT, SDValue LHS,
-                                   SDValue RHS, SDValue True, SDValue False,
-                                   ISD::CondCode CC, const TargetLowering &TLI,
-                                   SelectionDAG &DAG) {
-  if (!(LHS == True && RHS == False) && !(LHS == False && RHS == True))
-    return SDValue();
-
+static SDValue combineMinNumMaxNumImpl(const SDLoc &DL, EVT VT, SDValue LHS,
+                                       SDValue RHS, SDValue True, SDValue False,
+                                       ISD::CondCode CC,
+                                       const TargetLowering &TLI,
+                                       SelectionDAG &DAG) {
   EVT TransformVT = TLI.getTypeToTransformTo(*DAG.getContext(), VT);
   switch (CC) {
   case ISD::SETOLT:
@@ -10392,6 +10433,46 @@ static SDValue combineMinNumMaxNum(const SDLoc &DL, EVT VT, SDValue LHS,
   default:
     return SDValue();
   }
+}
+
+/// Generate Min/Max node
+SDValue DAGCombiner::combineMinNumMaxNum(const SDLoc &DL, EVT VT, SDValue LHS,
+                                         SDValue RHS, SDValue True,
+                                         SDValue False, ISD::CondCode CC) {
+  if ((LHS == True && RHS == False) || (LHS == False && RHS == True))
+    return combineMinNumMaxNumImpl(DL, VT, LHS, RHS, True, False, CC, TLI, DAG);
+
+  // If we can't directly match this, try to see if we can pull an fneg out of
+  // the select.
+  SDValue NegTrue = TLI.getCheaperOrNeutralNegatedExpression(
+      True, DAG, LegalOperations, ForCodeSize);
+  if (!NegTrue)
+    return SDValue();
+
+  HandleSDNode NegTrueHandle(NegTrue);
+
+  // Try to unfold an fneg from the select if we are comparing the negated
+  // constant.
+  //
+  // select (setcc x, K) (fneg x), -K -> fneg(minnum(x, K))
+  //
+  // TODO: Handle fabs
+  if (LHS == NegTrue) {
+    // If we can't directly match this, try to see if we can pull an fneg out of
+    // the select.
+    SDValue NegRHS = TLI.getCheaperOrNeutralNegatedExpression(
+        RHS, DAG, LegalOperations, ForCodeSize);
+    if (NegRHS) {
+      HandleSDNode NegRHSHandle(NegRHS);
+      if (NegRHS == False) {
+        SDValue Combined = combineMinNumMaxNumImpl(DL, VT, LHS, RHS, NegTrue,
+                                                   False, CC, TLI, DAG);
+        return DAG.getNode(ISD::FNEG, DL, VT, Combined);
+      }
+    }
+  }
+
+  return SDValue();
 }
 
 /// If a (v)select has a condition value that is a sign-bit test, try to smear
@@ -10778,8 +10859,8 @@ SDValue DAGCombiner::visitSELECT(SDNode *N) {
     //
     // This is OK if we don't care what happens if either operand is a NaN.
     if (N0.hasOneUse() && isLegalToCombineMinNumMaxNum(DAG, N1, N2, TLI))
-      if (SDValue FMinMax = combineMinNumMaxNum(DL, VT, Cond0, Cond1, N1, N2,
-                                                CC, TLI, DAG))
+      if (SDValue FMinMax =
+              combineMinNumMaxNum(DL, VT, Cond0, Cond1, N1, N2, CC))
         return FMinMax;
 
     // Use 'unsigned add with overflow' to optimize an unsigned saturating add.
@@ -11291,8 +11372,7 @@ SDValue DAGCombiner::visitVSELECT(SDNode *N) {
     // NaN.
     //
     if (N0.hasOneUse() && isLegalToCombineMinNumMaxNum(DAG, LHS, RHS, TLI)) {
-      if (SDValue FMinMax =
-              combineMinNumMaxNum(DL, VT, LHS, RHS, N1, N2, CC, TLI, DAG))
+      if (SDValue FMinMax = combineMinNumMaxNum(DL, VT, LHS, RHS, N1, N2, CC))
         return FMinMax;
     }
 
@@ -19966,31 +20046,21 @@ SDValue DAGCombiner::splitMergedValStore(StoreSDNode *ST) {
 }
 
 // Merge an insertion into an existing shuffle:
-// (insert_vector_elt (vector_shuffle X, Y), (extract_vector_elt X, N),
-// InsIndex)
-//   --> (vector_shuffle X, Y) and variations where shuffle operands may be
-//   CONCAT_VECTORS.
-SDValue DAGCombiner::mergeInsertEltWithShuffle(SDNode *N, unsigned InsIndex) {
-  assert(N->getOpcode() == ISD::INSERT_VECTOR_ELT &&
-         "Expected extract_vector_elt");
-  SDValue InsertVal = N->getOperand(1);
-  SDValue Vec = N->getOperand(0);
-
-  if (Vec.getOpcode() != ISD::VECTOR_SHUFFLE ||
-      InsertVal.getOpcode() != ISD::EXTRACT_VECTOR_ELT ||
-      !isa<ConstantSDNode>(InsertVal.getOperand(1)) || !Vec.hasOneUse())
-    return SDValue();
-
-  auto *SVN = cast<ShuffleVectorSDNode>(Vec.getNode());
-  ArrayRef<int> Mask = SVN->getMask();
-
-  SDValue X = Vec.getOperand(0);
-  SDValue Y = Vec.getOperand(1);
+// (insert_vector_elt (vector_shuffle X, Y, Mask),
+//                   .(extract_vector_elt X, N), InsIndex)
+//   --> (vector_shuffle X, Y, NewMask)
+//  and variations where shuffle operands may be CONCAT_VECTORS.
+static bool mergeEltWithShuffle(SDValue &X, SDValue &Y, ArrayRef<int> Mask,
+                                SmallVectorImpl<int> &NewMask, SDValue Elt,
+                                unsigned InsIndex) {
+  if (Elt.getOpcode() != ISD::EXTRACT_VECTOR_ELT ||
+      !isa<ConstantSDNode>(Elt.getOperand(1)))
+    return false;
 
   // Vec's operand 0 is using indices from 0 to N-1 and
   // operand 1 from N to 2N - 1, where N is the number of
   // elements in the vectors.
-  SDValue InsertVal0 = InsertVal.getOperand(0);
+  SDValue InsertVal0 = Elt.getOperand(0);
   int ElementOffset = -1;
 
   // We explore the inputs of the shuffle in order to see if we find the
@@ -20028,21 +20098,41 @@ SDValue DAGCombiner::mergeInsertEltWithShuffle(SDNode *N, unsigned InsIndex) {
 
   // If we failed to find a match, see if we can replace an UNDEF shuffle
   // operand.
-  if (ElementOffset == -1 && Y.isUndef() &&
-      InsertVal0.getValueType() == Y.getValueType()) {
+  if (ElementOffset == -1) {
+    if (!Y.isUndef() || InsertVal0.getValueType() != Y.getValueType())
+      return false;
     ElementOffset = Mask.size();
     Y = InsertVal0;
   }
 
-  if (ElementOffset != -1) {
-    SmallVector<int, 16> NewMask(Mask);
+  NewMask.assign(Mask.begin(), Mask.end());
+  NewMask[InsIndex] = ElementOffset + Elt.getConstantOperandVal(1);
+  assert(NewMask[InsIndex] < (int)(2 * Mask.size()) && NewMask[InsIndex] >= 0 &&
+         "NewMask[InsIndex] is out of bound");
+  return true;
+}
 
-    auto *ExtrIndex = cast<ConstantSDNode>(InsertVal.getOperand(1));
-    NewMask[InsIndex] = ElementOffset + ExtrIndex->getZExtValue();
-    assert(NewMask[InsIndex] <
-               (int)(2 * Vec.getValueType().getVectorNumElements()) &&
-           NewMask[InsIndex] >= 0 && "NewMask[InsIndex] is out of bound");
+// Merge an insertion into an existing shuffle:
+// (insert_vector_elt (vector_shuffle X, Y), (extract_vector_elt X, N),
+// InsIndex)
+//   --> (vector_shuffle X, Y) and variations where shuffle operands may be
+//   CONCAT_VECTORS.
+SDValue DAGCombiner::mergeInsertEltWithShuffle(SDNode *N, unsigned InsIndex) {
+  assert(N->getOpcode() == ISD::INSERT_VECTOR_ELT &&
+         "Expected extract_vector_elt");
+  SDValue InsertVal = N->getOperand(1);
+  SDValue Vec = N->getOperand(0);
 
+  auto *SVN = dyn_cast<ShuffleVectorSDNode>(Vec);
+  if (!SVN || !Vec.hasOneUse())
+    return SDValue();
+
+  ArrayRef<int> Mask = SVN->getMask();
+  SDValue X = Vec.getOperand(0);
+  SDValue Y = Vec.getOperand(1);
+
+  SmallVector<int, 16> NewMask(Mask);
+  if (mergeEltWithShuffle(X, Y, Mask, NewMask, InsertVal, InsIndex)) {
     SDValue LegalShuffle = TLI.buildLegalVectorShuffle(
         Vec.getValueType(), SDLoc(N), X, Y, NewMask, DAG);
     if (LegalShuffle)
@@ -20252,6 +20342,32 @@ SDValue DAGCombiner::visitINSERT_VECTOR_ELT(SDNode *N) {
             CurVec = CurVec->getOperand(0);
             continue;
           }
+
+      // VECTOR_SHUFFLE - if all the operands match the shuffle's sources,
+      // update the shuffle mask (and second operand if we started with unary
+      // shuffle) and create a new legal shuffle.
+      if (CurVec.getOpcode() == ISD::VECTOR_SHUFFLE && CurVec.hasOneUse()) {
+        auto *SVN = cast<ShuffleVectorSDNode>(CurVec);
+        SDValue LHS = SVN->getOperand(0);
+        SDValue RHS = SVN->getOperand(1);
+        SmallVector<int, 16> Mask(SVN->getMask());
+        bool Merged = true;
+        for (auto I : enumerate(Ops)) {
+          SDValue &Op = I.value();
+          if (Op) {
+            SmallVector<int, 16> NewMask;
+            if (!mergeEltWithShuffle(LHS, RHS, Mask, NewMask, Op, I.index())) {
+              Merged = false;
+              break;
+            }
+            Mask = std::move(NewMask);
+          }
+        }
+        if (Merged)
+          if (SDValue NewShuffle =
+                  TLI.buildLegalVectorShuffle(VT, DL, LHS, RHS, Mask, DAG))
+            return NewShuffle;
+      }
 
       // Failed to find a match in the chain - bail.
       break;
@@ -21144,6 +21260,29 @@ SDValue DAGCombiner::createBuildVecShuffle(const SDLoc &DL, SDNode *N,
       SmallVector<SDValue, 2> ConcatOps(2, DAG.getUNDEF(InVT2));
       ConcatOps[0] = VecIn2;
       VecIn2 = DAG.getNode(ISD::CONCAT_VECTORS, DL, VT, ConcatOps);
+    } else if (InVT1Size / VTSize > 1 && InVT1Size % VTSize == 0) {
+      if (!TLI.isExtractSubvectorCheap(VT, InVT1, NumElems) ||
+          !TLI.isTypeLegal(InVT1) || !TLI.isTypeLegal(InVT2))
+        return SDValue();
+      // If dest vector has less than two elements, then use shuffle and extract
+      // from larger regs will cost even more.
+      if (VT.getVectorNumElements() <= 2 || !VecIn2.getNode())
+        return SDValue();
+      assert(InVT2Size <= InVT1Size &&
+             "Second input is not going to be larger than the first one.");
+
+      // VecIn1 is wider than the output, and we have another, possibly
+      // smaller input. Pad the smaller input with undefs, shuffle at the
+      // input vector width, and extract the output.
+      // The shuffle type is different than VT, so check legality again.
+      if (LegalOperations && !TLI.isOperationLegal(ISD::VECTOR_SHUFFLE, InVT1))
+        return SDValue();
+
+      if (InVT1 != InVT2) {
+        VecIn2 = DAG.getNode(ISD::INSERT_SUBVECTOR, DL, InVT1,
+                             DAG.getUNDEF(InVT1), VecIn2, ZeroIdx);
+      }
+      ShuffleNumElems = InVT1Size / VTSize * NumElems;
     } else {
       // TODO: Support cases where the length mismatch isn't exactly by a
       // factor of 2.

@@ -52,7 +52,7 @@
 // RUN: clang-linker-wrapper --host-triple=x86_64-unknown-linux-gnu --dry-run \
 // RUN:   --linker-path=/usr/bin/ld.lld -- %t.o -o a.out 2>&1 | FileCheck %s --check-prefix=CPU-LINK
 
-// CPU-LINK: clang{{.*}} -o {{.*}}.img --target=x86_64-unknown-linux-gnu -march=native -O2 -Wl,--no-undefined -Bsymbolic -shared {{.*}}.o {{.*}}.o
+// CPU-LINK: clang{{.*}} -o {{.*}}.img --target=x86_64-unknown-linux-gnu -march=native -O2 -Wl,--no-undefined -Wl,-Bsymbolic -shared {{.*}}.o {{.*}}.o
 
 // RUN: %clang -cc1 %s -triple x86_64-unknown-linux-gnu -emit-obj -o %t.o
 // RUN: clang-linker-wrapper --dry-run --host-triple=x86_64-unknown-linux-gnu -mllvm -openmp-opt-disable \
@@ -130,15 +130,3 @@
 // RUN:   -o a.out 2>&1 | FileCheck %s --check-prefix=MISSING-LIBRARY
 
 // MISSING-LIBRARY: error: unable to find library -ldummy
-
-/// Ensure that temp files aren't leftoever from static libraries.
-// RUN: clang-offload-packager -o %t-lib.out \
-// RUN:   --image=file=%t.elf.o,kind=openmp,triple=nvptx64-nvidia-cuda,arch=sm_70 \
-// RUN:   --image=file=%t.elf.o,kind=cuda,triple=nvptx64-nvidia-cuda,arch=sm_52
-// RUN: %clang -cc1 %s -triple x86_64-unknown-linux-gnu -emit-obj -o %t.o -fembed-offload-object=%t-lib.out
-// RUN: llvm-ar rcs %t.a %t.o
-// RUN: rm -f %t.o
-// RUN: %clang -cc1 %s -triple x86_64-unknown-linux-gnu -emit-obj -o %t-obj.o
-// RUN: clang-linker-wrapper --host-triple=x86_64-unknown-linux-gnu --dry-run --save-temps \
-// RUN:   --linker-path=/usr/bin/ld -- %t.a %t-obj.o -o a.out
-// RUN: not ls "*nvptx64*"

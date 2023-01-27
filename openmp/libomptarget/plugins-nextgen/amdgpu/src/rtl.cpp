@@ -14,8 +14,6 @@
 #include <cassert>
 #include <cstddef>
 #include <deque>
-#include <hsa.h>
-#include <hsa_ext_amd.h>
 #include <mutex>
 #include <string>
 #include <system_error>
@@ -28,6 +26,7 @@
 #include "PluginInterface.h"
 #include "Utilities.h"
 #include "UtilitiesRTL.h"
+#include "omptarget.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
@@ -40,6 +39,19 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/raw_ostream.h"
+
+#if defined(__has_include)
+#if __has_include("hsa/hsa.h")
+#include "hsa/hsa.h"
+#include "hsa/hsa_ext_amd.h"
+#elif __has_include("hsa.h")
+#include "hsa.h"
+#include "hsa_ext_amd.h"
+#endif
+#else
+#include "hsa/hsa.h"
+#include "hsa_ext_amd.h"
+#endif
 
 namespace llvm {
 namespace omp {
@@ -407,10 +419,6 @@ struct AMDGPUKernelTy : public GenericKernelTy {
         return Err;
     }
 
-    // Account for user requested dynamic shared memory.
-    // TODO: This should be read from a per-kernel state flag.
-    GroupSize += Device.getDynamicMemorySize();
-
     // Make sure it is a kernel symbol.
     if (SymbolType != HSA_SYMBOL_KIND_KERNEL)
       return Plugin::error("Symbol %s is not a kernel function");
@@ -423,12 +431,12 @@ struct AMDGPUKernelTy : public GenericKernelTy {
 
   /// Launch the AMDGPU kernel function.
   Error launchImpl(GenericDeviceTy &GenericDevice, uint32_t NumThreads,
-                   uint64_t NumBlocks, uint32_t DynamicMemorySize,
-                   int32_t NumKernelArgs, void *KernelArgs,
+                   uint64_t NumBlocks, 
+                   KernelArgsTy &KernelArgs, void *Args,
                    AsyncInfoWrapperTy &AsyncInfoWrapper) const override;
 
   /// The default number of blocks is common to the whole device.
-  uint64_t getDefaultNumBlocks(GenericDeviceTy &GenericDevice) const override {
+  uint32_t getDefaultNumBlocks(GenericDeviceTy &GenericDevice) const override {
     return GenericDevice.getDefaultNumBlocks();
   }
 
@@ -544,7 +552,7 @@ struct AMDGPUQueueTy {
   /// signal and can define an optional input signal (nullptr if none).
   Error pushKernelLaunch(const AMDGPUKernelTy &Kernel, void *KernelArgs,
                          uint32_t NumThreads, uint64_t NumBlocks,
-                         AMDGPUSignalTy *OutputSignal,
+                         uint32_t GroupSize, AMDGPUSignalTy *OutputSignal,
                          AMDGPUSignalTy *InputSignal) {
     assert(OutputSignal && "Invalid kernel output signal");
 
@@ -581,7 +589,7 @@ struct AMDGPUQueueTy {
     Packet->grid_size_y = 1;
     Packet->grid_size_z = 1;
     Packet->private_segment_size = Kernel.getPrivateSize();
-    Packet->group_segment_size = Kernel.getGroupSize();
+    Packet->group_segment_size = GroupSize;
     Packet->kernel_object = Kernel.getKernelObject();
     Packet->kernarg_address = KernelArgs;
     Packet->reserved2 = 0;
@@ -1006,6 +1014,7 @@ public:
   /// the kernel args buffer to the specified memory manager.
   Error pushKernelLaunch(const AMDGPUKernelTy &Kernel, void *KernelArgs,
                          uint32_t NumThreads, uint64_t NumBlocks,
+                         uint32_t GroupSize,
                          AMDGPUMemoryManagerTy &MemoryManager) {
     // Retrieve an available signal for the operation's output.
     AMDGPUSignalTy *OutputSignal = SignalManager.getResource();
@@ -1023,7 +1032,7 @@ public:
 
     // Push the kernel with the output signal and an input signal (optional)
     return Queue.pushKernelLaunch(Kernel, KernelArgs, NumThreads, NumBlocks,
-                                  OutputSignal, InputSignal);
+                                  GroupSize, OutputSignal, InputSignal);
   }
 
   /// Push an asynchronous memory copy between pinned memory buffers.
@@ -1817,14 +1826,33 @@ struct AMDGPUDeviceTy : public GenericDeviceTy, AMDGenericDeviceTy {
     return Plugin::success();
   }
 
+  /// Pin the host buffer and return the device pointer that should be used for
+  /// device transfers.
+  Expected<void *> dataLockImpl(void *HstPtr, int64_t Size) override {
+    void *PinnedPtr = nullptr;
+
+    hsa_status_t Status =
+        hsa_amd_memory_lock(HstPtr, Size, nullptr, 0, &PinnedPtr);
+    if (auto Err = Plugin::check(Status, "Error in hsa_amd_memory_lock: %s\n"))
+      return Err;
+
+    return PinnedPtr;
+  }
+
+  /// Unpin the host buffer.
+  Error dataUnlockImpl(void *HstPtr) override {
+    hsa_status_t Status = hsa_amd_memory_unlock(HstPtr);
+    return Plugin::check(Status, "Error in hsa_amd_memory_unlock: %s\n");
+  }
+
   /// Submit data to the device (host to device transfer).
   Error dataSubmitImpl(void *TgtPtr, const void *HstPtr, int64_t Size,
                        AsyncInfoWrapperTy &AsyncInfoWrapper) override {
-
     // Use one-step asynchronous operation when host memory is already pinned.
-    if (isHostPinnedMemoryBuffer(HstPtr)) {
+    if (void *PinnedPtr =
+            PinnedAllocs.getDeviceAccessiblePtrFromPinnedBuffer(HstPtr)) {
       AMDGPUStreamTy &Stream = getStream(AsyncInfoWrapper);
-      return Stream.pushPinnedMemoryCopyAsync(TgtPtr, HstPtr, Size);
+      return Stream.pushPinnedMemoryCopyAsync(TgtPtr, PinnedPtr, Size);
     }
 
     void *PinnedHstPtr = nullptr;
@@ -1878,10 +1906,10 @@ struct AMDGPUDeviceTy : public GenericDeviceTy, AMDGenericDeviceTy {
                          AsyncInfoWrapperTy &AsyncInfoWrapper) override {
 
     // Use one-step asynchronous operation when host memory is already pinned.
-    if (isHostPinnedMemoryBuffer(HstPtr)) {
-      // Use one-step asynchronous operation when host memory is already pinned.
+    if (void *PinnedPtr =
+            PinnedAllocs.getDeviceAccessiblePtrFromPinnedBuffer(HstPtr)) {
       AMDGPUStreamTy &Stream = getStream(AsyncInfoWrapper);
-      return Stream.pushPinnedMemoryCopyAsync(HstPtr, TgtPtr, Size);
+      return Stream.pushPinnedMemoryCopyAsync(PinnedPtr, TgtPtr, Size);
     }
 
     void *PinnedHstPtr = nullptr;
@@ -2456,10 +2484,9 @@ private:
 
 Error AMDGPUKernelTy::launchImpl(GenericDeviceTy &GenericDevice,
                                  uint32_t NumThreads, uint64_t NumBlocks,
-                                 uint32_t DynamicMemorySize,
-                                 int32_t NumKernelArgs, void *KernelArgs,
+                                 KernelArgsTy &KernelArgs, void *Args,
                                  AsyncInfoWrapperTy &AsyncInfoWrapper) const {
-  const uint32_t KernelArgsSize = NumKernelArgs * sizeof(void *);
+  const uint32_t KernelArgsSize = KernelArgs.NumArgs * sizeof(void *);
 
   if (ArgsSize < KernelArgsSize)
     return Plugin::error("Mismatch of kernel arguments size");
@@ -2477,6 +2504,13 @@ Error AMDGPUKernelTy::launchImpl(GenericDeviceTy &GenericDevice,
   if (auto Err = ArgsMemoryManager.allocate(AllArgsSize, &AllArgs))
     return Err;
 
+  // Account for user requested dynamic shared memory.
+  uint32_t GroupSize = getGroupSize();
+  if (uint32_t MaxDynCGroupMem = std::max(
+          KernelArgs.DynCGroupMem, GenericDevice.getDynamicMemorySize())) {
+    GroupSize += MaxDynCGroupMem;
+  }
+
   // Initialize implicit arguments.
   utils::AMDGPUImplicitArgsTy *ImplArgs =
       reinterpret_cast<utils::AMDGPUImplicitArgsTy *>(
@@ -2488,16 +2522,16 @@ Error AMDGPUKernelTy::launchImpl(GenericDeviceTy &GenericDevice,
   // Copy the explicit arguments.
   // TODO: We should expose the args memory manager alloc to the common part as
   // 	   alternative to copying them twice.
-  if (NumKernelArgs)
-    std::memcpy(AllArgs, *static_cast<void **>(KernelArgs),
-                sizeof(void *) * NumKernelArgs);
+  if (KernelArgs.NumArgs)
+    std::memcpy(AllArgs, *static_cast<void **>(Args),
+                sizeof(void *) * KernelArgs.NumArgs);
 
   AMDGPUDeviceTy &AMDGPUDevice = static_cast<AMDGPUDeviceTy &>(GenericDevice);
   AMDGPUStreamTy &Stream = AMDGPUDevice.getStream(AsyncInfoWrapper);
 
   // Push the kernel launch into the stream.
   return Stream.pushKernelLaunch(*this, AllArgs, NumThreads, NumBlocks,
-                                 ArgsMemoryManager);
+                                 GroupSize, ArgsMemoryManager);
 }
 
 GenericPluginTy *Plugin::createPlugin() { return new AMDGPUPluginTy(); }
