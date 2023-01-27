@@ -7604,14 +7604,12 @@ void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
 
   // This controls whether or not we emit stack-protector instrumentation.
   // In MSVC, Buffer Security Check (/GS) is on by default.
-  // [HACKY] NO NO NO. We dont need /GS on Windows
-  #ifndef _WIN32
   if (!isNVPTX && Args.hasFlag(options::OPT__SLASH_GS, options::OPT__SLASH_GS_,
                               /*Default=*/true)) {
       CmdArgs.push_back("-stack-protector");
       CmdArgs.push_back(Args.MakeArgString(Twine(LangOptions::SSPStrong)));
   }
-  #endif
+
   // Emit CodeView if -Z7 or -gline-tables-only are present.
   if (Arg *DebugInfoArg = Args.getLastArg(options::OPT__SLASH_Z7,
                                           options::OPT_gline_tables_only)) {
@@ -7768,8 +7766,6 @@ void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
   if (Args.hasArg(options::OPT__SLASH_kernel))
     CmdArgs.push_back("-fms-kernel");
 
-  // [HACKY] NO NO NO. We dont need /guard on Windows.
-  #ifndef _WIN32
   if (Arg *A = Args.getLastArg(options::OPT__SLASH_guard)) {
       StringRef GuardArgs = A->getValue();
       // The only valid options are "cf", "cf,nochecks", "cf-", "ehcont" and
@@ -7790,7 +7786,6 @@ void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
           D.Diag(diag::err_drv_invalid_value) << A->getSpelling() << GuardArgs;
       }
   }
-  #endif
 }
 
 const char *Clang::getBaseInputName(const ArgList &Args,
