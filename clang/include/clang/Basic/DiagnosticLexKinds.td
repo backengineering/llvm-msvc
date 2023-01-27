@@ -692,6 +692,8 @@ def err_unterm_macro_invoc : Error<
   "unterminated function-like macro invocation">;
 def err_too_many_args_in_macro_invoc : Error<
   "too many arguments provided to function-like macro invocation">;
+def ext_too_many_args_in_macro_invoc_msvc : ExtWarn<
+  "too many arguments provided to function-like macro invocation">;
 def note_suggest_parens_for_macro : Note<
   "parentheses are required around macro argument containing braced "
   "initializer list">;

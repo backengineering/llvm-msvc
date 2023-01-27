@@ -15348,11 +15348,12 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
         CGM.getIntrinsic(Intrinsic::addressofreturnaddress, AllocaInt8PtrTy);
     return Builder.CreateCall(F);
   }
-  case X86::BI__stosb: {
-    // We treat __stosb as a volatile memset - it may not generate "rep stosb"
-    // instruction, but it will create a memset that won't be optimized away.
-    return Builder.CreateMemSet(Ops[0], Ops[1], Ops[2], Align(1), true);
-  }
+  //case X86::BI__stosb: {
+  //  // We treat __stosb as a non-volatile memset.inline
+  //  // it will generate "rep stosb"
+  //  // [MSVC Compatibility]
+  //  // return Builder.CreateMemSetInline(Ops[0], Align(1), Ops[1], Ops[2], false);
+  //}
   case X86::BI__ud2:
     // llvm.trap makes a ud2a instruction on x86.
     return EmitTrapCall(Intrinsic::trap);

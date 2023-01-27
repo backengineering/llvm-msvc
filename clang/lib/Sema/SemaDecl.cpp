@@ -11997,8 +11997,9 @@ void Sema::CheckMain(FunctionDecl* FD, const DeclSpec& DS) {
     T = Context.getCanonicalType(FD->getType());
   }
 
-  if (getLangOpts().GNUMode && !getLangOpts().CPlusPlus) {
-    // In C with GNU extensions we allow main() to have non-integer return
+  if ((getLangOpts().GNUMode && !getLangOpts().CPlusPlus) ||
+    getLangOpts().MSVCCompat) {
+    // In C with GNU extensions/MSVC we allow main() to have non-integer return
     // type, but we should warn about the extension, and we disable the
     // implicit-return-zero rule.
 

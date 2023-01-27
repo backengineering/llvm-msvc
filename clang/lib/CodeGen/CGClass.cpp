@@ -1414,6 +1414,8 @@ FieldHasTrivialDestructorBody(ASTContext &Context,
 /// any vtable pointers before calling this destructor.
 static bool CanSkipVTablePointerInitialization(CodeGenFunction &CGF,
                                                const CXXDestructorDecl *Dtor) {
+  // [MSVC Compatibility] do not skip vtable
+  return false;
   const CXXRecordDecl *ClassDecl = Dtor->getParent();
   if (!ClassDecl->isDynamicClass())
     return true;

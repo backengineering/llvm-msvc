@@ -337,7 +337,13 @@ static IdentifierInfo *RegisterBuiltinMacro(Preprocessor &PP, const char *Name){
 /// RegisterBuiltinMacros - Register builtin macros, such as __LINE__ with the
 /// identifier table.
 void Preprocessor::RegisterBuiltinMacros() {
+  //[MSVC Compatibility]
+#ifdef _WIN32
+  Ident__FUNCTION__ = RegisterBuiltinMacro(*this, "__FUNCTION__");
   Ident__LINE__ = RegisterBuiltinMacro(*this, "__LINE__");
+#else
+  Ident__FUNCTION__ = Ident__LINE__ = RegisterBuiltinMacro(*this, "__LINE__");
+#endif
   Ident__FILE__ = RegisterBuiltinMacro(*this, "__FILE__");
   Ident__DATE__ = RegisterBuiltinMacro(*this, "__DATE__");
   Ident__TIME__ = RegisterBuiltinMacro(*this, "__TIME__");
@@ -923,41 +929,50 @@ MacroArgs *Preprocessor::ReadMacroCallArgumentList(Token &MacroName,
   // an error.
   if (!isVariadic && NumActuals > MinArgsExpected &&
       !ContainsCodeCompletionTok) {
-    // Emit the diagnostic at the macro name in case there is a missing ).
-    // Emitting it at the , could be far away from the macro name.
-    Diag(TooManyArgsLoc, diag::err_too_many_args_in_macro_invoc);
-    Diag(MI->getDefinitionLoc(), diag::note_macro_here)
-      << MacroName.getIdentifierInfo();
+    if (getLangOpts().MSVCCompat) {
+      // [MSVC Compatibility]
+      // MSVC discards redundant args and warns about it.
+      Diag(TooManyArgsLoc, diag::ext_too_many_args_in_macro_invoc_msvc)
+          << MacroName.getIdentifierInfo();
+      NumActuals = MinArgsExpected;
+    } else {
+      // Emit the diagnostic at the macro name in case there is a missing ).
+      // Emitting it at the , could be far away from the macro name.
+      Diag(TooManyArgsLoc, diag::err_too_many_args_in_macro_invoc);
+      Diag(MI->getDefinitionLoc(), diag::note_macro_here)
+          << MacroName.getIdentifierInfo();
 
-    // Commas from braced initializer lists will be treated as argument
-    // separators inside macros.  Attempt to correct for this with parentheses.
-    // TODO: See if this can be generalized to angle brackets for templates
-    // inside macro arguments.
+      // Commas from braced initializer lists will be treated as argument
+      // separators inside macros.  Attempt to correct for this with
+      // parentheses.
+      // TODO: See if this can be generalized to angle brackets for templates
+      // inside macro arguments.
 
-    SmallVector<Token, 4> FixedArgTokens;
-    unsigned FixedNumArgs = 0;
-    SmallVector<SourceRange, 4> ParenHints, InitLists;
-    if (!GenerateNewArgTokens(*this, ArgTokens, FixedArgTokens, FixedNumArgs,
-                              ParenHints, InitLists)) {
-      if (!InitLists.empty()) {
-        DiagnosticBuilder DB =
-            Diag(MacroName,
-                 diag::note_init_list_at_beginning_of_macro_argument);
-        for (SourceRange Range : InitLists)
-          DB << Range;
+      SmallVector<Token, 4> FixedArgTokens;
+      unsigned FixedNumArgs = 0;
+      SmallVector<SourceRange, 4> ParenHints, InitLists;
+      if (!GenerateNewArgTokens(*this, ArgTokens, FixedArgTokens, FixedNumArgs,
+                                ParenHints, InitLists)) {
+        if (!InitLists.empty()) {
+          DiagnosticBuilder DB = Diag(
+              MacroName, diag::note_init_list_at_beginning_of_macro_argument);
+          for (SourceRange Range : InitLists)
+            DB << Range;
+        }
+        return nullptr;
       }
-      return nullptr;
-    }
-    if (FixedNumArgs != MinArgsExpected)
-      return nullptr;
+      if (FixedNumArgs != MinArgsExpected)
+        return nullptr;
 
-    DiagnosticBuilder DB = Diag(MacroName, diag::note_suggest_parens_for_macro);
-    for (SourceRange ParenLocation : ParenHints) {
-      DB << FixItHint::CreateInsertion(ParenLocation.getBegin(), "(");
-      DB << FixItHint::CreateInsertion(ParenLocation.getEnd(), ")");
+      DiagnosticBuilder DB =
+          Diag(MacroName, diag::note_suggest_parens_for_macro);
+      for (SourceRange ParenLocation : ParenHints) {
+        DB << FixItHint::CreateInsertion(ParenLocation.getBegin(), "(");
+        DB << FixItHint::CreateInsertion(ParenLocation.getEnd(), ")");
+      }
+      ArgTokens.swap(FixedArgTokens);
+      NumActuals = FixedNumArgs;
     }
-    ArgTokens.swap(FixedArgTokens);
-    NumActuals = FixedNumArgs;
   }
 
   // See MacroArgs instance var for description of this.
@@ -1535,7 +1550,7 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
     OS << (PLoc.isValid()? PLoc.getLine() : 1);
     Tok.setKind(tok::numeric_constant);
   } else if (II == Ident__FILE__ || II == Ident__BASE_FILE__ ||
-             II == Ident__FILE_NAME__) {
+             II == Ident__FILE_NAME__ || II == Ident__FUNCTION__) {
     // C99 6.10.8: "__FILE__: The presumed name of the current source file (a
     // character string literal)". This can be affected by #line.
     PresumedLoc PLoc = SourceMgr.getPresumedLoc(Tok.getLocation());
@@ -1568,6 +1583,14 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
           FN += PLoc.getFilename();
       } else {
         FN += PLoc.getFilename();
+        //[MSVC Compalibility] Use file name and line to replace '__FUNCTION__'
+#ifdef _WIN32
+        if (II == Ident__FUNCTION__) {
+          FN += "(";
+          FN += Twine(PLoc.getLine()).str();
+          FN += ")";
+        }
+#endif
       }
       processPathForFileMacro(FN, getLangOpts(), getTargetInfo());
       Lexer::Stringify(FN);

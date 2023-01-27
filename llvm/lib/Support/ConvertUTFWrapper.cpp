@@ -13,6 +13,8 @@
 #include "llvm/Support/SwapByteOrder.h"
 #include <string>
 #include <vector>
+#include <locale>
+#include <filesystem>
 
 namespace llvm {
 
@@ -232,6 +234,42 @@ bool convertUTF8ToUTF16String(StringRef SrcUTF8,
   DstUTF16.resize(Dst - &DstUTF16[0]);
   DstUTF16.push_back(0);
   DstUTF16.pop_back();
+  return true;
+}
+
+bool convertGBKToUTF8String(StringRef SrcGBK, std::string &Out) {
+  auto hasGBK = [](const char *cdata, size_t len) -> bool {
+    unsigned char *data = (unsigned char *)cdata;
+    size_t i = 0;
+    while (i < len) {
+      if (data[i] <= 0x7f) {
+        i++;
+        continue;
+      } else {
+        if (data[i] >= 0x81 && data[i] <= 0xfe && data[i + 1] >= 0x40 &&
+            data[i + 1] <= 0xfe && data[i + 1] != 0xf7) {
+          i += 2;
+          continue;
+        } else {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  if (!hasGBK(SrcGBK.data(), SrcGBK.size())) {
+    return false;
+  }
+
+#if defined(_WIN32)
+  const char *GBKLocalName = ".936";
+#else
+  const char *GBKLocalName = "zh_CN.GBK";
+#endif
+
+  std::filesystem::path Path{SrcGBK.str(), std::locale(GBKLocalName)};
+  Out = Path.u8string();
   return true;
 }
 

@@ -213,6 +213,17 @@ RValue CodeGenFunction::EmitCXXMemberOrOperatorMemberCallExpr(
 
   // Compute the object pointer.
   bool CanUseVirtualCall = MD->isVirtual() && !HasQualifier;
+  if (CanUseVirtualCall) {
+    // [MSVC Compatibility]
+    if (CurFuncDecl && (CurFuncDecl->getKind() == Decl::CXXConstructor) &&
+        (MD->getParent() && MD->getParent()->getKind() == Decl::CXXRecord)) {
+      if (CurFuncDecl->getAsFunction() &&
+          (CurFuncDecl->getAsFunction()->getDeclName().getAsString() ==
+           MD->getParent()->getDeclName().getAsString())) {
+        CanUseVirtualCall = false;
+      }
+    }
+  }
 
   const CXXMethodDecl *DevirtualizedMethod = nullptr;
   if (CanUseVirtualCall &&
