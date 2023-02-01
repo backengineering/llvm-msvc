@@ -642,9 +642,8 @@ void llvm::X86::getFeaturesForCPU(StringRef CPU,
 
   // [MSVC Compatibility]
 #ifdef _WIN32
+  // Matches Microsoft's default support floor for SSE.
   Bits |= FeatureSSE3;
-  Bits |= FeatureSSE4_1;
-  Bits |= FeatureAES;
 #endif
   
   // Add the string version of all set bits.
