@@ -78,39 +78,6 @@ gentbl_cc_library(
 )
 
 td_library(
-    name = "SubElementInterfacesTdFiles",
-    srcs = ["include/mlir/IR/SubElementInterfaces.td"],
-    includes = ["include"],
-    deps = [":OpBaseTdFiles"],
-)
-
-gentbl_cc_library(
-    name = "SubElementInterfacesIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            ["-gen-attr-interface-decls"],
-            "include/mlir/IR/SubElementAttrInterfaces.h.inc",
-        ),
-        (
-            ["-gen-attr-interface-defs"],
-            "include/mlir/IR/SubElementAttrInterfaces.cpp.inc",
-        ),
-        (
-            ["-gen-type-interface-decls"],
-            "include/mlir/IR/SubElementTypeInterfaces.h.inc",
-        ),
-        (
-            ["-gen-type-interface-defs"],
-            "include/mlir/IR/SubElementTypeInterfaces.cpp.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/IR/SubElementInterfaces.td",
-    deps = [":SubElementInterfacesTdFiles"],
-)
-
-td_library(
     name = "BuiltinDialectTdFiles",
     srcs = [
         "include/mlir/IR/BuiltinAttributeInterfaces.td",
@@ -128,7 +95,6 @@ td_library(
         ":DataLayoutInterfacesTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
-        ":SubElementInterfacesTdFiles",
     ],
 )
 
@@ -323,7 +289,6 @@ cc_library(
         ":OpAsmInterfaceIncGen",
         ":RegionKindInterfaceIncGen",
         ":SideEffectInterfacesIncGen",
-        ":SubElementInterfacesIncGen",
         ":Support",
         ":SymbolInterfacesIncGen",
         ":TensorEncodingIncGen",
@@ -3594,7 +3559,7 @@ cc_library(
     ),
     hdrs = glob(
         [
-            "lib/Tools/lsp-server-support/*.h",
+            "include/mlir/Tools/lsp-server-support/*.h",
         ],
     ),
     deps = [
@@ -4142,7 +4107,6 @@ td_library(
         ":InferTypeOpInterfaceTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
-        ":SubElementInterfacesTdFiles",
     ],
 )
 
@@ -6536,6 +6500,7 @@ cc_library(
         "include/mlir/Target/LLVMIR/LLVMTranslationInterface.h",
         "include/mlir/Target/LLVMIR/ModuleTranslation.h",
         "include/mlir/Target/LLVMIR/TypeToLLVM.h",
+        "lib/Target/LLVMIR/AttrKindDetail.h",
     ],
     includes = ["include"],
     deps = [
@@ -6760,6 +6725,7 @@ cc_library(
         "include/mlir/Target/LLVMIR/LLVMImportInterface.h",
         "include/mlir/Target/LLVMIR/ModuleImport.h",
         "include/mlir/Target/LLVMIR/TypeFromLLVM.h",
+        "lib/Target/LLVMIR/AttrKindDetail.h",
         "lib/Target/LLVMIR/DebugImporter.h",
     ],
     includes = ["include"],
@@ -8375,12 +8341,14 @@ cc_library(
         ":LinalgDialect",
         ":LinalgTransformOpsIncGen",
         ":LinalgTransforms",
+        ":LinalgUtils",
         ":PDLDialect",
         ":Parser",
         ":SCFTransforms",
         ":SideEffectInterfaces",
         ":Support",
         ":TensorDialect",
+        ":TensorUtils",
         ":TilingInterface",
         ":TransformDialect",
         ":TransformDialectUtils",
@@ -8421,25 +8389,6 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "LinalgAnalysis",
-    srcs = glob([
-        "lib/Dialect/Linalg/Analysis/*.cpp",
-        "lib/Dialect/Linalg/Analysis/*.h",
-    ]),
-    hdrs = glob([
-        "include/mlir/Dialect/Linalg/Analysis/*.h",
-    ]),
-    includes = ["include"],
-    deps = [
-        ":BufferizationDialect",
-        ":FuncDialect",
-        ":IR",
-        ":LinalgDialect",
-        "//llvm:Support",
-    ],
-)
-
-cc_library(
     name = "LinalgUtils",
     srcs = glob([
         "lib/Dialect/Linalg/Utils/*.cpp",
@@ -8458,7 +8407,6 @@ cc_library(
         ":DialectUtils",
         ":FuncDialect",
         ":IR",
-        ":LinalgAnalysis",
         ":LinalgDialect",
         ":MemRefDialect",
         ":Pass",
@@ -8498,7 +8446,6 @@ cc_library(
         ":FuncDialect",
         ":FuncTransforms",
         ":IR",
-        ":LinalgAnalysis",
         ":LinalgDialect",
         ":LinalgPassIncGen",
         ":LinalgStructuredOpsIncGen",
@@ -8825,6 +8772,7 @@ cc_library(
         ":Pass",
         ":SCFDialect",
         ":Support",
+        ":TensorDialect",
         ":Transforms",
         ":VectorDialect",
         ":VectorTransforms",

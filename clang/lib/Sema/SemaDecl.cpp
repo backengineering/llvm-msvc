@@ -8665,7 +8665,8 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
     return;
   }
 
-  if (!NewVD->hasLocalStorage() && T->isSizelessType()) {
+  if (!NewVD->hasLocalStorage() && T->isSizelessType() &&
+      !T->isWebAssemblyReferenceType()) {
     Diag(NewVD->getLocation(), diag::err_sizeless_nonlocal) << T;
     NewVD->setInvalidDecl();
     return;
@@ -9556,6 +9557,7 @@ static bool isStdBuiltin(ASTContext &Ctx, FunctionDecl *FD,
   case Builtin::BIaddressof:
   case Builtin::BI__addressof:
   case Builtin::BIforward:
+  case Builtin::BIforward_like:
   case Builtin::BImove:
   case Builtin::BImove_if_noexcept:
   case Builtin::BIas_const: {
@@ -16197,6 +16199,7 @@ void Sema::AddKnownFunctionAttributes(FunctionDecl *FD) {
     case Builtin::BI__builtin_addressof:
     case Builtin::BIas_const:
     case Builtin::BIforward:
+    case Builtin::BIforward_like:
     case Builtin::BImove:
     case Builtin::BImove_if_noexcept:
       if (ParmVarDecl *P = FD->getParamDecl(0u);

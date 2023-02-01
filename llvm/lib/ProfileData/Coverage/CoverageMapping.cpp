@@ -410,20 +410,17 @@ CoverageMapping::load(ArrayRef<StringRef> ObjectFilenames,
   }
 
   if (BIDFetcher) {
-    const auto &Compare = [](object::BuildIDRef A, object::BuildIDRef B) {
-      return StringRef(reinterpret_cast<const char *>(A.data()), A.size()) <
-             StringRef(reinterpret_cast<const char *>(B.data()), B.size());
-    };
     std::vector<object::BuildID> ProfileBinaryIDs;
     if (Error E = ProfileReader->readBinaryIds(ProfileBinaryIDs))
       return createFileError(ProfileFilename, std::move(E));
-    llvm::sort(ProfileBinaryIDs, Compare);
-    std::unique(ProfileBinaryIDs.begin(), ProfileBinaryIDs.end(), Compare);
 
     SmallVector<object::BuildIDRef> BinaryIDsToFetch;
     if (!ProfileBinaryIDs.empty()) {
+      const auto &Compare = [](object::BuildIDRef A, object::BuildIDRef B) {
+        return std::lexicographical_compare(A.begin(), A.end(), B.begin(),
+                                            B.end());
+      };
       llvm::sort(FoundBinaryIDs, Compare);
-      std::unique(FoundBinaryIDs.begin(), FoundBinaryIDs.end(), Compare);
       std::set_difference(
           ProfileBinaryIDs.begin(), ProfileBinaryIDs.end(),
           FoundBinaryIDs.begin(), FoundBinaryIDs.end(),

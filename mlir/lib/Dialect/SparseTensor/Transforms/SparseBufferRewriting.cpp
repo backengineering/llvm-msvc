@@ -43,8 +43,8 @@ static constexpr const char kSortNonstableFuncNamePrefix[] =
 static constexpr const char kSortStableFuncNamePrefix[] =
     "_sparse_sort_stable_";
 
-using FuncGeneratorType = function_ref<void(OpBuilder &, ModuleOp, func::FuncOp,
-                                            uint64_t, uint64_t, bool)>;
+using FuncGeneratorType = function_ref<void(
+    OpBuilder &, ModuleOp, func::FuncOp, uint64_t, uint64_t, bool, uint32_t)>;
 
 /// Constructs a function name with this format to facilitate quick sort:
 ///   <namePrefix><nx>_<x type>_<y0 type>..._<yn type> for sort
@@ -69,15 +69,21 @@ static void getMangledSortHelperFuncName(llvm::raw_svector_ostream &nameOstream,
 /// parameters `nx` and `ny` tell the number of x and y values provided
 /// by the buffer in xStartIdx, and `isCoo` indicates whether the instruction
 /// being processed is a sparse_tensor.sort or sparse_tensor.sort_coo.
+//
+// All sorting function generators take (lo, hi, xs, ys) in `operands` as
+// parameters for the sorting functions. Other parameters, such as the recursive
+// call depth, are appended to the end of the parameter list as
+// "trailing parameters".
 static FlatSymbolRefAttr
 getMangledSortHelperFunc(OpBuilder &builder, func::FuncOp insertPoint,
                          TypeRange resultTypes, StringRef namePrefix,
                          uint64_t nx, uint64_t ny, bool isCoo,
-                         ValueRange operands, FuncGeneratorType createFunc) {
+                         ValueRange operands, FuncGeneratorType createFunc,
+                         uint32_t nTrailingP = 0) {
   SmallString<32> nameBuffer;
   llvm::raw_svector_ostream nameOstream(nameBuffer);
   getMangledSortHelperFuncName(nameOstream, namePrefix, nx, ny, isCoo,
-                               operands);
+                               operands.drop_back(nTrailingP));
 
   ModuleOp module = insertPoint->getParentOfType<ModuleOp>();
   MLIRContext *context = module.getContext();
@@ -93,7 +99,7 @@ getMangledSortHelperFunc(OpBuilder &builder, func::FuncOp insertPoint,
         loc, nameOstream.str(),
         FunctionType::get(context, operands.getTypes(), resultTypes));
     func.setPrivate();
-    createFunc(builder, module, func, nx, ny, isCoo);
+    createFunc(builder, module, func, nx, ny, isCoo, nTrailingP);
   }
 
   return result;
@@ -242,7 +248,10 @@ static scf::IfOp createEqCompare(OpBuilder &builder, Location loc, Value i,
 //       and so on ...
 static void createEqCompareFunc(OpBuilder &builder, ModuleOp unused,
                                 func::FuncOp func, uint64_t nx, uint64_t ny,
-                                bool isCoo) {
+                                bool isCoo, uint32_t nTrailingP = 0) {
+  // Compare functions don't use trailing parameters.
+  (void)nTrailingP;
+  assert(nTrailingP == 0);
   createCompareFuncImplementation(builder, unused, func, nx, ny, isCoo,
                                   createEqCompare);
 }
@@ -302,7 +311,10 @@ static scf::IfOp createLessThanCompare(OpBuilder &builder, Location loc,
 //       and so on ...
 static void createLessThanFunc(OpBuilder &builder, ModuleOp unused,
                                func::FuncOp func, uint64_t nx, uint64_t ny,
-                               bool isCoo) {
+                               bool isCoo, uint32_t nTrailingP = 0) {
+  // Compare functions don't use trailing parameters.
+  (void)nTrailingP;
+  assert(nTrailingP == 0);
   createCompareFuncImplementation(builder, unused, func, nx, ny, isCoo,
                                   createLessThanCompare);
 }
@@ -322,7 +334,10 @@ static void createLessThanFunc(OpBuilder &builder, ModuleOp unused,
 //
 static void createBinarySearchFunc(OpBuilder &builder, ModuleOp module,
                                    func::FuncOp func, uint64_t nx, uint64_t ny,
-                                   bool isCoo) {
+                                   bool isCoo, uint32_t nTrailingP = 0) {
+  // Binary search doesn't use trailing parameters.
+  (void)nTrailingP;
+  assert(nTrailingP == 0);
   OpBuilder::InsertionGuard insertionGuard(builder);
   Block *entryBlock = func.addEntryBlock();
   builder.setInsertionPointToStart(entryBlock);
@@ -330,7 +345,7 @@ static void createBinarySearchFunc(OpBuilder &builder, ModuleOp module,
   Location loc = func.getLoc();
   ValueRange args = entryBlock->getArguments();
   Value p = args[hiIdx];
-  SmallVector<Type, 2> types(2, p.getType()); // only two
+  SmallVector<Type, 2> types(2, p.getType()); // Only two types.
   scf::WhileOp whileOp = builder.create<scf::WhileOp>(
       loc, types, SmallVector<Value, 2>{args[loIdx], args[hiIdx]});
 
@@ -363,7 +378,7 @@ static void createBinarySearchFunc(OpBuilder &builder, ModuleOp module,
   Type i1Type = IntegerType::get(module.getContext(), 1, IntegerType::Signless);
   FlatSymbolRefAttr lessThanFunc = getMangledSortHelperFunc(
       builder, func, {i1Type}, kLessThanFuncNamePrefix, nx, ny, isCoo,
-      compareOperands, createLessThanFunc);
+      compareOperands, createLessThanFunc, nTrailingP);
   Value cond2 = builder
                     .create<func::CallOp>(loc, lessThanFunc, TypeRange{i1Type},
                                           compareOperands)
@@ -443,6 +458,93 @@ createScanLoop(OpBuilder &builder, ModuleOp module, func::FuncOp func,
   return std::make_pair(whileOp.getResult(0), compareEq);
 }
 
+/// Creates a code block to swap the values so that data[mi] is the median among
+/// data[lo], data[hi], and data[mi].
+//  The generated code corresponds to this C-like algorithm:
+//  median = mi
+//  if (data[mi] < data[lo]).                               (if1)
+//    if (data[hi] < data[lo])                              (if2)
+//       median = data[hi] < data[mi] ? mi : hi
+//    else
+//       median = lo
+//  else
+//    if data[hi] < data[mi]                                (if3)
+//      median = data[hi] < data[lo] ? lo : hi
+//  if median != mi swap data[median] with data[mi]
+static void createChoosePivot(OpBuilder &builder, ModuleOp module,
+                              func::FuncOp func, uint64_t nx, uint64_t ny,
+                              bool isCoo, Value lo, Value hi, Value mi,
+                              ValueRange args) {
+  SmallVector<Value> compareOperands{mi, lo};
+  uint64_t numXBuffers = isCoo ? 1 : nx;
+  compareOperands.append(args.begin() + xStartIdx,
+                         args.begin() + xStartIdx + numXBuffers);
+  Type i1Type = IntegerType::get(module.getContext(), 1, IntegerType::Signless);
+  SmallVector<Type, 1> cmpTypes{i1Type};
+  FlatSymbolRefAttr lessThanFunc = getMangledSortHelperFunc(
+      builder, func, cmpTypes, kLessThanFuncNamePrefix, nx, ny, isCoo,
+      compareOperands, createLessThanFunc);
+  Location loc = func.getLoc();
+  // Compare data[mi] < data[lo].
+  Value cond1 =
+      builder.create<func::CallOp>(loc, lessThanFunc, cmpTypes, compareOperands)
+          .getResult(0);
+  SmallVector<Type, 1> ifTypes{lo.getType()};
+  scf::IfOp ifOp1 =
+      builder.create<scf::IfOp>(loc, ifTypes, cond1, /*else=*/true);
+
+  // Generate an if-stmt to find the median value, assuming we already know that
+  // data[b] < data[a] and we haven't compare data[c] yet.
+  auto createFindMedian = [&](Value a, Value b, Value c) -> scf::IfOp {
+    compareOperands[0] = c;
+    compareOperands[1] = a;
+    // Compare data[c]] < data[a].
+    Value cond2 =
+        builder
+            .create<func::CallOp>(loc, lessThanFunc, cmpTypes, compareOperands)
+            .getResult(0);
+    scf::IfOp ifOp2 =
+        builder.create<scf::IfOp>(loc, ifTypes, cond2, /*else=*/true);
+    builder.setInsertionPointToStart(&ifOp2.getThenRegion().front());
+    compareOperands[0] = c;
+    compareOperands[1] = b;
+    // Compare data[c] < data[b].
+    Value cond3 =
+        builder
+            .create<func::CallOp>(loc, lessThanFunc, cmpTypes, compareOperands)
+            .getResult(0);
+    builder.create<scf::YieldOp>(
+        loc, ValueRange{builder.create<arith::SelectOp>(loc, cond3, b, c)});
+    builder.setInsertionPointToStart(&ifOp2.getElseRegion().front());
+    builder.create<scf::YieldOp>(loc, ValueRange{a});
+    return ifOp2;
+  };
+
+  builder.setInsertionPointToStart(&ifOp1.getThenRegion().front());
+  scf::IfOp ifOp2 = createFindMedian(lo, mi, hi);
+  builder.setInsertionPointAfter(ifOp2);
+  builder.create<scf::YieldOp>(loc, ValueRange{ifOp2.getResult(0)});
+
+  builder.setInsertionPointToStart(&ifOp1.getElseRegion().front());
+  scf::IfOp ifOp3 = createFindMedian(mi, lo, hi);
+
+  builder.setInsertionPointAfter(ifOp3);
+  builder.create<scf::YieldOp>(loc, ValueRange{ifOp3.getResult(0)});
+
+  builder.setInsertionPointAfter(ifOp1);
+  Value median = ifOp1.getResult(0);
+  Value cond =
+      builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ne, mi, median);
+  scf::IfOp ifOp =
+      builder.create<scf::IfOp>(loc, TypeRange(), cond, /*else=*/false);
+
+  SmallVector<Value> swapOperands{median, mi};
+  swapOperands.append(args.begin() + xStartIdx, args.end());
+  builder.setInsertionPointToStart(&ifOp.getThenRegion().front());
+  createSwap(builder, loc, swapOperands, nx, ny, isCoo);
+  builder.setInsertionPointAfter(ifOp);
+}
+
 /// Creates a function to perform quick sort partition on the values in the
 /// range of index [lo, hi), assuming lo < hi.
 //
@@ -473,7 +575,10 @@ createScanLoop(OpBuilder &builder, ModuleOp module, func::FuncOp func,
 //   }
 static void createPartitionFunc(OpBuilder &builder, ModuleOp module,
                                 func::FuncOp func, uint64_t nx, uint64_t ny,
-                                bool isCoo) {
+                                bool isCoo, uint32_t nTrailingP = 0) {
+  // Quick sort partition doesn't use trailing parameters.
+  (void)nTrailingP;
+  assert(nTrailingP == 0);
   OpBuilder::InsertionGuard insertionGuard(builder);
 
   Block *entryBlock = func.addEntryBlock();
@@ -489,7 +594,8 @@ static void createPartitionFunc(OpBuilder &builder, ModuleOp module,
 
   Value i = lo;
   Value j = builder.create<arith::SubIOp>(loc, hi, c1);
-  SmallVector<Value, 3> operands{i, j, p}; // exactly three
+  createChoosePivot(builder, module, func, nx, ny, isCoo, i, j, p, args);
+  SmallVector<Value, 3> operands{i, j, p}; // Exactly three values.
   SmallVector<Type, 3> types{i.getType(), j.getType(), p.getType()};
   scf::WhileOp whileOp = builder.create<scf::WhileOp>(loc, types, operands);
 
@@ -587,7 +693,8 @@ static void createPartitionFunc(OpBuilder &builder, ModuleOp module,
 // }
 static void createSortNonstableFunc(OpBuilder &builder, ModuleOp module,
                                     func::FuncOp func, uint64_t nx, uint64_t ny,
-                                    bool isCoo) {
+                                    bool isCoo, uint32_t nTrailingP) {
+  (void)nTrailingP;
   OpBuilder::InsertionGuard insertionGuard(builder);
   Block *entryBlock = func.addEntryBlock();
   builder.setInsertionPointToStart(entryBlock);
@@ -640,7 +747,10 @@ static void createSortNonstableFunc(OpBuilder &builder, ModuleOp module,
 // }
 static void createSortStableFunc(OpBuilder &builder, ModuleOp module,
                                  func::FuncOp func, uint64_t nx, uint64_t ny,
-                                 bool isCoo) {
+                                 bool isCoo, uint32_t nTrailingP) {
+  // Stable sort function doesn't use trailing parameters.
+  (void)nTrailingP;
+  assert(nTrailingP == 0);
   OpBuilder::InsertionGuard insertionGuard(builder);
   Block *entryBlock = func.addEntryBlock();
   builder.setInsertionPointToStart(entryBlock);
@@ -726,14 +836,17 @@ LogicalResult matchAndRewriteSortOp(OpTy op, ValueRange xys, uint64_t nx,
     }
     operands.push_back(v);
   }
+  bool isStable =
+      (op.getAlgorithm() == SparseTensorSortKind::InsertionSortStable);
   auto insertPoint = op->template getParentOfType<func::FuncOp>();
-  SmallString<32> funcName(op.getStable() ? kSortStableFuncNamePrefix
-                                          : kSortNonstableFuncNamePrefix);
+  SmallString<32> funcName(isStable ? kSortStableFuncNamePrefix
+                                    : kSortNonstableFuncNamePrefix);
   FuncGeneratorType funcGenerator =
-      op.getStable() ? createSortStableFunc : createSortNonstableFunc;
+      isStable ? createSortStableFunc : createSortNonstableFunc;
+  uint32_t nTrailingP = 0;
   FlatSymbolRefAttr func =
       getMangledSortHelperFunc(rewriter, insertPoint, TypeRange(), funcName, nx,
-                               ny, isCoo, operands, funcGenerator);
+                               ny, isCoo, operands, funcGenerator, nTrailingP);
   rewriter.replaceOpWithNewOp<func::CallOp>(op, func, TypeRange(), operands);
   return success();
 }

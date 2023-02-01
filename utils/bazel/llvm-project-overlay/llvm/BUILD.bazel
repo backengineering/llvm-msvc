@@ -824,6 +824,7 @@ cc_library(
     textual_hdrs = glob(["include/llvm/IR/*.def"]),
     deps = [
         ":BinaryFormat",
+        ":Demangle",
         ":Remarks",
         ":Support",
         ":attributes_gen",
@@ -2200,6 +2201,7 @@ gentbl(
             ":MCParser",
             ":Support",
             ":Target",
+            ":TargetParser",
             ":" + target["name"] + "CodeGen",
             ":" + target["name"] + "CommonTableGen",
             ":" + target["name"] + "Info",

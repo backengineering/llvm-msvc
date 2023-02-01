@@ -104,7 +104,7 @@ bool convertUTF16ToUTF8String(ArrayRef<char> SrcBytes, std::string &Out) {
   if (Src[0] == UNI_UTF16_BYTE_ORDER_MARK_SWAPPED) {
     ByteSwapped.insert(ByteSwapped.end(), Src, SrcEnd);
     for (UTF16 &I : ByteSwapped)
-      I = llvm::ByteSwap_16(I);
+      I = llvm::byteswap<uint16_t>(I);
     Src = &ByteSwapped[0];
     SrcEnd = &ByteSwapped[ByteSwapped.size() - 1] + 1;
   }
@@ -162,7 +162,7 @@ bool convertUTF32ToUTF8String(ArrayRef<char> SrcBytes, std::string &Out) {
   if (Src[0] == UNI_UTF32_BYTE_ORDER_MARK_SWAPPED) {
     ByteSwapped.insert(ByteSwapped.end(), Src, SrcEnd);
     for (UTF32 &I : ByteSwapped)
-      I = llvm::ByteSwap_32(I);
+      I = llvm::byteswap<uint32_t>(I);
     Src = &ByteSwapped[0];
     SrcEnd = &ByteSwapped[ByteSwapped.size() - 1] + 1;
   }

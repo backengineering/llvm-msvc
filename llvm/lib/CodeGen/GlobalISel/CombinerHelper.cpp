@@ -2750,7 +2750,7 @@ bool CombinerHelper::matchHoistLogicOpWithSameOpcodeHands(
   Register Y = RightHandInst->getOperand(1).getReg();
   LLT XTy = MRI.getType(X);
   LLT YTy = MRI.getType(Y);
-  if (XTy != YTy)
+  if (!XTy.isValid() || XTy != YTy)
     return false;
   if (!isLegalOrBeforeLegalizer({LogicOpcode, {XTy, YTy}}))
     return false;
@@ -4496,7 +4496,7 @@ bool CombinerHelper::matchBitfieldExtractFromShrAnd(
 
   // Calculate start position and width of the extract.
   const int64_t Pos = ShrAmt;
-  const int64_t Width = countTrailingOnes(UMask) - ShrAmt;
+  const int64_t Width = llvm::countr_one(UMask) - ShrAmt;
 
   // It's preferable to keep the shift, rather than form G_SBFX.
   // TODO: remove the G_AND via demanded bits analysis.

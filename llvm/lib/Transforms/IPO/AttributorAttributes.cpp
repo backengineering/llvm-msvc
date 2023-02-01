@@ -4161,12 +4161,14 @@ struct AAIsDeadFloating : public AAIsDeadValueImpl {
         return true;
       if (auto *LI = dyn_cast<LoadInst>(V)) {
         if (llvm::all_of(LI->uses(), [&](const Use &U) {
-              return InfoCache.isOnlyUsedByAssume(
-                         cast<Instruction>(*U.getUser())) ||
-                     A.isAssumedDead(U, this, nullptr, UsedAssumedInformation);
+              auto &UserI = cast<Instruction>(*U.getUser());
+              if (InfoCache.isOnlyUsedByAssume(UserI)) {
+                if (AssumeOnlyInst)
+                  AssumeOnlyInst->insert(&UserI);
+                return true;
+              }
+              return A.isAssumedDead(U, this, nullptr, UsedAssumedInformation);
             })) {
-          if (AssumeOnlyInst)
-            AssumeOnlyInst->insert(LI);
           return true;
         }
       }
@@ -5122,7 +5124,7 @@ static unsigned getKnownAlignForUse(Attributor &A, AAAlign &QueryingAA,
       // gcd(Offset, Alignment) is an alignment.
 
       uint32_t gcd = std::gcd(uint32_t(abs((int32_t)Offset)), Alignment);
-      Alignment = llvm::PowerOf2Floor(gcd);
+      Alignment = llvm::bit_floor(gcd);
     }
   }
 
@@ -5258,7 +5260,7 @@ struct AAAlignFloating : AAAlignImpl {
 
           uint32_t gcd =
               std::gcd(uint32_t(abs((int32_t)Offset)), uint32_t(PA.value()));
-          Alignment = llvm::PowerOf2Floor(gcd);
+          Alignment = llvm::bit_floor(gcd);
         } else {
           Alignment = V.getPointerAlignment(DL).value();
         }

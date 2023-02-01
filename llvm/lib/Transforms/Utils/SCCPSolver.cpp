@@ -127,7 +127,7 @@ bool SCCPSolver::tryToReplaceWithConstant(Value *V) {
 static bool refineInstruction(SCCPSolver &Solver,
                               const SmallPtrSetImpl<Value *> &InsertedValues,
                               Instruction &Inst) {
-  if (Inst.getOpcode() != Instruction::Add)
+  if (!isa<OverflowingBinaryOperator>(Inst))
     return false;
 
   auto GetRange = [&Solver, &InsertedValues](Value *Op) {
@@ -142,16 +142,26 @@ static bool refineInstruction(SCCPSolver &Solver,
   };
   auto RangeA = GetRange(Inst.getOperand(0));
   auto RangeB = GetRange(Inst.getOperand(1));
+  bool Changed = false;
   if (!Inst.hasNoUnsignedWrap()) {
     auto NUWRange = ConstantRange::makeGuaranteedNoWrapRegion(
-        Instruction::Add, RangeB, OverflowingBinaryOperator::NoUnsignedWrap);
+        Instruction::BinaryOps(Inst.getOpcode()), RangeB,
+        OverflowingBinaryOperator::NoUnsignedWrap);
     if (NUWRange.contains(RangeA)) {
       Inst.setHasNoUnsignedWrap();
-      return true;
+      Changed = true;
+    }
+  }
+  if (!Inst.hasNoSignedWrap()) {
+    auto NSWRange = ConstantRange::makeGuaranteedNoWrapRegion(
+        Instruction::BinaryOps(Inst.getOpcode()), RangeB, OverflowingBinaryOperator::NoSignedWrap);
+    if (NSWRange.contains(RangeA)) {
+      Inst.setHasNoSignedWrap();
+      Changed = true;
     }
   }
 
-  return false;
+  return Changed;
 }
 
 /// Try to replace signed instructions with their unsigned equivalent.

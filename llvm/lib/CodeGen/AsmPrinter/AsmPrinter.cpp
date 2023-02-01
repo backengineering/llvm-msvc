@@ -31,7 +31,6 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/ConstantFolding.h"
-#include "llvm/Analysis/EHPersonalities.h"
 #include "llvm/Analysis/MemoryLocation.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
 #include "llvm/BinaryFormat/COFF.h"
@@ -67,6 +66,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/EHPersonalities.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GCStrategy.h"
 #include "llvm/IR/GlobalAlias.h"
@@ -2254,6 +2254,8 @@ bool AsmPrinter::doFinalization(Module &M) {
   SmallVector<const GlobalAlias *, 16> AliasStack;
   SmallPtrSet<const GlobalAlias *, 16> AliasVisited;
   for (const auto &Alias : M.aliases()) {
+    if (Alias.hasAvailableExternallyLinkage())
+      continue;
     for (const GlobalAlias *Cur = &Alias; Cur;
          Cur = dyn_cast<GlobalAlias>(Cur->getAliasee())) {
       if (!AliasVisited.insert(Cur).second)

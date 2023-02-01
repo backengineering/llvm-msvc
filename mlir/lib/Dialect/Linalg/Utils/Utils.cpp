@@ -164,7 +164,7 @@ bool hasOnlyScalarElementwiseOp(Region &r) {
     return false;
   for (Operation &op : r.front()) {
     if (!(isa<arith::ConstantOp, func::ConstantOp, tensor::ExtractOp,
-              linalg::YieldOp, linalg::IndexOp>(op) ||
+              linalg::YieldOp, linalg::IndexOp, AffineApplyOp>(op) ||
           OpTrait::hasElementwiseMappableTraits(&op)) ||
         llvm::any_of(op.getResultTypes(),
                      [](Type type) { return !type.isIntOrIndexOrFloat(); }))
@@ -1077,7 +1077,7 @@ std::optional<Attribute> getNeutralElement(Operation *op) {
     if (isa<arith::MinFOp>(op))
       return b.getFloatAttr(
           resultType, llvm::APFloat::getInf(semantic, /*Negative=*/false));
-    return Attribute();
+    return std::nullopt;
   }
   if (isa<arith::AddIOp, arith::OrIOp, arith::XOrIOp>(op))
     return b.getIntegerAttr(resultType, 0);

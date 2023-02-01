@@ -57,9 +57,15 @@ Bug Fixes
 - Fix crash on invalid code when looking up a destructor in a templated class
   inside a namespace. This fixes
   `Issue 59446 <https://github.com/llvm/llvm-project/issues/59446>`_.
+- Fix crash when diagnosing incorrect usage of ``_Nullable`` involving alias
+  templates. This fixes
+  `Issue 60344 <https://github.com/llvm/llvm-project/issues/60344>`_.
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- We now generate a diagnostic for signed integer overflow due to unary minus
+  in a non-constant expression context. This fixes
+  `Issue 31643 <https://github.com/llvm/llvm-project/issues/31643>`_
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
@@ -83,6 +89,11 @@ New Pragmas in Clang
 Attribute Changes in Clang
 --------------------------
 
+Introduced a new function attribute ``__attribute__((unsafe_buffer_usage))``
+to be worn by functions containing buffer operations that could cause out of
+bounds memory accesses. It emits warnings at call sites to such functions when
+the flag ``-Wunsafe-buffer-usage`` is enabled.
+
 Windows Support
 ---------------
 
@@ -97,12 +108,20 @@ C2x Feature Support
 
 C++ Language Changes in Clang
 -----------------------------
+- Improved ``-O0`` code generation for calls to ``std::forward_like``. Similarly to
+  ``std::move, std::forward`` et al. it is now treated as a compiler builtin and implemented
+  directly rather than instantiating the definition from the standard library.
 
 C++20 Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
 
 C++2b Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
+
+- Implemented `P2036R3: Change scope of lambda trailing-return-type <https://wg21.link/P2036R3>`_
+  and `P2579R0 Mitigation strategies for P2036 <https://wg21.link/P2579R0>`_.
+  These proposals modify how variables captured in lambdas can appear in trailing return type
+  expressions and how their types are deduced therein, in all C++ language versions.
 
 CUDA/HIP Language Changes in Clang
 ----------------------------------
@@ -143,6 +162,13 @@ DWARF Support in Clang
 
 Arm and AArch64 Support in Clang
 --------------------------------
+
+* The hard-float ABI is now available in Armv8.1-M configurations that
+  have integer MVE instructions (and therefore have FP registers) but
+  no scalar or vector floating point computation. Previously, trying
+  to select the hard-float ABI on such a target (via
+  ``-mfloat-abi=hard`` or a triple ending in ``hf``) would silently
+  use the soft-float ABI instead.
 
 Floating Point Support in Clang
 -------------------------------

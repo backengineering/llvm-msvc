@@ -940,6 +940,11 @@ Sema::VarArgKind Sema::isValidVarArgType(const QualType &Ty) {
   if (Ty.isDestructedType() == QualType::DK_nontrivial_c_struct)
     return VAK_Invalid;
 
+  if (Context.getTargetInfo().getTriple().isWasm() &&
+      Ty->isWebAssemblyReferenceType()) {
+    return VAK_Invalid;
+  }
+
   if (Ty.isCXX98PODType(Context))
     return VAK_Valid;
 
@@ -6567,6 +6572,8 @@ static bool isPlaceholderToRemoveAsArg(QualType type) {
 #include "clang/Basic/PPCTypes.def"
 #define RVV_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
 #include "clang/Basic/RISCVVTypes.def"
+#define WASM_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
+#include "clang/Basic/WebAssemblyReferenceTypes.def"
 #define PLACEHOLDER_TYPE(ID, SINGLETON_ID)
 #define BUILTIN_TYPE(ID, SINGLETON_ID) case BuiltinType::ID:
 #include "clang/AST/BuiltinTypes.def"
@@ -14741,6 +14748,13 @@ QualType Sema::CheckAddressOfOperand(ExprResult &OrigOp, SourceLocation OpLoc) {
   if (op->getType()->isObjCObjectType())
     return Context.getObjCObjectPointerType(op->getType());
 
+  if (Context.getTargetInfo().getTriple().isWasm() &&
+      op->getType()->isWebAssemblyReferenceType()) {
+    Diag(OpLoc, diag::err_wasm_ca_reference)
+        << 1 << OrigOp.get()->getSourceRange();
+    return QualType();
+  }
+
   CheckAddressOfPackedMember(op);
 
   return Context.getPointerType(op->getType());
@@ -18852,6 +18866,12 @@ static bool captureInLambda(LambdaScopeInfo *LSI, ValueDecl *Var,
     Invalid = true;
   }
 
+  if (BuildAndDiagnose && S.Context.getTargetInfo().getTriple().isWasm() &&
+      CaptureType.getNonReferenceType()->isWebAssemblyReferenceType()) {
+    S.Diag(Loc, diag::err_wasm_ca_reference) << 0;
+    Invalid = true;
+  }
+
   // Compute the type of the field that will capture this variable.
   if (ByRef) {
     // C++11 [expr.prim.lambda]p15:
@@ -19063,11 +19083,6 @@ bool Sema::tryCaptureVariable(
     }
   }
 
-
-  // If the variable is declared in the current context, there is no need to
-  // capture it.
-  if (VarDC == DC) return true;
-
   // Capture global variables if it is required to use private copy of this
   // variable.
   bool IsGlobal = !VD->hasLocalStorage();
@@ -19093,12 +19108,34 @@ bool Sema::tryCaptureVariable(
   bool Explicit = (Kind != TryCapture_Implicit);
   unsigned FunctionScopesIndex = MaxFunctionScopesIndex;
   do {
+
+    LambdaScopeInfo *LSI = nullptr;
+    if (!FunctionScopes.empty())
+      LSI = dyn_cast_or_null<LambdaScopeInfo>(
+          FunctionScopes[FunctionScopesIndex]);
+
+    bool IsInScopeDeclarationContext =
+        !LSI || LSI->AfterParameterList || CurContext == LSI->CallOperator;
+
+    if (LSI && !LSI->AfterParameterList) {
+      // This allows capturing parameters from a default value which does not
+      // seems correct
+      if (isa<ParmVarDecl>(Var) && !Var->getDeclContext()->isFunctionOrMethod())
+        return true;
+    }
+    // If the variable is declared in the current context, there is no need to
+    // capture it.
+    if (IsInScopeDeclarationContext &&
+        FunctionScopesIndex == MaxFunctionScopesIndex && VarDC == DC)
+      return true;
+
     // Only block literals, captured statements, and lambda expressions can
     // capture; other scopes don't work.
-    DeclContext *ParentDC = getParentOfCapturingContextOrNull(DC, Var,
-                                                              ExprLoc,
-                                                              BuildAndDiagnose,
-                                                              *this);
+    DeclContext *ParentDC =
+        !IsInScopeDeclarationContext
+            ? DC->getParent()
+            : getParentOfCapturingContextOrNull(DC, Var, ExprLoc,
+                                                BuildAndDiagnose, *this);
     // We need to check for the parent *first* because, if we *have*
     // private-captured a global variable, we need to recursively capture it in
     // intermediate blocks, lambdas, etc.
@@ -19112,7 +19149,6 @@ bool Sema::tryCaptureVariable(
 
     FunctionScopeInfo  *FSI = FunctionScopes[FunctionScopesIndex];
     CapturingScopeInfo *CSI = cast<CapturingScopeInfo>(FSI);
-
 
     // Check whether we've already captured it.
     if (isVariableAlreadyCapturedInScopeInfo(CSI, Var, Nested, CaptureType,
@@ -19229,10 +19265,10 @@ bool Sema::tryCaptureVariable(
       }
       return true;
     }
-
-    FunctionScopesIndex--;
-    DC = ParentDC;
     Explicit = false;
+    FunctionScopesIndex--;
+    if (IsInScopeDeclarationContext)
+      DC = ParentDC;
   } while (!VarDC->Equals(DC));
 
   // Walk back down the scope stack, (e.g. from outer lambda to inner lambda)
@@ -21097,6 +21133,8 @@ ExprResult Sema::CheckPlaceholderExpr(Expr *E) {
 #include "clang/Basic/PPCTypes.def"
 #define RVV_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
 #include "clang/Basic/RISCVVTypes.def"
+#define WASM_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
+#include "clang/Basic/WebAssemblyReferenceTypes.def"
 #define BUILTIN_TYPE(Id, SingletonId) case BuiltinType::Id:
 #define PLACEHOLDER_TYPE(Id, SingletonId)
 #include "clang/AST/BuiltinTypes.def"

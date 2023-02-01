@@ -78,7 +78,6 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/Frontend/OpenMP/OMPIRBuilder.h"
 #include "llvm/Support/Capacity.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
@@ -1507,6 +1506,12 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target,
 #include "clang/Basic/RISCVVTypes.def"
   }
 
+  if (Target.getTriple().isWasm() && Target.hasFeature("reference-types")) {
+#define WASM_TYPE(Name, Id, SingletonId)                                       \
+  InitBuiltinType(SingletonId, BuiltinType::Id);
+#include "clang/Basic/WebAssemblyReferenceTypes.def"
+  }
+
   // Builtin type for __objc_yes and __objc_no
   ObjCBuiltinBoolTy = (Target.useSignedCharForObjCBool() ?
                        SignedCharTy : BoolTy);
@@ -2084,7 +2089,7 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     // If the alignment is not a power of 2, round up to the next power of 2.
     // This happens for non-power-of-2 length vectors.
     if (Align & (Align-1)) {
-      Align = llvm::NextPowerOf2(Align);
+      Align = llvm::bit_ceil(Align);
       Width = llvm::alignTo(Width, Align);
     }
     // Adjust the alignment based on the target max.
@@ -2335,6 +2340,12 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = 8;                                                                 \
     break;
 #include "clang/Basic/RISCVVTypes.def"
+#define WASM_TYPE(Name, Id, SingletonId)                                       \
+  case BuiltinType::Id:                                                        \
+    Width = 0;                                                                 \
+    Align = 8;                                                                 \
+    break;
+#include "clang/Basic/WebAssemblyReferenceTypes.def"
     }
     break;
   case Type::ObjCObjectPointer:
@@ -2393,10 +2404,8 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
   }
   case Type::BitInt: {
     const auto *EIT = cast<BitIntType>(T);
-    Align =
-        std::min(static_cast<unsigned>(std::max(
-                     getCharWidth(), llvm::PowerOf2Ceil(EIT->getNumBits()))),
-                 Target->getLongLongAlign());
+    Align = std::clamp<unsigned>(llvm::PowerOf2Ceil(EIT->getNumBits()),
+                                 getCharWidth(), Target->getLongLongAlign());
     Width = llvm::alignTo(EIT->getNumBits(), Align);
     break;
   }
@@ -2502,8 +2511,7 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
       // favorable to atomic operations:
 
       // Round the size up to a power of 2.
-      if (!llvm::isPowerOf2_64(Width))
-        Width = llvm::NextPowerOf2(Width);
+      Width = llvm::bit_ceil(Width);
 
       // Set the alignment equal to the size.
       Align = static_cast<unsigned>(Width);
@@ -2543,8 +2551,7 @@ unsigned ASTContext::getTypeUnadjustedAlign(const Type *T) const {
 }
 
 unsigned ASTContext::getOpenMPDefaultSimdAlign(QualType T) const {
-  unsigned SimdAlign = llvm::OpenMPIRBuilder::getOpenMPDefaultSimdAlign(
-      getTargetInfo().getTriple(), Target->getTargetOpts().FeatureMap);
+  unsigned SimdAlign = getTargetInfo().getSimdDefaultAlign();
   return SimdAlign;
 }
 
@@ -4073,6 +4080,19 @@ ASTContext::getBuiltinVectorTypeInfo(const BuiltinType *Ty) const {
     return {BoolTy, llvm::ElementCount::getScalable(NumEls), 1};
 #include "clang/Basic/RISCVVTypes.def"
   }
+}
+
+/// getExternrefType - Return a WebAssembly externref type, which represents an
+/// opaque reference to a host value.
+QualType ASTContext::getWebAssemblyExternrefType() const {
+  if (Target->getTriple().isWasm() && Target->hasFeature("reference-types")) {
+#define WASM_REF_TYPE(Name, MangledName, Id, SingletonId, AS)                  \
+  if (BuiltinType::Id == BuiltinType::WasmExternRef)                           \
+    return SingletonId;
+#include "clang/Basic/WebAssemblyReferenceTypes.def"
+  }
+  llvm_unreachable(
+      "shouldn't try to generate type externref outside WebAssembly target");
 }
 
 /// getScalableVectorType - Return the unique reference to a scalable vector
@@ -8114,6 +8134,8 @@ static char getObjCEncodingForPrimitiveType(const ASTContext *C,
 #include "clang/Basic/AArch64SVEACLETypes.def"
 #define RVV_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
 #include "clang/Basic/RISCVVTypes.def"
+#define WASM_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
+#include "clang/Basic/WebAssemblyReferenceTypes.def"
       {
         DiagnosticsEngine &Diags = C->getDiagnostics();
         unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,

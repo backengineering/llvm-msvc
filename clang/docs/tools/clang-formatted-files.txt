@@ -4991,7 +4991,6 @@ llvm/include/llvm/Analysis/Delinearization.h
 llvm/include/llvm/Analysis/DependenceGraphBuilder.h
 llvm/include/llvm/Analysis/DivergenceAnalysis.h
 llvm/include/llvm/Analysis/DomTreeUpdater.h
-llvm/include/llvm/Analysis/EHPersonalities.h
 llvm/include/llvm/Analysis/FunctionPropertiesAnalysis.h
 llvm/include/llvm/Analysis/IndirectCallPromotionAnalysis.h
 llvm/include/llvm/Analysis/IndirectCallVisitor.h
@@ -5330,6 +5329,7 @@ llvm/include/llvm/IR/DebugInfo.h
 llvm/include/llvm/IR/DebugInfoMetadata.h
 llvm/include/llvm/IR/DiagnosticHandler.h
 llvm/include/llvm/IR/DiagnosticPrinter.h
+llvm/include/llvm/IR/EHPersonalities.h
 llvm/include/llvm/IR/GlobalIFunc.h
 llvm/include/llvm/IR/GlobalObject.h
 llvm/include/llvm/IR/GVMaterializer.h
@@ -7418,6 +7418,8 @@ llvm/unittests/XRay/FDRRecordsTest.cpp
 llvm/unittests/XRay/FDRTraceWriterTest.cpp
 llvm/unittests/XRay/ProfileTest.cpp
 llvm/utils/not/not.cpp
+llvm/Utils/TableGen/CodeGenInstAlias.cpp
+llvm/Utils/TableGen/CodeGenInstAlias.h
 llvm/utils/TableGen/CodeBeadsGen.cpp
 llvm/utils/TableGen/CompressInstEmitter.cpp
 llvm/utils/TableGen/DFAEmitter.h

@@ -295,10 +295,10 @@ Instruction *InstCombinerImpl::foldCmpLoadFromIndexedGlobal(
   // We need to erase the highest countTrailingZeros(ElementSize) bits of Idx.
   unsigned ElementSize =
       DL.getTypeAllocSize(Init->getType()->getArrayElementType());
-  auto MaskIdx = [&](Value* Idx){
-    if (!GEP->isInBounds() && countTrailingZeros(ElementSize) != 0) {
+  auto MaskIdx = [&](Value *Idx) {
+    if (!GEP->isInBounds() && llvm::countr_zero(ElementSize) != 0) {
       Value *Mask = ConstantInt::get(Idx->getType(), -1);
-      Mask = Builder.CreateLShr(Mask, countTrailingZeros(ElementSize));
+      Mask = Builder.CreateLShr(Mask, llvm::countr_zero(ElementSize));
       Idx = Builder.CreateAnd(Idx, Mask);
     }
     return Idx;
@@ -1295,6 +1295,48 @@ Instruction *InstCombinerImpl::foldICmpWithZero(ICmpInst &Cmp) {
       return new ICmpInst(Pred, X, Cmp.getOperand(1));
   }
 
+  // (icmp eq/ne (mul X Y)) -> (icmp eq/ne X/Y) if we know about whether X/Y are
+  // odd/non-zero/there is no overflow.
+  if (match(Cmp.getOperand(0), m_Mul(m_Value(X), m_Value(Y))) &&
+      ICmpInst::isEquality(Pred)) {
+
+    KnownBits XKnown = computeKnownBits(X, 0, &Cmp);
+    // if X % 2 != 0
+    //    (icmp eq/ne Y)
+    if (XKnown.countMaxTrailingZeros() == 0)
+      return new ICmpInst(Pred, Y, Cmp.getOperand(1));
+
+    KnownBits YKnown = computeKnownBits(Y, 0, &Cmp);
+    // if Y % 2 != 0
+    //    (icmp eq/ne X)
+    if (YKnown.countMaxTrailingZeros() == 0)
+      return new ICmpInst(Pred, X, Cmp.getOperand(1));
+
+    auto *BO0 = cast<OverflowingBinaryOperator>(Cmp.getOperand(0));
+    if (BO0->hasNoUnsignedWrap() || BO0->hasNoSignedWrap()) {
+      const SimplifyQuery Q = SQ.getWithInstruction(&Cmp);
+      // `isKnownNonZero` does more analysis than just `!KnownBits.One.isZero()`
+      // but to avoid unnecessary work, first just if this is an obvious case.
+
+      // if X non-zero and NoOverflow(X * Y)
+      //    (icmp eq/ne Y)
+      if (!XKnown.One.isZero() || isKnownNonZero(X, DL, 0, Q.AC, Q.CxtI, Q.DT))
+        return new ICmpInst(Pred, Y, Cmp.getOperand(1));
+
+      // if Y non-zero and NoOverflow(X * Y)
+      //    (icmp eq/ne X)
+      if (!YKnown.One.isZero() || isKnownNonZero(Y, DL, 0, Q.AC, Q.CxtI, Q.DT))
+        return new ICmpInst(Pred, X, Cmp.getOperand(1));
+    }
+    // Note, we are skipping cases:
+    //      if Y % 2 != 0 AND X % 2 != 0
+    //          (false/true)
+    //      if X non-zero and Y non-zero and NoOverflow(X * Y)
+    //          (false/true)
+    // Those can be simplified later as we would have already replaced the (icmp
+    // eq/ne (mul X, Y)) with (icmp eq/ne X/Y) and if X/Y is known non-zero that
+    // will fold to a constant elsewhere.
+  }
   return nullptr;
 }
 
@@ -1844,6 +1886,30 @@ Instruction *InstCombinerImpl::foldICmpAndConstant(ICmpInst &Cmp,
     auto NewPred =
         Pred == CmpInst::ICMP_EQ ? CmpInst::ICMP_UGT : CmpInst::ICMP_ULE;
     return new ICmpInst(NewPred, X, SubOne(cast<Constant>(Cmp.getOperand(1))));
+  }
+
+  // If we are testing the intersection of 2 select-of-nonzero-constants with no
+  // common bits set, it's the same as checking if exactly one select condition
+  // is set:
+  // ((A ? TC : FC) & (B ? TC : FC)) == 0 --> xor A, B
+  // ((A ? TC : FC) & (B ? TC : FC)) != 0 --> not(xor A, B)
+  // TODO: Generalize for non-constant values.
+  // TODO: Handle signed/unsigned predicates.
+  // TODO: Handle other bitwise logic connectors.
+  // TODO: Extend to handle a non-zero compare constant.
+  if (C.isZero() && (Pred == CmpInst::ICMP_EQ || And->hasOneUse())) {
+    assert(Cmp.isEquality() && "Not expecting non-equality predicates");
+    Value *A, *B;
+    const APInt *TC, *FC;
+    if (match(X, m_Select(m_Value(A), m_APInt(TC), m_APInt(FC))) &&
+        match(Y,
+              m_Select(m_Value(B), m_SpecificInt(*TC), m_SpecificInt(*FC))) &&
+        !TC->isZero() && !FC->isZero() && !TC->intersects(*FC)) {
+      Value *R = Builder.CreateXor(A, B);
+      if (Pred == CmpInst::ICMP_NE)
+        R = Builder.CreateNot(R);
+      return replaceInstUsesWith(Cmp, R);
+    }
   }
 
   // ((zext i1 X) & Y) == 0 --> !((trunc Y) & X)

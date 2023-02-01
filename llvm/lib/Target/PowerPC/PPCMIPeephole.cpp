@@ -193,7 +193,7 @@ static unsigned getKnownLeadingZeroCount(const unsigned Reg,
 
   if (Opcode == PPC::ANDI_rec) {
     uint16_t Imm = MI->getOperand(2).getImm();
-    return 48 + countLeadingZeros(Imm);
+    return 48 + llvm::countl_zero(Imm);
   }
 
   if (Opcode == PPC::CNTLZW || Opcode == PPC::CNTLZW_rec ||
@@ -839,7 +839,8 @@ bool PPCMIPeephole::simplifyCode() {
           if (SrcMI->getOperand(1).isGlobal()) {
             const GlobalObject *GO =
                 dyn_cast<GlobalObject>(SrcMI->getOperand(1).getGlobal());
-            if (GO && GO->getAlign() && *GO->getAlign() >= 4)
+            if (GO && GO->getAlign() && *GO->getAlign() >= 4 &&
+                (SrcMI->getOperand(1).getOffset() % 4 == 0))
               IsWordAligned = true;
           } else if (SrcMI->getOperand(1).isImm()) {
             int64_t Value = SrcMI->getOperand(1).getImm();

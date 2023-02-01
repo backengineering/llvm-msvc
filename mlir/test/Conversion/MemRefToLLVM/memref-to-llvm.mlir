@@ -1,5 +1,5 @@
-// RUN: mlir-opt -convert-memref-to-llvm %s -split-input-file | FileCheck %s
-// RUN: mlir-opt -convert-memref-to-llvm='index-bitwidth=32' %s -split-input-file | FileCheck --check-prefix=CHECK32 %s
+// RUN: mlir-opt -finalize-memref-to-llvm %s -split-input-file | FileCheck %s
+// RUN: mlir-opt -finalize-memref-to-llvm='index-bitwidth=32' %s -split-input-file | FileCheck --check-prefix=CHECK32 %s
 
 // CHECK-LABEL: func @view(
 // CHECK: %[[ARG0F:.*]]: index, %[[ARG1F:.*]]: index, %[[ARG2F:.*]]: index
@@ -370,7 +370,7 @@ func.func @generic_atomic_rmw(%I : memref<10xi32>, %i : index) {
   // CHECK-NEXT: llvm.br ^bb1([[init]] : i32)
   // CHECK-NEXT: ^bb1([[loaded:%.*]]: i32):
   // CHECK-NEXT: [[pair:%.*]] = llvm.cmpxchg %{{.*}}, [[loaded]], [[loaded]]
-  // CHECK-SAME:                    acq_rel monotonic : i32
+  // CHECK-SAME:                    acq_rel monotonic : !llvm.ptr<i32>, i32
   // CHECK-NEXT: [[new:%.*]] = llvm.extractvalue [[pair]][0]
   // CHECK-NEXT: [[ok:%.*]] = llvm.extractvalue [[pair]][1]
   // CHECK-NEXT: llvm.cond_br [[ok]], ^bb2, ^bb1([[new]] : i32)
