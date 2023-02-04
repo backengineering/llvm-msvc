@@ -827,6 +827,10 @@ enum class DebugKind {
 };
 
 static DebugKind parseDebugKind(const opt::InputArgList &args) {
+  
+  // Returns Full (Generating PDB by default)
+  return DebugKind::Full;
+
   auto *a = args.getLastArg(OPT_debug, OPT_debug_opt);
   if (!a)
     return DebugKind::None;
