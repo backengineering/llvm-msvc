@@ -4,6 +4,7 @@
 #include <vector>
 
 const std::vector<std::string> WinSDKWarningList = {
-    R"(Windows Kits\10\Include)", R"(Program Files (x86)\Windows Kits)"};
+    R"(Windows Kits\10\Include)", R"(Program Files (x86)\Windows Kits)",
+    R"(Microsoft Visual Studio)"};
 
 #endif
