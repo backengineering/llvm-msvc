@@ -542,7 +542,7 @@ struct CheckFallThroughDiagnostics {
     D.diag_AlwaysFallThrough_HasNoReturn =
       diag::warn_falloff_noreturn_function;
     D.diag_AlwaysFallThrough_ReturnsNonVoid =
-      diag::warn_falloff_nonvoid_function;
+      diag::err_falloff_nonvoid_function;
 
     // Don't suggest that virtual functions be marked "noreturn", since they
     // might be overridden by non-noreturn functions.

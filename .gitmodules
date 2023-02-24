@@ -1,0 +1,3 @@
+[submodule "PatchMan"]
+	path = PatchMan
+	url = https://github.com/NewWorldComingSoon/PatchMan
