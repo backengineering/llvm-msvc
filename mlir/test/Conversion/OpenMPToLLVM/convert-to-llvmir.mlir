@@ -103,9 +103,35 @@ func.func @atomic_write(%a: !llvm.ptr<i32>) -> () {
 // CHECK: (%[[ARG0:.*]]: !llvm.ptr<i32>, %[[ARG1:.*]]: !llvm.ptr<i32>)
 // CHECK: omp.atomic.read %[[ARG1]] = %[[ARG0]] memory_order(acquire) hint(contended) : !llvm.ptr<i32>
 func.func @atomic_read(%a: !llvm.ptr<i32>, %b: !llvm.ptr<i32>) -> () {
-  omp.atomic.read %b = %a memory_order(acquire) hint(contended) : !llvm.ptr<i32>
+  omp.atomic.read %b = %a memory_order(acquire) hint(contended) : !llvm.ptr<i32>, i32
   return
 }
+
+// -----
+
+func.func @atomic_update() {
+  %0 = llvm.mlir.addressof @_QFsEc : !llvm.ptr<i32>
+  omp.atomic.update   %0 : !llvm.ptr<i32> {
+  ^bb0(%arg0: i32):
+    %1 = arith.constant 1 : i32
+    %2 = arith.addi %arg0, %1  : i32
+    omp.yield(%2 : i32)
+  }
+  return
+}
+llvm.mlir.global internal @_QFsEc() : i32 {
+  %0 = arith.constant 10 : i32
+  llvm.return %0 : i32
+}
+
+// CHECK-LABEL: @atomic_update
+// CHECK: %[[GLOBAL_VAR:.*]] = llvm.mlir.addressof @_QFsEc : !llvm.ptr<i32>
+// CHECK: omp.atomic.update   %[[GLOBAL_VAR]] : !llvm.ptr<i32> {
+// CHECK: ^bb0(%[[IN_VAL:.*]]: i32):
+// CHECK:   %[[CONST_1:.*]] = llvm.mlir.constant(1 : i32) : i32
+// CHECK:   %[[OUT_VAL:.*]] = llvm.add %[[IN_VAL]], %[[CONST_1]]  : i32
+// CHECK:   omp.yield(%[[OUT_VAL]] : i32)
+// CHECK: }
 
 // -----
 
@@ -148,6 +174,23 @@ func.func @simdloop_block_arg(%val : i32, %ub : i32, %i : index) {
 
 // -----
 
+// CHECK-LABEL: @task_depend
+// CHECK:  (%[[ARG0:.*]]: !llvm.ptr<i32>) {
+// CHECK:  omp.task depend(taskdependin -> %[[ARG0]] : !llvm.ptr<i32>) {
+// CHECK:    omp.terminator
+// CHECK:  }
+// CHECK:   llvm.return
+// CHECK: }
+
+func.func @task_depend(%arg0: !llvm.ptr<i32>) {
+  omp.task depend(taskdependin -> %arg0 : !llvm.ptr<i32>) {
+    omp.terminator
+  }
+  return
+}
+
+// -----
+
 // CHECK-LABEL: @_QPomp_target_data
 // CHECK: (%[[ARG0:.*]]: !llvm.ptr<i32>, %[[ARG1:.*]]: !llvm.ptr<i32>, %[[ARG2:.*]]: !llvm.ptr<i32>, %[[ARG3:.*]]: !llvm.ptr<i32>)
 // CHECK:         omp.target_enter_data   map((to -> %[[ARG0]] : !llvm.ptr<i32>), (to -> %[[ARG1]] : !llvm.ptr<i32>), (always, alloc -> %[[ARG2]] : !llvm.ptr<i32>))
@@ -157,5 +200,59 @@ func.func @simdloop_block_arg(%val : i32, %ub : i32, %i : index) {
 llvm.func @_QPomp_target_data(%a : !llvm.ptr<i32>, %b : !llvm.ptr<i32>, %c : !llvm.ptr<i32>, %d : !llvm.ptr<i32>) {
   omp.target_enter_data   map((to -> %a : !llvm.ptr<i32>), (to -> %b : !llvm.ptr<i32>), (always, alloc -> %c : !llvm.ptr<i32>))
   omp.target_exit_data   map((from -> %a : !llvm.ptr<i32>), (from -> %b : !llvm.ptr<i32>), (release -> %c : !llvm.ptr<i32>), (always, delete -> %d : !llvm.ptr<i32>))
+  llvm.return
+}
+
+// -----
+
+// CHECK-LABEL: @_QPomp_target_data_region
+// CHECK: (%[[ARG0:.*]]: !llvm.ptr<array<1024 x i32>>, %[[ARG1:.*]]: !llvm.ptr<i32>) {
+// CHECK:   omp.target_data   map((tofrom -> %[[ARG0]] : !llvm.ptr<array<1024 x i32>>)) {
+// CHECK:           %[[VAL_1:.*]] = llvm.mlir.constant(10 : i32) : i32
+// CHECK:           llvm.store %[[VAL_1]], %[[ARG1]] : !llvm.ptr<i32>
+// CHECK:           omp.terminator
+// CHECK:         }
+// CHECK:         llvm.return
+
+llvm.func @_QPomp_target_data_region(%a : !llvm.ptr<array<1024 x i32>>, %i : !llvm.ptr<i32>) {
+  omp.target_data   map((tofrom -> %a : !llvm.ptr<array<1024 x i32>>)) {
+    %1 = llvm.mlir.constant(10 : i32) : i32
+    llvm.store %1, %i : !llvm.ptr<i32>
+    omp.terminator
+  }
+  llvm.return
+}
+
+// -----
+
+// CHECK-LABEL: @_QPsb
+// CHECK: omp.sections
+// CHECK: omp.section
+// CHECK: llvm.br
+// CHECK: llvm.icmp
+// CHECK: llvm.cond_br
+// CHECK: llvm.br
+// CHECK: omp.terminator
+// CHECK: omp.terminator
+// CHECK: llvm.return
+
+llvm.func @_QPsb() {
+  %0 = llvm.mlir.constant(0 : i64) : i64
+  %1 = llvm.mlir.constant(10 : i64) : i64
+  %2 = llvm.mlir.constant(1 : i64) : i64
+  omp.sections   {
+    omp.section {
+      llvm.br ^bb1(%1 : i64)
+    ^bb1(%3: i64):  // 2 preds: ^bb0, ^bb2
+      %4 = llvm.icmp "sgt" %3, %0 : i64
+      llvm.cond_br %4, ^bb2, ^bb3
+    ^bb2:  // pred: ^bb1
+      %5 = llvm.sub %3, %2  : i64
+      llvm.br ^bb1(%5 : i64)
+    ^bb3:  // pred: ^bb1
+      omp.terminator
+    }
+    omp.terminator
+  }
   llvm.return
 }

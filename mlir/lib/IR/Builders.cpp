@@ -41,6 +41,14 @@ FloatType Builder::getFloat8E4M3FNType() {
   return FloatType::getFloat8E4M3FN(context);
 }
 
+FloatType Builder::getFloat8E5M2FNUZType() {
+  return FloatType::getFloat8E5M2FNUZ(context);
+}
+
+FloatType Builder::getFloat8E4M3FNUZType() {
+  return FloatType::getFloat8E4M3FNUZ(context);
+}
+
 FloatType Builder::getBF16Type() { return FloatType::getBF16(context); }
 
 FloatType Builder::getF16Type() { return FloatType::getF16(context); }
@@ -379,8 +387,6 @@ AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
 //===----------------------------------------------------------------------===//
 // OpBuilder
 //===----------------------------------------------------------------------===//
-
-OpBuilder::Listener::~Listener() = default;
 
 /// Insert the given operation at the current insertion point and return it.
 Operation *OpBuilder::insert(Operation *op) {

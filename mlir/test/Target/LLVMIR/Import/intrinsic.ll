@@ -431,16 +431,16 @@ define void @assume(i1 %true) {
 
 ; CHECK-LABEL:  llvm.func @coro_id
 define void @coro_id(i32 %0, ptr %1) {
-  ; CHECK: llvm.intr.coro.id %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : !llvm.token
+  ; CHECK: llvm.intr.coro.id %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
   %3 = call token @llvm.coro.id(i32 %0, ptr %1, ptr %1, ptr null)
   ret void
 }
 
 ; CHECK-LABEL:  llvm.func @coro_begin
 define void @coro_begin(i32 %0, ptr %1) {
-  ; CHECK: llvm.intr.coro.id %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : !llvm.token
+  ; CHECK: llvm.intr.coro.id %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
   %3 = call token @llvm.coro.id(i32 %0, ptr %1, ptr %1, ptr null)
-  ; CHECK: llvm.intr.coro.begin %{{.*}}, %{{.*}} : !llvm.ptr
+  ; CHECK: llvm.intr.coro.begin %{{.*}}, %{{.*}} : (!llvm.token, !llvm.ptr) -> !llvm.ptr
   %4 = call ptr @llvm.coro.begin(token %3, ptr %1)
   ret void
 }
@@ -464,14 +464,14 @@ define void @coro_align() {
 
 ; CHECK-LABEL:  llvm.func @coro_save
 define void @coro_save(ptr %0) {
-  ; CHECK: llvm.intr.coro.save %{{.*}} : !llvm.token
+  ; CHECK: llvm.intr.coro.save %{{.*}} : (!llvm.ptr) -> !llvm.token
   %2 = call token @llvm.coro.save(ptr %0)
   ret void
 }
 
 ; CHECK-LABEL:  llvm.func @coro_suspend
 define void @coro_suspend(i32 %0, i1 %1, ptr %2) {
-  ; CHECK: llvm.intr.coro.id %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : !llvm.token
+  ; CHECK: llvm.intr.coro.id %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
   %4 = call token @llvm.coro.id(i32 %0, ptr %2, ptr %2, ptr null)
   ; CHECK: llvm.intr.coro.suspend %{{.*}}, %{{.*}} : i8
   %5 = call i8 @llvm.coro.suspend(token %4, i1 %1)
@@ -487,9 +487,9 @@ define void @coro_end(ptr %0, i1 %1) {
 
 ; CHECK-LABEL:  llvm.func @coro_free
 define void @coro_free(i32 %0, ptr %1) {
-  ; CHECK: llvm.intr.coro.id %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : !llvm.token
+  ; CHECK: llvm.intr.coro.id %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
   %3 = call token @llvm.coro.id(i32 %0, ptr %1, ptr %1, ptr null)
-  ; CHECK: llvm.intr.coro.free %{{.*}}, %{{.*}} : !llvm.ptr
+  ; CHECK: llvm.intr.coro.free %{{.*}}, %{{.*}} : (!llvm.token, !llvm.ptr) -> !llvm.ptr
   %4 = call ptr @llvm.coro.free(token %3, ptr %1)
   ret void
 }
@@ -503,7 +503,7 @@ define void @coro_resume(ptr %0) {
 
 ; CHECK-LABEL:  llvm.func @eh_typeid_for
 define void @eh_typeid_for(ptr %0) {
-  ; CHECK: llvm.intr.eh.typeid.for %{{.*}} : i32
+  ; CHECK: llvm.intr.eh.typeid.for %{{.*}} : (!llvm.ptr) -> i32
   %2 = call i32 @llvm.eh.typeid.for(ptr %0)
   ret void
 }
@@ -629,6 +629,8 @@ define void @vector_predication_intrinsics(<8 x i32> %0, <8 x i32> %1, <8 x floa
   %58 = call <8 x i64> @llvm.vp.ptrtoint.v8i64.v8p0(<8 x ptr> %6, <8 x i1> %11, i32 %12)
   ; CHECK: "llvm.intr.vp.inttoptr"(%{{.*}}, %{{.*}}, %{{.*}}) : (vector<8xi64>, vector<8xi1>, i32) -> !llvm.vec<8 x ptr>
   %59 = call <8 x ptr> @llvm.vp.inttoptr.v8p0.v8i64(<8 x i64> %4, <8 x i1> %11, i32 %12)
+  ; CHECK: "llvm.intr.vp.fmuladd"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (vector<8xf32>, vector<8xf32>, vector<8xf32>, vector<8xi1>, i32) -> vector<8xf32>
+  %60 = call <8 x float> @llvm.vp.fmuladd.v8f32(<8 x float> %2, <8 x float> %3, <8 x float> %3, <8 x i1> %11, i32 %12)
   ret void
 }
 
@@ -762,6 +764,7 @@ declare <8 x float> @llvm.vp.fdiv.v8f32(<8 x float>, <8 x float>, <8 x i1>, i32)
 declare <8 x float> @llvm.vp.frem.v8f32(<8 x float>, <8 x float>, <8 x i1>, i32)
 declare <8 x float> @llvm.vp.fneg.v8f32(<8 x float>, <8 x i1>, i32)
 declare <8 x float> @llvm.vp.fma.v8f32(<8 x float>, <8 x float>, <8 x float>, <8 x i1>, i32)
+declare <8 x float> @llvm.vp.fmuladd.v8f32(<8 x float>, <8 x float>, <8 x float>, <8 x i1>, i32)
 declare i32 @llvm.vp.reduce.add.v8i32(i32, <8 x i32>, <8 x i1>, i32)
 declare i32 @llvm.vp.reduce.mul.v8i32(i32, <8 x i32>, <8 x i1>, i32)
 declare i32 @llvm.vp.reduce.and.v8i32(i32, <8 x i32>, <8 x i1>, i32)

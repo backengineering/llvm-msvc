@@ -106,6 +106,20 @@ Changes to the RISC-V Backend
 
 * Assembler support for version 1.0.1 of the Zcb extension was added.
 * Zca, Zcf, and Zcd extensions were upgraded to version 1.0.1.
+* vsetvli intrinsics no longer have side effects. They may now be combined,
+  moved, deleted, etc. by optimizations.
+* Adds support for the vendor-defined XTHeadBa (address-generation) extension.
+* Adds support for the vendor-defined XTHeadBb (basic bit-manipulation) extension.
+* Adds support for the vendor-defined XTHeadBs (single-bit) extension.
+* Adds support for the vendor-defined XTHeadMac (multiply-accumulate instructions) extension.
+* Added support for the vendor-defined XTHeadMemPair (two-GPR memory operations)
+  extension disassembler/assembler.
+* Added support for the vendor-defined XTHeadMemIdx (indexed memory operations)
+  extension disassembler/assembler.
+* Support for the now-ratified Zawrs extension is no longer experimental.
+* Adds support for the vendor-defined XTHeadCmo (cache management operations) extension.
+* Adds support for the vendor-defined XTHeadSync (multi-core synchronization instructions) extension.
+* Added support for the vendor-defined XTHeadFMemIdx (indexed memory operations for floating point) extension.
 
 Changes to the WebAssembly Backend
 ----------------------------------

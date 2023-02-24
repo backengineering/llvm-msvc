@@ -50,6 +50,7 @@
 ; GCN-O0-NEXT:      Expand vector predication intrinsics
 ; GCN-O0-NEXT:      Scalarize Masked Memory Intrinsics
 ; GCN-O0-NEXT:      Expand reduction intrinsics
+; GCN-O0-NEXT:    AMDGPU Remove Incompatible Functions
 ; GCN-O0-NEXT:    AMDGPU Attributor
 ; GCN-O0-NEXT:      FunctionPass Manager
 ; GCN-O0-NEXT:        Cycle Info Analysis
@@ -93,6 +94,7 @@
 ; GCN-O0-NEXT:        Loop-Closed SSA Form Pass
 ; GCN-O0-NEXT:      DummyCGSCCPass
 ; GCN-O0-NEXT:      FunctionPass Manager
+; GCN-O0-NEXT:        Prepare callbr
 ; GCN-O0-NEXT:        Safe Stack instrumentation pass
 ; GCN-O0-NEXT:        Insert stack protectors
 ; GCN-O0-NEXT:        Dominator Tree Construction
@@ -230,6 +232,7 @@
 ; GCN-O1-NEXT:      Expand reduction intrinsics
 ; GCN-O1-NEXT:      Natural Loop Information
 ; GCN-O1-NEXT:      TLS Variable Hoist
+; GCN-O1-NEXT:    AMDGPU Remove Incompatible Functions
 ; GCN-O1-NEXT:    AMDGPU Attributor
 ; GCN-O1-NEXT:      FunctionPass Manager
 ; GCN-O1-NEXT:        Cycle Info Analysis
@@ -285,6 +288,7 @@
 ; GCN-O1-NEXT:        Loop-Closed SSA Form Pass
 ; GCN-O1-NEXT:      DummyCGSCCPass
 ; GCN-O1-NEXT:      FunctionPass Manager
+; GCN-O1-NEXT:        Prepare callbr
 ; GCN-O1-NEXT:        Safe Stack instrumentation pass
 ; GCN-O1-NEXT:        Insert stack protectors
 ; GCN-O1-NEXT:        Dominator Tree Construction
@@ -520,6 +524,7 @@
 ; GCN-O1-OPTS-NEXT:      Natural Loop Information
 ; GCN-O1-OPTS-NEXT:      TLS Variable Hoist
 ; GCN-O1-OPTS-NEXT:      Early CSE
+; GCN-O1-OPTS-NEXT:    AMDGPU Remove Incompatible Functions
 ; GCN-O1-OPTS-NEXT:    AMDGPU Attributor
 ; GCN-O1-OPTS-NEXT:      FunctionPass Manager
 ; GCN-O1-OPTS-NEXT:        Cycle Info Analysis
@@ -581,6 +586,7 @@
 ; GCN-O1-OPTS-NEXT:        Loop-Closed SSA Form Pass
 ; GCN-O1-OPTS-NEXT:      DummyCGSCCPass
 ; GCN-O1-OPTS-NEXT:      FunctionPass Manager
+; GCN-O1-OPTS-NEXT:        Prepare callbr
 ; GCN-O1-OPTS-NEXT:        Safe Stack instrumentation pass
 ; GCN-O1-OPTS-NEXT:        Insert stack protectors
 ; GCN-O1-OPTS-NEXT:        Dominator Tree Construction
@@ -824,6 +830,7 @@
 ; GCN-O2-NEXT:      Natural Loop Information
 ; GCN-O2-NEXT:      TLS Variable Hoist
 ; GCN-O2-NEXT:      Early CSE
+; GCN-O2-NEXT:    AMDGPU Remove Incompatible Functions
 ; GCN-O2-NEXT:    AMDGPU Attributor
 ; GCN-O2-NEXT:      FunctionPass Manager
 ; GCN-O2-NEXT:        Cycle Info Analysis
@@ -886,6 +893,7 @@
 ; GCN-O2-NEXT:      Analysis if a function is memory bound
 ; GCN-O2-NEXT:      DummyCGSCCPass
 ; GCN-O2-NEXT:      FunctionPass Manager
+; GCN-O2-NEXT:        Prepare callbr
 ; GCN-O2-NEXT:        Safe Stack instrumentation pass
 ; GCN-O2-NEXT:        Insert stack protectors
 ; GCN-O2-NEXT:        Dominator Tree Construction
@@ -1141,6 +1149,7 @@
 ; GCN-O3-NEXT:      Lazy Block Frequency Analysis
 ; GCN-O3-NEXT:      Optimization Remark Emitter
 ; GCN-O3-NEXT:      Global Value Numbering
+; GCN-O3-NEXT:    AMDGPU Remove Incompatible Functions
 ; GCN-O3-NEXT:    AMDGPU Attributor
 ; GCN-O3-NEXT:      FunctionPass Manager
 ; GCN-O3-NEXT:        Cycle Info Analysis
@@ -1203,6 +1212,7 @@
 ; GCN-O3-NEXT:      Analysis if a function is memory bound
 ; GCN-O3-NEXT:      DummyCGSCCPass
 ; GCN-O3-NEXT:      FunctionPass Manager
+; GCN-O3-NEXT:        Prepare callbr
 ; GCN-O3-NEXT:        Safe Stack instrumentation pass
 ; GCN-O3-NEXT:        Insert stack protectors
 ; GCN-O3-NEXT:        Dominator Tree Construction

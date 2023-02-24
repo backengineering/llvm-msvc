@@ -1,10 +1,12 @@
 add_subdirectory(CPP)
+add_subdirectory(macros)
 
 add_header_library(
   blockstore
   HDRS
     blockstore.h
   DEPENDS
+    .libc_assert
     libc.src.__support.CPP.new
 )
 
@@ -15,26 +17,13 @@ add_header_library(
 )
 
 add_header_library(
-  compiler_features
-  HDRS
-    compiler_features.h
-)
-
-add_header_library(
-  sanitizer
-  HDRS
-    sanitizer.h
-  DEPENDS
-    libc.src.__support.compiler_features
-)
-
-add_header_library(
   common
   HDRS
-    architectures.h
     common.h
-    cpu_features.h
     endian.h
+    macros/properties/architectures.h
+    macros/attributes.h
+    macros/properties/cpu_features.h
 )
 
 add_header_library(
@@ -43,9 +32,9 @@ add_header_library(
     builtin_wrappers.h
   DEPENDS
     .named_pair
-    libc.src.__support.common
-    libc.src.__support.compiler_features
     libc.src.__support.CPP.type_traits
+    libc.src.__support.macros.attributes
+    libc.src.__support.macros.properties.compiler
 )
 
 add_header_library(
@@ -99,6 +88,7 @@ add_header_library(
     float_to_string.h
     ryu_constants.h
   DEPENDS
+    .libc_assert
     libc.src.__support.CPP.type_traits
     libc.src.__support.FPUtil.fp_bits
     libc.src.__support.common
@@ -191,6 +181,7 @@ add_header_library(
     .integer_utils
     libc.src.__support.CPP.array
     libc.src.__support.CPP.type_traits
+    libc.src.__support.macros.optimization
 )
 
 add_header_library(
@@ -199,6 +190,15 @@ add_header_library(
     UInt128.h
   DEPENDS
     .uint
+)
+
+add_header_library(
+  libc_assert
+  HDRS
+    libc_assert.h
+  DEPENDS
+    .integer_to_string
+    libc.src.__support.OSUtil.osutil
 )
 
 add_subdirectory(FPUtil)

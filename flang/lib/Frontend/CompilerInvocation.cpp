@@ -25,16 +25,16 @@
 #include "clang/Driver/Options.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FileUtilities.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #include <memory>
 #include <optional>
 
@@ -126,6 +126,11 @@ static void parseCodeGenArgs(Fortran::frontend::CodeGenOptions &opts,
                    clang::driver::options::OPT_fno_debug_pass_manager, false))
     opts.DebugPassManager = 1;
 
+  if (args.hasFlag(clang::driver::options::OPT_fstack_arrays,
+                   clang::driver::options::OPT_fno_stack_arrays, false)) {
+    opts.StackArrays = 1;
+  }
+
   for (auto *a : args.filtered(clang::driver::options::OPT_fpass_plugin_EQ))
     opts.LLVMPassPlugins.push_back(a->getValue());
 
@@ -165,6 +170,12 @@ static void parseCodeGenArgs(Fortran::frontend::CodeGenOptions &opts,
     opts.PICLevel = PICLevel;
     if (args.hasArg(clang::driver::options::OPT_pic_is_pie))
       opts.IsPIE = 1;
+  }
+
+  // This option is compatible with -f[no-]underscoring in gfortran.
+  if (args.hasFlag(clang::driver::options::OPT_fno_underscoring,
+                   clang::driver::options::OPT_funderscoring, false)) {
+    opts.Underscoring = 0;
   }
 }
 
@@ -599,14 +610,17 @@ static bool parseDiagArgs(CompilerInvocation &res, llvm::opt::ArgList &args,
   // TODO: Currently throws a Diagnostic for anything other than -W<error>,
   // this has to change when other -W<opt>'s are supported.
   if (args.hasArg(clang::driver::options::OPT_W_Joined)) {
-    if (args.getLastArgValue(clang::driver::options::OPT_W_Joined)
-            .equals("error")) {
-      res.setWarnAsErr(true);
-    } else {
-      const unsigned diagID =
-          diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                "Only `-Werror` is supported currently.");
-      diags.Report(diagID);
+    const auto &wArgs =
+        args.getAllArgValues(clang::driver::options::OPT_W_Joined);
+    for (const auto &wArg : wArgs) {
+      if (wArg == "error") {
+        res.setWarnAsErr(true);
+      } else {
+        const unsigned diagID =
+            diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "Only `-Werror` is supported currently.");
+        diags.Report(diagID);
+      }
     }
   }
 

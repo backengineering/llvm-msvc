@@ -1510,6 +1510,7 @@ ReoptimizeBlock:
   if (!IsEmptyBlock(MBB)) {
     MachineInstr &TailCall = *MBB->getFirstNonDebugInstr();
     if (TII->isUnconditionalTailCall(TailCall)) {
+      SmallVector<MachineBasicBlock *> PredsChanged;
       for (auto &Pred : MBB->predecessors()) {
         MachineBasicBlock *PredTBB = nullptr, *PredFBB = nullptr;
         SmallVector<MachineOperand, 4> PredCond;
@@ -1527,9 +1528,7 @@ ReoptimizeBlock:
             // to the branch instruction so replaceBranchWithTailCall() doesn't
             // have to search for it.
             TII->replaceBranchWithTailCall(*Pred, PredCond, TailCall);
-            ++NumTailCalls;
-            MadeChange = true;
-            Pred->removeSuccessor(MBB);
+            PredsChanged.push_back(Pred);
           }
         }
         // If the predecessor is falling through to this block, we could reverse
@@ -1538,8 +1537,13 @@ ReoptimizeBlock:
         // block and there is a high risk of regressing code size rather than
         // improving it.
       }
-      if (MadeChange)
-        return MadeChange;
+      if (!PredsChanged.empty()) {
+        NumTailCalls += PredsChanged.size();
+        for (auto &Pred : PredsChanged)
+          Pred->removeSuccessor(MBB);
+
+        return true;
+      }
     }
   }
 

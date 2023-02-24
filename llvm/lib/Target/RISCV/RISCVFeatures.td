@@ -71,6 +71,20 @@ def HasStdExtZihintntl : Predicate<"Subtarget->hasStdExtZihintntl()">,
                                     AssemblerPredicate<(all_of FeatureStdExtZihintntl),
                                     "'Zihintntl' (Non-Temporal Locality Hints)">;
 
+def FeatureStdExtZicsr
+    : SubtargetFeature<"zicsr", "HasStdExtZicsr", "true",
+                       "'zicsr' (CSRs)">;
+def HasStdExtZicsr : Predicate<"Subtarget->hasStdExtZicsr()">,
+                                AssemblerPredicate<(all_of FeatureStdExtZicsr),
+                                "'Zicsr' (CSRs)">;
+
+def FeatureStdExtZifencei
+    : SubtargetFeature<"zifencei", "HasStdExtZifencei", "true",
+                       "'zifencei' (fence.i)">;
+def HasStdExtZifencei : Predicate<"Subtarget->hasStdExtZifencei()">,
+                                   AssemblerPredicate<(all_of FeatureStdExtZifencei),
+                                   "'Zifencei' (fence.i)">;
+
 def FeatureStdExtZfhmin
     : SubtargetFeature<"zfhmin", "HasStdExtZfhmin", "true",
                        "'Zfhmin' (Half-Precision Floating-Point Minimal)",
@@ -130,6 +144,14 @@ def HasStdExtZhinxOrZhinxmin
                 AssemblerPredicate<(any_of FeatureStdExtZhinx, FeatureStdExtZhinxmin),
                                    "'Zhinx' (Half Float in Integer) or "
                                    "'Zhinxmin' (Half Float in Integer Minimal)">;
+
+def FeatureStdExtZfa
+    : SubtargetFeature<"experimental-zfa", "HasStdExtZfa", "true",
+                       "'Zfa' (Additional Floating-Point)",
+                       [FeatureStdExtF]>;
+def HasStdExtZfa : Predicate<"Subtarget->hasStdExtZfa()">,
+                             AssemblerPredicate<(all_of FeatureStdExtZfa),
+                             "'Zfa' (Additional Floating-Point)">;
 
 def FeatureStdExtC
     : SubtargetFeature<"c", "HasStdExtC", "true",
@@ -445,9 +467,8 @@ def HasStdExtZtso : Predicate<"Subtarget->hasStdExtZTso()">,
                               AssemblerPredicate<(all_of FeatureStdExtZtso),
                               "'Ztso' (Memory Model - Total Store Order)">;
 
-def FeatureStdExtZawrs
-    : SubtargetFeature<"experimental-zawrs", "HasStdExtZawrs", "true",
-                       "'Zawrs' (Wait on Reservation Set)">;
+def FeatureStdExtZawrs : SubtargetFeature<"zawrs", "HasStdExtZawrs", "true",
+                                          "'Zawrs' (Wait on Reservation Set)">;
 def HasStdExtZawrs : Predicate<"Subtarget->hasStdExtZawrs()">,
                                AssemblerPredicate<(all_of FeatureStdExtZawrs),
                                "'Zawrs' (Wait on Reservation Set)">;
@@ -462,6 +483,70 @@ def FeatureVendorXVentanaCondOps
 def HasVendorXVentanaCondOps : Predicate<"Subtarget->hasVendorXVentanaCondOps()">,
                                 AssemblerPredicate<(all_of FeatureVendorXVentanaCondOps),
                                 "'XVentanaCondOps' (Ventana Conditional Ops)">;
+
+def FeatureVendorXTHeadBa
+    : SubtargetFeature<"xtheadba", "HasVendorXTHeadBa", "true",
+                       "'xtheadba' (T-Head address calculation instructions)">;
+def HasVendorXTHeadBa : Predicate<"Subtarget->hasVendorXTHeadBa()">,
+                                  AssemblerPredicate<(all_of FeatureVendorXTHeadBa),
+                                  "'xtheadba' (T-Head address calculation instructions)">;
+
+def FeatureVendorXTHeadBb
+    : SubtargetFeature<"xtheadbb", "HasVendorXTHeadBb", "true",
+                       "'xtheadbb' (T-Head basic bit-manipulation instructions)">;
+def HasVendorXTHeadBb : Predicate<"Subtarget->hasVendorXTHeadBb()">,
+                                  AssemblerPredicate<(all_of FeatureVendorXTHeadBb),
+                                  "'xtheadbb' (T-Head basic bit-manipulation instructions)">;
+
+def FeatureVendorXTHeadBs
+    : SubtargetFeature<"xtheadbs", "HasVendorXTHeadBs", "true",
+                       "'xtheadbs' (T-Head single-bit instructions)">;
+def HasVendorXTHeadBs : Predicate<"Subtarget->hasVendorXTHeadBs()">,
+                                  AssemblerPredicate<(all_of FeatureVendorXTHeadBs),
+                                  "'xtheadbs' (T-Head single-bit instructions)">;
+
+def FeatureVendorXTHeadCmo
+    : SubtargetFeature<"xtheadcmo", "HasVendorXTHeadCmo", "true",
+                       "'xtheadcmo' (T-Head cache management instructions)">;
+def HasVendorXTHeadCmo : Predicate<"Subtarget->hasVendorXTHeadCmo()">,
+                                   AssemblerPredicate<(all_of FeatureVendorXTHeadCmo),
+                                   "'xtheadcmo' (T-Head cache management instructions)">;
+
+def FeatureVendorXTHeadFMemIdx
+    : SubtargetFeature<"xtheadfmemidx", "HasVendorXTHeadFMemIdx", "true",
+                       "'xtheadfmemidx' (T-Head FP Indexed Memory Operations)",
+                       [FeatureStdExtF]>;
+def HasVendorXTHeadFMemIdx : Predicate<"Subtarget->hasVendorXTHeadFMemIdx()">,
+                                       AssemblerPredicate<(all_of FeatureVendorXTHeadFMemIdx),
+                                       "'xtheadfmemidx' (T-Head FP Indexed Memory Operations)">;
+
+def FeatureVendorXTHeadMac
+    : SubtargetFeature<"xtheadmac", "HasVendorXTHeadMac", "true",
+                       "'xtheadmac' (T-Head Multiply-Accumulate Instructions)">;
+def HasVendorXTHeadMac : Predicate<"Subtarget->hasVendorXTHeadMac()">,
+                                   AssemblerPredicate<(all_of FeatureVendorXTHeadMac),
+                                   "'xtheadmac' (T-Head Multiply-Accumulate Instructions)">;
+
+def FeatureVendorXTHeadMemIdx
+    : SubtargetFeature<"xtheadmemidx", "HasVendorXTHeadMemIdx", "true",
+                       "'xtheadmemidx' (T-Head Indexed Memory Operations)">;
+def HasVendorXTHeadMemIdx : Predicate<"Subtarget->hasVendorXTHeadMemIdx()">,
+                                      AssemblerPredicate<(all_of FeatureVendorXTHeadMemIdx),
+                                      "'xtheadmemidx' (T-Head Indexed Memory Operations)">;
+
+def FeatureVendorXTHeadMemPair
+    : SubtargetFeature<"xtheadmempair", "HasVendorXTHeadMemPair", "true",
+                       "'xtheadmempair' (T-Head two-GPR Memory Operations)">;
+def HasVendorXTHeadMemPair : Predicate<"Subtarget->hasVendorXTHeadMemPair()">,
+                                    AssemblerPredicate<(all_of FeatureVendorXTHeadMemPair),
+                                    "'xtheadmempair' (T-Head two-GPR Memory Operations)">;
+
+def FeatureVendorXTHeadSync
+    : SubtargetFeature<"xtheadsync", "HasVendorXTHeadSync", "true",
+                       "'xtheadsync' (T-Head multicore synchronization instructions)">;
+def HasVendorXTHeadSync : Predicate<"Subtarget->hasVendorXTHeadSync()">,
+                                    AssemblerPredicate<(all_of FeatureVendorXTHeadSync),
+                                    "'xtheadsync' (T-Head multicore synchronization instructions)">;
 
 def FeatureVendorXTHeadVdot
     : SubtargetFeature<"xtheadvdot", "HasVendorXTHeadVdot", "true",

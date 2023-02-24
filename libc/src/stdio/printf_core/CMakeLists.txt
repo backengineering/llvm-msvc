@@ -26,6 +26,25 @@ add_object_library(
 )
 
 add_object_library(
+  mock_parser
+  SRCS
+    parser.cpp
+  HDRS
+    parser.h
+  DEPENDS
+    .core_structs
+    libc.src.__support.arg_list
+    libc.src.__support.ctype_utils
+    libc.src.__support.str_to_integer
+    libc.src.__support.CPP.bit
+    libc.src.__support.CPP.string_view
+    libc.src.__support.CPP.type_traits
+    libc.src.__support.common
+  COMPILE_OPTIONS
+    -DLIBC_COPT_MOCK_ARG_LIST
+)
+
+add_object_library(
   string_writer
   SRCS
     string_writer.cpp
@@ -71,6 +90,7 @@ add_object_library(
     libc.src.__support.FPUtil.fp_bits
     libc.src.__support.FPUtil.fenv_impl
     libc.src.__support.common
+    libc.src.__support.libc_assert
     libc.src.__support.uint
     libc.src.__support.uint128
     libc.src.__support.integer_to_string

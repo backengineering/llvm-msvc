@@ -520,3 +520,78 @@ define float @select_undef_fp(float %x) {
   %f = select i1 undef, float 4.0, float %x
   ret float %f
 }
+
+define i32 @select_eq0_3_2(i32 %X) {
+; CHECK-LABEL: select_eq0_3_2:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    xorl %eax, %eax
+; CHECK-NEXT:    cmpl $1, %edi
+; CHECK-NEXT:    adcl $2, %eax
+; CHECK-NEXT:    retq
+  %cmp = icmp eq i32 %X, 0
+  %sel = select i1 %cmp, i32 3, i32 2
+  ret i32 %sel
+}
+
+define i32 @select_ugt3_2_3(i32 %X) {
+; CHECK-LABEL: select_ugt3_2_3:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    xorl %eax, %eax
+; CHECK-NEXT:    cmpl $4, %edi
+; CHECK-NEXT:    adcl $2, %eax
+; CHECK-NEXT:    retq
+  %cmp = icmp ugt i32 %X, 3
+  %sel = select i1 %cmp, i32 2, i32 3
+  ret i32 %sel
+}
+
+define i32 @select_ult9_7_6(i32 %X) {
+; CHECK-LABEL: select_ult9_7_6:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    xorl %eax, %eax
+; CHECK-NEXT:    cmpl $9, %edi
+; CHECK-NEXT:    adcl $6, %eax
+; CHECK-NEXT:    retq
+  %cmp = icmp ult i32 %X, 9
+  %sel = select i1 %cmp, i32 7, i32 6
+  ret i32 %sel
+}
+
+define i32 @select_ult2_2_3(i32 %X) {
+; CHECK-LABEL: select_ult2_2_3:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    cmpl $2, %edi
+; CHECK-NEXT:    movl $3, %eax
+; CHECK-NEXT:    sbbl $0, %eax
+; CHECK-NEXT:    retq
+  %cmp = icmp ult i32 %X, 2
+  %cond = select i1 %cmp, i32 2, i32 3
+  ret i32 %cond
+}
+
+define i32 @select_ugt3_3_2(i32 %X) {
+; CHECK-LABEL: select_ugt3_3_2:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    cmpl $4, %edi
+; CHECK-NEXT:    movl $2, %eax
+; CHECK-NEXT:    sbbl $-1, %eax
+; CHECK-NEXT:    retq
+  %cmp.inv = icmp ugt i32 %X, 3
+  %cond = select i1 %cmp.inv, i32 3, i32 2
+  ret i32 %cond
+}
+
+define i32 @select_eq_1_2(i32 %a, i32 %b) {
+; CHECK-LABEL: select_eq_1_2:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    xorl %ecx, %ecx
+; CHECK-NEXT:    cmpl %esi, %edi
+; CHECK-NEXT:    sete %cl
+; CHECK-NEXT:    movl $2, %eax
+; CHECK-NEXT:    subl %ecx, %eax
+; CHECK-NEXT:    retq
+
+  %cmp = icmp eq i32 %a, %b
+  %cond = select i1 %cmp, i32 1, i32 2
+  ret i32 %cond
+}

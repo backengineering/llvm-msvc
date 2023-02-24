@@ -1220,7 +1220,7 @@ class NamedOperandU32Default1<string Name, AsmOperandClass MatchClass> :
 let OperandType = "OPERAND_IMMEDIATE" in {
 
 def flat_offset : CustomOperand<i32, 1, "FlatOffset">;
-def offset : NamedIntOperand<i16, "offset", "Offset">;
+def offset : NamedIntOperand<i32, "offset", "Offset">;
 def offset0 : NamedIntOperand<i8, "offset0", "Offset0">;
 def offset1 : NamedIntOperand<i8, "offset1", "Offset1">;
 
@@ -1511,7 +1511,8 @@ def VOP3OpSel  : ComplexPattern<untyped, 2, "SelectVOP3OpSel">;
 
 def VOP3OpSelMods  : ComplexPattern<untyped, 2, "SelectVOP3OpSelMods">;
 
-def VOP3PMadMixMods  : ComplexPattern<untyped, 2, "SelectVOP3PMadMixMods">;
+def VOP3PMadMixModsExt : ComplexPattern<untyped, 2, "SelectVOP3PMadMixModsExt">;
+def VOP3PMadMixMods : ComplexPattern<untyped, 2, "SelectVOP3PMadMixMods">;
 
 def VINTERPMods  : ComplexPattern<untyped, 2, "SelectVINTERPMods">;
 def VINTERPModsHi  : ComplexPattern<untyped, 2, "SelectVINTERPModsHi">;
@@ -1707,7 +1708,7 @@ class getVOP3SrcForVT<ValueType VT> {
   bit isFP = isFloatType<VT>.ret;
   RegisterOperand ret =
   !if(!eq(VT.Size, 128),
-     VSrc_128,
+     VRegSrc_128,
      !if(!eq(VT.Size, 64),
         !if(isFP,
            !if(!eq(VT.Value, v2f32.Value),
@@ -2435,7 +2436,7 @@ class VOPProfile <list<ValueType> _ArgVT, bit _EnableClamp = 0> {
   field RegisterClass Src1DPP = getVregSrcForVT<Src1VT>.ret;
   field RegisterClass Src2DPP = getVregSrcForVT<Src2VT>.ret;
   field RegisterOperand Src0VOP3DPP = VGPRSrc_32;
-  field RegisterOperand Src1VOP3DPP = VGPRSrc_32;
+  field RegisterOperand Src1VOP3DPP = VRegSrc_32;
   field RegisterOperand Src2VOP3DPP = getVOP3DPPSrcForVT<Src2VT>.ret;
   field RegisterOperand Src0SDWA = getSDWASrcForVT<Src0VT>.ret;
   field RegisterOperand Src1SDWA = getSDWASrcForVT<Src0VT>.ret;

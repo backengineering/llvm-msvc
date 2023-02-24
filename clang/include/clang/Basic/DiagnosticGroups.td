@@ -60,10 +60,8 @@ def CompoundTokenSplit : DiagGroup<"compound-token-split",
                                     CompoundTokenSplitBySpace]>;
 def CoroutineMissingUnhandledException :
   DiagGroup<"coroutine-missing-unhandled-exception">;
-def DeprecatedExperimentalCoroutine :
-  DiagGroup<"deprecated-experimental-coroutine">;
 def DeprecatedCoroutine :
-  DiagGroup<"deprecated-coroutine", [DeprecatedExperimentalCoroutine]>;
+  DiagGroup<"deprecated-coroutine">;
 def AlwaysInlineCoroutine :
   DiagGroup<"always-inline-coroutine">;
 def CoroNonAlignedAllocationFunction :
@@ -1411,6 +1409,9 @@ def BranchProtection : DiagGroup<"branch-protection">;
 // HLSL diagnostic groups
 // Warnings for HLSL Clang extensions
 def HLSLExtension : DiagGroup<"hlsl-extensions">;
+
+// Warnings for DXIL validation
+def DXILValidation : DiagGroup<"dxil-validation">;
 
 // Warnings and notes related to const_var_decl_type attribute checks
 def ReadOnlyPlacementChecks : DiagGroup<"read-only-types">;

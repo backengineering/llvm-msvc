@@ -37,7 +37,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MachineValueType.h"
 #include "llvm/Support/MathExtras.h"
-#include "llvm/Support/TargetParser.h"
+#include "llvm/TargetParser/TargetParser.h"
 #include <optional>
 
 using namespace llvm;
@@ -346,6 +346,8 @@ public:
   bool isImmTy(ImmTy ImmT) const {
     return isImm() && Imm.Type == ImmT;
   }
+
+  bool isImmLiteral() const { return isImmTy(ImmTyNone); }
 
   bool isImmModifier() const {
     return isImm() && Imm.Type != ImmTyNone;
@@ -1479,6 +1481,14 @@ public:
 
   bool hasIntClamp() const {
     return getFeatureBits()[AMDGPU::FeatureIntClamp];
+  }
+
+  bool hasPartialNSAEncoding() const {
+    return getFeatureBits()[AMDGPU::FeaturePartialNSAEncoding];
+  }
+
+  unsigned getNSAMaxSize() const {
+    return AMDGPU::getNSAMaxSize(getSTI());
   }
 
   AMDGPUTargetStreamer &getTargetStreamer() {
@@ -3681,7 +3691,15 @@ bool AMDGPUAsmParser::validateMIMGAddrSize(const MCInst &Inst) {
   unsigned ExpectedAddrSize =
       AMDGPU::getAddrSizeMIMGOp(BaseOpcode, DimInfo, IsA16, hasG16());
 
-  if (!IsNSA) {
+  if (IsNSA) {
+    if (hasPartialNSAEncoding() && ExpectedAddrSize > getNSAMaxSize()) {
+      int VAddrLastIdx = SrsrcIdx - 1;
+      unsigned VAddrLastSize =
+          AMDGPU::getRegOperandSize(getMRI(), Desc, VAddrLastIdx) / 4;
+
+      return VAddrLastIdx - VAddr0Idx + VAddrLastSize == ExpectedAddrSize;
+    }
+  } else {
     if (ExpectedAddrSize > 12)
       ExpectedAddrSize = 16;
 
@@ -5309,7 +5327,7 @@ bool AMDGPUAsmParser::ParseDirectiveAMDHSAKernel() {
 
   getTargetStreamer().EmitAmdhsaKernelDescriptor(
       getSTI(), KernelName, KD, NextFreeVGPR, NextFreeSGPR, ReserveVCC,
-      ReserveFlatScr);
+      ReserveFlatScr, AMDGPU::getAmdhsaCodeObjectVersion());
   return false;
 }
 
@@ -5609,7 +5627,7 @@ bool AMDGPUAsmParser::ParseDirectiveAMDGPULDS() {
     return TokError("expected identifier in directive");
 
   MCSymbol *Symbol = getContext().getOrCreateSymbol(Name);
-  if (parseToken(AsmToken::Comma, "expected ','"))
+  if (getParser().parseComma())
     return true;
 
   unsigned LocalMemorySize = AMDGPU::IsaInfo::getLocalMemorySize(&getSTI());
@@ -7940,7 +7958,7 @@ void AMDGPUAsmParser::cvtIntersectRay(MCInst &Inst,
 //===----------------------------------------------------------------------===//
 
 bool AMDGPUOperand::isSMRDOffset8() const {
-  return isImm() && isUInt<8>(getImm());
+  return isImmLiteral() && isUInt<8>(getImm());
 }
 
 bool AMDGPUOperand::isSMEMOffset() const {
@@ -7951,7 +7969,7 @@ bool AMDGPUOperand::isSMEMOffset() const {
 bool AMDGPUOperand::isSMRDLiteralOffset() const {
   // 32-bit literals are only supported on CI and we only want to use them
   // when the offset is > 8-bits.
-  return isImm() && !isUInt<8>(getImm()) && isUInt<32>(getImm());
+  return isImmLiteral() && !isUInt<8>(getImm()) && isUInt<32>(getImm());
 }
 
 AMDGPUOperand::Ptr AMDGPUAsmParser::defaultSMRDOffset8() const {
@@ -8013,7 +8031,9 @@ void AMDGPUAsmParser::onBeginOfFile() {
     return;
 
   if (!getTargetStreamer().getTargetID())
-    getTargetStreamer().initializeTargetID(getSTI(), getSTI().getFeatureString());
+    getTargetStreamer().initializeTargetID(getSTI(), getSTI().getFeatureString(),
+        // TODO: Should try to check code object version from directive???
+        AMDGPU::getAmdhsaCodeObjectVersion());
 
   if (isHsaAbiVersion3AndAbove(&getSTI()))
     getTargetStreamer().EmitDirectiveAMDGCNTarget();
@@ -8439,11 +8459,11 @@ bool AMDGPUOperand::isABID() const {
 }
 
 bool AMDGPUOperand::isS16Imm() const {
-  return isImm() && (isInt<16>(getImm()) || isUInt<16>(getImm()));
+  return isImmLiteral() && (isInt<16>(getImm()) || isUInt<16>(getImm()));
 }
 
 bool AMDGPUOperand::isU16Imm() const {
-  return isImm() && isUInt<16>(getImm());
+  return isImmLiteral() && isUInt<16>(getImm());
 }
 
 //===----------------------------------------------------------------------===//

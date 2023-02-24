@@ -50,6 +50,7 @@ endif()
 
 add_subdirectory(dirent)
 add_subdirectory(assert)
+add_subdirectory(network)
 add_subdirectory(setjmp)
 add_subdirectory(signal)
 add_subdirectory(spawn)
@@ -96,6 +97,8 @@ add_custom_command(
 )
 
 add_custom_target(libc-api-test)
+add_dependencies(check-libc libc-api-test)
+
 set(
   allocator_entrypoints 
     libc.src.stdlib.malloc

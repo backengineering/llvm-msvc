@@ -251,7 +251,7 @@ multiclass FPUnaryOp_r_frm_m<bits<7> funct7, bits<5> rs2val,
 let hasSideEffects = 0, mayLoad = 0, mayStore = 0, mayRaiseFPException = 1,
     IsSignExtendingOpW = 1 in
 class FPCmp_rr<bits<7> funct7, bits<3> funct3, string opcodestr,
-               DAGOperand rty, bit Commutable>
+               DAGOperand rty, bit Commutable = 0>
     : RVInstR<funct7, funct3, OPC_OP_FP, (outs GPR:$rd),
               (ins rty:$rs1, rty:$rs2), opcodestr, "$rd, $rs1, $rs2"> {
   let isCommutable = Commutable;
@@ -436,7 +436,6 @@ def : InstAlias<"fge.s $rd, $rs, $rt",
 
 /// Floating point constants
 def fpimm0    : PatLeaf<(fpimm), [{ return N->isExactlyValue(+0.0); }]>;
-def fpimmneg0 : PatLeaf<(fpimm), [{ return N->isExactlyValue(-0.0); }]>;
 
 /// Generic pattern classes
 class PatSetCC<RegisterClass Ty, SDPatternOperator OpNode, CondCode Cond, RVInst Inst>
@@ -451,10 +450,6 @@ class PatFprFprDynFrm<SDPatternOperator OpNode, RVInstRFrm Inst,
     : Pat<(OpNode RegTy:$rs1, RegTy:$rs2), (Inst $rs1, $rs2, 0b111)>;
 
 let Predicates = [HasStdExtF] in {
-
-/// Float constants
-def : Pat<(f32 (fpimm0)), (FMV_W_X X0)>;
-def : Pat<(f32 (fpimmneg0)), (FSGNJN_S (FMV_W_X X0), (FMV_W_X X0))>;
 
 /// Float conversion operations
 

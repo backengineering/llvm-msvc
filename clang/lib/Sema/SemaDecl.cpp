@@ -46,7 +46,7 @@
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Template.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/Triple.h"
+#include "llvm/TargetParser/Triple.h"
 #include <algorithm>
 #include <cstring>
 #include <functional>
@@ -13091,9 +13091,10 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init, bool DirectInit) {
   // C++ [module.import/6] external definitions are not permitted in header
   // units.
   if (getLangOpts().CPlusPlusModules && currentModuleIsHeaderUnit() &&
-      VDecl->isThisDeclarationADefinition() &&
+      !VDecl->isInvalidDecl() && VDecl->isThisDeclarationADefinition() &&
       VDecl->getFormalLinkage() == Linkage::ExternalLinkage &&
-      !VDecl->isInline()) {
+      !VDecl->isInline() && !VDecl->isTemplated() &&
+      !isa<VarTemplateSpecializationDecl>(VDecl)) {
     Diag(VDecl->getLocation(), diag::err_extern_def_in_header_unit);
     VDecl->setInvalidDecl();
   }
@@ -15262,9 +15263,10 @@ Decl *Sema::ActOnStartOfFunctionDef(Scope *FnBodyScope, Decl *D,
   // FIXME: Consider an alternate location for the test where the inlined()
   // state is complete.
   if (getLangOpts().CPlusPlusModules && currentModuleIsHeaderUnit() &&
+      !FD->isInvalidDecl() && !FD->isInlined() &&
+      BodyKind != FnBodyKind::Delete && BodyKind != FnBodyKind::Default &&
       FD->getFormalLinkage() == Linkage::ExternalLinkage &&
-      !FD->isInvalidDecl() && BodyKind != FnBodyKind::Delete &&
-      BodyKind != FnBodyKind::Default && !FD->isInlined()) {
+      !FD->isTemplated() && !FD->isTemplateInstantiation()) {
     assert(FD->isThisDeclarationADefinition());
     Diag(FD->getLocation(), diag::err_extern_def_in_header_unit);
     FD->setInvalidDecl();
@@ -18873,10 +18875,24 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
     ProcessDeclAttributeList(S, Record, Attrs);
 
     // Check to see if a FieldDecl is a pointer to a function.
-    auto IsFunctionPointer = [&](const Decl *D) {
+    auto IsFunctionPointerOrForwardDecl = [&](const Decl *D) {
       const FieldDecl *FD = dyn_cast<FieldDecl>(D);
-      if (!FD)
+      if (!FD) {
+        // Check whether this is a forward declaration that was inserted by
+        // Clang. This happens when a non-forward declared / defined type is
+        // used, e.g.:
+        //
+        //   struct foo {
+        //     struct bar *(*f)();
+        //     struct bar *(*g)();
+        //   };
+        //
+        // "struct bar" shows up in the decl AST as a "RecordDecl" with an
+        // incomplete definition.
+        if (const auto *TD = dyn_cast<TagDecl>(D))
+          return !TD->isCompleteDefinition();
         return false;
+      }
       QualType FieldType = FD->getType().getDesugaredType(Context);
       if (isa<PointerType>(FieldType)) {
         QualType PointeeType = cast<PointerType>(FieldType)->getPointeeType();
@@ -18890,7 +18906,7 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
     if (!getLangOpts().CPlusPlus &&
         (Record->hasAttr<RandomizeLayoutAttr>() ||
          (!Record->hasAttr<NoRandomizeLayoutAttr>() &&
-          llvm::all_of(Record->decls(), IsFunctionPointer))) &&
+          llvm::all_of(Record->decls(), IsFunctionPointerOrForwardDecl))) &&
         !Record->isUnion() && !getLangOpts().RandstructSeed.empty() &&
         !Record->isRandomized()) {
       SmallVector<Decl *, 32> NewDeclOrdering;
@@ -19045,7 +19061,7 @@ static bool isRepresentableIntegerValue(ASTContext &Context,
       --BitWidth;
     return Value.getActiveBits() <= BitWidth;
   }
-  return Value.getMinSignedBits() <= BitWidth;
+  return Value.getSignificantBits() <= BitWidth;
 }
 
 // Given an integral type, return the next larger integral type
@@ -19580,8 +19596,8 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
       unsigned ActiveBits = InitVal.getActiveBits();
       NumPositiveBits = std::max({NumPositiveBits, ActiveBits, 1u});
     } else {
-      NumNegativeBits = std::max(NumNegativeBits,
-                                 (unsigned)InitVal.getMinSignedBits());
+      NumNegativeBits =
+          std::max(NumNegativeBits, (unsigned)InitVal.getSignificantBits());
     }
   }
 

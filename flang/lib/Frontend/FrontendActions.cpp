@@ -545,7 +545,8 @@ void CodeGenAction::generateLLVMIR() {
   pm.enableVerifier(/*verifyPasses=*/true);
 
   // Create the pass pipeline
-  fir::createMLIRToLLVMPassPipeline(pm, level);
+  fir::createMLIRToLLVMPassPipeline(pm, level, opts.StackArrays,
+                                    opts.Underscoring);
   mlir::applyPassManagerCLOptions(pm);
 
   // run the pass manager
@@ -560,6 +561,13 @@ void CodeGenAction::generateLLVMIR() {
   llvmModule = mlir::translateModuleToLLVMIR(
       *mlirModule, *llvmCtx, moduleName ? *moduleName : "FIRModule");
 
+  if (!llvmModule) {
+    unsigned diagID = ci.getDiagnostics().getCustomDiagID(
+        clang::DiagnosticsEngine::Error, "failed to create the LLVM module");
+    ci.getDiagnostics().Report(diagID);
+    return;
+  }
+
   // Set PIC/PIE level LLVM module flags.
   if (opts.PICLevel > 0) {
     llvmModule->setPICLevel(static_cast<llvm::PICLevel::Level>(opts.PICLevel));
@@ -568,12 +576,6 @@ void CodeGenAction::generateLLVMIR() {
           static_cast<llvm::PIELevel::Level>(opts.PICLevel));
   }
 
-  if (!llvmModule) {
-    unsigned diagID = ci.getDiagnostics().getCustomDiagID(
-        clang::DiagnosticsEngine::Error, "failed to create the LLVM module");
-    ci.getDiagnostics().Report(diagID);
-    return;
-  }
 }
 
 void CodeGenAction::setUpTargetMachine() {

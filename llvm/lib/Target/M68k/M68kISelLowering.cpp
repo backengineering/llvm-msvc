@@ -181,9 +181,7 @@ M68kTargetLowering::M68kTargetLowering(const M68kTargetMachine &TM,
       },
       {MVT::i8, MVT::i16, MVT::i32}, LibCall);
 
-  // 2^2 bytes
-  // FIXME can it be just 2^1?
-  setMinFunctionAlignment(Align::Constant<2>());
+  setMinFunctionAlignment(Align(2));
 }
 
 TargetLoweringBase::AtomicExpansionKind
@@ -191,6 +189,16 @@ M68kTargetLowering::shouldExpandAtomicRMWInIR(AtomicRMWInst *RMW) const {
   return Subtarget.atLeastM68020()
              ? TargetLoweringBase::AtomicExpansionKind::CmpXChg
              : TargetLoweringBase::AtomicExpansionKind::None;
+}
+
+Register
+M68kTargetLowering::getExceptionPointerRegister(const Constant *) const {
+  return M68k::D0;
+}
+
+Register
+M68kTargetLowering::getExceptionSelectorRegister(const Constant *) const {
+  return M68k::D1;
 }
 
 EVT M68kTargetLowering::getSetCCResultType(const DataLayout &DL,
@@ -1553,12 +1561,12 @@ static unsigned TranslateM68kCC(ISD::CondCode SetCCOpcode, const SDLoc &DL,
                                 SelectionDAG &DAG) {
   if (!IsFP) {
     if (ConstantSDNode *RHSC = dyn_cast<ConstantSDNode>(RHS)) {
-      if (SetCCOpcode == ISD::SETGT && RHSC->isAllOnesValue()) {
+      if (SetCCOpcode == ISD::SETGT && RHSC->isAllOnes()) {
         // X > -1   -> X == 0, jump !sign.
         RHS = DAG.getConstant(0, DL, RHS.getValueType());
         return M68k::COND_PL;
       }
-      if (SetCCOpcode == ISD::SETLT && RHSC->isNullValue()) {
+      if (SetCCOpcode == ISD::SETLT && RHSC->isZero()) {
         // X < 0   -> X == 0, jump on sign.
         return M68k::COND_MI;
       }

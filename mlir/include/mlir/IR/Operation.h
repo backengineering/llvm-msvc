@@ -74,10 +74,19 @@ class alignas(8) Operation final
       private llvm::TrailingObjects<Operation, detail::OperandStorage,
                                     BlockOperand, Region, OpOperand> {
 public:
-  /// Create a new Operation with the specific fields.
+  /// Create a new Operation with the specific fields. This constructor
+  /// populates the provided attribute list with default attributes if
+  /// necessary.
   static Operation *create(Location location, OperationName name,
                            TypeRange resultTypes, ValueRange operands,
                            NamedAttrList &&attributes, BlockRange successors,
+                           unsigned numRegions);
+
+  /// Create a new Operation with the specific fields. This constructor uses an
+  /// existing attribute dictionary to avoid uniquing a list of attributes.
+  static Operation *create(Location location, OperationName name,
+                           TypeRange resultTypes, ValueRange operands,
+                           DictionaryAttr attributes, BlockRange successors,
                            unsigned numRegions);
 
   /// Create a new Operation from the fields stored in `state`.
@@ -246,6 +255,15 @@ public:
   template <typename ValuesT>
   void replaceAllUsesWith(ValuesT &&values) {
     getResults().replaceAllUsesWith(std::forward<ValuesT>(values));
+  }
+
+  /// Replace uses of results of this operation with the provided `values` if
+  /// the given callback returns true.
+  template <typename ValuesT>
+  void replaceUsesWithIf(ValuesT &&values,
+                         function_ref<bool(OpOperand &)> shouldReplace) {
+    getResults().replaceUsesWithIf(std::forward<ValuesT>(values),
+                                   shouldReplace);
   }
 
   /// Destroys this operation and its subclass data.
@@ -506,9 +524,9 @@ public:
 
   /// Sets default attributes on unset attributes.
   void populateDefaultAttrs() {
-      NamedAttrList attrs(getAttrDictionary());
-      name.populateDefaultAttrs(attrs);
-      setAttrs(attrs.getDictionary(getContext()));
+    NamedAttrList attrs(getAttrDictionary());
+    name.populateDefaultAttrs(attrs);
+    setAttrs(attrs.getDictionary(getContext()));
   }
 
   //===--------------------------------------------------------------------===//

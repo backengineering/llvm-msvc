@@ -22,7 +22,6 @@
 #include "SourceCoverageView.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/Debuginfod/BuildIDFetcher.h"
 #include "llvm/Debuginfod/Debuginfod.h"
 #include "llvm/Debuginfod/HTTPClient.h"
@@ -42,6 +41,7 @@
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/VirtualFileSystem.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include <functional>
 #include <map>
@@ -439,8 +439,9 @@ std::unique_ptr<CoverageMapping> CodeCoverageTool::load() {
     if (modifiedTimeGT(ObjectFilename, PGOFilename))
       warning("profile data may be out of date - object is newer",
               ObjectFilename);
+  auto FS = vfs::getRealFileSystem();
   auto CoverageOrErr =
-      CoverageMapping::load(ObjectFilenames, PGOFilename, CoverageArches,
+      CoverageMapping::load(ObjectFilenames, PGOFilename, *FS, CoverageArches,
                             ViewOpts.CompilationDirectory, BIDFetcher.get());
   if (Error E = CoverageOrErr.takeError()) {
     error("Failed to load coverage: " + toString(std::move(E)));
@@ -635,7 +636,7 @@ int CodeCoverageTool::run(Command Cmd, int argc, const char **argv) {
       "dump-collected-objects", cl::Optional, cl::Hidden,
       cl::desc("Show the collected coverage object files"));
 
-  cl::list<std::string> InputSourceFiles(cl::Positional,
+  cl::list<std::string> InputSourceFiles("sources", cl::Positional,
                                          cl::desc("<Source files>"));
 
   cl::opt<bool> DebugDumpCollectedPaths(

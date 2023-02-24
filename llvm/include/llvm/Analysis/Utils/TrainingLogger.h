@@ -96,7 +96,7 @@ class Logger final {
   StringMap<size_t> ObservationIDs;
   std::string CurrentContext;
 
-  void writeHeader();
+  void writeHeader(std::optional<TensorSpec> AdviceSpec);
   void writeTensor(const TensorSpec &Spec, const char *RawData) {
     OS->write(RawData, Spec.getTotalTensorBufferSize());
   }
@@ -111,7 +111,8 @@ public:
   /// corresponding to the model being trained/logged.
   Logger(std::unique_ptr<raw_ostream> OS,
          const std::vector<TensorSpec> &FeatureSpecs,
-         const TensorSpec &RewardSpec, bool IncludeReward);
+         const TensorSpec &RewardSpec, bool IncludeReward,
+         std::optional<TensorSpec> AdviceSpec = std::nullopt);
 
   void switchContext(StringRef Name);
   void startObservation();
@@ -120,8 +121,14 @@ public:
 
   const std::string &currentContext() const { return CurrentContext; }
 
+  /// Check if there is at least an observation for `currentContext()`.
   bool hasObservationInProgress() const {
-    return ObservationIDs.find(CurrentContext) != ObservationIDs.end();
+    return hasAnyObservationForContext(CurrentContext);
+  }
+
+  /// Check if there is at least an observation for the context `Ctx`.
+  bool hasAnyObservationForContext(StringRef Ctx) const {
+    return ObservationIDs.find(Ctx) != ObservationIDs.end();
   }
 
   template <typename T> void logReward(T Value) {

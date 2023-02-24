@@ -43,12 +43,40 @@ struct CastOpInterface
 
   AliasingOpResultList getAliasingOpResults(Operation *op, OpOperand &opOperand,
                                             const AnalysisState &state) const {
-    return {op->getResult(0)};
+    return {{op->getResult(0), BufferRelation::Equivalent}};
   }
 
-  BufferRelation bufferRelation(Operation *op, OpResult opResult,
-                                const AnalysisState &state) const {
-    return BufferRelation::Equivalent;
+  FailureOr<BaseMemRefType>
+  getBufferType(Operation *op, Value value, const BufferizationOptions &options,
+                const DenseMap<Value, BaseMemRefType> &fixedTypes) const {
+    auto castOp = cast<tensor::CastOp>(op);
+    auto maybeSrcBufferType =
+        bufferization::getBufferType(castOp.getSource(), options, fixedTypes);
+    if (failed(maybeSrcBufferType))
+      return failure();
+    Attribute memorySpace = maybeSrcBufferType->getMemorySpace();
+
+    // Note: `getMemRefTypeWithFullyDynamicLayout` returns an unranked memref
+    // type in case the input is an unranked tensor type.
+
+    // Case 1: Casting an unranked tensor
+    if (castOp.getSource().getType().isa<UnrankedTensorType>()) {
+      // When casting to a ranked tensor, we cannot infer any static offset or
+      // strides from the source. Assume fully dynamic.
+      return getMemRefTypeWithFullyDynamicLayout(castOp.getType(), memorySpace);
+    }
+
+    // Case 2: Casting to an unranked tensor type
+    if (castOp.getType().isa<UnrankedTensorType>()) {
+      return getMemRefTypeWithFullyDynamicLayout(castOp.getType(), memorySpace);
+    }
+
+    // Case 3: Ranked tensor -> ranked tensor. The offsets and strides do not
+    // change.
+    auto rankedResultType = castOp.getType().cast<RankedTensorType>();
+    return MemRefType::get(
+        rankedResultType.getShape(), rankedResultType.getElementType(),
+        maybeSrcBufferType->cast<MemRefType>().getLayout(), memorySpace);
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
@@ -60,25 +88,19 @@ struct CastOpInterface
         getBuffer(rewriter, castOp.getSource(), options);
     if (failed(resultBuffer))
       return failure();
-    auto sourceMemRefType = resultBuffer->getType().cast<BaseMemRefType>();
-    TensorType resultTensorType =
-        castOp.getResult().getType().cast<TensorType>();
-    MemRefLayoutAttrInterface layout;
 
-    if (auto rankedMemRefType = sourceMemRefType.dyn_cast<MemRefType>())
-      if (resultTensorType.isa<RankedTensorType>())
-        layout = rankedMemRefType.getLayout();
-
-    // Compute the new memref type.
-    Type resultMemRefType = getMemRefType(castOp.getResult(), options, layout,
-                                          sourceMemRefType.getMemorySpace());
+    // Compute the new type.
+    auto resultMemRefType =
+        bufferization::getBufferType(castOp.getResult(), options);
+    if (failed(resultMemRefType))
+      return failure();
 
     // Replace the op with a memref.cast.
     assert(memref::CastOp::areCastCompatible(resultBuffer->getType(),
-                                             resultMemRefType) &&
+                                             *resultMemRefType) &&
            "CallOp::bufferize: cast incompatible");
-    replaceOpWithNewBufferizedOp<memref::CastOp>(rewriter, op, resultMemRefType,
-                                                 *resultBuffer);
+    replaceOpWithNewBufferizedOp<memref::CastOp>(
+        rewriter, op, *resultMemRefType, *resultBuffer);
 
     return success();
   }
@@ -101,12 +123,7 @@ struct CollapseShapeOpInterface
   AliasingOpResultList getAliasingOpResults(Operation *op, OpOperand &opOperand,
                                             const AnalysisState &state) const {
     // TODO: CollapseShapeOp may allocate at runtime.
-    return {op->getOpResult(0)};
-  }
-
-  BufferRelation bufferRelation(Operation *op, OpResult opResult,
-                                const AnalysisState &state) const {
-    return BufferRelation::Equivalent;
+    return {{op->getOpResult(0), BufferRelation::Equivalent}};
   }
 
   FailureOr<BaseMemRefType>
@@ -237,6 +254,12 @@ struct DimOpInterface
 struct EmptyOpInterface
     : public BufferizableOpInterface::ExternalModel<EmptyOpInterface,
                                                     tensor::EmptyOp> {
+  bool resultBufferizesToMemoryWrite(Operation *op, OpResult opResult,
+                                     const AnalysisState &state) const {
+    // The returned tensor does not have specified contents.
+    return false;
+  }
+
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
     // tensor.empty ops are used to indicate the shape of a tensor. They have
@@ -264,12 +287,7 @@ struct ExpandShapeOpInterface
 
   AliasingOpResultList getAliasingOpResults(Operation *op, OpOperand &opOperand,
                                             const AnalysisState &state) const {
-    return {op->getOpResult(0)};
-  }
-
-  BufferRelation bufferRelation(Operation *op, OpResult opResult,
-                                const AnalysisState &state) const {
-    return BufferRelation::Equivalent;
+    return {{op->getOpResult(0), BufferRelation::Equivalent}};
   }
 
   FailureOr<BaseMemRefType>
@@ -323,14 +341,7 @@ struct ExtractSliceOpInterface
 
   AliasingOpResultList getAliasingOpResults(Operation *op, OpOperand &opOperand,
                                             const AnalysisState &state) const {
-    if (&opOperand == &op->getOpOperand(0) /*source*/)
-      return {op->getOpResult(0)};
-    return {};
-  }
-
-  BufferRelation bufferRelation(Operation *op, OpResult opResult,
-                                const AnalysisState &state) const {
-    return BufferRelation::Unknown;
+    return {{op->getOpResult(0), BufferRelation::Unknown}};
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
@@ -967,12 +978,7 @@ struct ReshapeOpInterface
 
   AliasingOpResultList getAliasingOpResults(Operation *op, OpOperand &opOperand,
                                             const AnalysisState &state) const {
-    return {op->getOpResult(0)};
-  }
-
-  BufferRelation bufferRelation(Operation *op, OpResult opResult,
-                                const AnalysisState &state) const {
-    return BufferRelation::Equivalent;
+    return {{op->getOpResult(0), BufferRelation::Equivalent}};
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,

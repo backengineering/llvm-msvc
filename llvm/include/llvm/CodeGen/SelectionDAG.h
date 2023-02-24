@@ -1060,7 +1060,7 @@ public:
 
   /// Return a node that represents the runtime scaling 'MulImm * RuntimeVL'.
   SDValue getVScale(const SDLoc &DL, EVT VT, APInt MulImm) {
-    assert(MulImm.getMinSignedBits() <= VT.getSizeInBits() &&
+    assert(MulImm.getSignificantBits() <= VT.getSizeInBits() &&
            "Immediate does not fit VT");
     return getNode(ISD::VSCALE, DL, VT,
                    getConstant(MulImm.sextOrTrunc(VT.getSizeInBits()), DL, VT));
@@ -2263,8 +2263,7 @@ public:
   }
   /// Set PCSections to be associated with Node.
   void addPCSections(const SDNode *Node, MDNode *MD) {
-    SmallPtrSet<const llvm::SDNode *, 32> Visited;
-    addPCSections(Node, MD, Visited);
+    SDEI[Node].PCSections = MD;
   }
   /// Return PCSections associated with Node, or nullptr if none exists.
   MDNode *getPCSections(const SDNode *Node) const {
@@ -2341,10 +2340,6 @@ private:
   /// additional processing for constant nodes.
   SDNode *FindNodeOrInsertPos(const FoldingSetNodeID &ID, const SDLoc &DL,
                               void *&InsertPos);
-
-  /// Recursively set PCSections to be associated with Node and all its values.
-  void addPCSections(const SDNode *Node, MDNode *MD,
-                     SmallPtrSet<const llvm::SDNode *, 32> &Visited);
 
   /// Maps to auto-CSE operations.
   std::vector<CondCodeSDNode*> CondCodeNodes;

@@ -61,7 +61,8 @@ public:
   static constexpr int64_t kNoLimit = -1;
 
   /// Only ops within the scope are added to the worklist. If no scope is
-  /// specified, the closest enclosing region is used as a scope.
+  /// specified, the closest enclosing region around the initial list of ops
+  /// is used as a scope.
   Region *scope = nullptr;
 
   /// Strict mode can restrict the ops that are added to the worklist during
@@ -75,6 +76,9 @@ public:
   ///   were on the worklist at the very beginning) enqueued. All other ops are
   ///   excluded.
   GreedyRewriteStrictness strictMode = GreedyRewriteStrictness::AnyOp;
+
+  /// An optional listener that should be notified about IR modifications.
+  RewriterBase::Listener *listener = nullptr;
 };
 
 //===----------------------------------------------------------------------===//

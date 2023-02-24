@@ -215,6 +215,7 @@ struct OneShotBufferizePass
       opt.printConflicts = printConflicts;
       opt.testAnalysisOnly = testAnalysisOnly;
       opt.bufferizeFunctionBoundaries = bufferizeFunctionBoundaries;
+      opt.noAnalysisFuncFilter = noAnalysisFuncFilter;
 
       // Configure type converter.
       LayoutMapOption unknownTypeConversionOption =
@@ -249,25 +250,12 @@ struct OneShotBufferizePass
     BufferizationStatistics statistics;
     ModuleOp moduleOp = getOperation();
     if (opt.bufferizeFunctionBoundaries) {
-      OpFilter::Entry::FilterFn analysisFilterFn = nullptr;
-      // FuncOps whose names are specified in noAnalysisFuncFilter will not be
-      // analyzed. Ops in these FuncOps will not be analyzed as well.
-      if (this->noAnalysisFuncFilter.hasValue())
-        analysisFilterFn = [=](Operation *op) {
-          auto func = dyn_cast<func::FuncOp>(op);
-          if (!func)
-            func = op->getParentOfType<func::FuncOp>();
-          if (func)
-            return llvm::is_contained(noAnalysisFuncFilter, func.getSymName());
-          return false;
-        };
-      if (failed(runOneShotModuleBufferize(moduleOp, opt, &statistics,
-                                           analysisFilterFn))) {
+      if (failed(runOneShotModuleBufferize(moduleOp, opt, &statistics))) {
         signalPassFailure();
         return;
       }
     } else {
-      assert(!this->noAnalysisFuncFilter.hasValue() &&
+      assert(opt.noAnalysisFuncFilter.empty() &&
              "invalid combination of bufferization flags");
       if (failed(runOneShotBufferize(moduleOp, opt, &statistics))) {
         signalPassFailure();
@@ -354,7 +342,7 @@ static bool hasTensorSemantics(Operation *op) {
 
 namespace {
 /// A rewriter that keeps track of extra information during bufferization.
-class BufferizationRewriter : public IRRewriter {
+class BufferizationRewriter : public IRRewriter, public RewriterBase::Listener {
 public:
   BufferizationRewriter(MLIRContext *ctx, DenseSet<Operation *> &erasedOps,
                         DenseSet<Operation *> &toMemrefOps,
@@ -364,18 +352,18 @@ public:
                         BufferizationStatistics *statistics)
       : IRRewriter(ctx), erasedOps(erasedOps), toMemrefOps(toMemrefOps),
         worklist(worklist), analysisState(options), opFilter(opFilter),
-        statistics(statistics) {}
+        statistics(statistics) {
+    setListener(this);
+  }
 
 protected:
   void notifyOperationRemoved(Operation *op) override {
-    IRRewriter::notifyOperationRemoved(op);
     erasedOps.insert(op);
     // Erase if present.
     toMemrefOps.erase(op);
   }
 
   void notifyOperationInserted(Operation *op) override {
-    IRRewriter::notifyOperationInserted(op);
     erasedOps.erase(op);
 
     // Gather statistics about allocs and deallocs.

@@ -75,7 +75,6 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
@@ -86,6 +85,7 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include <algorithm>
 #include <bitset>
 #include <cassert>
@@ -2584,6 +2584,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
     break;
   }
 
+  case Builtin::BI__builtin_nondeterministic_value: {
+    if (SemaBuiltinNonDeterministicValue(TheCall))
+      return ExprError();
+    break;
+  }
+
   // __builtin_elementwise_abs restricts the element type to signed integers or
   // floating point types only.
   case Builtin::BI__builtin_elementwise_abs: {
@@ -2609,6 +2615,9 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
   case Builtin::BI__builtin_elementwise_ceil:
   case Builtin::BI__builtin_elementwise_cos:
   case Builtin::BI__builtin_elementwise_floor:
+  case Builtin::BI__builtin_elementwise_log:
+  case Builtin::BI__builtin_elementwise_log2:
+  case Builtin::BI__builtin_elementwise_log10:
   case Builtin::BI__builtin_elementwise_roundeven:
   case Builtin::BI__builtin_elementwise_sin:
   case Builtin::BI__builtin_elementwise_trunc:
@@ -12447,7 +12456,7 @@ struct IntRange {
 static IntRange GetValueRange(ASTContext &C, llvm::APSInt &value,
                               unsigned MaxWidth) {
   if (value.isSigned() && value.isNegative())
-    return IntRange(value.getMinSignedBits(), false);
+    return IntRange(value.getSignificantBits(), false);
 
   if (value.getBitWidth() > MaxWidth)
     value = value.trunc(MaxWidth);
@@ -13364,7 +13373,7 @@ static bool AnalyzeBitFieldAssignment(Sema &S, FieldDecl *Bitfield, Expr *Init,
   if (!Value.isSigned() || Value.isNegative())
     if (UnaryOperator *UO = dyn_cast<UnaryOperator>(OriginalInit))
       if (UO->getOpcode() == UO_Minus || UO->getOpcode() == UO_Not)
-        OriginalWidth = Value.getMinSignedBits();
+        OriginalWidth = Value.getSignificantBits();
 
   if (OriginalWidth <= FieldWidth)
     return false;
@@ -14307,6 +14316,12 @@ static void CheckImplicitConversion(Sema &S, Expr *E, QualType T,
     if (S.SourceMgr.isInSystemMacro(CC))
       return;
 
+    if (SourceBT && SourceBT->isInteger() && TargetBT &&
+        TargetBT->isInteger() &&
+        Source->isSignedIntegerType() == Target->isSignedIntegerType()) {
+      return;
+    }
+
     unsigned DiagID = diag::warn_impcast_integer_sign;
 
     // Traditionally, gcc has warned about this under -Wsign-compare.
@@ -15232,6 +15247,23 @@ public:
   void VisitExpr(const Expr *E) {
     // By default, just recurse to evaluated subexpressions.
     Base::VisitStmt(E);
+  }
+
+  void VisitCoroutineSuspendExpr(const CoroutineSuspendExpr *CSE) {
+    for (auto *Sub : CSE->children()) {
+      const Expr *ChildExpr = dyn_cast_or_null<Expr>(Sub);
+      if (!ChildExpr)
+        continue;
+
+      if (ChildExpr == CSE->getOperand())
+        // Do not recurse over a CoroutineSuspendExpr's operand.
+        // The operand is also a subexpression of getCommonExpr(), and
+        // recursing into it directly could confuse object management
+        // for the sake of sequence tracking.
+        continue;
+
+      Visit(Sub);
+    }
   }
 
   void VisitCastExpr(const CastExpr *E) {
@@ -17854,6 +17886,21 @@ bool Sema::PrepareBuiltinReduceMathOneArgCall(CallExpr *TheCall) {
     return true;
 
   TheCall->setArg(0, A.get());
+  return false;
+}
+
+bool Sema::SemaBuiltinNonDeterministicValue(CallExpr *TheCall) {
+  if (checkArgCount(*this, TheCall, 1))
+    return true;
+
+  ExprResult Arg = TheCall->getArg(0);
+  QualType TyArg = Arg.get()->getType();
+
+  if (!TyArg->isBuiltinType() && !TyArg->isVectorType())
+    return Diag(TheCall->getArg(0)->getBeginLoc(), diag::err_builtin_invalid_arg_type)
+           << 1 << /*vector, integer or floating point ty*/ 0 << TyArg;
+
+  TheCall->setType(TyArg);
   return false;
 }
 

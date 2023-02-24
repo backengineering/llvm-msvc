@@ -338,9 +338,14 @@ static bool runIPSCCP(
 
   // Remove the returned attribute for zapped functions and the
   // corresponding call sites.
+  // Also remove any attributes that convert an undef return value into
+  // immediate undefined behavior
+  AttributeMask UBImplyingAttributes =
+      AttributeFuncs::getUBImplyingAttributes();
   for (Function *F : FuncZappedReturn) {
     for (Argument &A : F->args())
       F->removeParamAttr(A.getArgNo(), Attribute::Returned);
+    F->removeRetAttrs(UBImplyingAttributes);
     for (Use &U : F->uses()) {
       CallBase *CB = dyn_cast<CallBase>(U.getUser());
       if (!CB) {
@@ -354,6 +359,7 @@ static bool runIPSCCP(
 
       for (Use &Arg : CB->args())
         CB->removeParamAttr(CB->getArgOperandNo(&Arg), Attribute::Returned);
+      CB->removeRetAttrs(UBImplyingAttributes);
     }
   }
 
@@ -370,7 +376,7 @@ static bool runIPSCCP(
       SI->eraseFromParent();
       MadeChanges = true;
     }
-    M.getGlobalList().erase(GV);
+    M.eraseGlobalVariable(GV);
     ++NumGlobalConst;
   }
 
@@ -407,73 +413,3 @@ PreservedAnalyses IPSCCPPass::run(Module &M, ModuleAnalysisManager &AM) {
   PA.preserve<FunctionAnalysisManagerModuleProxy>();
   return PA;
 }
-
-namespace {
-
-//===--------------------------------------------------------------------===//
-//
-/// IPSCCP Class - This class implements interprocedural Sparse Conditional
-/// Constant Propagation.
-///
-class IPSCCPLegacyPass : public ModulePass {
-public:
-  static char ID;
-
-  IPSCCPLegacyPass() : ModulePass(ID) {
-    initializeIPSCCPLegacyPassPass(*PassRegistry::getPassRegistry());
-  }
-
-  bool runOnModule(Module &M) override {
-    if (skipModule(M))
-      return false;
-    const DataLayout &DL = M.getDataLayout();
-    auto GetTLI = [this](Function &F) -> const TargetLibraryInfo & {
-      return this->getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
-    };
-    auto GetTTI = [this](Function &F) -> TargetTransformInfo & {
-      return this->getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
-    };
-    auto GetAC = [this](Function &F) -> AssumptionCache & {
-      return this->getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
-    };
-    auto getAnalysis = [this](Function &F) -> AnalysisResultsForFn {
-      DominatorTree &DT =
-          this->getAnalysis<DominatorTreeWrapperPass>(F).getDomTree();
-      return {
-          std::make_unique<PredicateInfo>(
-              F, DT,
-              this->getAnalysis<AssumptionCacheTracker>().getAssumptionCache(
-                  F)),
-          nullptr,  // We cannot preserve the LI, DT or PDT with the legacy pass
-          nullptr,  // manager, so set them to nullptr.
-          nullptr};
-    };
-
-    return runIPSCCP(M, DL, nullptr, GetTLI, GetTTI, GetAC, getAnalysis, false);
-  }
-
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addRequired<AssumptionCacheTracker>();
-    AU.addRequired<DominatorTreeWrapperPass>();
-    AU.addRequired<TargetLibraryInfoWrapperPass>();
-    AU.addRequired<TargetTransformInfoWrapperPass>();
-  }
-};
-
-} // end anonymous namespace
-
-char IPSCCPLegacyPass::ID = 0;
-
-INITIALIZE_PASS_BEGIN(IPSCCPLegacyPass, "ipsccp",
-                      "Interprocedural Sparse Conditional Constant Propagation",
-                      false, false)
-INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
-INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
-INITIALIZE_PASS_END(IPSCCPLegacyPass, "ipsccp",
-                    "Interprocedural Sparse Conditional Constant Propagation",
-                    false, false)
-
-// createIPSCCPPass - This is the public interface to this file.
-ModulePass *llvm::createIPSCCPPass() { return new IPSCCPLegacyPass(); }
-

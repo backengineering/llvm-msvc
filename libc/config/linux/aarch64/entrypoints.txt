@@ -210,6 +210,7 @@ set(TARGET_LIBM_ENTRYPOINTS
 
     # math.h entrypoints
     libc.src.math.acosf
+    libc.src.math.acoshf
     libc.src.math.asin
     libc.src.math.asinf
     libc.src.math.asinhf
@@ -299,6 +300,9 @@ set(TARGET_LIBM_ENTRYPOINTS
     libc.src.math.round
     libc.src.math.roundf
     libc.src.math.roundl
+    libc.src.math.scalbn
+    libc.src.math.scalbnf
+    libc.src.math.scalbnl
     libc.src.math.sincosf
     libc.src.math.sinhf
     libc.src.math.sinf
@@ -314,6 +318,12 @@ set(TARGET_LIBM_ENTRYPOINTS
 
 if(LLVM_LIBC_FULL_BUILD)
   list(APPEND TARGET_LIBC_ENTRYPOINTS
+    # network.h entrypoints
+    libc.src.network.htonl
+    libc.src.network.htons
+    libc.src.network.ntohl
+    libc.src.network.ntohs
+
     # pthread.h entrypoints
     libc.src.pthread.pthread_atfork
     libc.src.pthread.pthread_attr_destroy

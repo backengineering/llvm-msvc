@@ -26,7 +26,6 @@
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
@@ -34,6 +33,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include <algorithm>
 
 using namespace clang;
@@ -2386,9 +2386,7 @@ class X86_64ABIInfo : public ABIInfo {
       return false;
 
     const llvm::Triple &Triple = getTarget().getTriple();
-    if (Triple.isOSDarwin() || Triple.isPS())
-      return false;
-    if (Triple.isOSFreeBSD() && Triple.getOSMajorVersion() >= 10)
+    if (Triple.isOSDarwin() || Triple.isPS() || Triple.isOSFreeBSD())
       return false;
     return true;
   }

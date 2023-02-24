@@ -105,7 +105,7 @@ private:
                            std::optional<AffineMap> maybeMaskingMap);
 
   // Holds the compile-time static sizes of the iteration space to vectorize.
-  // Dynamic dimensions are represented using ShapedType::kDynamicSize.
+  // Dynamic dimensions are represented using ShapedType::kDynamic.
   SmallVector<int64_t> iterSpaceStaticSizes;
 
   /// Holds the runtime sizes of the iteration spaces to vectorize. Static
@@ -416,8 +416,7 @@ static Value broadcastIfNeeded(OpBuilder &b, Value value,
       vector::BroadcastableToResult::Success)
     return value;
   Location loc = b.getInsertionPoint()->getLoc();
-  return b.createOrFold<vector::BroadcastOp>(loc, targetVectorType,
-                                                    value);
+  return b.createOrFold<vector::BroadcastOp>(loc, targetVectorType, value);
 }
 
 /// Create MultiDimReductionOp to compute the reduction for `reductionOp`. This
@@ -532,14 +531,16 @@ vectorizeLinalgYield(RewriterBase &rewriter, Operation *op,
 /// VectorizationStatus::NewOp to signal the vectorization algorithm that it
 /// should map the produced operations. This function is meant to be used as a
 /// CustomVectorizationHook.
-static VectorizationResult
-vectorizeLinalgIndex(RewriterBase &rewriter, Operation *op, LinalgOp linalgOp) {
+static VectorizationResult vectorizeLinalgIndex(RewriterBase &rewriter,
+                                                VectorizationState &state,
+                                                Operation *op,
+                                                LinalgOp linalgOp) {
   IndexOp indexOp = dyn_cast<linalg::IndexOp>(op);
   if (!indexOp)
     return VectorizationResult{VectorizationStatus::Failure, nullptr};
   auto loc = indexOp.getLoc();
   // Compute the static loop sizes of the index op.
-  auto targetShape = linalgOp.computeStaticLoopSizes();
+  auto targetShape = llvm::to_vector(state.getCanonicalVecShape());
   // Compute a one-dimensional index vector for the index op dimension.
   SmallVector<int64_t> constantSeq =
       llvm::to_vector<16>(llvm::seq<int64_t>(0, targetShape[indexOp.getDim()]));
@@ -597,52 +598,189 @@ tensorExtractVectorizationPrecondition(Operation *op, bool vectorizeNDExtract) {
 ///
 /// For tensor<45 x 80 x 15 x f32> and index [1, 2, 3], this leads to:
 ///  offset = ( ( 1 ) * 80 +  2 ) * 15  + 3
-static Value
-calculateGatherOffset(OpBuilder &b, tensor::ExtractOp extractOp,
-                      const IRMapping &bvm,
-                      const SmallVectorImpl<int64_t> &targetShape) {
+static Value calculateGatherOffset(RewriterBase &rewriter,
+                                   tensor::ExtractOp extractOp,
+                                   const IRMapping &bvm,
+                                   const ArrayRef<int64_t> targetShape) {
   // The vector of indices for GatherOp should be shaped as the output vector
-  auto indexVecType = VectorType::get(targetShape, b.getIndexType());
+  auto indexVecType = VectorType::get(targetShape, rewriter.getIndexType());
   auto loc = extractOp.getLoc();
 
-  Value offset = b.create<vector::BroadcastOp>(
-      loc, indexVecType, bvm.lookup(extractOp.getIndices()[0]));
+  Value offset = broadcastIfNeeded(
+      rewriter, bvm.lookup(extractOp.getIndices()[0]), indexVecType.getShape());
 
   const size_t numIndices = extractOp.getIndices().size();
   for (size_t i = 1; i < numIndices; i++) {
+    Value dimIdx = rewriter.create<arith::ConstantIndexOp>(loc, i);
+
     auto dimSize = broadcastIfNeeded(
-        b,
-        b.create<arith::ConstantIndexOp>(
-            loc,
-            extractOp.getTensor().getType().cast<ShapedType>().getDimSize(i)),
+        rewriter,
+        rewriter.create<tensor::DimOp>(loc, extractOp.getTensor(), dimIdx),
         indexVecType.getShape());
 
-    offset = b.create<arith::MulIOp>(loc, offset, dimSize);
+    offset = rewriter.create<arith::MulIOp>(loc, offset, dimSize);
 
-    auto extractOpIndex = broadcastIfNeeded(
-        b, bvm.lookup(extractOp.getIndices()[i]), indexVecType.getShape());
+    auto extractOpIndex =
+        broadcastIfNeeded(rewriter, bvm.lookup(extractOp.getIndices()[i]),
+                          indexVecType.getShape());
 
-    offset = b.create<arith::AddIOp>(loc, extractOpIndex, offset);
+    offset = rewriter.create<arith::AddIOp>(loc, extractOpIndex, offset);
   }
 
   return offset;
+}
+
+enum VectorMemoryAccessKind {
+  // TODO: ScalarBroadcast,
+  Contiguous,
+  Gather
+};
+
+/// Check whether /p val can be used for calculating an index for a contiguous
+/// load operation, i.e. whether /p val:
+///   * is invariant with respect to /p linalgOp, i.e. whether it remains
+///   constant for all iterations, and
+///   * increments with the loop iterator (when /p strideZero is false) or is
+///   not affected by the loop indices (/p strideZero is true).
+static bool isContiguousLoadIdx(LinalgOp &linalgOp, Value &val, size_t dim,
+                                    bool strideZero) {
+  auto *block = linalgOp.getBlock();
+
+  // Bail out if this is a block argument for this linalg.generic Op.
+  // TODO: We could try analysing the corresponding affine map here.
+  if (val.dyn_cast<BlockArgument>())
+    return llvm::all_of(block->getArguments(),
+                        [&val](Value v) { return (v != val); });
+
+  Operation *defOp = val.getDefiningOp();
+  assert(defOp && "This is neither a block argument nor an operation result");
+
+  // Given the assumption on the shape of the target tensor, index Op is
+  // either:
+  //    * constant (for non-trailing dims), or
+  //    * increments with stride one together with the trailing dimension
+  // Both cases are fine for contigious loads.
+  if (auto indexOp = dyn_cast<linalg::IndexOp>(defOp))
+    return strideZero ? (indexOp.getDim() != dim) : (indexOp.getDim() == dim);
+
+  auto *ancestor = block->findAncestorOpInBlock(*defOp);
+
+  // Values define outside `linalgOp`.
+  if (!ancestor)
+    return true;
+
+  // Values defined inside `linalgOp`, which are constant.
+  if (dyn_cast<arith::ConstantOp>(ancestor))
+    return true;
+
+  bool result = true;
+  for (auto op : ancestor->getOperands())
+    result &= isContiguousLoadIdx(linalgOp, op, dim, strideZero);
+
+  return result;
+}
+
+/// Check whether the calculation of \p val is based on linalg.index Op with
+/// the dim attribute matching \p dim.
+static bool isBasedOnIndexOp(LinalgOp &linalgOp, Value &val, size_t dim) {
+  auto *block = linalgOp.getBlock();
+  auto targetShape = linalgOp.getStaticLoopRanges();
+
+  if (val.isa<BlockArgument>())
+    return false;
+
+  Operation *defOp = val.getDefiningOp();
+  assert(defOp && "This is neither a block argument nor an operation result");
+
+  if (auto indexOp = dyn_cast<linalg::IndexOp>(defOp))
+    return (indexOp.getDim() == dim);
+
+  auto *ancestor = block->findAncestorOpInBlock(*defOp);
+
+  if (!ancestor)
+    return false;
+
+  bool result = false;
+  for (auto op : ancestor->getOperands())
+    result |= isBasedOnIndexOp(linalgOp, op, dim);
+
+  return result;
+}
+
+/// Check whether \p extractOp would be a gather or a contiguous load Op after
+/// vectorising \p linalgOp. Note that it is always safe to use gather load
+/// operations for contiguous loads (albeit slow), but not vice-versa. When in
+/// doubt, bail out and assume that \p extractOp is a gather load.
+static VectorMemoryAccessKind
+getTensorExtractMemoryAccessPattern(tensor::ExtractOp extractOp,
+                                    LinalgOp &linalgOp) {
+
+  auto targetShape = linalgOp.getStaticLoopRanges();
+
+  // Assume that it's a gather load when reading _into_:
+  //    * an n-D vector, like`tensor<1x2x4xi32` or`tensor<2x1x4xi32>`, or
+  //    * a 1-D vector with the trailing dim equal 1, e.g. `tensor<1x4x1xi32`.
+  // TODO: Relax these conditions.
+  if ((llvm::count_if(targetShape,
+                      [](int64_t dimSize) { return dimSize > 1; }) != 1) ||
+      targetShape.back() == 1)
+    return VectorMemoryAccessKind::Gather;
+
+  auto inputShape = extractOp.getTensor().getType().cast<ShapedType>();
+
+  // Assume that it's a gather load when reading _from_ a tensor for which the
+  // trailing dimension is 1, e.g. `tensor<1x4x1xi32>`.
+  // TODO: Relax this condition.
+  if (inputShape.getShape().back() == 1)
+    return VectorMemoryAccessKind::Gather;
+
+  bool isContiguous = true;
+
+  // Iterate over all indices. Analyze whether the way each index is calculate
+  // is suitable for contiguous load operations (e.g. loop invariant).
+  auto indices = extractOp.getIndices();
+  for (auto [i, indexVal] : llvm::enumerate(indices)) {
+    if (inputShape.getShape()[i] == 1) {
+      // This extractOp index must be a loop-invariant constant
+      continue;
+    }
+
+    auto extractOpBottomIdx = indices.size() - 1;
+    auto strideOneDim = targetShape.size() - 1;
+    bool strideZero = (i != extractOpBottomIdx);
+    isContiguous &=
+        isContiguousLoadIdx(linalgOp, indexVal, strideOneDim, strideZero);
+  }
+
+  // The calculation of the trailing index must include the loop index. Given
+  // the assumption on the output tensor (which is defined by the iteration
+  // space), only the trailing dim matters.
+  auto extractOpTrailingIdx = indices.back();
+  isContiguous &=
+      isBasedOnIndexOp(linalgOp, extractOpTrailingIdx, targetShape.size() - 1);
+
+  if (isContiguous) {
+    LDBG("Found contigous load: " << extractOp);
+    return VectorMemoryAccessKind::Contiguous;
+  }
+
+  return VectorMemoryAccessKind::Gather;
 }
 
 /// Helper function to vectorize the tensor.extract operations. Returns
 /// VectorizationStatus::NewOp to signal the vectorization algorithm that it
 /// should map the produced operations. This function is meant to be used as a
 /// CustomVectorizationHook.
-static VectorizationResult vectorizeTensorExtract(RewriterBase &rewriter,
-                                                  Operation *op,
-                                                  LinalgOp linalgOp,
-                                                  const IRMapping &bvm) {
+static VectorizationResult
+vectorizeTensorExtract(RewriterBase &rewriter, VectorizationState &state,
+                       Operation *op, LinalgOp linalgOp, const IRMapping &bvm) {
   tensor::ExtractOp extractOp = dyn_cast<tensor::ExtractOp>(op);
   if (!extractOp)
     return VectorizationResult{VectorizationStatus::Failure, nullptr};
   auto loc = extractOp.getLoc();
 
   // Compute the static loop sizes of the extract op.
-  auto targetShape = linalgOp.computeStaticLoopSizes();
+  auto targetShape = state.getCanonicalVecShape();
 
   auto resultType =
       VectorType::get(targetShape, extractOp.getResult().getType());
@@ -659,14 +797,64 @@ static VectorizationResult vectorizeTensorExtract(RewriterBase &rewriter,
       extractOp.getIndices().size(),
       rewriter.create<arith::ConstantIndexOp>(loc, 0));
 
-  Value offset = calculateGatherOffset(rewriter, extractOp, bvm, targetShape);
+  VectorMemoryAccessKind memAccessKind =
+      getTensorExtractMemoryAccessPattern(extractOp, linalgOp);
 
-  // Generate the gather load
-  auto gatherOp = rewriter.create<vector::GatherOp>(
-      loc, resultType, extractOp.getTensor(), baseIndices, offset,
-      maskConstantOp, passThruConstantOp);
+  // 1. Handle gather access
+  if (memAccessKind == VectorMemoryAccessKind::Gather) {
+    Value offset = calculateGatherOffset(rewriter, extractOp, bvm, targetShape);
 
-  return VectorizationResult{VectorizationStatus::NewOp, gatherOp};
+    // Generate the gather load
+    Operation *gatherOp = rewriter.create<vector::GatherOp>(
+        loc, resultType, extractOp.getTensor(), baseIndices, offset,
+        maskConstantOp, passThruConstantOp);
+    gatherOp = state.maskOperation(rewriter, gatherOp, linalgOp);
+
+    LDBG("Vectorised as gather load: " << extractOp);
+    return VectorizationResult{VectorizationStatus::NewOp, gatherOp};
+  }
+
+  // 2. Handle contiguous access.
+  SmallVector<Value> transferReadIdxs;
+  auto resTrailingDim = resultType.getShape().back();
+  auto zero = rewriter.create<arith::ConstantOp>(
+      loc, rewriter.getI32Type(), rewriter.getZeroAttr(rewriter.getI32Type()));
+
+  // Collect indices for `vector.transfer_read`. At this point, the indices will
+  // either be scalars or would have been broadcast to vectors matching the
+  // result type. For indices that are vectors, there are two options:
+  //    * for non-trailing indices, all elements are identical (contiguous
+  //      loads are identified by looking for non-trailing indices that are
+  //      invariant with respect to the corresponding linalg.generic), or
+  //    * for trailing indices, the index vector will contain values with stride
+  //      one, but for `vector.transfer_read` only the first (i.e. 0th) index is
+  //      needed.
+  // This means that
+  //   * for scalar indices - just re-use it,
+  //   * for vector indices (e.g. `vector<1x1x4xindex>`) - extract the bottom
+  //    (0th) element and use that.
+  for (size_t i = 0; i < extractOp.getIndices().size(); i++) {
+    auto idx = bvm.lookup(extractOp.getIndices()[i]);
+    if (idx.getType().isIndex()) {
+      transferReadIdxs.push_back(idx);
+      continue;
+    }
+
+    auto indexAs1dVector = rewriter.create<vector::ShapeCastOp>(
+        loc, VectorType::get({resTrailingDim}, rewriter.getIndexType()),
+        bvm.lookup(extractOp.getIndices()[i]));
+    transferReadIdxs.push_back(
+        rewriter.create<vector::ExtractElementOp>(loc, indexAs1dVector, zero));
+  }
+
+  // `tensor.extract_element` is always in-bounds, hence the following holds.
+  SmallVector<bool> inBounds(resultType.getRank(), true);
+
+  auto transferReadOp = rewriter.create<vector::TransferReadOp>(
+      loc, resultType, extractOp.getTensor(), transferReadIdxs, inBounds);
+
+  LDBG("Vectorised as contiguous load: " << extractOp);
+  return VectorizationResult{VectorizationStatus::NewOp, transferReadOp};
 }
 
 /// Emit reduction operations if the shapes of the value to reduce is different
@@ -904,14 +1092,14 @@ vectorizeAsLinalgGeneric(RewriterBase &rewriter, VectorizationState &state,
   // 4b. Register CustomVectorizationHook for indexOp.
   CustomVectorizationHook vectorizeIndex =
       [&](Operation *op, const IRMapping &bvm) -> VectorizationResult {
-    return vectorizeLinalgIndex(rewriter, op, linalgOp);
+    return vectorizeLinalgIndex(rewriter, state, op, linalgOp);
   };
   hooks.push_back(vectorizeIndex);
 
   // 4c. Register CustomVectorizationHook for extractOp.
   CustomVectorizationHook vectorizeExtract =
       [&](Operation *op, const IRMapping &bvm) -> VectorizationResult {
-    return vectorizeTensorExtract(rewriter, op, linalgOp, bvm);
+    return vectorizeTensorExtract(rewriter, state, op, linalgOp, bvm);
   };
   hooks.push_back(vectorizeExtract);
 
@@ -960,6 +1148,10 @@ static LogicalResult vectorizeDynamicLinalgOpPrecondition(linalg::LinalgOp op) {
   if (!isa<linalg::GenericOp>(op))
     return failure();
 
+  // TODO: Index vectorization assumes static shape.
+  if (op.hasIndexSemantics())
+    return failure();
+
   // TODO: 0-d vectors are not supported yet.
   if (llvm::any_of(op.getIndexingMapsArray(), [](AffineMap map) {
         return map.isEmpty() || map.getResults().empty();
@@ -974,6 +1166,10 @@ LogicalResult
 mlir::linalg::vectorizeLinalgOpPrecondition(LinalgOp linalgOp,
                                             ArrayRef<int64_t> inputVectorSizes,
                                             bool vectorizeNDExtract) {
+  // tensor with dimension of 0 cannot be vectorized.
+  if (llvm::any_of(linalgOp.getStaticShape(),
+                   [](int64_t dim) { return dim == 0; }))
+    return failure();
   // Check API contract for input vector sizes.
   if (!inputVectorSizes.empty()) {
     assert(inputVectorSizes.size() == linalgOp.getNumLoops() &&
@@ -993,14 +1189,11 @@ mlir::linalg::vectorizeLinalgOpPrecondition(LinalgOp linalgOp,
         "static sizes");
   }
 
-  // TODO: Masking is only supported for dynamic shapes so input vector sizes
-  // must be empty if the op is not dynamic.
-  if (!linalgOp.hasDynamicShape() && !inputVectorSizes.empty())
-    return failure();
-
   if (linalgOp.hasDynamicShape() &&
-      failed(vectorizeDynamicLinalgOpPrecondition(linalgOp)))
+      failed(vectorizeDynamicLinalgOpPrecondition(linalgOp))) {
+    LDBG("Dynamically-shaped op failed vectorization pre-conditions\n");
     return failure();
+  }
 
   SmallVector<CustomVectorizationPrecondition> customPreconditions;
 
@@ -1052,15 +1245,15 @@ mlir::linalg::vectorizeLinalgOpPrecondition(LinalgOp linalgOp,
 
 /// Converts affine.apply Ops to arithmetic operations.
 static void convertAffineApply(RewriterBase &rewriter, LinalgOp linalgOp) {
-  auto &newIP = linalgOp.getBlock()->front();
   OpBuilder::InsertionGuard g(rewriter);
-  rewriter.setInsertionPointAfter(&newIP);
   auto toReplace = linalgOp.getBlock()->getOps<AffineApplyOp>();
 
   for (auto op : make_early_inc_range(toReplace)) {
-    auto expanded =
-        expandAffineExpr(rewriter, op->getLoc(), op.getAffineMap().getResult(0),
-                         op.getOperands(), ValueRange{});
+    rewriter.setInsertionPoint(op);
+    auto expanded = expandAffineExpr(
+        rewriter, op->getLoc(), op.getAffineMap().getResult(0),
+        op.getOperands().take_front(op.getAffineMap().getNumDims()),
+        op.getOperands().take_back(op.getAffineMap().getNumSymbols()));
     rewriter.replaceOp(op, expanded);
   }
 }
@@ -1080,8 +1273,10 @@ LogicalResult mlir::linalg::vectorize(RewriterBase &rewriter, LinalgOp linalgOp,
   LLVM_DEBUG(llvm::dbgs() << "\n");
 
   if (failed(vectorizeLinalgOpPrecondition(linalgOp, inputVectorSizes,
-                                           vectorizeNDExtract)))
+                                           vectorizeNDExtract))) {
+    LDBG("Vectorization pre-conditions failed\n");
     return failure();
+  }
 
   // Initialize vectorization state.
   VectorizationState state(rewriter);

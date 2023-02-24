@@ -50,7 +50,33 @@ public:
   bool SelectFrameAddrRegImm(SDValue Addr, SDValue &Base, SDValue &Offset);
   bool SelectAddrRegImm(SDValue Addr, SDValue &Base, SDValue &Offset);
 
+  bool SelectAddrRegRegScale(SDValue Addr, unsigned MaxShiftAmount,
+                             SDValue &Base, SDValue &Index, SDValue &Scale);
+
+  template <unsigned MaxShift>
+  bool SelectAddrRegRegScale(SDValue Addr, SDValue &Base, SDValue &Index,
+                             SDValue &Scale) {
+    return SelectAddrRegRegScale(Addr, MaxShift, Base, Index, Scale);
+  }
+
+  template <unsigned MaxShift, unsigned Bits>
+  bool SelectAddrRegZextRegScale(SDValue Addr, SDValue &Base, SDValue &Index,
+                                 SDValue &Scale) {
+    if (SelectAddrRegRegScale(Addr, MaxShift, Base, Index, Scale)) {
+      if (Index.getOpcode() == ISD::AND) {
+        auto *C = dyn_cast<ConstantSDNode>(Index.getOperand(1));
+        if (C && C->getZExtValue() == maskTrailingOnes<uint64_t>(Bits)) {
+          Index = Index.getOperand(0);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   bool tryShrinkShlLogicImm(SDNode *Node);
+  bool trySignedBitfieldExtract(SDNode *Node);
+  bool tryIndexedLoad(SDNode *Node);
 
   bool selectShiftMask(SDValue N, unsigned ShiftWidth, SDValue &ShAmt);
   bool selectShiftMaskXLen(SDValue N, SDValue &ShAmt) {
@@ -60,7 +86,10 @@ public:
     return selectShiftMask(N, 32, ShAmt);
   }
 
-  bool selectSExti32(SDValue N, SDValue &Val);
+  bool selectSExtBits(SDValue N, unsigned Bits, SDValue &Val);
+  template <unsigned Bits> bool selectSExtBits(SDValue N, SDValue &Val) {
+    return selectSExtBits(N, Bits, Val);
+  }
   bool selectZExtBits(SDValue N, unsigned Bits, SDValue &Val);
   template <unsigned Bits> bool selectZExtBits(SDValue N, SDValue &Val) {
     return selectZExtBits(N, Bits, Val);
@@ -81,6 +110,8 @@ public:
   bool hasAllHUsers(SDNode *Node) const { return hasAllNBitUsers(Node, 16); }
   bool hasAllWUsers(SDNode *Node) const { return hasAllNBitUsers(Node, 32); }
 
+  bool selectSimm5Shl2(SDValue N, SDValue &Simm5, SDValue &Shl2);
+
   bool selectVLOp(SDValue N, SDValue &VL);
 
   bool selectVSplat(SDValue N, SDValue &SplatVal);
@@ -88,6 +119,7 @@ public:
   bool selectVSplatUimm5(SDValue N, SDValue &SplatVal);
   bool selectVSplatSimm5Plus1(SDValue N, SDValue &SplatVal);
   bool selectVSplatSimm5Plus1NonZero(SDValue N, SDValue &SplatVal);
+  bool selectFPImm(SDValue N, SDValue &Imm);
 
   bool selectRVVSimm5(SDValue N, unsigned Width, SDValue &Imm);
   template <unsigned Width> bool selectRVVSimm5(SDValue N, SDValue &Imm) {

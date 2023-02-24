@@ -534,6 +534,7 @@ private:
   // These all get lowered before this pass.
   void visitInvoke(const InvokeInst &I);
   void visitCallBr(const CallBrInst &I);
+  void visitCallBrLandingPad(const CallInst &I);
   void visitResume(const ResumeInst &I);
 
   void visitUnary(const User &I, unsigned Opcode);
@@ -648,6 +649,8 @@ private:
   void visitVectorReduce(const CallInst &I, unsigned Intrinsic);
   void visitVectorReverse(const CallInst &I);
   void visitVectorSplice(const CallInst &I);
+  void visitVectorInterleave(const CallInst &I);
+  void visitVectorDeinterleave(const CallInst &I);
   void visitStepVector(const CallInst &I);
 
   void visitUserOp1(const Instruction &I) {

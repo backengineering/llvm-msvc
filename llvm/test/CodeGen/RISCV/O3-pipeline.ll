@@ -66,6 +66,7 @@
 ; CHECK-NEXT:       Exception handling preparation
 ; CHECK-NEXT:     A No-Op Barrier Pass
 ; CHECK-NEXT:     FunctionPass Manager
+; CHECK-NEXT:       Prepare callbr
 ; CHECK-NEXT:       Safe Stack instrumentation pass
 ; CHECK-NEXT:       Insert stack protectors
 ; CHECK-NEXT:       Module Verifier
@@ -108,6 +109,7 @@
 ; CHECK-NEXT:       RISCV Merge Base Offset
 ; CHECK-NEXT:       RISCV Insert VSETVLI pass
 ; CHECK-NEXT:       Detect Dead Lanes
+; CHECK-NEXT:       RISCV init undef pass
 ; CHECK-NEXT:       Process Implicit Definitions
 ; CHECK-NEXT:       Remove unreachable machine basic blocks
 ; CHECK-NEXT:       Live Variable Analysis

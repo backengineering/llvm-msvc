@@ -1163,9 +1163,9 @@ static Value *simplifyDiv(Instruction::BinaryOps Opcode, Value *Op0, Value *Op1,
   // at least as many trailing zeros as the divisor to divide evenly. If it has
   // less trailing zeros, then the result must be poison.
   const APInt *DivC;
-  if (IsExact && match(Op1, m_APInt(DivC)) && DivC->countTrailingZeros()) {
+  if (IsExact && match(Op1, m_APInt(DivC)) && DivC->countr_zero()) {
     KnownBits KnownOp0 = computeKnownBits(Op0, Q.DL, 0, Q.AC, Q.CxtI, Q.DT);
-    if (KnownOp0.countMaxTrailingZeros() < DivC->countTrailingZeros())
+    if (KnownOp0.countMaxTrailingZeros() < DivC->countr_zero())
       return PoisonValue::get(Op0->getType());
   }
 
@@ -2850,11 +2850,35 @@ static Constant *computePointerICmp(CmpInst::Predicate Pred, Value *LHS,
     else if (isAllocLikeFn(RHS, TLI) &&
              llvm::isKnownNonZero(LHS, DL, 0, nullptr, CxtI, DT))
       MI = RHS;
-    // FIXME: We should also fold the compare when the pointer escapes, but the
-    // compare dominates the pointer escape
-    if (MI && !PointerMayBeCaptured(MI, true, true))
-      return ConstantInt::get(getCompareTy(LHS),
-                              CmpInst::isFalseWhenEqual(Pred));
+    if (MI) {
+      // FIXME: This is incorrect, see PR54002. While we can assume that the
+      // allocation is at an address that makes the comparison false, this
+      // requires that *all* comparisons to that address be false, which
+      // InstSimplify cannot guarantee.
+      struct CustomCaptureTracker : public CaptureTracker {
+        bool Captured = false;
+        void tooManyUses() override { Captured = true; }
+        bool captured(const Use *U) override {
+          if (auto *ICmp = dyn_cast<ICmpInst>(U->getUser())) {
+            // Comparison against value stored in global variable. Given the
+            // pointer does not escape, its value cannot be guessed and stored
+            // separately in a global variable.
+            unsigned OtherIdx = 1 - U->getOperandNo();
+            auto *LI = dyn_cast<LoadInst>(ICmp->getOperand(OtherIdx));
+            if (LI && isa<GlobalVariable>(LI->getPointerOperand()))
+              return false;
+          }
+
+          Captured = true;
+          return true;
+        }
+      };
+      CustomCaptureTracker Tracker;
+      PointerMayBeCaptured(MI, &Tracker);
+      if (!Tracker.Captured)
+        return ConstantInt::get(getCompareTy(LHS),
+                                CmpInst::isFalseWhenEqual(Pred));
+    }
   }
 
   // Otherwise, fail.
@@ -3394,8 +3418,26 @@ static Value *simplifyICmpWithBinOp(CmpInst::Predicate Pred, Value *LHS,
       return ConstantInt::getTrue(getCompareTy(RHS));
   }
 
-  if (MaxRecurse && LBO && RBO && LBO->getOpcode() == RBO->getOpcode() &&
-      LBO->getOperand(1) == RBO->getOperand(1)) {
+  if (!MaxRecurse || !LBO || !RBO || LBO->getOpcode() != RBO->getOpcode())
+    return nullptr;
+
+  if (LBO->getOperand(0) == RBO->getOperand(0)) {
+    switch (LBO->getOpcode()) {
+    default:
+      break;
+    case Instruction::Shl:
+      bool NUW = Q.IIQ.hasNoUnsignedWrap(LBO) && Q.IIQ.hasNoUnsignedWrap(RBO);
+      bool NSW = Q.IIQ.hasNoSignedWrap(LBO) && Q.IIQ.hasNoSignedWrap(RBO);
+      if (!NUW || (ICmpInst::isSigned(Pred) && !NSW) ||
+          !isKnownNonZero(LBO->getOperand(0), Q.DL))
+        break;
+      if (Value *V = simplifyICmpInst(Pred, LBO->getOperand(1),
+                                      RBO->getOperand(1), Q, MaxRecurse - 1))
+        return V;
+    }
+  }
+
+  if (LBO->getOperand(1) == RBO->getOperand(1)) {
     switch (LBO->getOpcode()) {
     default:
       break;
@@ -4211,6 +4253,17 @@ static Value *simplifyWithOpReplaced(Value *V, Value *Op, Value *RepOp,
       if ((Opcode == Instruction::And || Opcode == Instruction::Or) &&
           NewOps[0] == NewOps[1])
         return NewOps[0];
+
+      // If we are substituting an absorber constant into a binop and extra
+      // poison can't leak if we remove the select -- because both operands of
+      // the binop are based on the same value -- then it may be safe to replace
+      // the value with the absorber constant. Examples:
+      // (Op == 0) ? 0 : (Op & -Op)            --> Op & -Op
+      // (Op == 0) ? 0 : (Op * (binop Op, C))  --> Op * (binop Op, C)
+      // (Op == -1) ? -1 : (Op | (binop C, Op) --> Op | (binop C, Op)
+      if (RepOp == ConstantExpr::getBinOpAbsorber(Opcode, I->getType()) &&
+          impliesPoison(BO, Op))
+        return RepOp;
     }
 
     if (auto *GEP = dyn_cast<GetElementPtrInst>(I)) {
@@ -4892,8 +4945,11 @@ static Value *simplifyInsertValueInst(Value *Agg, Value *Val,
   if (ExtractValueInst *EV = dyn_cast<ExtractValueInst>(Val))
     if (EV->getAggregateOperand()->getType() == Agg->getType() &&
         EV->getIndices() == Idxs) {
-      // insertvalue undef, (extractvalue y, n), n -> y
-      if (Q.isUndefValue(Agg))
+      // insertvalue poison, (extractvalue y, n), n -> y
+      // insertvalue undef, (extractvalue y, n), n -> y if y cannot be poison
+      if (isa<PoisonValue>(Agg) ||
+          (Q.isUndefValue(Agg) &&
+           isGuaranteedNotToBePoison(EV->getAggregateOperand())))
         return EV->getAggregateOperand();
 
       // insertvalue y, (extractvalue y, n), n -> y
@@ -5309,28 +5365,33 @@ Value *llvm::simplifyFNegInst(Value *Op, FastMathFlags FMF,
 /// Try to propagate existing NaN values when possible. If not, replace the
 /// constant or elements in the constant with a canonical NaN.
 static Constant *propagateNaN(Constant *In) {
-  if (auto *VecTy = dyn_cast<FixedVectorType>(In->getType())) {
+  Type *Ty = In->getType();
+  if (auto *VecTy = dyn_cast<FixedVectorType>(Ty)) {
     unsigned NumElts = VecTy->getNumElements();
     SmallVector<Constant *, 32> NewC(NumElts);
     for (unsigned i = 0; i != NumElts; ++i) {
       Constant *EltC = In->getAggregateElement(i);
-      // Poison and existing NaN elements propagate.
+      // Poison elements propagate. NaN propagates except signaling is quieted.
       // Replace unknown or undef elements with canonical NaN.
-      if (EltC && (isa<PoisonValue>(EltC) || EltC->isNaN()))
+      if (EltC && isa<PoisonValue>(EltC))
         NewC[i] = EltC;
+      else if (EltC && EltC->isNaN())
+        NewC[i] = ConstantFP::get(
+            EltC->getType(), cast<ConstantFP>(EltC)->getValue().makeQuiet());
       else
-        NewC[i] = (ConstantFP::getNaN(VecTy->getElementType()));
+        NewC[i] = ConstantFP::getNaN(VecTy->getElementType());
     }
     return ConstantVector::get(NewC);
   }
 
-  // It is not a fixed vector, but not a simple NaN either?
+  // If it is not a fixed vector, but not a simple NaN either, return a
+  // canonical NaN.
   if (!In->isNaN())
-    return ConstantFP::getNaN(In->getType());
+    return ConstantFP::getNaN(Ty);
 
-  // Propagate the existing NaN constant when possible.
-  // TODO: Should we quiet a signaling NaN?
-  return In;
+  // Propagate an existing QNaN constant. If it is an SNaN, make it quiet, but
+  // preserve the sign/payload.
+  return ConstantFP::get(Ty, cast<ConstantFP>(In)->getValue().makeQuiet());
 }
 
 /// Perform folds that are common to any floating-point operation. This implies
@@ -6564,27 +6625,38 @@ Value *llvm::simplifyFreezeInst(Value *Op0, const SimplifyQuery &Q) {
   return ::simplifyFreezeInst(Op0, Q);
 }
 
-static Value *simplifyLoadInst(LoadInst *LI, Value *PtrOp,
-                               const SimplifyQuery &Q) {
+Value *llvm::simplifyLoadInst(LoadInst *LI, Value *PtrOp,
+                              const SimplifyQuery &Q) {
   if (LI->isVolatile())
     return nullptr;
 
-  APInt Offset(Q.DL.getIndexTypeSizeInBits(PtrOp->getType()), 0);
-  auto *PtrOpC = dyn_cast<Constant>(PtrOp);
+  if (auto *PtrOpC = dyn_cast<Constant>(PtrOp))
+    return ConstantFoldLoadFromConstPtr(PtrOpC, LI->getType(), Q.DL);
+
+  // We can only fold the load if it is from a constant global with definitive
+  // initializer. Skip expensive logic if this is not the case.
+  auto *GV = dyn_cast<GlobalVariable>(getUnderlyingObject(PtrOp));
+  if (!GV || !GV->isConstant() || !GV->hasDefinitiveInitializer())
+    return nullptr;
+
+  // If GlobalVariable's initializer is uniform, then return the constant
+  // regardless of its offset.
+  if (Constant *C =
+          ConstantFoldLoadFromUniformValue(GV->getInitializer(), LI->getType()))
+    return C;
+
   // Try to convert operand into a constant by stripping offsets while looking
-  // through invariant.group intrinsics. Don't bother if the underlying object
-  // is not constant, as calculating GEP offsets is expensive.
-  if (!PtrOpC && isa<Constant>(getUnderlyingObject(PtrOp))) {
-    PtrOp = PtrOp->stripAndAccumulateConstantOffsets(
-        Q.DL, Offset, /* AllowNonInbounts */ true,
-        /* AllowInvariantGroup */ true);
+  // through invariant.group intrinsics.
+  APInt Offset(Q.DL.getIndexTypeSizeInBits(PtrOp->getType()), 0);
+  PtrOp = PtrOp->stripAndAccumulateConstantOffsets(
+      Q.DL, Offset, /* AllowNonInbounts */ true,
+      /* AllowInvariantGroup */ true);
+  if (PtrOp == GV) {
     // Index size may have changed due to address space casts.
     Offset = Offset.sextOrTrunc(Q.DL.getIndexTypeSizeInBits(PtrOp->getType()));
-    PtrOpC = dyn_cast<Constant>(PtrOp);
+    return ConstantFoldLoadFromConstPtr(GV, LI->getType(), Offset, Q.DL);
   }
 
-  if (PtrOpC)
-    return ConstantFoldLoadFromConstPtr(PtrOpC, LI->getType(), Offset, Q.DL);
   return nullptr;
 }
 

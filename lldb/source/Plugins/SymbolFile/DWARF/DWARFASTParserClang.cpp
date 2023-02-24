@@ -731,10 +731,10 @@ DWARFASTParserClang::ParseTypeModifier(const SymbolContext &sc,
     }
   }
 
-  type_sp = dwarf->MakeType(
-      die.GetID(), attrs.name, attrs.byte_size, nullptr,
-      dwarf->GetUID(attrs.type.Reference()), encoding_data_type, &attrs.decl,
-      clang_type, resolve_state, TypePayloadClang(GetOwningClangModule(die)));
+  type_sp = dwarf->MakeType(die.GetID(), attrs.name, attrs.byte_size, nullptr,
+                            attrs.type.Reference().GetID(), encoding_data_type,
+                            &attrs.decl, clang_type, resolve_state,
+                            TypePayloadClang(GetOwningClangModule(die)));
 
   dwarf->GetDIEToType()[die.GetDIE()] = type_sp.get();
   return type_sp;
@@ -834,11 +834,11 @@ TypeSP DWARFASTParserClang::ParseEnum(const SymbolContext &sc,
 
   LinkDeclContextToDIE(TypeSystemClang::GetDeclContextForType(clang_type), die);
 
-  type_sp = dwarf->MakeType(die.GetID(), attrs.name, attrs.byte_size, nullptr,
-                            dwarf->GetUID(attrs.type.Reference()),
-                            Type::eEncodingIsUID, &attrs.decl, clang_type,
-                            Type::ResolveState::Forward,
-                            TypePayloadClang(GetOwningClangModule(die)));
+  type_sp =
+      dwarf->MakeType(die.GetID(), attrs.name, attrs.byte_size, nullptr,
+                      attrs.type.Reference().GetID(), Type::eEncodingIsUID,
+                      &attrs.decl, clang_type, Type::ResolveState::Forward,
+                      TypePayloadClang(GetOwningClangModule(die)));
 
   if (TypeSystemClang::StartTagDeclarationDefinition(clang_type)) {
     if (die.HasChildren()) {
@@ -1336,7 +1336,7 @@ DWARFASTParserClang::ParseArrayType(const DWARFDIE &die,
   ConstString empty_name;
   TypeSP type_sp =
       dwarf->MakeType(die.GetID(), empty_name, array_element_bit_stride / 8,
-                      nullptr, dwarf->GetUID(type_die), Type::eEncodingIsUID,
+                      nullptr, type_die.GetID(), Type::eEncodingIsUID,
                       &attrs.decl, clang_type, Type::ResolveState::Full);
   type_sp->SetEncodingType(element_type);
   const clang::Type *type = ClangUtil::GetQualType(clang_type).getTypePtr();
@@ -2707,7 +2707,7 @@ llvm::Expected<llvm::APInt> DWARFASTParserClang::ExtractIntFromFormValue(
   // For signed types, ask APInt how many bits are required to represent the
   // signed integer.
   const unsigned required_bits =
-      is_unsigned ? result.getActiveBits() : result.getMinSignedBits();
+      is_unsigned ? result.getActiveBits() : result.getSignificantBits();
 
   // If the input value doesn't fit into the integer type, return an error.
   if (required_bits > type_bits) {
@@ -3304,6 +3304,11 @@ DWARFASTParserClang::GetClangDeclContextForDIE(const DWARFDIE &die) {
       try_parsing_type = false;
       break;
 
+    case DW_TAG_imported_declaration:
+      decl_ctx = ResolveImportedDeclarationDIE(die);
+      try_parsing_type = false;
+      break;
+
     case DW_TAG_lexical_block:
       decl_ctx = GetDeclContextForBlock(die);
       try_parsing_type = false;
@@ -3463,6 +3468,42 @@ DWARFASTParserClang::ResolveNamespaceDIE(const DWARFDIE &die) {
     }
   }
   return nullptr;
+}
+
+clang::NamespaceDecl *
+DWARFASTParserClang::ResolveImportedDeclarationDIE(const DWARFDIE &die) {
+  assert(die && die.Tag() == DW_TAG_imported_declaration);
+
+  // See if we cached a NamespaceDecl for this imported declaration
+  // already
+  auto it = m_die_to_decl_ctx.find(die.GetDIE());
+  if (it != m_die_to_decl_ctx.end())
+    return static_cast<clang::NamespaceDecl *>(it->getSecond());
+
+  clang::NamespaceDecl *namespace_decl = nullptr;
+
+  const DWARFDIE imported_uid =
+      die.GetAttributeValueAsReferenceDIE(DW_AT_import);
+  if (!imported_uid)
+    return nullptr;
+
+  switch (imported_uid.Tag()) {
+  case DW_TAG_imported_declaration:
+    namespace_decl = ResolveImportedDeclarationDIE(imported_uid);
+    break;
+  case DW_TAG_namespace:
+    namespace_decl = ResolveNamespaceDIE(imported_uid);
+    break;
+  default:
+    return nullptr;
+  }
+
+  if (!namespace_decl)
+    return nullptr;
+
+  LinkDeclContextToDIE(namespace_decl, die);
+
+  return namespace_decl;
 }
 
 clang::DeclContext *DWARFASTParserClang::GetClangDeclContextContainingDIE(

@@ -630,8 +630,8 @@ public:
     return BaseT::preferPredicateOverEpilogue(L, LI, SE, AC, TLI, DT, LVL, IAI);
   }
 
-  PredicationStyle emitGetActiveLaneMask() {
-    return BaseT::emitGetActiveLaneMask();
+  TailFoldingStyle getPreferredTailFoldingStyle() {
+    return BaseT::getPreferredTailFoldingStyle();
   }
 
   std::optional<Instruction *> instCombineIntrinsic(InstCombiner &IC,
@@ -844,7 +844,7 @@ public:
     }
   }
 
-  unsigned getMaxInterleaveFactor(unsigned VF) { return 1; }
+  unsigned getMaxInterleaveFactor(ElementCount VF) { return 1; }
 
   InstructionCost getArithmeticInstrCost(
       unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
@@ -1508,7 +1508,7 @@ public:
           // SelectionDAGBuilder.
           APInt Exponent = RHSC->getValue().abs();
           unsigned ActiveBits = Exponent.getActiveBits();
-          unsigned PopCount = Exponent.countPopulation();
+          unsigned PopCount = Exponent.popcount();
           InstructionCost Cost = (ActiveBits + PopCount - 2) *
                                  thisT()->getArithmeticInstrCost(
                                      Instruction::FMul, RetTy, CostKind);

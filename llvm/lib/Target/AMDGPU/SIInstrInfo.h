@@ -781,6 +781,10 @@ public:
     return get(Opcode).TSFlags & SIInstrFlags::FPAtomic;
   }
 
+  static bool isNeverUniform(const MachineInstr &MI){
+    return MI.getDesc().TSFlags & SIInstrFlags::IsNeverUniform;
+  }
+
   static bool doesNotReadTiedSource(const MachineInstr &MI) {
     return MI.getDesc().TSFlags & SIInstrFlags::TiedSourceNotRead;
   }
@@ -841,7 +845,7 @@ public:
                         const MachineOperand &UseMO,
                         const MachineOperand &DefMO) const {
     assert(UseMO.getParent() == &MI);
-    int OpIdx = MI.getOperandNo(&UseMO);
+    int OpIdx = UseMO.getOperandNo();
     if (OpIdx >= MI.getDesc().NumOperands)
       return false;
 
@@ -873,8 +877,7 @@ public:
   }
 
   bool isInlineConstant(const MachineOperand &MO) const {
-    const MachineInstr *Parent = MO.getParent();
-    return isInlineConstant(*Parent, Parent->getOperandNo(&MO));
+    return isInlineConstant(*MO.getParent(), MO.getOperandNo());
   }
 
   bool isImmOperandLegal(const MachineInstr &MI, unsigned OpNo,
@@ -1131,6 +1134,11 @@ public:
   static bool isLegalMUBUFImmOffset(unsigned Imm) {
     return isUInt<12>(Imm);
   }
+
+  static unsigned getMaxMUBUFImmOffset();
+
+  bool splitMUBUFOffset(uint32_t Imm, uint32_t &SOffset, uint32_t &ImmOffset,
+                        Align Alignment = Align(4)) const;
 
   /// Returns if \p Offset is legal for the subtarget as the offset to a FLAT
   /// encoded instruction. If \p Signed, this is for an instruction that

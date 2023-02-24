@@ -100,7 +100,6 @@ struct PromoteLegacyPass : public FunctionPass {
     AU.addRequired<DominatorTreeWrapperPass>();
     AU.setPreservesCFG();
   }
-
 };
 
 } // end anonymous namespace

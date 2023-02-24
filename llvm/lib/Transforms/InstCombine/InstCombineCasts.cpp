@@ -252,6 +252,20 @@ Value *InstCombinerImpl::EvaluateInDifferentType(Value *V, Type *Ty,
     Res = CastInst::Create(
       static_cast<Instruction::CastOps>(Opc), I->getOperand(0), Ty);
     break;
+  case Instruction::Call:
+    if (const IntrinsicInst *II = dyn_cast<IntrinsicInst>(I)) {
+      switch (II->getIntrinsicID()) {
+      default:
+        llvm_unreachable("Unsupported call!");
+      case Intrinsic::vscale: {
+        Function *Fn =
+            Intrinsic::getDeclaration(I->getModule(), Intrinsic::vscale, {Ty});
+        Res = CallInst::Create(Fn->getFunctionType(), Fn);
+        break;
+      }
+      }
+    }
+    break;
   default:
     // TODO: Can handle more cases here.
     llvm_unreachable("Unreachable!");
@@ -293,6 +307,10 @@ InstCombinerImpl::isEliminableCastPair(const CastInst *CI1,
 Instruction *InstCombinerImpl::commonCastTransforms(CastInst &CI) {
   Value *Src = CI.getOperand(0);
   Type *Ty = CI.getType();
+
+  if (auto *SrcC = dyn_cast<Constant>(Src))
+    if (Constant *Res = ConstantFoldCastOperand(CI.getOpcode(), SrcC, Ty, DL))
+      return replaceInstUsesWith(CI, Res);
 
   // Try to eliminate a cast of a cast.
   if (auto *CSrc = dyn_cast<CastInst>(Src)) {   // A->B->C cast
@@ -994,7 +1012,7 @@ Instruction *InstCombinerImpl::visitTrunc(TruncInst &Trunc) {
     }
   }
 
-  if (match(Src, m_VScale(DL))) {
+  if (match(Src, m_VScale())) {
     if (Trunc.getFunction() &&
         Trunc.getFunction()->hasFnAttribute(Attribute::VScaleRange)) {
       Attribute Attr =
@@ -1213,6 +1231,13 @@ static bool canEvaluateZExtd(Value *V, Type *Ty, unsigned &BitsToClear,
         return false;
     return true;
   }
+  case Instruction::Call:
+    // llvm.vscale() can always be executed in larger type, because the
+    // value is automatically zero-extended.
+    if (const IntrinsicInst *II = dyn_cast<IntrinsicInst>(I))
+      if (II->getIntrinsicID() == Intrinsic::vscale)
+        return true;
+    return false;
   default:
     // TODO: Can handle more cases here.
     return false;
@@ -1336,7 +1361,7 @@ Instruction *InstCombinerImpl::visitZExt(ZExtInst &Zext) {
     return BinaryOperator::CreateAnd(X, ZextC);
   }
 
-  if (match(Src, m_VScale(DL))) {
+  if (match(Src, m_VScale())) {
     if (Zext.getFunction() &&
         Zext.getFunction()->hasFnAttribute(Attribute::VScaleRange)) {
       Attribute Attr =
@@ -1398,7 +1423,7 @@ Instruction *InstCombinerImpl::transformSExtICmp(ICmpInst *Cmp,
         if (!Op1C->isZero() == (Pred == ICmpInst::ICMP_NE)) {
           // sext ((x & 2^n) == 0)   -> (x >> n) - 1
           // sext ((x & 2^n) != 2^n) -> (x >> n) - 1
-          unsigned ShiftAmt = KnownZeroMask.countTrailingZeros();
+          unsigned ShiftAmt = KnownZeroMask.countr_zero();
           // Perform a right shift to place the desired bit in the LSB.
           if (ShiftAmt)
             In = Builder.CreateLShr(In,
@@ -1412,7 +1437,7 @@ Instruction *InstCombinerImpl::transformSExtICmp(ICmpInst *Cmp,
         } else {
           // sext ((x & 2^n) != 0)   -> (x << bitwidth-n) a>> bitwidth-1
           // sext ((x & 2^n) == 2^n) -> (x << bitwidth-n) a>> bitwidth-1
-          unsigned ShiftAmt = KnownZeroMask.countLeadingZeros();
+          unsigned ShiftAmt = KnownZeroMask.countl_zero();
           // Perform a left shift to place the desired bit in the MSB.
           if (ShiftAmt)
             In = Builder.CreateShl(In,
@@ -1607,7 +1632,7 @@ Instruction *InstCombinerImpl::visitSExt(SExtInst &Sext) {
     }
   }
 
-  if (match(Src, m_VScale(DL))) {
+  if (match(Src, m_VScale())) {
     if (Sext.getFunction() &&
         Sext.getFunction()->hasFnAttribute(Attribute::VScaleRange)) {
       Attribute Attr =

@@ -72,7 +72,7 @@ InputSectionBase::InputSectionBase(InputFile *file, uint64_t flags,
   // If SHF_COMPRESSED is set, parse the header. The legacy .zdebug format is no
   // longer supported.
   if (flags & SHF_COMPRESSED)
-    invokeELFT(parseCompressedHeader);
+    invokeELFT(parseCompressedHeader,);
 }
 
 // Drop SHF_GROUP bit unless we are producing a re-linkable object file.
@@ -517,6 +517,7 @@ static uint64_t getRISCVUndefinedRelativeWeakVA(uint64_t type, uint64_t p) {
   case R_RISCV_CALL_PLT:
   case R_RISCV_RVC_BRANCH:
   case R_RISCV_RVC_JUMP:
+  case R_RISCV_PLT32:
     return p;
   default:
     return 0;

@@ -465,11 +465,12 @@ void WebAssemblyPassConfig::addIRPasses() {
 }
 
 void WebAssemblyPassConfig::addISelPrepare() {
-  WebAssemblyTargetMachine *WasmTM = static_cast<WebAssemblyTargetMachine*>(TM);
-  const WebAssemblySubtarget *Subtarget = WasmTM
-            ->getSubtargetImpl(std::string(WasmTM->getTargetCPU()),
+  WebAssemblyTargetMachine *WasmTM =
+      static_cast<WebAssemblyTargetMachine *>(TM);
+  const WebAssemblySubtarget *Subtarget =
+      WasmTM->getSubtargetImpl(std::string(WasmTM->getTargetCPU()),
                                std::string(WasmTM->getTargetFeatureString()));
-  if(Subtarget->hasReferenceTypes()) {
+  if (Subtarget->hasReferenceTypes()) {
     // We need to remove allocas for reference types
     addPass(createPromoteMemoryToRegisterPass(true));
   }

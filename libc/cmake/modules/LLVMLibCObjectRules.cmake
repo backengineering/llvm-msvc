@@ -39,6 +39,7 @@ function(_get_common_compile_options output_var flags)
       list(APPEND compile_options "-Wthread-safety")
     endif()
     if(ADD_FMA_FLAG)
+      list(APPEND compile_options "-mavx2")
       list(APPEND compile_options "-mfma")
     endif()
     if(ADD_SSE4_2_FLAG)
@@ -52,17 +53,142 @@ function(_get_common_compile_options output_var flags)
     endif()
   endif()
   if (LIBC_TARGET_ARCHITECTURE_IS_GPU)
-    list(APPEND compile_options "-fopenmp")
-    list(APPEND compile_options "-fopenmp-cuda-mode")
-    foreach(gpu_arch ${LIBC_GPU_ARCHITECTURES})
-      list(APPEND compile_options "--offload-arch=${gpu_arch}")
-    endforeach()
     list(APPEND compile_options "-nogpulib")
-    list(APPEND compile_options "-nogpuinc")
     list(APPEND compile_options "-fvisibility=hidden")
-    list(APPEND compile_options "-foffload-lto")
   endif()
   set(${output_var} ${compile_options} PARENT_SCOPE)
+endfunction()
+
+# Builds the object target for the GPU.
+# This compiles the target for all supported architectures and embeds it into
+# host binary for installing. The internal target contains the GPU code directly
+# compiled for a single architecture used internally.
+# Usage:
+#     _build_gpu_objects(
+#       <target_name>
+#       <internal_target_name>
+#       SRCS <list of .cpp files>
+#       HDRS <list of .h files>
+#       DEPENDS <list of dependencies>
+#       COMPILE_OPTIONS <optional list of special compile options for this target>
+#       FLAGS <optional list of flags>
+#     )
+function(_build_gpu_objects fq_target_name internal_target_name)
+  cmake_parse_arguments(
+    "ADD_GPU_OBJ"
+    "" # No optional arguments
+    "NAME;CXX_STANDARD" # Single value arguments
+    "SRCS;HDRS;DEPENDS;COMPILE_OPTIONS;FLAGS"  # Multi value arguments
+    ${ARGN}
+  )
+
+  set(include_dirs ${LIBC_BUILD_DIR}/include ${LIBC_SOURCE_DIR} ${LIBC_BUILD_DIR})
+
+  # The packaged version will be built for every target GPU architecture. We do
+  # this so we can support multiple accelerators on the same machine.
+  foreach(gpu_arch ${LIBC_GPU_ARCHITECTURES})
+    set(gpu_target_name ${fq_target_name}.${gpu_arch})
+    set(compile_options ${ADD_GPU_OBJ_COMPILE_OPTIONS})
+    # Derive the triple from the specified architecture.
+    if("${gpu_arch}" IN_LIST all_amdgpu_architectures)
+      set(gpu_target_triple "amdgcn-amd-amdhsa")
+      list(APPEND compile_options "-mcpu=${gpu_arch}")
+    elseif("${gpu_arch}" IN_LIST all_nvptx_architectures)
+      set(gpu_target_triple "nvptx64-nvidia-cuda")
+      list(APPEND compile_options "-march=${gpu_arch}")
+    else()
+      message(FATAL_ERROR "Unknown GPU architecture '${gpu_arch}'")
+    endif()
+    list(APPEND compile_options "--target=${gpu_target_triple}")
+    list(APPEND compile_options "-emit-llvm")
+
+    # Build the library for this target architecture. We always emit LLVM-IR for
+    # packaged GPU binaries.
+    add_library(${gpu_target_name}
+      EXCLUDE_FROM_ALL
+      OBJECT
+      ${ADD_GPU_OBJ_SRCS}
+      ${ADD_GPU_OBJ_HDRS}
+    )
+
+    target_compile_options(${gpu_target_name} PRIVATE ${compile_options})
+    target_include_directories(${gpu_target_name} PRIVATE ${include_dirs})
+    target_compile_definitions(${gpu_target_name} PRIVATE LIBC_COPT_PUBLIC_PACKAGING)
+    if(ADD_GPU_OBJ_DEPENDS)
+      add_dependencies(${gpu_target_name} ${ADD_GPU_OBJ_DEPENDS})
+    endif()
+
+    # Append this target to a list of images to package into a single binary.
+    set(input_file $<TARGET_OBJECTS:${gpu_target_name}>)
+    list(APPEND packager_images
+         --image=file=${input_file},arch=${gpu_arch},triple=${gpu_target_triple})
+    list(APPEND gpu_target_names ${gpu_target_name})
+  endforeach()
+
+  # After building the target for the desired GPUs we must package the output
+  # into a fatbinary, see https://clang.llvm.org/docs/OffloadingDesign.html for
+  # more information.
+  set(packaged_target_name ${fq_target_name}.__gpu__)
+  set(packaged_output_name ${CMAKE_CURRENT_BINARY_DIR}/${fq_target_name}.gpubin)
+
+  add_custom_command(OUTPUT ${packaged_output_name}
+                     COMMAND ${LIBC_CLANG_OFFLOAD_PACKAGER}
+                             ${packager_images} -o ${packaged_output_name}
+                     DEPENDS ${gpu_target_names} ${ADD_GPU_OBJ_SRCS} ${ADD_GPU_OBJ_HDRS}
+                     COMMENT "Packaging LLVM offloading binary")
+  add_custom_target(${packaged_target_name} DEPENDS ${packaged_output_name} ${gpu_target_name})
+
+  # We create an empty 'stub' file for the host to contain the embedded device
+  # code. This will be packaged into 'libcgpu.a'.
+  # TODO: In the future we will want to combine every architecture for a target
+  #       into a single bitcode file and use that. For now we simply build for
+  #       every single one and let the offloading linker handle it.
+  get_filename_component(stub_filename ${ADD_GPU_OBJ_SRCS} NAME)
+  add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/stubs/${stub_filename}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/stubs/
+    COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_BINARY_DIR}/stubs/${stub_filename}
+    DEPENDS ${gpu_target_names} ${ADD_GPU_OBJ_SRCS} ${ADD_GPU_OBJ_HDRS}
+  )
+  set(stub_target_name ${fq_target_name}.__stub__)
+  add_custom_target(${stub_target_name} DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/stubs/${stub_filename})
+
+  add_library(
+    ${fq_target_name}
+    # We want an object library as the objects will eventually get packaged into
+    # an archive (like libcgpu.a).
+    EXCLUDE_FROM_ALL
+    OBJECT
+    ${CMAKE_CURRENT_BINARY_DIR}/stubs/${stub_filename}
+  )
+  target_compile_options(${fq_target_name} BEFORE PRIVATE ${common_compile_options}
+                         -nostdlib -Xclang -fembed-offload-object=${packaged_output_name})
+  target_include_directories(${fq_target_name} PRIVATE ${include_dirs})
+  add_dependencies(${fq_target_name} 
+                   ${full_deps_list} ${packaged_target_name} ${stub_target_name})
+
+  # We only build the internal target for a single supported architecture.
+  if(LIBC_GPU_TARGET_ARCHITECTURE_IS_AMDGPU OR
+     LIBC_GPU_TARGET_ARCHITECTURE_IS_NVPTX)
+    add_library(
+      ${internal_target_name}
+      EXCLUDE_FROM_ALL
+      OBJECT
+      ${ADD_GPU_OBJ_SRCS}
+      ${ADD_GPU_OBJ_HDRS}
+    )
+    target_compile_options(${internal_target_name} BEFORE PRIVATE
+                           ${common_compile_options} --target=${LIBC_GPU_TARGET_TRIPLE})
+    if(LIBC_GPU_TARGET_ARCHITECTURE_IS_AMDGPU)
+      target_compile_options(${internal_target_name} PRIVATE -mcpu=${LIBC_GPU_TARGET_ARCHITECTURE})
+    elseif(LIBC_GPU_TARGET_ARCHITECTURE_IS_NVPTX)
+      target_compile_options(${internal_target_name} PRIVATE -march=${LIBC_GPU_TARGET_ARCHITECTURE})
+    endif()
+    target_include_directories(${internal_target_name} PRIVATE ${include_dirs})
+    if(full_deps_list)
+      add_dependencies(${internal_target_name} ${full_deps_list})
+    endif()
+  endif()
 endfunction()
 
 # Rule which is essentially a wrapper over add_library to compile a set of
@@ -78,7 +204,7 @@ endfunction()
 function(create_object_library fq_target_name)
   cmake_parse_arguments(
     "ADD_OBJECT"
-    "" # No optional arguments
+    "NO_GPU_BUNDLE" # No optional arguments
     "CXX_STANDARD" # Single value arguments
     "SRCS;HDRS;COMPILE_OPTIONS;DEPENDS;FLAGS" # Multivalue arguments
     ${ARGN}
@@ -88,28 +214,49 @@ function(create_object_library fq_target_name)
     message(FATAL_ERROR "'add_object_library' rule requires SRCS to be specified.")
   endif()
 
-  add_library(
-    ${fq_target_name}
-    EXCLUDE_FROM_ALL
-    OBJECT
-    ${ADD_OBJECT_SRCS}
-    ${ADD_OBJECT_HDRS}
-  )
-  target_include_directories(
-    ${fq_target_name}
-    PRIVATE
-      ${LIBC_BUILD_DIR}/include
-      ${LIBC_SOURCE_DIR}
-      ${LIBC_BUILD_DIR}
-  )
+  # The GPU build uses a separate internal file.
+  if(LIBC_TARGET_ARCHITECTURE_IS_GPU AND NOT ${ADD_OBJECT_NO_GPU_BUNDLE})
+    set(internal_target_name ${fq_target_name}.__internal__)
+  else()
+    set(internal_target_name ${fq_target_name})
+  endif()
+
+  get_fq_deps_list(fq_deps_list ${ADD_OBJECT_DEPENDS})
   _get_common_compile_options(
     compile_options
     "${ADD_OBJECT_FLAGS}"
     ${ADD_OBJECT_COMPILE_OPTIONS}
   )
-  target_compile_options(${fq_target_name} PRIVATE ${compile_options})
 
-  get_fq_deps_list(fq_deps_list ${ADD_OBJECT_DEPENDS})
+  # GPU builds require special handling for the objects because we want to
+  # export several different targets at once, e.g. for both Nvidia and AMD.
+  if(LIBC_TARGET_ARCHITECTURE_IS_GPU AND NOT ${ADD_OBJECT_NO_GPU_BUNDLE})
+    _build_gpu_objects(
+      ${fq_target_name}
+      ${internal_target_name}
+      SRCS ${ADD_OBJECT_SRCS}
+      HDRS ${ADD_OBJECT_HDRS}
+      DEPENDS ${fq_deps_list}
+      COMPILE_OPTIONS ${common_compile_options}
+      FLAGS "${ADD_ENTRYPOINT_OBJ_FLAGS}"
+    )
+  else()
+    add_library(
+      ${fq_target_name}
+      EXCLUDE_FROM_ALL
+      OBJECT
+      ${ADD_OBJECT_SRCS}
+      ${ADD_OBJECT_HDRS}
+    )
+    target_include_directories(
+      ${fq_target_name}
+      PRIVATE
+        ${LIBC_BUILD_DIR}/include
+        ${LIBC_SOURCE_DIR}
+        ${LIBC_BUILD_DIR}
+    )
+    target_compile_options(${fq_target_name} PRIVATE ${compile_options})
+  endif()
 
   if(SHOW_INTERMEDIATE_OBJECTS)
     message(STATUS "Adding object library ${fq_target_name}")
@@ -127,16 +274,22 @@ function(create_object_library fq_target_name)
   if(NOT ADD_OBJECT_CXX_STANDARD)
     set(ADD_OBJECT_CXX_STANDARD ${CMAKE_CXX_STANDARD})
   endif()
-  
   set_target_properties(
     ${fq_target_name}
     PROPERTIES
       TARGET_TYPE ${OBJECT_LIBRARY_TARGET_TYPE}
-      OBJECT_FILES "$<TARGET_OBJECTS:${fq_target_name}>"
       CXX_STANDARD ${ADD_OBJECT_CXX_STANDARD}
       DEPS "${fq_deps_list}"
       FLAGS "${ADD_OBJECT_FLAGS}"
   )
+
+  if(TARGET ${internal_target_name})
+    set_target_properties(
+      ${fq_target_name}
+      PROPERTIES
+        OBJECT_FILES "$<TARGET_OBJECTS:${internal_target_name}>"
+    )
+  endif()
 endfunction(create_object_library)
 
 # Internal function, used by `add_object_library`.
@@ -350,37 +503,45 @@ function(create_entrypoint_object fq_target_name)
     endif()
   endif()
 
-  add_library(
-    ${internal_target_name}
-    # TODO: We don't need an object library for internal consumption.
-    # A future change should switch this to a normal static library.
-    EXCLUDE_FROM_ALL
-    OBJECT
-    ${ADD_ENTRYPOINT_OBJ_SRCS}
-    ${ADD_ENTRYPOINT_OBJ_HDRS}
-  )
-  target_compile_options(${internal_target_name} BEFORE PRIVATE ${common_compile_options})
-  target_include_directories(${internal_target_name} PRIVATE ${include_dirs})
-  add_dependencies(${internal_target_name} ${full_deps_list})
-  set_target_properties(
-    ${internal_target_name}
-    PROPERTIES
-      CXX_STANDARD ${ADD_ENTRYPOINT_OBJ_CXX_STANDARD}
+  # GPU builds require special handling for the objects because we want to
+  # export several different targets at once, e.g. for both Nvidia and AMD.
+  if(LIBC_TARGET_ARCHITECTURE_IS_GPU)
+    _build_gpu_objects(
+      ${fq_target_name}
+      ${internal_target_name}
+      SRCS ${ADD_ENTRYPOINT_OBJ_SRCS}
+      HDRS ${ADD_ENTRYPOINT_OBJ_HDRS}
+      COMPILE_OPTIONS ${common_compile_options}
+      DEPENDS ${full_deps_list}
       FLAGS "${ADD_ENTRYPOINT_OBJ_FLAGS}"
-  )
+    )
+  else()
+    add_library(
+      ${internal_target_name}
+      # TODO: We don't need an object library for internal consumption.
+      # A future change should switch this to a normal static library.
+      EXCLUDE_FROM_ALL
+      OBJECT
+      ${ADD_ENTRYPOINT_OBJ_SRCS}
+      ${ADD_ENTRYPOINT_OBJ_HDRS}
+    )
+    target_compile_options(${internal_target_name} BEFORE PRIVATE ${common_compile_options})
+    target_include_directories(${internal_target_name} PRIVATE ${include_dirs})
+    add_dependencies(${internal_target_name} ${full_deps_list})
 
-  add_library(
-    ${fq_target_name}
-    # We want an object library as the objects will eventually get packaged into
-    # an archive (like libc.a).
-    EXCLUDE_FROM_ALL
-    OBJECT
-    ${ADD_ENTRYPOINT_OBJ_SRCS}
-    ${ADD_ENTRYPOINT_OBJ_HDRS}
-  )
-  target_compile_options(${fq_target_name} BEFORE PRIVATE ${common_compile_options} -DLLVM_LIBC_PUBLIC_PACKAGING)
-  target_include_directories(${fq_target_name} PRIVATE ${include_dirs})
-  add_dependencies(${fq_target_name} ${full_deps_list})
+    add_library(
+      ${fq_target_name}
+      # We want an object library as the objects will eventually get packaged into
+      # an archive (like libc.a).
+      EXCLUDE_FROM_ALL
+      OBJECT
+      ${ADD_ENTRYPOINT_OBJ_SRCS}
+      ${ADD_ENTRYPOINT_OBJ_HDRS}
+    )
+    target_compile_options(${fq_target_name} BEFORE PRIVATE ${common_compile_options} -DLIBC_COPT_PUBLIC_PACKAGING)
+    target_include_directories(${fq_target_name} PRIVATE ${include_dirs})
+    add_dependencies(${fq_target_name} ${full_deps_list})
+  endif()
 
   set_target_properties(
     ${fq_target_name}
@@ -388,15 +549,28 @@ function(create_entrypoint_object fq_target_name)
       ENTRYPOINT_NAME ${ADD_ENTRYPOINT_OBJ_NAME}
       TARGET_TYPE ${ENTRYPOINT_OBJ_TARGET_TYPE}
       OBJECT_FILE "$<TARGET_OBJECTS:${fq_target_name}>"
-      # TODO: We don't need to list internal object files if the internal
-      # target is a normal static library.
-      OBJECT_FILE_RAW "$<TARGET_OBJECTS:${internal_target_name}>"
       CXX_STANDARD ${ADD_ENTRYPOINT_OBJ_CXX_STANDARD}
       DEPS "${fq_deps_list}"
       FLAGS "${ADD_ENTRYPOINT_OBJ_FLAGS}"
   )
 
-  if(LLVM_LIBC_ENABLE_LINTING)
+  if(TARGET ${internal_target_name})
+    set_target_properties(
+      ${internal_target_name}
+      PROPERTIES
+        CXX_STANDARD ${ADD_ENTRYPOINT_OBJ_CXX_STANDARD}
+        FLAGS "${ADD_ENTRYPOINT_OBJ_FLAGS}"
+    )
+    set_target_properties(
+      ${fq_target_name}
+      PROPERTIES
+        # TODO: We don't need to list internal object files if the internal
+        # target is a normal static library.
+        OBJECT_FILE_RAW "$<TARGET_OBJECTS:${internal_target_name}>"
+    )
+  endif()
+
+  if(LLVM_LIBC_ENABLE_LINTING AND TARGET ${internal_target_name})
     if(NOT LLVM_LIBC_CLANG_TIDY)
       message(FATAL_ERROR "Something is wrong!  LLVM_LIBC_ENABLE_LINTING is "
               "ON but LLVM_LIBC_CLANG_TIDY is not set.")

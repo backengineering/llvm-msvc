@@ -38,8 +38,12 @@ What's New in Libc++ 17.0.0?
 Implemented Papers
 ------------------
 
+- P1328R1 - ``constexpr type_info::operator==()``
+
 Improvements and New Features
 -----------------------------
+- ``std::equal`` and ``std::ranges::equal`` are now forwarding to ``std::memcmp`` for integral types and pointers,
+  which can lead up to 40x performance improvements.
 
 - ``std::string_view`` now provides iterators that check for out-of-bounds accesses when the safe
   libc++ mode is enabled.
@@ -50,6 +54,12 @@ Deprecations and Removals
 - The ``<experimental/coroutine>`` header has been removed in this release. The ``<coroutine>`` header
   has been shipping since LLVM 14, so the Coroutines TS implementation is being removed per our policy
   for removing TSes.
+
+- Several incidental transitive includes have been removed from libc++. Those
+  includes are removed based on the language version used. Incidental transitive
+  inclusions of the following headers have been removed:
+
+  - C++2b: ``bit``, ``cstring``, ``type_traits``
 
 Upcoming Deprecations and Removals
 ----------------------------------

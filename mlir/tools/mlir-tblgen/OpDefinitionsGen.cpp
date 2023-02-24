@@ -1337,10 +1337,12 @@ generateNamedOperandGetters(const Operator &op, Class &opClass,
                                 : generateTypeForGetter(operand),
                             name);
       ERROR_IF_PRUNED(m, name, op);
-      m->body().indent() << formatv(
-          "auto operands = getODSOperands({0});\n"
-          "return operands.empty() ? {1}{{} : *operands.begin();",
-          i, rangeElementType);
+      m->body().indent() << formatv("auto operands = getODSOperands({0});\n"
+                                    "return operands.empty() ? {1}{{} : ",
+                                    i, m->getReturnType());
+      if (!isGenericAdaptorBase)
+        m->body() << llvm::formatv("::llvm::cast<{0}>", m->getReturnType());
+      m->body() << "(*operands.begin());";
     } else if (operand.isVariadicOfVariadic()) {
       std::string segmentAttr = op.getGetterName(
           operand.constraint.getVariadicOfVariadicSegmentSizeAttr());
@@ -1366,7 +1368,10 @@ generateNamedOperandGetters(const Operator &op, Class &opClass,
                                 : generateTypeForGetter(operand),
                             name);
       ERROR_IF_PRUNED(m, name, op);
-      m->body() << "  return *getODSOperands(" << i << ").begin();";
+      m->body().indent() << "return ";
+      if (!isGenericAdaptorBase)
+        m->body() << llvm::formatv("::llvm::cast<{0}>", m->getReturnType());
+      m->body() << llvm::formatv("(*getODSOperands({0}).begin());", i);
     }
   }
 }
@@ -1489,9 +1494,11 @@ void OpEmitter::genNamedResultGetters() {
     if (result.isOptional()) {
       m = opClass.addMethod(generateTypeForGetter(result), name);
       ERROR_IF_PRUNED(m, name, op);
-      m->body()
-          << "  auto results = getODSResults(" << i << ");\n"
-          << "  return results.empty() ? ::mlir::Value() : *results.begin();";
+      m->body() << "  auto results = getODSResults(" << i << ");\n"
+                << llvm::formatv("  return results.empty()"
+                                 " ? {0}()"
+                                 " : ::llvm::cast<{0}>(*results.begin());",
+                                 m->getReturnType());
     } else if (result.isVariadic()) {
       m = opClass.addMethod("::mlir::Operation::result_range", name);
       ERROR_IF_PRUNED(m, name, op);
@@ -1499,7 +1506,9 @@ void OpEmitter::genNamedResultGetters() {
     } else {
       m = opClass.addMethod(generateTypeForGetter(result), name);
       ERROR_IF_PRUNED(m, name, op);
-      m->body() << "  return *getODSResults(" << i << ").begin();";
+      m->body() << llvm::formatv(
+          "  return ::llvm::cast<{0}>(*getODSResults({1}).begin());",
+          m->getReturnType(), i);
     }
   }
 }
@@ -1956,6 +1965,9 @@ void OpEmitter::genBuilder() {
     if (body)
       ERROR_IF_PRUNED(method, "build", op);
 
+    if (method)
+      method->setDeprecated(builder.getDeprecatedMessage());
+
     FmtContext fctx;
     fctx.withBuilder(odsBuilder);
     fctx.addSubst("_state", builderOpState);
@@ -2330,12 +2342,8 @@ void OpEmitter::genFolderDecls() {
   if (!op.hasFolder())
     return;
 
-  Dialect::FolderAPI folderApi = op.getDialect().getFolderAPI();
   SmallVector<MethodParameter> paramList;
-  if (folderApi == Dialect::FolderAPI::RawAttributes)
-    paramList.emplace_back("::llvm::ArrayRef<::mlir::Attribute>", "operands");
-  else
-    paramList.emplace_back("FoldAdaptor", "adaptor");
+  paramList.emplace_back("FoldAdaptor", "adaptor");
 
   StringRef retType;
   bool hasSingleResult =

@@ -479,7 +479,7 @@ void llvm::computeKnownBitsFromRangeMetadata(const MDNode &Ranges,
 
     // The first CommonPrefixBits of all values in Range are equal.
     unsigned CommonPrefixBits =
-        (Range.getUnsignedMax() ^ Range.getUnsignedMin()).countLeadingZeros();
+        (Range.getUnsignedMax() ^ Range.getUnsignedMin()).countl_zero();
     APInt Mask = APInt::getHighBitsSet(BitWidth, CommonPrefixBits);
     APInt UnsignedMax = Range.getUnsignedMax().zextOrTrunc(BitWidth);
     Known.One &= UnsignedMax & Mask;
@@ -616,13 +616,16 @@ static bool isKnownNonZeroFromAssume(const Value *V, const Query &Q) {
   for (auto &AssumeVH : Q.AC->assumptionsFor(V)) {
     if (!AssumeVH)
       continue;
-    CondGuardInst *I = cast<CondGuardInst>(AssumeVH);
+    CallInst *I = cast<CallInst>(AssumeVH);
     assert(I->getFunction() == Q.CxtI->getFunction() &&
            "Got assumption for the wrong function!");
 
     // Warning: This loop can end up being somewhat performance sensitive.
     // We're running this loop for once for each value queried resulting in a
     // runtime of ~O(#assumes * #values).
+
+    assert(I->getCalledFunction()->getIntrinsicID() == Intrinsic::assume &&
+           "must be an assume intrinsic");
 
     Value *RHS;
     CmpInst::Predicate Pred;
@@ -661,13 +664,16 @@ static void computeKnownBitsFromAssume(const Value *V, KnownBits &Known,
   for (auto &AssumeVH : Q.AC->assumptionsFor(V)) {
     if (!AssumeVH)
       continue;
-    CondGuardInst *I = cast<CondGuardInst>(AssumeVH);
+    CallInst *I = cast<CallInst>(AssumeVH);
     assert(I->getParent()->getParent() == Q.CxtI->getParent()->getParent() &&
            "Got assumption for the wrong function!");
 
     // Warning: This loop can end up being somewhat performance sensitive.
     // We're running this loop for once for each value queried resulting in a
     // runtime of ~O(#assumes * #values).
+
+    assert(I->getCalledFunction()->getIntrinsicID() == Intrinsic::assume &&
+           "must be an assume intrinsic");
 
     Value *Arg = I->getArgOperand(0);
 
@@ -1058,6 +1064,93 @@ static void computeKnownBitsFromShiftOperator(
     Known.setAllZero();
 }
 
+static KnownBits getKnownBitsFromAndXorOr(const Operator *I,
+                                          const APInt &DemandedElts,
+                                          const KnownBits &KnownLHS,
+                                          const KnownBits &KnownRHS,
+                                          unsigned Depth, const Query &Q) {
+  unsigned BitWidth = KnownLHS.getBitWidth();
+  KnownBits KnownOut(BitWidth);
+  bool IsAnd = false;
+  bool HasKnownOne = !KnownLHS.One.isZero() || !KnownRHS.One.isZero();
+  Value *X = nullptr, *Y = nullptr;
+
+  switch (I->getOpcode()) {
+  case Instruction::And:
+    KnownOut = KnownLHS & KnownRHS;
+    IsAnd = true;
+    // and(x, -x) is common idioms that will clear all but lowest set
+    // bit. If we have a single known bit in x, we can clear all bits
+    // above it.
+    // TODO: instcombine often reassociates independent `and` which can hide
+    // this pattern. Try to match and(x, and(-x, y)) / and(and(x, y), -x).
+    if (HasKnownOne && match(I, m_c_And(m_Value(X), m_Neg(m_Deferred(X))))) {
+      // -(-x) == x so using whichever (LHS/RHS) gets us a better result.
+      if (KnownLHS.countMaxTrailingZeros() <= KnownRHS.countMaxTrailingZeros())
+        KnownOut = KnownLHS.blsi();
+      else
+        KnownOut = KnownRHS.blsi();
+    }
+    break;
+  case Instruction::Or:
+    KnownOut = KnownLHS | KnownRHS;
+    break;
+  case Instruction::Xor:
+    KnownOut = KnownLHS ^ KnownRHS;
+    // xor(x, x-1) is common idioms that will clear all but lowest set
+    // bit. If we have a single known bit in x, we can clear all bits
+    // above it.
+    // TODO: xor(x, x-1) is often rewritting as xor(x, x-C) where C !=
+    // -1 but for the purpose of demanded bits (xor(x, x-C) &
+    // Demanded) == (xor(x, x-1) & Demanded). Extend the xor pattern
+    // to use arbitrary C if xor(x, x-C) as the same as xor(x, x-1).
+    if (HasKnownOne &&
+        match(I, m_c_Xor(m_Value(X), m_c_Add(m_Deferred(X), m_AllOnes())))) {
+      const KnownBits &XBits = I->getOperand(0) == X ? KnownLHS : KnownRHS;
+      KnownOut = XBits.blsmsk();
+    }
+    break;
+  default:
+    llvm_unreachable("Invalid Op used in 'analyzeKnownBitsFromAndXorOr'");
+  }
+
+  // and(x, add (x, -1)) is a common idiom that always clears the low bit;
+  // xor/or(x, add (x, -1)) is an idiom that will always set the low bit.
+  // here we handle the more general case of adding any odd number by
+  // matching the form and/xor/or(x, add(x, y)) where y is odd.
+  // TODO: This could be generalized to clearing any bit set in y where the
+  // following bit is known to be unset in y.
+  if (!KnownOut.Zero[0] && !KnownOut.One[0] &&
+      (match(I, m_c_BinOp(m_Value(X), m_c_Add(m_Deferred(X), m_Value(Y)))) ||
+       match(I, m_c_BinOp(m_Value(X), m_Sub(m_Deferred(X), m_Value(Y)))) ||
+       match(I, m_c_BinOp(m_Value(X), m_Sub(m_Value(Y), m_Deferred(X)))))) {
+    KnownBits KnownY(BitWidth);
+    computeKnownBits(Y, DemandedElts, KnownY, Depth + 1, Q);
+    if (KnownY.countMinTrailingOnes() > 0) {
+      if (IsAnd)
+        KnownOut.Zero.setBit(0);
+      else
+        KnownOut.One.setBit(0);
+    }
+  }
+  return KnownOut;
+}
+
+// Public so this can be used in `SimplifyDemandedUseBits`.
+KnownBits llvm::analyzeKnownBitsFromAndXorOr(
+    const Operator *I, const KnownBits &KnownLHS, const KnownBits &KnownRHS,
+    unsigned Depth, const DataLayout &DL, AssumptionCache *AC,
+    const Instruction *CxtI, const DominatorTree *DT,
+    OptimizationRemarkEmitter *ORE, bool UseInstrInfo) {
+  auto *FVTy = dyn_cast<FixedVectorType>(I->getType());
+  APInt DemandedElts =
+      FVTy ? APInt::getAllOnes(FVTy->getNumElements()) : APInt(1, 1);
+
+  return getKnownBitsFromAndXorOr(
+      I, DemandedElts, KnownLHS, KnownRHS, Depth,
+      Query(DL, AC, safeCxtI(I, CxtI), DT, UseInstrInfo, ORE));
+}
+
 static void computeKnownBitsFromOperator(const Operator *I,
                                          const APInt &DemandedElts,
                                          KnownBits &Known, unsigned Depth,
@@ -1072,39 +1165,23 @@ static void computeKnownBitsFromOperator(const Operator *I,
             Q.IIQ.getMetadata(cast<LoadInst>(I), LLVMContext::MD_range))
       computeKnownBitsFromRangeMetadata(*MD, Known);
     break;
-  case Instruction::And: {
-    // If either the LHS or the RHS are Zero, the result is zero.
+  case Instruction::And:
     computeKnownBits(I->getOperand(1), DemandedElts, Known, Depth + 1, Q);
     computeKnownBits(I->getOperand(0), DemandedElts, Known2, Depth + 1, Q);
 
-    Known &= Known2;
-
-    // and(x, add (x, -1)) is a common idiom that always clears the low bit;
-    // here we handle the more general case of adding any odd number by
-    // matching the form add(x, add(x, y)) where y is odd.
-    // TODO: This could be generalized to clearing any bit set in y where the
-    // following bit is known to be unset in y.
-    Value *X = nullptr, *Y = nullptr;
-    if (!Known.Zero[0] && !Known.One[0] &&
-        match(I, m_c_BinOp(m_Value(X), m_Add(m_Deferred(X), m_Value(Y))))) {
-      Known2.resetAll();
-      computeKnownBits(Y, DemandedElts, Known2, Depth + 1, Q);
-      if (Known2.countMinTrailingOnes() > 0)
-        Known.Zero.setBit(0);
-    }
+    Known = getKnownBitsFromAndXorOr(I, DemandedElts, Known2, Known, Depth, Q);
     break;
-  }
   case Instruction::Or:
     computeKnownBits(I->getOperand(1), DemandedElts, Known, Depth + 1, Q);
     computeKnownBits(I->getOperand(0), DemandedElts, Known2, Depth + 1, Q);
 
-    Known |= Known2;
+    Known = getKnownBitsFromAndXorOr(I, DemandedElts, Known2, Known, Depth, Q);
     break;
   case Instruction::Xor:
     computeKnownBits(I->getOperand(1), DemandedElts, Known, Depth + 1, Q);
     computeKnownBits(I->getOperand(0), DemandedElts, Known2, Depth + 1, Q);
 
-    Known ^= Known2;
+    Known = getKnownBitsFromAndXorOr(I, DemandedElts, Known2, Known, Depth, Q);
     break;
   case Instruction::Mul: {
     bool NSW = Q.IIQ.hasNoSignedWrap(cast<OverflowingBinaryOperator>(I));
@@ -1272,7 +1349,7 @@ static void computeKnownBitsFromOperator(const Operator *I,
     // Trailing zeros of a right-shifted constant never decrease.
     const APInt *C;
     if (match(I->getOperand(0), m_APInt(C)))
-      Known.Zero.setLowBits(C->countTrailingZeros());
+      Known.Zero.setLowBits(C->countr_zero());
     break;
   }
   case Instruction::LShr: {
@@ -1284,7 +1361,7 @@ static void computeKnownBitsFromOperator(const Operator *I,
     // Leading zeros of a left-shifted constant never decrease.
     const APInt *C;
     if (match(I->getOperand(0), m_APInt(C)))
-      Known.Zero.setHighBits(C->countLeadingZeros());
+      Known.Zero.setHighBits(C->countl_zero());
     break;
   }
   case Instruction::AShr: {
@@ -1572,10 +1649,10 @@ static void computeKnownBitsFromOperator(const Operator *I,
                 Known2 = KnownBits::makeConstant(*RHSC);
                 break;
               case CmpInst::Predicate::ICMP_ULE:
-                Known2.Zero.setHighBits(RHSC->countLeadingZeros());
+                Known2.Zero.setHighBits(RHSC->countl_zero());
                 break;
               case CmpInst::Predicate::ICMP_ULT:
-                Known2.Zero.setHighBits((*RHSC - 1).countLeadingZeros());
+                Known2.Zero.setHighBits((*RHSC - 1).countl_zero());
                 break;
               default:
                 // TODO - add additional integer predicate handling.
@@ -1735,9 +1812,7 @@ static void computeKnownBitsFromOperator(const Operator *I,
         Known.Zero.setBitsFrom(32);
         break;
       case Intrinsic::riscv_vsetvli:
-      case Intrinsic::riscv_vsetvli_opt:
       case Intrinsic::riscv_vsetvlimax:
-      case Intrinsic::riscv_vsetvlimax_opt:
         // Assume that VL output is >= 65536.
         // TODO: Take SEW and LMUL into account.
         if (BitWidth > 17)
@@ -2304,8 +2379,7 @@ static bool isGEPKnownNonNull(const GEPOperator *GEP, unsigned Depth,
 static bool isKnownNonNullFromDominatingCondition(const Value *V,
                                                   const Instruction *CtxI,
                                                   const DominatorTree *DT) {
-  if (isa<Constant>(V))
-    return false;
+  assert(!isa<Constant>(V) && "Called for constant?");
 
   if (!CtxI || !DT)
     return false;
@@ -2581,6 +2655,12 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
             Q.DL.getTypeSizeInBits(I->getType()).getFixedValue())
       return isKnownNonZero(I->getOperand(0), Depth, Q);
     break;
+  case Instruction::Sub:
+    if (auto *C = dyn_cast<Constant>(I->getOperand(0)))
+      if (C->isNullValue() &&
+          isKnownNonZero(I->getOperand(1), DemandedElts, Depth, Q))
+        return true;
+    break;
   case Instruction::Or:
     // X | Y != 0 if X != 0 or Y != 0.
     return isKnownNonZero(I->getOperand(0), DemandedElts, Depth, Q) ||
@@ -2725,8 +2805,26 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
            isGuaranteedNotToBePoison(I->getOperand(0), Q.AC, Q.CxtI, Q.DT,
                                      Depth);
   case Instruction::Call:
-    if (cast<CallInst>(I)->getIntrinsicID() == Intrinsic::vscale)
-      return true;
+    if (auto *II = dyn_cast<IntrinsicInst>(I)) {
+      switch (II->getIntrinsicID()) {
+      case Intrinsic::abs:
+      case Intrinsic::bitreverse:
+      case Intrinsic::bswap:
+      case Intrinsic::ctpop:
+        if (isKnownNonZero(II->getArgOperand(0), DemandedElts, Depth, Q))
+          return true;
+        break;
+      case Intrinsic::uadd_sat:
+        if (isKnownNonZero(II->getArgOperand(0), DemandedElts, Depth, Q) ||
+            isKnownNonZero(II->getArgOperand(1), DemandedElts, Depth, Q))
+          return true;
+        break;
+      case Intrinsic::vscale:
+        return true;
+      default:
+        break;
+      }
+    }
     break;
   }
 
@@ -7121,7 +7219,7 @@ static void setLimitsForBinOp(const BinaryOperator &BO, APInt &Lower,
     } else if (match(BO.getOperand(0), m_APInt(C))) {
       unsigned ShiftAmount = Width - 1;
       if (!C->isZero() && IIQ.isExact(&BO))
-        ShiftAmount = C->countTrailingZeros();
+        ShiftAmount = C->countr_zero();
       if (C->isNegative()) {
         // 'ashr C, x' produces [C, C >> (Width-1)]
         Lower = *C;
@@ -7142,7 +7240,7 @@ static void setLimitsForBinOp(const BinaryOperator &BO, APInt &Lower,
       // 'lshr C, x' produces [C >> (Width-1), C].
       unsigned ShiftAmount = Width - 1;
       if (!C->isZero() && IIQ.isExact(&BO))
-        ShiftAmount = C->countTrailingZeros();
+        ShiftAmount = C->countr_zero();
       Lower = C->lshr(ShiftAmount);
       Upper = *C + 1;
     }
@@ -7153,16 +7251,16 @@ static void setLimitsForBinOp(const BinaryOperator &BO, APInt &Lower,
       if (IIQ.hasNoUnsignedWrap(&BO)) {
         // 'shl nuw C, x' produces [C, C << CLZ(C)]
         Lower = *C;
-        Upper = Lower.shl(Lower.countLeadingZeros()) + 1;
+        Upper = Lower.shl(Lower.countl_zero()) + 1;
       } else if (BO.hasNoSignedWrap()) { // TODO: What if both nuw+nsw?
         if (C->isNegative()) {
           // 'shl nsw C, x' produces [C << CLO(C)-1, C]
-          unsigned ShiftAmount = C->countLeadingOnes() - 1;
+          unsigned ShiftAmount = C->countl_one() - 1;
           Lower = C->shl(ShiftAmount);
           Upper = *C + 1;
         } else {
           // 'shl nsw C, x' produces [C, C << CLZ(C)-1]
-          unsigned ShiftAmount = C->countLeadingZeros() - 1;
+          unsigned ShiftAmount = C->countl_zero() - 1;
           Lower = *C;
           Upper = C->shl(ShiftAmount) + 1;
         }
@@ -7179,7 +7277,7 @@ static void setLimitsForBinOp(const BinaryOperator &BO, APInt &Lower,
         //    where C != -1 and C != 0 and C != 1
         Lower = IntMin + 1;
         Upper = IntMax + 1;
-      } else if (C->countLeadingZeros() < Width - 1) {
+      } else if (C->countl_zero() < Width - 1) {
         // 'sdiv x, C' produces [INT_MIN / C, INT_MAX / C]
         //    where C != -1 and C != 0 and C != 1
         Lower = IntMin.sdiv(*C);
@@ -7442,9 +7540,11 @@ ConstantRange llvm::computeConstantRange(const Value *V, bool ForSigned,
     for (auto &AssumeVH : AC->assumptionsFor(V)) {
       if (!AssumeVH)
         continue;
-      IntrinsicInst *I = cast<IntrinsicInst>(AssumeVH);
+      CallInst *I = cast<CallInst>(AssumeVH);
       assert(I->getParent()->getParent() == CtxI->getParent()->getParent() &&
              "Got assumption for the wrong function!");
+      assert(I->getCalledFunction()->getIntrinsicID() == Intrinsic::assume &&
+             "must be an assume intrinsic");
 
       if (!isValidAssumeForContext(I, CtxI, DT))
         continue;

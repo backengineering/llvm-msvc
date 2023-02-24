@@ -1136,7 +1136,7 @@ static QualType adjustCVQualifiersForCXXThisWithinLambda(
 
     if (C.isCopyCapture()) {
       ClassType.removeLocalCVRQualifiers(Qualifiers::CVRMask);
-      if (!CurLSI->Mutable)
+      if (CurLSI->CallOperator->isConst())
         ClassType.addConst();
       return ASTCtx.getPointerType(ClassType);
     }
@@ -2979,7 +2979,7 @@ void Sema::DeclareGlobalNewDelete() {
   //   functions are replaceable ([new.delete]); these are attached to the
   //   global module ([module.unit]).
   if (getLangOpts().CPlusPlusModules && getCurrentModule())
-    PushGlobalModuleFragment(SourceLocation(), /*IsImplicit=*/true);
+    PushGlobalModuleFragment(SourceLocation());
 
   // C++ [basic.std.dynamic]p2:
   //   [...] The following allocation and deallocation functions (18.4) are
@@ -4885,6 +4885,7 @@ static bool CheckUnaryTypeTraitTypeCompleteness(Sema &S, TypeTrait UTT,
   case UTT_IsLiteral:
   // By analogy, is_trivially_relocatable imposes the same constraints.
   case UTT_IsTriviallyRelocatable:
+  case UTT_CanPassInRegs:
   // Per the GCC type traits documentation, T shall be a complete type, cv void,
   // or an array of unknown bound. But GCC actually imposes the same constraints
   // as above.
@@ -5373,6 +5374,11 @@ static bool EvaluateUnaryTypeTrait(Sema &Self, TypeTrait UTT,
     return T.isTriviallyRelocatableType(C);
   case UTT_IsReferenceable:
     return T.isReferenceable();
+  case UTT_CanPassInRegs:
+    if (CXXRecordDecl *RD = T->getAsCXXRecordDecl(); RD && !T.hasQualifiers())
+      return RD->canPassInRegisters();
+    Self.Diag(KeyLoc, diag::err_builtin_pass_in_regs_non_class) << T;
+    return false;
   }
 }
 

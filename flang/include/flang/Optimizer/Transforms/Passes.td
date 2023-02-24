@@ -169,6 +169,11 @@ def ExternalNameConversion : Pass<"external-name-interop", "mlir::ModuleOp"> {
     Demangle FIR internal name and mangle them for external interoperability.
   }];
   let constructor = "::fir::createExternalNameConversionPass()";
+  let options = [
+    Option<"appendUnderscore", "append-underscore",
+           "bool", /*default=*/"true",
+           "Append trailing underscore to external names.">
+  ];
 }
 
 def MemRefDataFlowOpt : Pass<"fir-memref-dataflow-opt", "::mlir::func::FuncOp"> {
@@ -233,6 +238,16 @@ def MemoryAllocationOpt : Pass<"memory-allocation-opt", "mlir::func::FuncOp"> {
            "Set maximum number of elements of an array allocated on the stack.">
   ];
   let constructor = "::fir::createMemoryAllocationPass()";
+}
+
+def StackArrays : Pass<"stack-arrays", "mlir::ModuleOp"> {
+  let summary = "Move local array allocations from heap memory into stack memory";
+  let description = [{
+    Convert heap allocations for arrays, even those of unknown size, into stack
+    allocations.
+  }];
+  let dependentDialects = [ "fir::FIROpsDialect" ];
+  let constructor = "::fir::createStackArraysPass()";
 }
 
 def SimplifyRegionLite : Pass<"simplify-region-lite", "mlir::ModuleOp"> {

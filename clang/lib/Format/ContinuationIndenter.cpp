@@ -614,7 +614,7 @@ unsigned ContinuationIndenter::addTokenToState(LineState &State, bool Newline,
   State.NoContinuation = false;
 
   if ((Current.is(TT_ImplicitStringLiteral) &&
-       (Previous.Tok.getIdentifierInfo() == nullptr ||
+       (!Previous.Tok.getIdentifierInfo() ||
         Previous.Tok.getIdentifierInfo()->getPPKeywordID() ==
             tok::pp_not_keyword))) {
     unsigned EndColumn =
@@ -1053,13 +1053,16 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
     bool PreviousIsBreakingCtorInitializerColon =
         PreviousNonComment && PreviousNonComment->is(TT_CtorInitializerColon) &&
         Style.BreakConstructorInitializers == FormatStyle::BCIS_AfterColon;
+    bool AllowAllConstructorInitializersOnNextLine =
+        Style.PackConstructorInitializers == FormatStyle::PCIS_NextLine ||
+        Style.PackConstructorInitializers == FormatStyle::PCIS_NextLineOnly;
     if (!(Previous.isOneOf(tok::l_paren, tok::l_brace, TT_BinaryOperator) ||
           PreviousIsBreakingCtorInitializerColon) ||
         (!Style.AllowAllParametersOfDeclarationOnNextLine &&
          State.Line->MustBeDeclaration) ||
         (!Style.AllowAllArgumentsOnNextLine &&
          !State.Line->MustBeDeclaration) ||
-        (Style.PackConstructorInitializers != FormatStyle::PCIS_NextLine &&
+        (!AllowAllConstructorInitializersOnNextLine &&
          PreviousIsBreakingCtorInitializerColon) ||
         Previous.is(TT_DictLiteral)) {
       CurrentState.BreakBeforeParameter = true;
@@ -1069,7 +1072,7 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
     // and we allow all arguments on the next line, we should not break
     // before the next parameter.
     if (PreviousIsBreakingCtorInitializerColon &&
-        Style.PackConstructorInitializers == FormatStyle::PCIS_NextLine) {
+        AllowAllConstructorInitializersOnNextLine) {
       CurrentState.BreakBeforeParameter = false;
     }
   }
@@ -1401,7 +1404,8 @@ unsigned ContinuationIndenter::moveStateToNextToken(LineState &State,
     if (Style.PackConstructorInitializers > FormatStyle::PCIS_BinPack) {
       CurrentState.AvoidBinPacking = true;
       CurrentState.BreakBeforeParameter =
-          Style.PackConstructorInitializers != FormatStyle::PCIS_NextLine;
+          Style.PackConstructorInitializers != FormatStyle::PCIS_NextLine &&
+          Style.PackConstructorInitializers != FormatStyle::PCIS_NextLineOnly;
     } else {
       CurrentState.BreakBeforeParameter = false;
     }
@@ -1746,11 +1750,11 @@ void ContinuationIndenter::moveStatePastScopeOpener(LineState &State,
   NewState.BreakBeforeParameter = BreakBeforeParameter;
   NewState.HasMultipleNestedBlocks = (Current.BlockParameterCount > 1);
 
-  if (Style.BraceWrapping.BeforeLambdaBody && Current.Next != nullptr &&
+  if (Style.BraceWrapping.BeforeLambdaBody && Current.Next &&
       Current.is(tok::l_paren)) {
     // Search for any parameter that is a lambda.
     FormatToken const *next = Current.Next;
-    while (next != nullptr) {
+    while (next) {
       if (next->is(TT_LambdaLSquare)) {
         NewState.HasMultipleNestedBlocks = true;
         break;
@@ -2165,7 +2169,7 @@ ContinuationIndenter::createBreakableToken(const FormatToken &Current,
         Current, StartColumn, Current.OriginalColumn, !Current.Previous,
         State.Line->InPPDirective, Encoding, Style, Whitespaces.useCRLF());
   } else if (Current.is(TT_LineComment) &&
-             (Current.Previous == nullptr ||
+             (!Current.Previous ||
               Current.Previous->isNot(TT_ImplicitStringLiteral))) {
     bool RegularComments = [&]() {
       for (const FormatToken *T = &Current; T && T->is(TT_LineComment);

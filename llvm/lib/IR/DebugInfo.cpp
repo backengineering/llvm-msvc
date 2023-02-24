@@ -870,7 +870,7 @@ bool llvm::stripNonLineTableDebugInfo(Module &M) {
 
   // Create a new llvm.dbg.cu, which is equivalent to the one
   // -gline-tables-only would have created.
-  for (auto &NMD : M.getNamedMDList()) {
+  for (auto &NMD : M.named_metadata()) {
     SmallVector<MDNode *, 8> Ops;
     for (MDNode *Op : NMD.operands())
       Ops.push_back(remap(Op));
@@ -1508,6 +1508,10 @@ LLVMDIBuilderCreateArtificialType(LLVMDIBuilderRef Builder,
   return wrap(unwrap(Builder)->createArtificialType(unwrapDI<DIType>(Type)));
 }
 
+uint16_t LLVMGetDINodeTag(LLVMMetadataRef MD) {
+  return unwrapDI<DINode>(MD)->getTag();
+}
+
 const char *LLVMDITypeGetName(LLVMMetadataRef DType, size_t *Length) {
   StringRef Str = unwrap<DIType>(DType)->getName();
   *Length = Str.size();
@@ -1959,7 +1963,8 @@ void at::trackAssignments(Function::iterator Start, Function::iterator End,
   }
 }
 
-void AssignmentTrackingPass::runOnFunction(Function &F) {
+bool AssignmentTrackingPass::runOnFunction(Function &F) {
+  bool Changed = false;
   // Collect a map of {backing storage : dbg.declares} (currently "backing
   // storage" is limited to Allocas). We'll use this to find dbg.declares to
   // delete after running `trackAssignments`.
@@ -2012,8 +2017,10 @@ void AssignmentTrackingPass::runOnFunction(Function &F) {
       // Delete DDI because the variable location is now tracked using
       // assignment tracking.
       DDI->eraseFromParent();
+      Changed = true;
     }
   }
+  return Changed;
 }
 
 static const char *AssignmentTrackingModuleFlag =
@@ -2036,7 +2043,8 @@ bool llvm::isAssignmentTrackingEnabled(const Module &M) {
 
 PreservedAnalyses AssignmentTrackingPass::run(Function &F,
                                               FunctionAnalysisManager &AM) {
-  runOnFunction(F);
+  if (!runOnFunction(F))
+    return PreservedAnalyses::all();
 
   // Record that this module uses assignment tracking. It doesn't matter that
   // some functons in the module may not use it - the debug info in those
@@ -2052,8 +2060,12 @@ PreservedAnalyses AssignmentTrackingPass::run(Function &F,
 
 PreservedAnalyses AssignmentTrackingPass::run(Module &M,
                                               ModuleAnalysisManager &AM) {
+  bool Changed = false;
   for (auto &F : M)
-    runOnFunction(F);
+    Changed |= runOnFunction(F);
+
+  if (!Changed)
+    return PreservedAnalyses::all();
 
   // Record that this module uses assignment tracking.
   setAssignmentTrackingModuleFlag(M);

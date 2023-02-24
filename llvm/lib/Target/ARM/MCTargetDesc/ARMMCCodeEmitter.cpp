@@ -18,7 +18,6 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -33,6 +32,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -61,11 +61,11 @@ public:
   ~ARMMCCodeEmitter() override = default;
 
   bool isThumb(const MCSubtargetInfo &STI) const {
-    return STI.getFeatureBits()[ARM::ModeThumb];
+    return STI.hasFeature(ARM::ModeThumb);
   }
 
   bool isThumb2(const MCSubtargetInfo &STI) const {
-    return isThumb(STI) && STI.getFeatureBits()[ARM::FeatureThumb2];
+    return isThumb(STI) && STI.hasFeature(ARM::FeatureThumb2);
   }
 
   bool isTargetMachO(const MCSubtargetInfo &STI) const {
@@ -562,7 +562,7 @@ getMachineOpValue(const MCInst &MI, const MCOperand &MO,
     // the encodings all refer to Q-registers by their literal
     // register number.
 
-    if (STI.getFeatureBits()[ARM::HasMVEIntegerOps])
+    if (STI.hasFeature(ARM::HasMVEIntegerOps))
       return RegNo;
 
     switch (Reg) {

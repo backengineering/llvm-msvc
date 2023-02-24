@@ -963,7 +963,7 @@ static Address castToBase(CodeGenFunction &CGF, QualType BaseTy, QualType ElTy,
 
   Addr = CGF.Builder.CreatePointerBitCastOrAddrSpaceCast(
       Addr, OriginalBaseAddress.getType());
-  return OriginalBaseAddress.withPointer(Addr);
+  return OriginalBaseAddress.withPointer(Addr, NotKnownNonNull);
 }
 
 static const VarDecl *getBaseDecl(const Expr *Ref, const DeclRefExpr *&DE) {
@@ -4670,7 +4670,7 @@ void CGOpenMPRuntime::emitUpdateClause(CodeGenFunction &CGF, LValue DepobjLVal,
   llvm::PHINode *ElementPHI =
       CGF.Builder.CreatePHI(Begin.getType(), 2, "omp.elementPast");
   ElementPHI->addIncoming(Begin.getPointer(), EntryBB);
-  Begin = Begin.withPointer(ElementPHI);
+  Begin = Begin.withPointer(ElementPHI, KnownNonNull);
   Base = CGF.MakeAddrLValue(Begin, KmpDependInfoTy, Base.getBaseInfo(),
                             Base.getTBAAInfo());
   // deps[i].flags = NewDepKind;
@@ -8455,7 +8455,8 @@ public:
     const CXXMethodDecl *MD =
         CGF.CurFuncDecl ? dyn_cast<CXXMethodDecl>(CGF.CurFuncDecl) : nullptr;
     const CXXRecordDecl *RD = MD ? MD->getParent() : nullptr;
-    bool HasBaseClass = RD ? RD->getNumBases() > 0 : false;
+    // When VD is not null, it is not field of class, skip generating this[:1].
+    bool HasBaseClass = RD && !VD ? RD->getNumBases() > 0 : false;
     // There should not be a mapper for a combined entry.
     if (HasBaseClass) {
       // OpenMP 5.2 148:21:

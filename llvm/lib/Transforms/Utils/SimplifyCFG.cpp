@@ -5453,7 +5453,7 @@ static bool eliminateDeadSwitchCases(SwitchInst *SI, DomTreeUpdater *DTU,
     }
     const APInt &CaseVal = Case.getCaseValue()->getValue();
     if (Known.Zero.intersects(CaseVal) || !Known.One.isSubsetOf(CaseVal) ||
-        (CaseVal.getMinSignedBits() > MaxSignificantBitsInCond)) {
+        (CaseVal.getSignificantBits() > MaxSignificantBitsInCond)) {
       DeadCases.push_back(Case.getCaseValue());
       if (DTU)
         --NumPerSuccessorCases[Successor];
@@ -5469,7 +5469,7 @@ static bool eliminateDeadSwitchCases(SwitchInst *SI, DomTreeUpdater *DTU,
   bool HasDefault =
       !isa<UnreachableInst>(SI->getDefaultDest()->getFirstNonPHIOrDbg());
   const unsigned NumUnknownBits =
-      Known.getBitWidth() - (Known.Zero | Known.One).countPopulation();
+      Known.getBitWidth() - (Known.Zero | Known.One).popcount();
   assert(NumUnknownBits <= Known.getBitWidth());
   if (HasDefault && DeadCases.empty() &&
       NumUnknownBits < 64 /* avoid overflow */ &&
@@ -5860,7 +5860,7 @@ static Value *foldSwitchToSelect(const SwitchCaseResultVectorTy &ResultVector,
 
       // Check if cases with the same result can cover all number
       // in touched bits.
-      if (BitMask.countPopulation() == Log2_32(CaseCount)) {
+      if (BitMask.popcount() == Log2_32(CaseCount)) {
         if (!MinCaseVal->isNullValue())
           Condition = Builder.CreateSub(Condition, MinCaseVal);
         Value *And = Builder.CreateAnd(Condition, ~BitMask, "switch.and");
@@ -7125,6 +7125,20 @@ static bool passingValueIsAlwaysUndefined(Value *V, Instruction *I, bool PtrValu
           PtrValueMayBeModified = true;
         return passingValueIsAlwaysUndefined(V, GEP, PtrValueMayBeModified);
       }
+
+    // Look through return.
+    if (ReturnInst *Ret = dyn_cast<ReturnInst>(Use)) {
+      bool HasNoUndefAttr =
+          Ret->getFunction()->hasRetAttribute(Attribute::NoUndef);
+      // Return undefined to a noundef return value is undefined.
+      if (isa<UndefValue>(C) && HasNoUndefAttr)
+        return true;
+      // Return null to a nonnull+noundef return value is undefined.
+      if (C->isNullValue() && HasNoUndefAttr &&
+          Ret->getFunction()->hasRetAttribute(Attribute::NonNull)) {
+        return !PtrValueMayBeModified;
+      }
+    }
 
     // Look through bitcasts.
     if (BitCastInst *BC = dyn_cast<BitCastInst>(Use))

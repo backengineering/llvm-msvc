@@ -2578,6 +2578,9 @@ def : Pat<(AArch64call_rvmarker (i64 tglobaladdr:$rvfunc), GPR64:$Rn),
 def : Pat<(AArch64call_bti GPR64:$Rn),
           (BLR_BTI GPR64:$Rn)>,
       Requires<[NoSLSBLRMitigation]>;
+def : Pat<(AArch64call_bti GPR64noip:$Rn),
+          (BLR_BTI GPR64noip:$Rn)>,
+      Requires<[SLSBLRMitigation]>;
 
 let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
 def BR  : BranchReg<0b0000, "br", [(brind GPR64:$Rn)]>;
@@ -2612,7 +2615,7 @@ def EMITMTETAGGED : Pseudo<(outs), (ins), []>, Sched<[]> {}
 // FIXME: maybe the scratch register used shouldn't be fixed to X1?
 // FIXME: can "hasSideEffects be dropped?
 // This gets lowered to an instruction sequence which takes 16 bytes
-let isCall = 1, Defs = [LR, X0, X1], hasSideEffects = 1, Size = 16,
+let isCall = 1, Defs = [NZCV, LR, X0, X1], hasSideEffects = 1, Size = 16,
     isCodeGenOnly = 1 in
 def TLSDESC_CALLSEQ
     : Pseudo<(outs), (ins i64imm:$sym),
@@ -4201,7 +4204,7 @@ defm FMOV : UnscaledConversion<"fmov">;
 // Add pseudo ops for FMOV 0 so we can mark them as isReMaterializable
 let isReMaterializable = 1, isCodeGenOnly = 1, isAsCheapAsAMove = 1 in {
 def FMOVH0 : Pseudo<(outs FPR16:$Rd), (ins), [(set f16:$Rd, (fpimm0))]>,
-    Sched<[WriteF]>, Requires<[HasFullFP16]>;
+    Sched<[WriteF]>;
 def FMOVS0 : Pseudo<(outs FPR32:$Rd), (ins), [(set f32:$Rd, (fpimm0))]>,
     Sched<[WriteF]>;
 def FMOVD0 : Pseudo<(outs FPR64:$Rd), (ins), [(set f64:$Rd, (fpimm0))]>,
@@ -6444,6 +6447,10 @@ def : Pat<(v2i64 immAllZerosV), (MOVIv2d_ns (i32 0))>;
 def : Pat<(v4i32 immAllZerosV), (MOVIv2d_ns (i32 0))>;
 def : Pat<(v8i16 immAllZerosV), (MOVIv2d_ns (i32 0))>;
 def : Pat<(v16i8 immAllZerosV), (MOVIv2d_ns (i32 0))>;
+def : Pat<(v2f64 immAllZerosV), (MOVIv2d_ns (i32 0))>;
+def : Pat<(v4f32 immAllZerosV), (MOVIv2d_ns (i32 0))>;
+def : Pat<(v8f16 immAllZerosV), (MOVIv2d_ns (i32 0))>;
+def : Pat<(v8bf16 immAllZerosV), (MOVIv2d_ns (i32 0))>;
 
 def : Pat<(v2i64 immAllOnesV), (MOVIv2d_ns (i32 255))>;
 def : Pat<(v4i32 immAllOnesV), (MOVIv2d_ns (i32 255))>;
@@ -6456,6 +6463,10 @@ def : Pat<(v1i64 immAllZerosV), (EXTRACT_SUBREG (MOVIv2d_ns (i32 0)), dsub)>;
 def : Pat<(v2i32 immAllZerosV), (EXTRACT_SUBREG (MOVIv2d_ns (i32 0)), dsub)>;
 def : Pat<(v4i16 immAllZerosV), (EXTRACT_SUBREG (MOVIv2d_ns (i32 0)), dsub)>;
 def : Pat<(v8i8  immAllZerosV), (EXTRACT_SUBREG (MOVIv2d_ns (i32 0)), dsub)>;
+def : Pat<(v1f64 immAllZerosV), (MOVID (i32 0))>;
+def : Pat<(v2f32 immAllZerosV), (MOVID (i32 0))>;
+def : Pat<(v4f16 immAllZerosV), (MOVID (i32 0))>;
+def : Pat<(v4bf16 immAllZerosV), (MOVID (i32 0))>;
 
 def : Pat<(v1i64 immAllOnesV), (EXTRACT_SUBREG (MOVIv2d_ns (i32 255)), dsub)>;
 def : Pat<(v2i32 immAllOnesV), (EXTRACT_SUBREG (MOVIv2d_ns (i32 255)), dsub)>;

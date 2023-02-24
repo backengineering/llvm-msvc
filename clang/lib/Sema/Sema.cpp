@@ -202,7 +202,7 @@ Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
       VisContext(nullptr), PragmaAttributeCurrentTargetDecl(nullptr),
       IsBuildingRecoveryCallExpr(false), LateTemplateParser(nullptr),
       LateTemplateParserCleanup(nullptr), OpaqueParser(nullptr), IdResolver(pp),
-      StdExperimentalNamespaceCache(nullptr), StdInitializerList(nullptr),
+      StdInitializerList(nullptr),
       StdCoroutineTraitsCache(nullptr), CXXTypeInfoDecl(nullptr),
       MSVCGuidDecl(nullptr), StdSourceLocationImplDecl(nullptr),
       NSNumberDecl(nullptr), NSValueDecl(nullptr), NSStringDecl(nullptr),
@@ -1031,16 +1031,6 @@ void Sema::ActOnStartOfTranslationUnit() {
   if (getLangOpts().CPlusPlusModules &&
       getLangOpts().getCompilingModule() == LangOptions::CMK_HeaderUnit)
     HandleStartOfHeaderUnit();
-  else if (getLangOpts().ModulesTS &&
-           (getLangOpts().getCompilingModule() ==
-                LangOptions::CMK_ModuleInterface ||
-            getLangOpts().getCompilingModule() == LangOptions::CMK_None)) {
-    // We start in an implied global module fragment.
-    SourceLocation StartOfTU =
-        SourceMgr.getLocForStartOfFile(SourceMgr.getMainFileID());
-    ActOnGlobalModuleFragmentDecl(StartOfTU);
-    ModuleScopes.back().ImplicitGlobalModuleFragment = true;
-  }
 }
 
 void Sema::ActOnEndOfTranslationUnitFragment(TUFragmentKind Kind) {
@@ -1213,8 +1203,7 @@ void Sema::ActOnEndOfTranslationUnit() {
   // A global-module-fragment is only permitted within a module unit.
   bool DiagnosedMissingModuleDeclaration = false;
   if (!ModuleScopes.empty() &&
-      ModuleScopes.back().Module->Kind == Module::GlobalModuleFragment &&
-      !ModuleScopes.back().ImplicitGlobalModuleFragment) {
+      ModuleScopes.back().Module->Kind == Module::GlobalModuleFragment) {
     Diag(ModuleScopes.back().BeginLoc,
          diag::err_module_declaration_missing_after_global_module_introducer);
     DiagnosedMissingModuleDeclaration = true;
@@ -2046,6 +2035,21 @@ void Sema::checkTypeSupport(QualType Ty, SourceLocation Loc, ValueDecl *D) {
         targetDiag(D->getLocation(), diag::note_defined_here, FD) << D;
     }
 
+    // RISC-V vector builtin types (RISCVVTypes.def)
+    if (Ty->isRVVType(/* Bitwidth */ 64, /* IsFloat */ false) &&
+        !Context.getTargetInfo().hasFeature("zve64x"))
+      Diag(Loc, diag::err_riscv_type_requires_extension, FD) << Ty << "zve64x";
+    if (Ty->isRVVType(/* Bitwidth */ 16, /* IsFloat */ true) &&
+        !Context.getTargetInfo().hasFeature("experimental-zvfh"))
+      Diag(Loc, diag::err_riscv_type_requires_extension, FD)
+          << Ty << "zvfh";
+    if (Ty->isRVVType(/* Bitwidth */ 32, /* IsFloat */ true) &&
+        !Context.getTargetInfo().hasFeature("zve32f"))
+      Diag(Loc, diag::err_riscv_type_requires_extension, FD) << Ty << "zve32f";
+    if (Ty->isRVVType(/* Bitwidth */ 64, /* IsFloat */ true) &&
+        !Context.getTargetInfo().hasFeature("zve64d"))
+      Diag(Loc, diag::err_riscv_type_requires_extension, FD) << Ty << "zve64d";
+
     // Don't allow SVE types in functions without a SVE target.
     if (Ty->isSVESizelessBuiltinType() && FD && FD->hasBody()) {
       llvm::StringMap<bool> CallerFeatureMap;
@@ -2333,8 +2337,7 @@ FunctionScopeInfo *Sema::getEnclosingFunction() const {
 LambdaScopeInfo *Sema::getEnclosingLambda() const {
   for (auto *Scope : llvm::reverse(FunctionScopes)) {
     if (auto *LSI = dyn_cast<sema::LambdaScopeInfo>(Scope)) {
-      if (LSI->Lambda && !LSI->Lambda->Encloses(CurContext) &&
-          LSI->AfterParameterList) {
+      if (LSI->Lambda && !LSI->Lambda->Encloses(CurContext)) {
         // We have switched contexts due to template instantiation.
         // FIXME: We should swap out the FunctionScopes during code synthesis
         // so that we don't need to check for this.
@@ -2360,8 +2363,8 @@ LambdaScopeInfo *Sema::getCurLambda(bool IgnoreNonLambdaCapturingScope) {
       return nullptr;
   }
   auto *CurLSI = dyn_cast<LambdaScopeInfo>(*I);
-  if (CurLSI && CurLSI->Lambda && CurLSI->CallOperator &&
-      !CurLSI->Lambda->Encloses(CurContext) && CurLSI->AfterParameterList) {
+  if (CurLSI && CurLSI->Lambda &&
+      !CurLSI->Lambda->Encloses(CurContext)) {
     // We have switched contexts due to template instantiation.
     assert(!CodeSynthesisContexts.empty());
     return nullptr;

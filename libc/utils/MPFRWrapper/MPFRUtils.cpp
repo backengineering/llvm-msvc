@@ -11,7 +11,7 @@
 #include "src/__support/CPP/string_view.h"
 #include "src/__support/FPUtil/FPBits.h"
 #include "src/__support/FPUtil/PlatformDefs.h"
-#include "utils/UnitTest/FPMatcher.h"
+#include "test/UnitTest/FPMatcher.h"
 
 #include <cmath>
 #include <fenv.h>
@@ -190,6 +190,12 @@ public:
     return result;
   }
 
+  MPFRNumber acosh() const {
+    MPFRNumber result(*this);
+    mpfr_acosh(result.value, value, mpfr_rounding);
+    return result;
+  }
+
   MPFRNumber asin() const {
     MPFRNumber result(*this);
     mpfr_asin(result.value, value, mpfr_rounding);
@@ -201,6 +207,7 @@ public:
     mpfr_asinh(result.value, value, mpfr_rounding);
     return result;
   }
+
   MPFRNumber atan() const {
     MPFRNumber result(*this);
     mpfr_atan(result.value, value, mpfr_rounding);
@@ -545,6 +552,8 @@ unary_operation(Operation op, InputType input, unsigned int precision,
     return mpfrInput.abs();
   case Operation::Acos:
     return mpfrInput.acos();
+  case Operation::Acosh:
+    return mpfrInput.acosh();
   case Operation::Asin:
     return mpfrInput.asin();
   case Operation::Asinh:
