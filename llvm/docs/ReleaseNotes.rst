@@ -53,6 +53,9 @@ Changes to the LLVM IR
 * Typed pointers are no longer supported. See the `opaque pointers
   <OpaquePointers.html>`__ documentation for migration instructions.
 
+* The ``nofpclass`` attribute was introduced. This allows more
+  optimizations around special floating point value comparisons.
+
 Changes to building LLVM
 ------------------------
 
@@ -111,6 +114,7 @@ Changes to the RISC-V Backend
 * Adds support for the vendor-defined XTHeadBa (address-generation) extension.
 * Adds support for the vendor-defined XTHeadBb (basic bit-manipulation) extension.
 * Adds support for the vendor-defined XTHeadBs (single-bit) extension.
+* Adds support for the vendor-defined XTHeadCondMov (conditional move) extension.
 * Adds support for the vendor-defined XTHeadMac (multiply-accumulate instructions) extension.
 * Added support for the vendor-defined XTHeadMemPair (two-GPR memory operations)
   extension disassembler/assembler.
