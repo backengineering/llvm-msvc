@@ -16960,8 +16960,7 @@ static SDValue splitAndLowerShuffle(const SDLoc &DL, MVT VT, SDValue V1,
     // Because the lowering happens after all combining takes place, we need to
     // manually combine these blend masks as much as possible so that we create
     // a minimal number of high-level vector shuffle nodes.
-
-    assert(!SimpleOnly || (!UseHiV1 && !UseHiV2) && "Shuffle won't be simple");
+    assert((!SimpleOnly || (!UseHiV1 && !UseHiV2)) && "Shuffle isn't simple");
 
     // First try just blending the halves of V1 or V2.
     if (!UseLoV1 && !UseHiV1 && !UseLoV2 && !UseHiV2)
@@ -19840,9 +19839,10 @@ static bool canCombineAsMaskOperation(SDValue V1, SDValue V2,
   if ((VT == MVT::i16 || VT == MVT::i8) && !Subtarget.hasBWI())
     return false;
 
-  // i8 is better to be widen to i16, because there is PBLENDW for vXi16
-  // when the vector bit size is 128 or 256.
-  if (VT == MVT::i8 && V1.getSimpleValueType().getSizeInBits() < 512)
+  // If vec width < 512, widen i8/i16 even with BWI as blendd/blendps/blendpd
+  // are preferable to blendw/blendvb/masked-mov.
+  if ((VT == MVT::i16 || VT == MVT::i8) &&
+      V1.getSimpleValueType().getSizeInBits() < 512)
     return false;
 
   auto HasMaskOperation = [&](SDValue V) {
@@ -19855,6 +19855,16 @@ static bool canCombineAsMaskOperation(SDValue V1, SDValue V2,
     case ISD::SUB:
     case ISD::AND:
     case ISD::XOR:
+    case ISD::OR:
+    case ISD::SMAX:
+    case ISD::SMIN:
+    case ISD::UMAX:
+    case ISD::UMIN:
+    case ISD::ABS:
+    case ISD::SHL:
+    case ISD::SRL:
+    case ISD::SRA:
+    case ISD::MUL:
       break;
     }
     if (!V->hasOneUse())
