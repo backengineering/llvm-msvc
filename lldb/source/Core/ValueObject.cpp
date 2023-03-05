@@ -1173,6 +1173,15 @@ bool ValueObject::DumpPrintableRepresentation(
     Stream &s, ValueObjectRepresentationStyle val_obj_display,
     Format custom_format, PrintableRepresentationSpecialCases special,
     bool do_dump_error) {
+    
+  // If the ValueObject has an error, we might end up dumping the type, which
+  // is useful, but if we don't even have a type, then don't examine the object
+  // further as that's not meaningful, only the error is.
+  if (m_error.Fail() && !GetCompilerType().IsValid()) {
+    if (do_dump_error)
+      s.Printf("<%s>", m_error.AsCString());
+    return false;
+  }
 
   Flags flags(GetTypeInfo());
 
@@ -1374,6 +1383,8 @@ bool ValueObject::DumpPrintableRepresentation(
     if (!str.empty())
       s << str;
     else {
+      // We checked for errors at the start, but do it again here in case
+      // realizing the value for dumping produced an error.
       if (m_error.Fail()) {
         if (do_dump_error)
           s.Printf("<%s>", m_error.AsCString());
@@ -1589,12 +1600,20 @@ bool ValueObject::IsRuntimeSupportValue() {
   if (!process)
     return false;
 
-  // We trust that the compiler did the right thing and marked runtime support
-  // values as artificial.
-  if (!GetVariable() || !GetVariable()->IsArtificial())
+  if (!GetVariable())
     return false;
 
-  if (auto *runtime = process->GetLanguageRuntime(GetVariable()->GetLanguage()))
+  auto *runtime = process->GetLanguageRuntime(GetVariable()->GetLanguage());
+  if (runtime)
+    if (runtime->ShouldHideVariable(GetName().GetStringRef()))
+      return true;
+
+  // We trust that the compiler did the right thing and marked runtime support
+  // values as artificial.
+  if (!GetVariable()->IsArtificial())
+    return false;
+
+  if (runtime)
     if (runtime->IsAllowedRuntimeValue(GetName()))
       return false;
 

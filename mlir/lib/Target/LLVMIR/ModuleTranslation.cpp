@@ -18,6 +18,7 @@
 #include "LoopAnnotationTranslation.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMInterfaces.h"
 #include "mlir/Dialect/LLVMIR/Transforms/LegalizeForExport.h"
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/IR/Attributes.h"
@@ -997,17 +998,10 @@ LogicalResult ModuleTranslation::createAccessGroupMetadata() {
   return loopAnnotationTranslation->createAccessGroupMetadata();
 }
 
-void ModuleTranslation::setAccessGroupsMetadata(Operation *op,
+void ModuleTranslation::setAccessGroupsMetadata(AccessGroupOpInterface op,
                                                 llvm::Instruction *inst) {
-  auto populateGroupsMetadata = [&](ArrayAttr groupRefs) {
-    if (llvm::MDNode *node =
-            loopAnnotationTranslation->getAccessGroups(op, groupRefs))
-      inst->setMetadata(llvm::LLVMContext::MD_access_group, node);
-  };
-
-  auto groupRefs =
-      op->getAttrOfType<ArrayAttr>(LLVMDialect::getAccessGroupsAttrName());
-  populateGroupsMetadata(groupRefs);
+  if (llvm::MDNode *node = loopAnnotationTranslation->getAccessGroups(op))
+    inst->setMetadata(llvm::LLVMContext::MD_access_group, node);
 }
 
 LogicalResult ModuleTranslation::createAliasScopeMetadata() {
@@ -1059,7 +1053,7 @@ ModuleTranslation::getAliasScope(Operation *op,
   return aliasScopeMetadataMapping.lookup(aliasScopeOp);
 }
 
-void ModuleTranslation::setAliasScopeMetadata(Operation *op,
+void ModuleTranslation::setAliasScopeMetadata(AliasAnalysisOpInterface op,
                                               llvm::Instruction *inst) {
   auto populateScopeMetadata = [&](ArrayAttr scopeRefs, unsigned kind) {
     if (!scopeRefs || scopeRefs.empty())
@@ -1072,13 +1066,10 @@ void ModuleTranslation::setAliasScopeMetadata(Operation *op,
     inst->setMetadata(kind, node);
   };
 
-  auto aliasScopeRefs =
-      op->getAttrOfType<ArrayAttr>(LLVMDialect::getAliasScopesAttrName());
-  populateScopeMetadata(aliasScopeRefs, llvm::LLVMContext::MD_alias_scope);
-
-  auto noaliasScopeRefs =
-      op->getAttrOfType<ArrayAttr>(LLVMDialect::getNoAliasScopesAttrName());
-  populateScopeMetadata(noaliasScopeRefs, llvm::LLVMContext::MD_noalias);
+  populateScopeMetadata(op.getAliasScopesOrNull(),
+                        llvm::LLVMContext::MD_alias_scope);
+  populateScopeMetadata(op.getNoAliasScopesOrNull(),
+                        llvm::LLVMContext::MD_noalias);
 }
 
 llvm::MDNode *ModuleTranslation::getTBAANode(Operation *op,
@@ -1091,31 +1082,25 @@ llvm::MDNode *ModuleTranslation::getTBAANode(Operation *op,
   return tbaaMetadataMapping.lookup(tagOp);
 }
 
-void ModuleTranslation::setTBAAMetadata(Operation *op,
+void ModuleTranslation::setTBAAMetadata(AliasAnalysisOpInterface op,
                                         llvm::Instruction *inst) {
-  auto populateTBAAMetadata = [&](std::optional<ArrayAttr> tagRefs) {
-    if (!tagRefs || tagRefs->empty())
-      return;
+  ArrayAttr tagRefs = op.getTBAATagsOrNull();
+  if (!tagRefs || tagRefs.empty())
+    return;
 
-    // LLVM IR currently does not support attaching more than one
-    // TBAA access tag to a memory accessing instruction.
-    // It may be useful to support this in future, but for the time being
-    // just ignore the metadata if MLIR operation has multiple access tags.
-    if (tagRefs->size() > 1) {
-      op->emitWarning() << "TBAA access tags were not translated, because LLVM "
-                           "IR only supports a single tag per instruction";
-      return;
-    }
+  // LLVM IR currently does not support attaching more than one TBAA access tag
+  // to a memory accessing instruction. It may be useful to support this in
+  // future, but for the time being just ignore the metadata if MLIR operation
+  // has multiple access tags.
+  if (tagRefs.size() > 1) {
+    op.emitWarning() << "TBAA access tags were not translated, because LLVM "
+                        "IR only supports a single tag per instruction";
+    return;
+  }
 
-    SymbolRefAttr tagRef = (*tagRefs)[0].cast<SymbolRefAttr>();
-    llvm::MDNode *node = getTBAANode(op, tagRef);
-    inst->setMetadata(llvm::LLVMContext::MD_tbaa, node);
-  };
-
-  llvm::TypeSwitch<Operation *>(op)
-      .Case<LoadOp, StoreOp>(
-          [&](auto memOp) { populateTBAAMetadata(memOp.getTbaa()); })
-      .Default([](auto) { llvm_unreachable("expected LoadOp or StoreOp"); });
+  SymbolRefAttr tagRef = tagRefs[0].cast<SymbolRefAttr>();
+  llvm::MDNode *node = getTBAANode(op, tagRef);
+  inst->setMetadata(llvm::LLVMContext::MD_tbaa, node);
 }
 
 LogicalResult ModuleTranslation::createTBAAMetadata() {

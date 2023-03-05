@@ -7,11 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringRef.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include <array>
 #include <climits>
 #include <list>
 #include <vector>
@@ -259,6 +259,46 @@ TEST(STLExtrasTest, EnumerateLifetimeSemanticsLValue) {
   EXPECT_EQ(1, Destructors);
 }
 
+namespace some_namespace {
+struct some_struct {
+  std::vector<int> data;
+  std::string swap_val;
+};
+
+std::vector<int>::const_iterator begin(const some_struct &s) {
+  return s.data.begin();
+}
+
+std::vector<int>::const_iterator end(const some_struct &s) {
+  return s.data.end();
+}
+
+void swap(some_struct &lhs, some_struct &rhs) {
+  // make swap visible as non-adl swap would even seem to
+  // work with std::swap which defaults to moving
+  lhs.swap_val = "lhs";
+  rhs.swap_val = "rhs";
+}
+
+struct requires_move {};
+int *begin(requires_move &&) { return nullptr; }
+int *end(requires_move &&) { return nullptr; }
+} // namespace some_namespace
+
+TEST(STLExtrasTest, EnumerateCustomBeginEnd) {
+  // Check that `enumerate` uses ADL to find `begin`/`end` iterators
+  // of the enumerated type.
+  some_namespace::some_struct X{};
+  X.data = {1, 2, 3};
+
+  unsigned Iters = 0;
+  for (auto [Idx, Val] : enumerate(X)) {
+    EXPECT_EQ(Val, X.data[Idx]);
+    ++Iters;
+  }
+  EXPECT_EQ(Iters, 3u);
+}
+
 TEST(STLExtrasTest, CountAdaptor) {
   std::vector<int> v;
 
@@ -364,37 +404,12 @@ TEST(STLExtrasTest, AppendRange) {
   append_range(V, AppendVals2);
   EXPECT_THAT(V, ElementsAre(1, 2, 3, 4, 5));
 
-  append_range(V, llvm::seq(6, 8));
-  EXPECT_THAT(V, ElementsAre(1, 2, 3, 4, 5, 6, 7));
-
   std::string Str;
   append_range(Str, "abc");
   EXPECT_THAT(Str, ElementsAre('a', 'b', 'c', '\0'));
   append_range(Str, "def");
   EXPECT_THAT(Str, ElementsAre('a', 'b', 'c', '\0', 'd', 'e', 'f', '\0'));
 }
-
-namespace some_namespace {
-struct some_struct {
-  std::vector<int> data;
-  std::string swap_val;
-};
-
-std::vector<int>::const_iterator begin(const some_struct &s) {
-  return s.data.begin();
-}
-
-std::vector<int>::const_iterator end(const some_struct &s) {
-  return s.data.end();
-}
-
-void swap(some_struct &lhs, some_struct &rhs) {
-  // make swap visible as non-adl swap would even seem to
-  // work with std::swap which defaults to moving
-  lhs.swap_val = "lhs";
-  rhs.swap_val = "rhs";
-}
-} // namespace some_namespace
 
 TEST(STLExtrasTest, ADLTest) {
   some_namespace::some_struct s{{1, 2, 3, 4, 5}, ""};
@@ -409,7 +424,25 @@ TEST(STLExtrasTest, ADLTest) {
 
   int count = 0;
   llvm::for_each(s, [&count](int) { ++count; });
-  EXPECT_EQ(5, count);
+  EXPECT_EQ(count, 5);
+}
+
+TEST(STLExtrasTest, ADLTestTemporaryRange) {
+  EXPECT_EQ(adl_begin(some_namespace::requires_move{}), nullptr);
+  EXPECT_EQ(adl_end(some_namespace::requires_move{}), nullptr);
+}
+
+TEST(STLExtrasTest, ADLTestConstexpr) {
+  // `std::begin`/`std::end` are marked as `constexpr`; check that
+  // `adl_begin`/`adl_end` also work in constant-evaluated contexts.
+  static constexpr int c_arr[] = {7, 8, 9};
+  static_assert(adl_begin(c_arr) == c_arr);
+  static_assert(adl_end(c_arr) == c_arr + 3);
+
+  static constexpr std::array<int, 2> std_arr = {1, 2};
+  static_assert(adl_begin(std_arr) == std_arr.begin());
+  static_assert(adl_end(std_arr) == std_arr.end());
+  SUCCEED();
 }
 
 TEST(STLExtrasTest, DropBeginTest) {

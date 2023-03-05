@@ -232,6 +232,25 @@ static cl::opt<PreferPredicateTy::Option> PreferPredicateOverEpilogue(
                          "prefers tail-folding, don't attempt vectorization if "
                          "tail-folding fails.")));
 
+static cl::opt<TailFoldingStyle> ForceTailFoldingStyle(
+    "force-tail-folding-style", cl::desc("Force the tail folding style"),
+    cl::init(TailFoldingStyle::None),
+    cl::values(
+        clEnumValN(TailFoldingStyle::None, "none", "Disable tail folding"),
+        clEnumValN(
+            TailFoldingStyle::Data, "data",
+            "Create lane mask for data only, using active.lane.mask intrinsic"),
+        clEnumValN(TailFoldingStyle::DataWithoutLaneMask,
+                   "data-without-lane-mask",
+                   "Create lane mask with compare/stepvector"),
+        clEnumValN(TailFoldingStyle::DataAndControlFlow, "data-and-control",
+                   "Create lane mask using active.lane.mask intrinsic, and use "
+                   "it for both data and control flow"),
+        clEnumValN(
+            TailFoldingStyle::DataAndControlFlowWithoutRuntimeCheck,
+            "data-and-control-without-rt-check",
+            "Similar to data-and-control, but remove the runtime check")));
+
 static cl::opt<bool> MaximizeBandwidth(
     "vectorizer-maximize-bandwidth", cl::init(false), cl::Hidden,
     cl::desc("Maximize bandwidth when selecting vectorization factor which "
@@ -1550,22 +1569,20 @@ public:
   }
 
   /// Returns the TailFoldingStyle that is best for the current loop.
-  TailFoldingStyle getTailFoldingStyle() const {
+  TailFoldingStyle
+  getTailFoldingStyle(bool IVUpdateMayOverflow = true) const {
     if (!CanFoldTailByMasking)
       return TailFoldingStyle::None;
 
-    return TTI.getPreferredTailFoldingStyle();
+    if (ForceTailFoldingStyle.getNumOccurrences())
+      return ForceTailFoldingStyle;
+
+    return TTI.getPreferredTailFoldingStyle(IVUpdateMayOverflow);
   }
 
   /// Returns true if all loop blocks should be masked to fold tail loop.
   bool foldTailByMasking() const {
     return getTailFoldingStyle() != TailFoldingStyle::None;
-  }
-
-  /// Returns true if were tail-folding and want to use the active lane mask
-  /// for vector loop control flow.
-  bool useActiveLaneMaskForControlFlow() const {
-    return getTailFoldingStyle() == TailFoldingStyle::DataAndControlFlow;
   }
 
   /// Returns true if the instructions in this block requires predication
@@ -2155,6 +2172,17 @@ public:
 };
 } // namespace
 
+static bool useActiveLaneMask(TailFoldingStyle Style) {
+  return Style == TailFoldingStyle::Data ||
+         Style == TailFoldingStyle::DataAndControlFlow ||
+         Style == TailFoldingStyle::DataAndControlFlowWithoutRuntimeCheck;
+}
+
+static bool useActiveLaneMaskForControlFlow(TailFoldingStyle Style) {
+  return Style == TailFoldingStyle::DataAndControlFlow ||
+         Style == TailFoldingStyle::DataAndControlFlowWithoutRuntimeCheck;
+}
+
 // Return true if \p OuterLp is an outer loop annotated with hints for explicit
 // vectorization. The loop needs to be annotated with #pragma omp simd
 // simdlen(#) or #pragma clang vectorize(enable) vectorize_width(#). If the
@@ -2256,7 +2284,7 @@ struct LoopVectorize : public FunctionPass {
     auto *PSI = &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
 
     return Impl
-        .runImpl(F, *SE, *LI, *TTI, *DT, *BFI, TLI, *DB, *AC, LAIs, *ORE, PSI)
+        .runImpl(F, *SE, *LI, *TTI, *DT, BFI, TLI, *DB, *AC, LAIs, *ORE, PSI)
         .MadeAnyChange;
   }
 
@@ -2567,6 +2595,39 @@ std::optional<unsigned> getMaxVScale(const Function &F,
     return F.getFnAttribute(Attribute::VScaleRange).getVScaleRangeMax();
 
   return std::nullopt;
+}
+
+/// For the given VF and UF and maximum trip count computed for the loop, return
+/// whether the induction variable might overflow in the vectorized loop. If not,
+/// then we know a runtime overflow check always evaluates to false and can be
+/// removed.
+static bool isIndvarOverflowCheckKnownFalse(
+    const LoopVectorizationCostModel *Cost,
+    ElementCount VF, std::optional<unsigned> UF = std::nullopt) {
+  // Always be conservative if we don't know the exact unroll factor.
+  unsigned MaxUF = UF ? *UF : Cost->TTI.getMaxInterleaveFactor(VF);
+
+  Type *IdxTy = Cost->Legal->getWidestInductionType();
+  APInt MaxUIntTripCount = cast<IntegerType>(IdxTy)->getMask();
+
+  // We know the runtime overflow check is known false iff the (max) trip-count
+  // is known and (max) trip-count + (VF * UF) does not overflow in the type of
+  // the vector loop induction variable.
+  if (unsigned TC =
+          Cost->PSE.getSE()->getSmallConstantMaxTripCount(Cost->TheLoop)) {
+    uint64_t MaxVF = VF.getKnownMinValue();
+    if (VF.isScalable()) {
+      std::optional<unsigned> MaxVScale =
+          getMaxVScale(*Cost->TheFunction, Cost->TTI);
+      if (!MaxVScale)
+        return false;
+      MaxVF *= *MaxVScale;
+    }
+
+    return (MaxUIntTripCount - TC).ugt(MaxVF * MaxUF);
+  }
+
+  return false;
 }
 
 void InnerLoopVectorizer::packScalarIntoVectorValue(VPValue *Def,
@@ -3020,10 +3081,13 @@ void InnerLoopVectorizer::emitIterationCountCheck(BasicBlock *Bypass) {
         Intrinsic::umax, MinProfTC, createStepForVF(Builder, CountTy, VF, UF));
   };
 
-  if (!Cost->foldTailByMasking())
+  TailFoldingStyle Style = Cost->getTailFoldingStyle();
+  if (Style == TailFoldingStyle::None)
     CheckMinIters =
         Builder.CreateICmp(P, Count, CreateStep(), "min.iters.check");
-  else if (VF.isScalable()) {
+  else if (VF.isScalable() &&
+           !isIndvarOverflowCheckKnownFalse(Cost, VF, UF) &&
+           Style != TailFoldingStyle::DataAndControlFlowWithoutRuntimeCheck) {
     // vscale is not necessarily a power-of-2, which means we cannot guarantee
     // an overflow to zero when updating induction variables and so an
     // additional overflow check is required before entering the vector loop.
@@ -3515,8 +3579,10 @@ InstructionCost LoopVectorizationCostModel::getVectorCallCost(
     }
   }
 
-  if (!TLI || CI->isNoBuiltin() || !VecFunc)
-    return Cost;
+  // We don't support masked function calls yet, but we can scalarize a
+  // masked call with branches (unless VF is scalable).
+  if (!TLI || CI->isNoBuiltin() || !VecFunc || Legal->isMaskRequired(CI))
+    return VF.isScalable() ? InstructionCost::getInvalid() : Cost;
 
   // If the corresponding vector cost is cheaper, return its cost.
   InstructionCost VectorCallCost =
@@ -4492,6 +4558,8 @@ bool LoopVectorizationCostModel::isPredicatedInst(Instruction *I) const {
     // TODO: We can use the loop-preheader as context point here and get
     // context sensitive reasoning
     return !isSafeToSpeculativelyExecute(I);
+  case Instruction::Call:
+    return Legal->isMaskRequired(I);
   }
 }
 
@@ -6004,7 +6072,7 @@ LoopVectorizationCostModel::calculateRegisterUsage(ArrayRef<ElementCount> VFs) {
   // Saves the list of values that are used in the loop but are defined outside
   // the loop (not including non-instruction values such as arguments and
   // constants).
-  SmallPtrSet<Value *, 8> LoopInvariants;
+  SmallPtrSet<Instruction *, 8> LoopInvariants;
 
   for (BasicBlock *BB : make_range(DFS.beginRPO(), DFS.endRPO())) {
     for (Instruction &I : BB->instructionsWithoutDebug()) {
@@ -6130,11 +6198,16 @@ LoopVectorizationCostModel::calculateRegisterUsage(ArrayRef<ElementCount> VFs) {
     for (auto *Inst : LoopInvariants) {
       // FIXME: The target might use more than one register for the type
       // even in the scalar case.
-      unsigned Usage =
-          VFs[i].isScalar() ? 1 : GetRegUsage(Inst->getType(), VFs[i]);
+      bool IsScalar = all_of(Inst->users(), [&](User *U) {
+        auto *I = cast<Instruction>(U);
+        return TheLoop != LI->getLoopFor(I->getParent()) ||
+               isScalarAfterVectorization(I, VFs[i]);
+      });
+
+      ElementCount VF = IsScalar ? ElementCount::getFixed(1) : VFs[i];
       unsigned ClassID =
-          TTI.getRegisterClassForType(VFs[i].isVector(), Inst->getType());
-      Invariant[ClassID] += Usage;
+          TTI.getRegisterClassForType(VF.isVector(), Inst->getType());
+      Invariant[ClassID] += GetRegUsage(Inst->getType(), VF);
     }
 
     LLVM_DEBUG({
@@ -8149,8 +8222,8 @@ VPValue *VPRecipeBuilder::createBlockInMask(BasicBlock *BB, VPlan &Plan) {
 
     // If we're using the active lane mask for control flow, then we get the
     // mask from the active lane mask PHI that is cached in the VPlan.
-    TailFoldingStyle Style = CM.getTailFoldingStyle();
-    if (Style == TailFoldingStyle::DataAndControlFlow)
+    TailFoldingStyle TFStyle = CM.getTailFoldingStyle();
+    if (useActiveLaneMaskForControlFlow(TFStyle))
       return BlockMaskCache[BB] = Plan.getActiveLaneMaskPhi();
 
     // Introduce the early-exit compare IV <= BTC to form header block mask.
@@ -8165,8 +8238,7 @@ VPValue *VPRecipeBuilder::createBlockInMask(BasicBlock *BB, VPlan &Plan) {
 
     VPBuilder::InsertPointGuard Guard(Builder);
     Builder.setInsertPoint(HeaderVPBB, NewInsertionPoint);
-    if (Style != TailFoldingStyle::None &&
-        Style != TailFoldingStyle::DataWithoutLaneMask) {
+    if (useActiveLaneMask(TFStyle)) {
       VPValue *TC = Plan.getOrCreateTripCount();
       BlockMask = Builder.createNaryOp(VPInstruction::ActiveLaneMask, {IV, TC},
                                        nullptr, "active.lane.mask");
@@ -8781,9 +8853,7 @@ static void addCanonicalIVRecipes(VPlan &Plan, Type *IdxTy, DebugLoc DL,
   CanonicalIVPHI->addOperand(CanonicalIVIncrement);
 
   VPBasicBlock *EB = TopRegion->getExitingBasicBlock();
-  EB->appendRecipe(CanonicalIVIncrement);
-
-  if (Style == TailFoldingStyle::DataAndControlFlow) {
+  if (useActiveLaneMaskForControlFlow(Style)) {
     // Create the active lane mask instruction in the vplan preheader.
     VPBasicBlock *Preheader = Plan.getEntry()->getEntryBasicBlock();
 
@@ -8798,6 +8868,26 @@ static void addCanonicalIVRecipes(VPlan &Plan, Type *IdxTy, DebugLoc DL,
 
     // Create the ActiveLaneMask instruction using the correct start values.
     VPValue *TC = Plan.getOrCreateTripCount();
+
+    VPValue *TripCount, *IncrementValue;
+    if (Style == TailFoldingStyle::DataAndControlFlowWithoutRuntimeCheck) {
+      // When avoiding a runtime check, the active.lane.mask inside the loop
+      // uses a modified trip count and the induction variable increment is
+      // done after the active.lane.mask intrinsic is called.
+      auto *TCMinusVF =
+          new VPInstruction(VPInstruction::CalculateTripCountMinusVF, {TC}, DL);
+      Preheader->appendRecipe(TCMinusVF);
+      IncrementValue = CanonicalIVPHI;
+      TripCount = TCMinusVF;
+    } else {
+      // When the loop is guarded by a runtime overflow check for the loop
+      // induction variable increment by VF, we can increment the value before
+      // the get.active.lane mask and use the unmodified tripcount.
+      EB->appendRecipe(CanonicalIVIncrement);
+      IncrementValue = CanonicalIVIncrement;
+      TripCount = TC;
+    }
+
     auto *EntryALM = new VPInstruction(VPInstruction::ActiveLaneMask,
                                        {CanonicalIVIncrementParts, TC}, DL,
                                        "active.lane.mask.entry");
@@ -8812,14 +8902,20 @@ static void addCanonicalIVRecipes(VPlan &Plan, Type *IdxTy, DebugLoc DL,
     CanonicalIVIncrementParts =
         new VPInstruction(HasNUW ? VPInstruction::CanonicalIVIncrementForPartNUW
                                  : VPInstruction::CanonicalIVIncrementForPart,
-                          {CanonicalIVIncrement}, DL);
+                          {IncrementValue}, DL);
     EB->appendRecipe(CanonicalIVIncrementParts);
 
     auto *ALM = new VPInstruction(VPInstruction::ActiveLaneMask,
-                                  {CanonicalIVIncrementParts, TC}, DL,
+                                  {CanonicalIVIncrementParts, TripCount}, DL,
                                   "active.lane.mask.next");
     EB->appendRecipe(ALM);
     LaneMaskPhi->addOperand(ALM);
+
+    if (Style == TailFoldingStyle::DataAndControlFlowWithoutRuntimeCheck) {
+      // Do the increment of the canonical IV after the active.lane.mask, because
+      // that value is still based off %CanonicalIVPHI
+      EB->appendRecipe(CanonicalIVIncrement);
+    }
 
     // We have to invert the mask here because a true condition means jumping
     // to the exit block.
@@ -8830,6 +8926,8 @@ static void addCanonicalIVRecipes(VPlan &Plan, Type *IdxTy, DebugLoc DL,
         new VPInstruction(VPInstruction::BranchOnCond, {NotMask}, DL);
     EB->appendRecipe(BranchBack);
   } else {
+    EB->appendRecipe(CanonicalIVIncrement);
+
     // Add the BranchOnCount VPInstruction to the latch.
     VPInstruction *BranchBack = new VPInstruction(
         VPInstruction::BranchOnCount,
@@ -8925,11 +9023,19 @@ VPlanPtr LoopVectorizationPlanner::buildVPlanWithVPRecipes(
   VPBasicBlock *MiddleVPBB = new VPBasicBlock("middle.block");
   VPBlockUtils::insertBlockAfter(MiddleVPBB, TopRegion);
 
+  // Don't use getDecisionAndClampRange here, because we don't know the UF
+  // so this function is better to be conservative, rather than to split
+  // it up into different VPlans.
+  bool IVUpdateMayOverflow = false;
+  for (ElementCount VF = Range.Start;
+       ElementCount::isKnownLT(VF, Range.End); VF *= 2)
+    IVUpdateMayOverflow |= !isIndvarOverflowCheckKnownFalse(&CM, VF);
+
   Instruction *DLInst =
       getDebugLocFromInstOrOperands(Legal->getPrimaryInduction());
   addCanonicalIVRecipes(*Plan, Legal->getWidestInductionType(),
                         DLInst ? DLInst->getDebugLoc() : DebugLoc(),
-                        CM.getTailFoldingStyle());
+                        CM.getTailFoldingStyle(IVUpdateMayOverflow));
 
   // Scan the body of the loop in a topological order to visit each basic block
   // after having visited its predecessor basic blocks.
@@ -10526,14 +10632,14 @@ bool LoopVectorizePass::processLoop(Loop *L) {
 
 LoopVectorizeResult LoopVectorizePass::runImpl(
     Function &F, ScalarEvolution &SE_, LoopInfo &LI_, TargetTransformInfo &TTI_,
-    DominatorTree &DT_, BlockFrequencyInfo &BFI_, TargetLibraryInfo *TLI_,
+    DominatorTree &DT_, BlockFrequencyInfo *BFI_, TargetLibraryInfo *TLI_,
     DemandedBits &DB_, AssumptionCache &AC_, LoopAccessInfoManager &LAIs_,
     OptimizationRemarkEmitter &ORE_, ProfileSummaryInfo *PSI_) {
   SE = &SE_;
   LI = &LI_;
   TTI = &TTI_;
   DT = &DT_;
-  BFI = &BFI_;
+  BFI = BFI_;
   TLI = TLI_;
   AC = &AC_;
   LAIs = &LAIs_;
@@ -10601,7 +10707,6 @@ PreservedAnalyses LoopVectorizePass::run(Function &F,
     auto &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
     auto &TTI = AM.getResult<TargetIRAnalysis>(F);
     auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
-    auto &BFI = AM.getResult<BlockFrequencyAnalysis>(F);
     auto &TLI = AM.getResult<TargetLibraryAnalysis>(F);
     auto &AC = AM.getResult<AssumptionAnalysis>(F);
     auto &DB = AM.getResult<DemandedBitsAnalysis>(F);
@@ -10611,6 +10716,9 @@ PreservedAnalyses LoopVectorizePass::run(Function &F,
     auto &MAMProxy = AM.getResult<ModuleAnalysisManagerFunctionProxy>(F);
     ProfileSummaryInfo *PSI =
         MAMProxy.getCachedResult<ProfileSummaryAnalysis>(*F.getParent());
+    BlockFrequencyInfo *BFI = nullptr;
+    if (PSI && PSI->hasProfileSummary())
+      BFI = &AM.getResult<BlockFrequencyAnalysis>(F);
     LoopVectorizeResult Result =
         runImpl(F, SE, LI, TTI, DT, BFI, &TLI, DB, AC, LAIs, ORE, PSI);
     if (!Result.MadeAnyChange)

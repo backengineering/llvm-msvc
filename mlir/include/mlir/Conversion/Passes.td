@@ -476,6 +476,11 @@ def ConvertGPUToSPIRV : Pass<"convert-gpu-to-spirv", "ModuleOp"> {
   }];
   let constructor = "mlir::createConvertGPUToSPIRVPass()";
   let dependentDialects = ["spirv::SPIRVDialect"];
+  let options = [
+    Option<"use64bitIndex", "use-64bit-index",
+           "bool", /*default=*/"false",
+           "Use 64-bit integers to convert index types">
+  ];
 }
 
 //===----------------------------------------------------------------------===//
@@ -492,14 +497,20 @@ def ConvertGpuLaunchFuncToVulkanLaunchFunc
   let dependentDialects = ["spirv::SPIRVDialect"];
 }
 
-def ConvertVulkanLaunchFuncToVulkanCalls
+def ConvertVulkanLaunchFuncToVulkanCallsPass
     : Pass<"launch-func-to-vulkan", "ModuleOp"> {
   let summary = "Convert vulkanLaunch external call to Vulkan runtime external "
                 "calls";
   let description = [{
     This pass is only intended for the mlir-vulkan-runner.
   }];
-  let constructor = "mlir::createConvertVulkanLaunchFuncToVulkanCallsPass()";
+
+  let options = [
+     Option<"useOpaquePointers", "use-opaque-pointers", "bool",
+            /*default=*/"false", "Generate LLVM IR using opaque pointers "
+            "instead of typed pointers">
+  ];
+
   let dependentDialects = ["LLVM::LLVMDialect"];
 }
 
@@ -534,6 +545,12 @@ def ConvertLinalgToLLVMPass : Pass<"convert-linalg-to-llvm", "ModuleOp"> {
   let summary = "Convert the operations from the linalg dialect into the LLVM "
                 "dialect";
   let dependentDialects = ["scf::SCFDialect", "LLVM::LLVMDialect"];
+
+  let options = [
+     Option<"useOpaquePointers", "use-opaque-pointers", "bool",
+            /*default=*/"false", "Generate LLVM IR using opaque pointers "
+            "instead of typed pointers">
+  ];
 }
 
 //===----------------------------------------------------------------------===//
@@ -619,11 +636,14 @@ def ConvertMathToFuncs : Pass<"convert-math-to-funcs", "ModuleOp"> {
 
 def FinalizeMemRefToLLVMConversionPass :
     Pass<"finalize-memref-to-llvm", "ModuleOp"> {
-  let summary = "Finalize the conversion of the operations from the MemRef "
-                "dialect to the LLVM dialect."
-                "This conversion will not convert some complex MemRef "
-                "operations. Make sure to run `expand-strided-metadata` "
-                "beforehand for these.";
+  let summary = "Finalize MemRef dialect to LLVM dialect conversion";
+  let description = [{
+    Finalize the conversion of the operations from the MemRef 
+    dialect to the LLVM dialect.
+    This conversion will not convert some complex MemRef 
+    operations. Make sure to run `expand-strided-metadata` 
+    beforehand for these.
+  }];
   let dependentDialects = ["LLVM::LLVMDialect"];
   let options = [
     Option<"useAlignedAlloc", "use-aligned-alloc", "bool", /*default=*/"false",
@@ -671,14 +691,19 @@ def ConvertMemRefToSPIRV : Pass<"convert-memref-to-spirv"> {
 // NVGPUToNVVM
 //===----------------------------------------------------------------------===//
 
-def ConvertNVGPUToNVVM : Pass<"convert-nvgpu-to-nvvm"> {
+def ConvertNVGPUToNVVMPass : Pass<"convert-nvgpu-to-nvvm"> {
   let summary = "Convert NVGPU dialect to NVVM dialect";
   let description = [{
     This pass converts supported NVGPU ops to NVVM dialect intrinsics.
   }];
-  let constructor = "mlir::createConvertNVGPUToNVVMPass()";
+
   let dependentDialects = [
     "NVVM::NVVMDialect",
+  ];
+  let options = [
+    Option<"useOpaquePointers", "use-opaque-pointers", "bool",
+              /*default=*/"false", "Generate LLVM IR using opaque pointers "
+              "instead of typed pointers">
   ];
 }
 

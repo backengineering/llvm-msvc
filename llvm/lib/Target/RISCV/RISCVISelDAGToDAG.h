@@ -86,6 +86,14 @@ public:
     return selectShiftMask(N, 32, ShAmt);
   }
 
+  bool selectSETCC(SDValue N, ISD::CondCode ExpectedCCVal, SDValue &Val);
+  bool selectSETNE(SDValue N, SDValue &Val) {
+    return selectSETCC(N, ISD::SETNE, Val);
+  }
+  bool selectSETEQ(SDValue N, SDValue &Val) {
+    return selectSETCC(N, ISD::SETEQ, Val);
+  }
+
   bool selectSExtBits(SDValue N, unsigned Bits, SDValue &Val);
   template <unsigned Bits> bool selectSExtBits(SDValue N, SDValue &Val) {
     return selectSExtBits(N, Bits, Val);

@@ -973,8 +973,9 @@ static void buildSequenceBody(OpBuilder &builder, OperationState &state,
 
   OpBuilder::InsertionGuard guard(builder);
   Region *region = state.regions.back().get();
-  Block *bodyBlock = builder.createBlock(region, region->begin(),
-                                         extraBindingTypes, {state.location});
+  Block *bodyBlock =
+      builder.createBlock(region, region->begin(), types,
+                          SmallVector<Location>(types.size(), state.location));
 
   // Populate body.
   builder.setInsertionPointToStart(bodyBlock);
@@ -992,7 +993,7 @@ void transform::SequenceOp::build(OpBuilder &builder, OperationState &state,
                                   Value root,
                                   SequenceBodyBuilderFn bodyBuilder) {
   build(builder, state, resultTypes, failurePropagationMode, root,
-        /*extraBindings=*/ValueRange());
+        /*extra_bindings=*/ValueRange());
   Type bbArgType = root.getType();
   buildSequenceBody(builder, state, bbArgType,
                     /*extraBindingTypes=*/TypeRange(), bodyBuilder);
@@ -1015,7 +1016,7 @@ void transform::SequenceOp::build(OpBuilder &builder, OperationState &state,
                                   Type bbArgType,
                                   SequenceBodyBuilderFn bodyBuilder) {
   build(builder, state, resultTypes, failurePropagationMode, /*root=*/Value(),
-        /*extraBindings=*/ValueRange());
+        /*extra_bindings=*/ValueRange());
   buildSequenceBody(builder, state, bbArgType,
                     /*extraBindingTypes=*/TypeRange(), bodyBuilder);
 }
@@ -1026,7 +1027,7 @@ void transform::SequenceOp::build(OpBuilder &builder, OperationState &state,
                                   Type bbArgType, TypeRange extraBindingTypes,
                                   SequenceBodyBuilderArgsFn bodyBuilder) {
   build(builder, state, resultTypes, failurePropagationMode, /*root=*/Value(),
-        /*extraBindings=*/ValueRange());
+        /*extra_bindings=*/ValueRange());
   buildSequenceBody(builder, state, bbArgType, extraBindingTypes, bodyBuilder);
 }
 

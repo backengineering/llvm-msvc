@@ -811,10 +811,10 @@ void GenericUniformityAnalysisImpl<ContextT>::analyzeTemporalDivergence(
 
   LLVM_DEBUG(dbgs() << "Analyze temporal divergence: " << Context.print(&I)
                     << "\n");
-  if (!usesValueFromCycle(I, OuterDivCycle))
+  if (isAlwaysUniform(I))
     return;
 
-  if (isAlwaysUniform(I))
+  if (!usesValueFromCycle(I, OuterDivCycle))
     return;
 
   if (markDivergent(I))
@@ -876,6 +876,11 @@ void GenericUniformityAnalysisImpl<ContextT>::analyzeCycleExitDivergence(
     }
     if (!Promoted)
       break;
+
+    // Restore the set property for the temporary vector
+    llvm::sort(Temp);
+    Temp.erase(std::unique(Temp.begin(), Temp.end()), Temp.end());
+
     DomFrontier = Temp;
   }
 
@@ -1262,6 +1267,11 @@ bool GenericUniformityInfo<ContextT>::hasDivergence() const {
 template <typename ContextT>
 bool GenericUniformityInfo<ContextT>::isDivergent(ConstValueRefT V) const {
   return DA->isDivergent(V);
+}
+
+template <typename ContextT>
+bool GenericUniformityInfo<ContextT>::isDivergent(const InstructionT *I) const {
+  return DA->isDivergent(*I);
 }
 
 template <typename ContextT>

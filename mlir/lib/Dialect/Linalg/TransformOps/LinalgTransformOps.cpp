@@ -1692,14 +1692,16 @@ transform::PadOp::applyToOne(LinalgOp target,
     Type elementType = getElementTypeOrSelf(std::get<1>(it));
     // Try to parse string attributes to obtain an attribute of element type.
     if (auto stringAttr = attr.dyn_cast<StringAttr>()) {
-      paddingValues.push_back(
-          parseAttribute(attr.cast<StringAttr>(), elementType));
-      if (!paddingValues.back()) {
+      auto parsedAttr = dyn_cast_if_present<TypedAttr>(
+          parseAttribute(stringAttr, getContext(), elementType,
+                         /*numRead=*/nullptr, /*isKnownNullTerminated=*/true));
+      if (!parsedAttr || parsedAttr.getType() != elementType) {
         auto diag = this->emitOpError("expects a padding that parses to ")
                     << elementType << ", got " << std::get<0>(it);
         diag.attachNote(target.getLoc()) << "when applied to this op";
         return DiagnosedSilenceableFailure::definiteFailure();
       }
+      paddingValues.push_back(parsedAttr);
       continue;
     }
     // Otherwise, add the attribute directly.
@@ -1718,18 +1720,19 @@ transform::PadOp::applyToOne(LinalgOp target,
     transposePaddings.push_back(
         extractFromI64ArrayAttr(transposeVector.cast<ArrayAttr>()));
 
-  LinalgPaddingOptions paddingOptions;
-  paddingOptions.setPaddingValues(paddingValues);
-  paddingOptions.setPaddingDimensions(
-      extractFromI64ArrayAttr(getPaddingDimensions()));
-  paddingOptions.setPackPaddings(packPaddings);
-  paddingOptions.setHoistPaddings(extractFromI64ArrayAttr(getHoistPaddings()));
-  paddingOptions.setTransposePaddings(transposePaddings);
-
-  FailureOr<LinalgOp> result =
-      tryApply<LinalgPaddingPattern>(target, paddingOptions);
+  IRRewriter rewriter(target->getContext());
+  LinalgOp paddedOp;
+  FailureOr<SmallVector<Value>> result = rewriteAsPaddedOp(
+      rewriter, target, extractFromI64ArrayAttr(getPaddingDimensions()),
+      paddingValues, packPaddings, paddedOp);
   if (succeeded(result)) {
-    results.push_back(result->getOperation());
+    // We need to perform our own replacement here because this API is still
+    // used in patterns that "pad and hoist", for which the replacement values
+    // need to be different.
+    // TODO: clean this up and stop "pad and hoist" behavior more globally now
+    // that we have more composable abstractions.
+    rewriter.replaceOp(target, *result);
+    results.push_back(paddedOp);
     return DiagnosedSilenceableFailure::success();
   }
 
@@ -1756,15 +1759,6 @@ LogicalResult transform::PadOp::verify() {
                          << getPaddingDimensions();
   }
 
-  SmallVector<int64_t> hoistPaddings =
-      extractFromI64ArrayAttr(getHoistPaddings());
-  if (any_of(hoistPaddings,
-             [](int64_t hoistPadding) { return hoistPadding < 0; })) {
-    return emitOpError()
-           << "expects hoist_paddings to contain positive integers, found "
-           << getHoistPaddings();
-  }
-
   ArrayAttr transposes = getTransposePaddings();
   for (Attribute attr : transposes) {
     SmallVector<int64_t> transpose = extractFromI64ArrayAttr(attr);
@@ -1775,6 +1769,44 @@ LogicalResult transform::PadOp::verify() {
              << "expects transpose_paddings to be a permutation, found "
              << attr;
     }
+  }
+  return success();
+}
+
+//===---------------------------------------------------------------------===//
+// HoistPadOp
+//===---------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure
+transform::HoistPadOp::applyToOne(tensor::PadOp target,
+                                  transform::ApplyToEachResultList &results,
+                                  transform::TransformState &state) {
+  tensor::PadOp hoistedPadOp;
+  SmallVector<GenericOp> transposeOps;
+  IRRewriter rewriter(target->getContext());
+  FailureOr<Value> result =
+      hoistPaddingOnTensors(rewriter, target, getNumLoops(), getTranspose(),
+                            hoistedPadOp, transposeOps);
+  if (succeeded(result)) {
+    // We need to perform our own replacement here because this API is still
+    // used in patterns that "pad and hoist", for which the replacement values
+    // need to be different.
+    // TODO: clean this up and stop "pad and hoist" behavior more globally now
+    // that we have more composable abstractions.
+    rewriter.replaceOp(target, *result);
+    results.push_back(hoistedPadOp);
+    return DiagnosedSilenceableFailure::success();
+  }
+  return emitDefaultSilenceableFailure(target);
+}
+
+LogicalResult transform::HoistPadOp::verify() {
+  ArrayRef<int64_t> transpose = getTranspose();
+  auto sequence = llvm::to_vector(llvm::seq<int64_t>(0, transpose.size()));
+  if (!std::is_permutation(sequence.begin(), sequence.end(), transpose.begin(),
+                           transpose.end())) {
+    return emitOpError() << "expects transpose to be a permutation, found "
+                         << getTranspose();
   }
   return success();
 }
@@ -1801,6 +1833,35 @@ transform::PromoteOp::applyToOne(LinalgOp target,
         llvm::to_vector(getUseFullTileBuffers().getAsValueRange<BoolAttr>()));
   if (getAlignment().has_value())
     promotionOptions = promotionOptions.setAlignment(*getAlignment());
+
+  if (getMapping().has_value()) {
+    // The mapping should only contain an element
+    auto mapping = *getMapping();
+    if (mapping.size() > 1)
+      return emitDefaultDefiniteFailure(target);
+
+    auto addressSpace = mapping[0].cast<gpu::GPUMemorySpaceMappingAttr>();
+
+    if (addressSpace.getAddressSpace() ==
+        gpu::GPUDialect::getWorkgroupAddressSpace()) {
+      promotionOptions =
+          promotionOptions
+              .setAllocationDeallocationFns(allocateWorkgroupMemory,
+                                            deallocateWorkgroupMemory)
+              .setCopyInOutFns(copyToWorkgroupMemory, copyToWorkgroupMemory)
+              .setUseFullTileBuffers({false, false});
+    } else if (addressSpace.getAddressSpace() ==
+               gpu::GPUDialect::getPrivateAddressSpace()) {
+      promotionOptions =
+          promotionOptions
+              .setAllocationDeallocationFns(allocateGPUPrivateMemory,
+                                            deallocateGPUPrivateMemory)
+              .setCopyInOutFns(copyToGPUPrivateMemory, copyToGPUPrivateMemory)
+              .setUseFullTileBuffers({false, false});
+    } else {
+      return emitDefaultDefiniteFailure(target);
+    }
+  }
 
   if (failed(promoteSubviewsPrecondition(target, promotionOptions)))
     return emitDefaultDefiniteFailure(target);
@@ -3068,8 +3129,10 @@ DiagnosedSilenceableFailure
 transform::HoistRedundantVectorTransfersOp::applyToOne(
     func::FuncOp target, transform::ApplyToEachResultList &results,
     transform::TransformState &state) {
+  // WARNING: This hoisting does not model parallelism and is generally
+  // incorrect when used on distributed loops with memref semantics!
+  // TODO: obsolete and should be retired.
   linalg::hoistRedundantVectorTransfers(target);
-  linalg::hoistRedundantVectorTransfersOnTensor(target);
   results.push_back(target);
   return DiagnosedSilenceableFailure::success();
 }
@@ -3104,6 +3167,32 @@ DiagnosedSilenceableFailure transform::ConvertConv2DToImg2ColOp::applyToOne(
   results.push_back(maybeTransformed->first);
   // Handle to the operation that replaces the original convolution.
   results.push_back(maybeTransformed->second);
+  return DiagnosedSilenceableFailure::success();
+}
+
+//===----------------------------------------------------------------------===//
+// HoistRedundantTensorSubsetsOp
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure
+transform::HoistRedundantTensorSubsetsOp::applyToOne(
+    Operation *target, transform::ApplyToEachResultList &results,
+    transform::TransformState &state) {
+  IRRewriter rewriter(target->getContext());
+  auto forOp = dyn_cast<scf::ForOp>(target);
+  if (forOp) {
+    scf::ForOp newForOp =
+        linalg::hoistRedundantSubsetExtractInsert(rewriter, forOp);
+    results.push_back(newForOp);
+    return DiagnosedSilenceableFailure::success();
+  }
+
+  // TODO: walking in some reverse / inside-out order would be more efficient
+  // and would capture more cases.
+  target->walk([&](scf::ForOp forOp) {
+    hoistRedundantSubsetExtractInsert(rewriter, forOp);
+  });
+  results.push_back(target);
   return DiagnosedSilenceableFailure::success();
 }
 

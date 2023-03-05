@@ -1247,7 +1247,8 @@ static bool canEvaluateZExtd(Value *V, Type *Ty, unsigned &BitsToClear,
 Instruction *InstCombinerImpl::visitZExt(ZExtInst &Zext) {
   // If this zero extend is only used by a truncate, let the truncate be
   // eliminated before we try to optimize this zext.
-  if (Zext.hasOneUse() && isa<TruncInst>(Zext.user_back()))
+  if (Zext.hasOneUse() && isa<TruncInst>(Zext.user_back()) &&
+      !isa<Constant>(Zext.getOperand(0)))
     return nullptr;
 
   // If one of the common conversion will work, do it.

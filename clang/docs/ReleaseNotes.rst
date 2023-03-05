@@ -13,7 +13,7 @@ Written by the `LLVM Team <https://llvm.org/>`_
   .. warning::
      These are in-progress notes for the upcoming Clang |version| release.
      Release notes for previous releases can be found on
-     `the Releases Page <https://llvm.org/releases>`_.
+     `the Releases Page <https://llvm.org/releases/>`_.
 
 Introduction
 ============
@@ -73,12 +73,19 @@ C++ Language Changes
 - Improved ``-O0`` code generation for calls to ``std::forward_like``. Similarly to
   ``std::move, std::forward`` et al. it is now treated as a compiler builtin and implemented
   directly rather than instantiating the definition from the standard library.
+- Implemented `CWG2518 <https://wg21.link/CWG2518>`_ which allows ``static_assert(false)``
+  to not be ill-formed when its condition is evaluated in the context of a template definition.
 
 C++20 Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
 
 C++2b Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
+
+- Implemented `P2036R3: Change scope of lambda trailing-return-type <https://wg21.link/P2036R3>`_
+  and `P2579R0 Mitigation strategies for P2036 <https://wg21.link/P2579R0>`_.
+  These proposals modify how variables captured in lambdas can appear in trailing return type
+  expressions and how their types are deduced therein, in all C++ language versions.
 
 Resolutions to C++ Defect Reports
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -93,6 +100,13 @@ C2x Feature Support
 ^^^^^^^^^^^^^^^^^^^
 - Implemented the ``unreachable`` macro in freestanding ``<stddef.h>`` for
   `WG14 N2826 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2826.pdf>`_
+
+- Removed the ``ATOMIC_VAR_INIT`` macro in C2x and later standards modes, which
+  implements `WG14 N2886 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2886.htm>`_
+
+- Implemented `WG14 N2934 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2934.pdf>`_
+  which introduces the ``bool``, ``static_assert``, ``alignas``, ``alignof``,
+  and ``thread_local`` keywords in C2x.
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
@@ -141,6 +155,8 @@ Improvements to Clang's diagnostics
 - Clang now warns by default for C++20 and later about deprecated capture of
   ``this`` with a capture default of ``=``. This warning can be disabled with
   ``-Wno-deprecated-this-capture``.
+- Clang had failed to emit some ``-Wundefined-internal`` for members of a local
+  class if that class was first introduced with a forward declaration.
 
 Bug Fixes in This Version
 -------------------------
@@ -160,6 +176,8 @@ Bug Fixes in This Version
   (`#60268 <https://github.com/llvm/llvm-project/issues/60268>`_)
 - Fix crash when taking the address of a consteval lambda call operator.
   (`#57682 <https://github.com/llvm/llvm-project/issues/57682>`_)
+- Clang now support export declarations in the language linkage.
+  (`#60405 <https://github.com/llvm/llvm-project/issues/60405>`_)
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -230,6 +248,13 @@ AIX Support
 WebAssembly Support
 ^^^^^^^^^^^^^^^^^^^
 
+AVR Support
+^^^^^^^^^^^
+- The definition of ``USHRT_MAX`` in the freestanding ``<limits.h>`` no longer
+  overflows on AVR (where ``sizeof(int) == sizeof(unsigned short)``).  The type
+  of ``USHRT_MAX`` is now ``unsigned int`` instead of ``int``, as required by
+  the C standard.
+
 DWARF Support in Clang
 ----------------------
 
@@ -241,6 +266,11 @@ Floating Point Support in Clang
 
 AST Matchers
 ------------
+
+- Add ``coroutineBodyStmt`` matcher.
+
+- The ``hasBody`` matcher now matches coroutine body nodes in
+  ``CoroutineBodyStmts``.
 
 clang-format
 ------------
@@ -259,6 +289,9 @@ libclang
 
 Static Analyzer
 ---------------
+- Fix incorrect alignment attribute on the this parameter of certain
+  non-complete destructors when using the Microsoft ABI.
+  `Issue 60465 <https://github.com/llvm/llvm-project/issues/60465>`_.
 
 .. _release-notes-sanitizers:
 

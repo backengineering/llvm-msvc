@@ -6591,7 +6591,10 @@ bool ASTContext::FriendsDifferByConstraints(const FunctionDecl *X,
 
   // If the two functions share lexical declaration context, they are not in
   // separate instantations, and thus in the same scope.
-  if (X->getLexicalDeclContext() == Y->getLexicalDeclContext())
+  if (declaresSameEntity(cast<Decl>(X->getLexicalDeclContext()
+                             ->getRedeclContext()),
+                         cast<Decl>(Y->getLexicalDeclContext()
+                             ->getRedeclContext())))
     return false;
 
   if (!X->getDescribedFunctionTemplate()) {
@@ -6683,8 +6686,32 @@ bool ASTContext::isSameEntity(const NamedDecl *X, const NamedDecl *Y) const {
         return false;
     }
 
-    if (!isSameConstraintExpr(FuncX->getTrailingRequiresClause(),
-                              FuncY->getTrailingRequiresClause()))
+    // The trailing require clause of instantiated function may change during
+    // the semantic analysis. Trying to get the primary template function (if
+    // exists) to compare the primary trailing require clause.
+    auto TryToGetPrimaryTemplatedFunction =
+        [](const FunctionDecl *FD) -> const FunctionDecl * {
+      switch (FD->getTemplatedKind()) {
+      case FunctionDecl::TK_DependentNonTemplate:
+        return FD->getInstantiatedFromDecl();
+      case FunctionDecl::TK_FunctionTemplate:
+        return FD->getDescribedFunctionTemplate()->getTemplatedDecl();
+      case FunctionDecl::TK_MemberSpecialization:
+        return FD->getInstantiatedFromMemberFunction();
+      case FunctionDecl::TK_FunctionTemplateSpecialization:
+        return FD->getPrimaryTemplate()->getTemplatedDecl();
+      default:
+        return FD;
+      }
+    };
+    const FunctionDecl *PrimaryX = TryToGetPrimaryTemplatedFunction(FuncX);
+    const FunctionDecl *PrimaryY = TryToGetPrimaryTemplatedFunction(FuncY);
+    if (!isSameConstraintExpr(PrimaryX->getTrailingRequiresClause(),
+                              PrimaryY->getTrailingRequiresClause()))
+      return false;
+
+    // Constrained friends are different in certain cases, see: [temp.friend]p9.
+    if (FriendsDifferByConstraints(FuncX, FuncY))
       return false;
 
     auto GetTypeAsWritten = [](const FunctionDecl *FD) {
@@ -9529,9 +9556,10 @@ static uint64_t getSVETypeSize(ASTContext &Context, const BuiltinType *Ty) {
 
 bool ASTContext::areCompatibleSveTypes(QualType FirstType,
                                        QualType SecondType) {
-  assert(((FirstType->isSizelessBuiltinType() && SecondType->isVectorType()) ||
-          (FirstType->isVectorType() && SecondType->isSizelessBuiltinType())) &&
-         "Expected SVE builtin type and vector type!");
+  assert(
+      ((FirstType->isSVESizelessBuiltinType() && SecondType->isVectorType()) ||
+       (FirstType->isVectorType() && SecondType->isSVESizelessBuiltinType())) &&
+      "Expected SVE builtin type and vector type!");
 
   auto IsValidCast = [this](QualType FirstType, QualType SecondType) {
     if (const auto *BT = FirstType->getAs<BuiltinType>()) {
@@ -9558,9 +9586,10 @@ bool ASTContext::areCompatibleSveTypes(QualType FirstType,
 
 bool ASTContext::areLaxCompatibleSveTypes(QualType FirstType,
                                           QualType SecondType) {
-  assert(((FirstType->isSizelessBuiltinType() && SecondType->isVectorType()) ||
-          (FirstType->isVectorType() && SecondType->isSizelessBuiltinType())) &&
-         "Expected SVE builtin type and vector type!");
+  assert(
+      ((FirstType->isSVESizelessBuiltinType() && SecondType->isVectorType()) ||
+       (FirstType->isVectorType() && SecondType->isSVESizelessBuiltinType())) &&
+      "Expected SVE builtin type and vector type!");
 
   auto IsLaxCompatible = [this](QualType FirstType, QualType SecondType) {
     const auto *BT = FirstType->getAs<BuiltinType>();

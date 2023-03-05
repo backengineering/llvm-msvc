@@ -637,13 +637,14 @@ enum VectorMemoryAccessKind {
 };
 
 /// Check whether /p val can be used for calculating an index for a contiguous
-/// load operation, i.e. whether /p val:
-///   * is invariant with respect to /p linalgOp, i.e. whether it remains
-///   constant for all iterations, and
-///   * increments with the loop iterator (when /p strideZero is false) or is
-///   not affected by the loop indices (/p strideZero is true).
-static bool isContiguousLoadIdx(LinalgOp &linalgOp, Value &val, size_t dim,
-                                    bool strideZero) {
+/// load operation. This means that /p val should either:
+///   * be invariant with respect to /p linalgOp, or
+///   * increment by 1 with every loop iterator (when /p shouldBeConstant is
+///     false).
+/// Parameters /p trailingLoopDim and /p shouldBeConstant are used to analyze
+/// `linalg.index` ops.
+static bool isContiguousLoadIdx(LinalgOp &linalgOp, Value &val,
+                                size_t trailingLoopDim, bool shouldBeConstant) {
   auto *block = linalgOp.getBlock();
 
   // Bail out if this is a block argument for this linalg.generic Op.
@@ -655,13 +656,15 @@ static bool isContiguousLoadIdx(LinalgOp &linalgOp, Value &val, size_t dim,
   Operation *defOp = val.getDefiningOp();
   assert(defOp && "This is neither a block argument nor an operation result");
 
-  // Given the assumption on the shape of the target tensor, index Op is
-  // either:
-  //    * constant (for non-trailing dims), or
-  //    * increments with stride one together with the trailing dimension
-  // Both cases are fine for contigious loads.
+  // We know that we are reading into a 1-D tensor like this:
+  // `tensor<1x1x4xi32`. Given this assumption, the following Op:
+  //    * `%idx = `linalg.index dim : index`,
+  // will either:
+  //    1. produce a constant when `dim` _is not_ the trailing loop dim, or
+  //    2. increment with stride one when `dim` _is_ the trailing loop dim.
   if (auto indexOp = dyn_cast<linalg::IndexOp>(defOp))
-    return strideZero ? (indexOp.getDim() != dim) : (indexOp.getDim() == dim);
+    return shouldBeConstant ? (indexOp.getDim() != trailingLoopDim)
+                            : (indexOp.getDim() == trailingLoopDim);
 
   auto *ancestor = block->findAncestorOpInBlock(*defOp);
 
@@ -673,9 +676,14 @@ static bool isContiguousLoadIdx(LinalgOp &linalgOp, Value &val, size_t dim,
   if (dyn_cast<arith::ConstantOp>(ancestor))
     return true;
 
+  // Conservatively reject Ops that could lead to non-contiguous accesses.
+  if (!isa<arith::AddIOp, arith::SubIOp, linalg::IndexOp>(ancestor))
+    return false;
+
   bool result = true;
   for (auto op : ancestor->getOperands())
-    result &= isContiguousLoadIdx(linalgOp, op, dim, strideZero);
+    result &=
+        isContiguousLoadIdx(linalgOp, op, trailingLoopDim, shouldBeConstant);
 
   return result;
 }
@@ -734,30 +742,38 @@ getTensorExtractMemoryAccessPattern(tensor::ExtractOp extractOp,
   if (inputShape.getShape().back() == 1)
     return VectorMemoryAccessKind::Gather;
 
+  // The trailing loop dim is needed when analyzing ops like:
+  //     * %idx = `linalg.index <dim> : index`.
+  auto trailingLoopDim = targetShape.size() - 1;
+
   bool isContiguous = true;
 
-  // Iterate over all indices. Analyze whether the way each index is calculate
-  // is suitable for contiguous load operations (e.g. loop invariant).
+  // Iterate over all indices. Analyze the way each index is calculated and
+  // decide whether it is suitable for a contiguous load (e.g. loop invariant).
   auto indices = extractOp.getIndices();
   for (auto [i, indexVal] : llvm::enumerate(indices)) {
     if (inputShape.getShape()[i] == 1) {
-      // This extractOp index must be a loop-invariant constant
+      // This index will always be equal 0, so it is a loop-invariant constant.
       continue;
     }
 
+    // Should this index be loop invariant?
+    //  * _no_ if this is the trailing index,
+    //  * _yes_ otherwise.
     auto extractOpBottomIdx = indices.size() - 1;
-    auto strideOneDim = targetShape.size() - 1;
-    bool strideZero = (i != extractOpBottomIdx);
-    isContiguous &=
-        isContiguousLoadIdx(linalgOp, indexVal, strideOneDim, strideZero);
+    bool loopInvariantIndex = (i != extractOpBottomIdx);
+
+    isContiguous &= isContiguousLoadIdx(linalgOp, indexVal, trailingLoopDim,
+                                        loopInvariantIndex);
   }
 
-  // The calculation of the trailing index must include the loop index. Given
-  // the assumption on the output tensor (which is defined by the iteration
-  // space), only the trailing dim matters.
+  // The trailing index in the extract Op must increment with every iteration,
+  // which means that it must be based on a loop index. Given the assumption
+  // on the output tensor, only the trailing loop index is not constant, so
+  // that's what we need to check against.
   auto extractOpTrailingIdx = indices.back();
   isContiguous &=
-      isBasedOnIndexOp(linalgOp, extractOpTrailingIdx, targetShape.size() - 1);
+      isBasedOnIndexOp(linalgOp, extractOpTrailingIdx, trailingLoopDim);
 
   if (isContiguous) {
     LDBG("Found contigous load: " << extractOp);

@@ -27,6 +27,29 @@
 // DeclareOp
 //===----------------------------------------------------------------------===//
 
+/// Is this a fir.[ref/ptr/heap]<fir.[box/class]<fir.heap<T>>> type?
+static bool isAllocatableBoxRef(mlir::Type type) {
+  fir::BaseBoxType boxType =
+      fir::dyn_cast_ptrEleTy(type).dyn_cast_or_null<fir::BaseBoxType>();
+  return boxType && boxType.getEleTy().isa<fir::HeapType>();
+}
+
+mlir::LogicalResult hlfir::AssignOp::verify() {
+  mlir::Type lhsType = getLhs().getType();
+  if (isAllocatableAssignment() && !isAllocatableBoxRef(lhsType))
+    return emitOpError("lhs must be an allocatable when `realloc` is set");
+  if (mustKeepLhsLengthInAllocatableAssignment() &&
+      !(isAllocatableAssignment() &&
+        hlfir::getFortranElementType(lhsType).isa<fir::CharacterType>()))
+    return emitOpError("`realloc` must be set and lhs must be a character "
+                       "allocatable when `keep_lhs_length_if_realloc` is set");
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// DeclareOp
+//===----------------------------------------------------------------------===//
+
 /// Given a FIR memory type, and information about non default lower bounds, get
 /// the related HLFIR variable type.
 mlir::Type hlfir::DeclareOp::getHLFIRVariableType(mlir::Type inputType,
@@ -358,6 +381,61 @@ mlir::LogicalResult hlfir::DesignateOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// ParentComponentOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult hlfir::ParentComponentOp::verify() {
+  mlir::Type baseType =
+      hlfir::getFortranElementOrSequenceType(getMemref().getType());
+  auto maybeInputSeqType = baseType.dyn_cast<fir::SequenceType>();
+  unsigned inputTypeRank =
+      maybeInputSeqType ? maybeInputSeqType.getDimension() : 0;
+  unsigned shapeRank = 0;
+  if (mlir::Value shape = getShape())
+    if (auto shapeType = shape.getType().dyn_cast<fir::ShapeType>())
+      shapeRank = shapeType.getRank();
+  if (inputTypeRank != shapeRank)
+    return emitOpError(
+        "must be provided a shape if and only if the base is an array");
+  mlir::Type outputBaseType = hlfir::getFortranElementOrSequenceType(getType());
+  auto maybeOutputSeqType = outputBaseType.dyn_cast<fir::SequenceType>();
+  unsigned outputTypeRank =
+      maybeOutputSeqType ? maybeOutputSeqType.getDimension() : 0;
+  if (inputTypeRank != outputTypeRank)
+    return emitOpError("result type rank must match input type rank");
+  if (maybeOutputSeqType && maybeInputSeqType)
+    for (auto [inputDim, outputDim] :
+         llvm::zip(maybeInputSeqType.getShape(), maybeOutputSeqType.getShape()))
+      if (inputDim != fir::SequenceType::getUnknownExtent() &&
+          outputDim != fir::SequenceType::getUnknownExtent())
+        if (inputDim != outputDim)
+          return emitOpError(
+              "result type extents are inconsistent with memref type");
+  fir::RecordType baseRecType =
+      hlfir::getFortranElementType(baseType).dyn_cast<fir::RecordType>();
+  fir::RecordType outRecType =
+      hlfir::getFortranElementType(outputBaseType).dyn_cast<fir::RecordType>();
+  if (!baseRecType || !outRecType)
+    return emitOpError("result type and input type must be derived types");
+
+  // Note: result should not be a fir.class: its dynamic type is being set to
+  // the parent type and allowing fir.class would break the operation codegen:
+  // it would keep the input dynamic type.
+  if (getType().isa<fir::ClassType>())
+    return emitOpError("result type must not be polymorphic");
+
+  // The array results are known to not be dis-contiguous in most cases (the
+  // exception being if the parent type was extended by a type without any
+  // components): require a fir.box to be used for the result to carry the
+  // strides.
+  if (!getType().isa<fir::BoxType>() &&
+      (outputTypeRank != 0 || fir::isRecordWithTypeParameters(outRecType)))
+    return emitOpError("result type must be a fir.box if the result is an "
+                       "array or has length parameters");
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // ConcatOp
 //===----------------------------------------------------------------------===//
 
@@ -554,6 +632,36 @@ mlir::LogicalResult hlfir::MatmulOp::verify() {
     return emitOpError("incorrect result shape");
   if (resultShape.size() == 2 && resultShape[1] != expectedResultShape[1])
     return emitOpError("incorrect result shape");
+
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// TransposeOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult hlfir::TransposeOp::verify() {
+  mlir::Value array = getArray();
+  fir::SequenceType arrayTy =
+      hlfir::getFortranElementOrSequenceType(array.getType())
+          .cast<fir::SequenceType>();
+  llvm::ArrayRef<int64_t> inShape = arrayTy.getShape();
+  std::size_t rank = inShape.size();
+  mlir::Type eleTy = arrayTy.getEleTy();
+  hlfir::ExprType resultTy = getResult().getType().cast<hlfir::ExprType>();
+  llvm::ArrayRef<int64_t> resultShape = resultTy.getShape();
+  std::size_t resultRank = resultShape.size();
+  mlir::Type resultEleTy = resultTy.getEleTy();
+
+  if (rank != 2 || resultRank != 2)
+    return emitOpError("input and output arrays should have rank 2");
+
+  if (inShape[0] != resultShape[1] || inShape[1] != resultShape[0])
+    return emitOpError("output shape does not match input array");
+
+  if (eleTy != resultEleTy)
+    return emitOpError(
+        "input and output arrays should have the same element type");
 
   return mlir::success();
 }

@@ -1382,11 +1382,8 @@ Instruction *InstCombinerImpl::foldICmpWithDominatingICmp(ICmpInst &Cmp) {
   if (TrueBB == FalseBB)
     return nullptr;
 
-  // Try to simplify this compare to T/F based on the dominating condition.
-  std::optional<bool> Imp =
-      isImpliedCondition(DomCond, &Cmp, DL, TrueBB == CmpBB);
-  if (Imp)
-    return replaceInstUsesWith(Cmp, ConstantInt::get(Cmp.getType(), *Imp));
+  // We already checked simple implication in InstSimplify, only handle complex
+  // cases here.
 
   CmpInst::Predicate Pred = Cmp.getPredicate();
   Value *X = Cmp.getOperand(0), *Y = Cmp.getOperand(1);
@@ -1831,6 +1828,15 @@ Instruction *InstCombinerImpl::foldICmpAndConstant(ICmpInst &Cmp,
         match(And->getOperand(1), m_Not(m_Specific(X)))) {
       auto NewPred = TrueIfNeg ? CmpInst::ICMP_EQ : CmpInst::ICMP_NE;
       return new ICmpInst(NewPred, X, ConstantInt::getNullValue(X->getType()));
+    }
+    // (X & X) <  0 --> X == MinSignedC
+    // (X & X) > -1 --> X != MinSignedC
+    if (match(And, m_c_And(m_Neg(m_Value(X)), m_Deferred(X)))) {
+      Constant *MinSignedC = ConstantInt::get(
+          X->getType(),
+          APInt::getSignedMinValue(X->getType()->getScalarSizeInBits()));
+      auto NewPred = TrueIfNeg ? CmpInst::ICMP_EQ : CmpInst::ICMP_NE;
+      return new ICmpInst(NewPred, X, MinSignedC);
     }
   }
 
@@ -5455,17 +5461,22 @@ static APInt getDemandedBitsLHSMask(ICmpInst &I, unsigned BitWidth) {
 /// The rationale is that several architectures use the same instruction for
 /// both subtract and cmp. Thus, it is better if the order of those operands
 /// match.
+/// TODO: Shouldn't this be part of CGP instead?
 /// \return true if Op0 and Op1 should be swapped.
 static bool swapMayExposeCSEOpportunities(const Value *Op0, const Value *Op1) {
   // Filter out pointer values as those cannot appear directly in subtract.
   // FIXME: we may want to go through inttoptrs or bitcasts.
-  if (Op0->getType()->isPointerTy())
+  if (Op0->getType()->isPointerTy() || isa<Constant>(Op0))
     return false;
   // If a subtract already has the same operands as a compare, swapping would be
   // bad. If a subtract has the same operands as a compare but in reverse order,
   // then swapping is good.
   int GoodToSwap = 0;
+  unsigned NumInspected = 0;
   for (const User *U : Op0->users()) {
+    // Avoid walking many users.
+    if (++NumInspected > 128)
+      return false;
     if (match(U, m_Sub(m_Specific(Op1), m_Specific(Op0))))
       GoodToSwap++;
     else if (match(U, m_Sub(m_Specific(Op0), m_Specific(Op1))))
