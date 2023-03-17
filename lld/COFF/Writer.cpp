@@ -204,6 +204,10 @@ public:
   void run();
 
 private:
+  void writeOutputFilePre();
+  void writeOutputFilePost();
+
+private:
   void createSections();
   void createMiscChunks();
   void createImportTables();
@@ -617,6 +621,7 @@ void Writer::writePEChecksum() {
   }
 
   // https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#checksum
+  uint32_t checkSum = 0;
   uint32_t *buf = (uint32_t *)buffer->getBufferStart();
   uint32_t size = (uint32_t)(buffer->getBufferSize());
 
@@ -624,28 +629,47 @@ void Writer::writePEChecksum() {
       (coff_file_header *)((uint8_t *)buf + dosStubSize + sizeof(PEMagic));
   pe32_header *peHeader =
       (pe32_header *)((uint8_t *)coffHeader + sizeof(coff_file_header));
+  uint32_t oldCheckSum = peHeader->CheckSum;
 
-  uint64_t sum = 0;
-  uint32_t count = size;
-  ulittle16_t *addr = (ulittle16_t *)buf;
+  auto CalcCheckSum = [](uint32_t StartValue, void *BaseAddress,
+                         uint32_t WordCount) -> uint16_t {
+    uint16_t *p = (uint16_t *)BaseAddress;
+    uint32_t sum = StartValue;
+    for (uint32_t i = 0; i < WordCount; i++) {
+      sum += *p;
+      if (((sum >> 16) & 0xffff) != 0) {
+        sum = (sum & 0xffff) + ((sum >> 16) & 0xffff);
+      }
+      p++;
+    }
+    return (uint16_t)((sum & 0xffff) + ((sum >> 16) & 0xffff));
+  };
 
-  // The PE checksum algorithm, implemented as suggested in RFC1071
-  while (count > 1) {
-    sum += *addr++;
-    count -= 2;
+  checkSum = CalcCheckSum(0, buf, (size + 1) / sizeof(uint16_t));
+  if ((checkSum & 0xffff) >= (oldCheckSum & 0xffff)) {
+    checkSum -= (oldCheckSum & 0xffff);
+  } else {
+    checkSum = (((checkSum & 0xffff) - (oldCheckSum & 0xffff)) & 0xFFFF) - 1;
   }
 
-  // Add left-over byte, if any
-  if (count > 0)
-    sum += *(unsigned char *)addr;
-
-  // Fold 32-bit sum to 16 bits
-  while (sum >> 16) {
-    sum = (sum & 0xffff) + (sum >> 16);
+  if ((checkSum & 0xffff) >= ((oldCheckSum >> 16) & 0xffff)) {
+    checkSum -= ((oldCheckSum >> 16) & 0xffff);
+  } else {
+    checkSum =
+        (((checkSum & 0xffff) - ((oldCheckSum >> 16) & 0xffff)) & 0xFFFF) - 1;
   }
 
-  sum += size;
-  peHeader->CheckSum = sum;
+  checkSum += size;
+  peHeader->CheckSum = checkSum;
+}
+
+void Writer::writeOutputFilePre() {
+  // PE Checksum
+  writePEChecksum();
+}
+
+void Writer::writeOutputFilePost() {
+  // TODO
 }
 
 // The main function of the writer.
@@ -696,15 +720,15 @@ void Writer::run() {
   writeLLDMapFile(ctx);
   writeMapFile(ctx);
 
-  writePEChecksum();
-
   if (errorCount())
     return;
 
+  writeOutputFilePre();
   ScopedTimer t2(ctx.outputCommitTimer);
   if (auto e = buffer->commit())
     fatal("failed to write output '" + buffer->getPath() +
           "': " + toString(std::move(e)));
+  writeOutputFilePost();
 }
 
 static StringRef getOutputSectionName(StringRef name) {
@@ -1512,8 +1536,9 @@ template <typename PEHeaderTy> void Writer::writeHeader() {
     pe->DLLCharacteristics |= IMAGE_DLL_CHARACTERISTICS_FORCE_INTEGRITY;
   if (setNoSEHCharacteristic || config->noSEH)
     pe->DLLCharacteristics |= IMAGE_DLL_CHARACTERISTICS_NO_SEH;
-  if (config->terminalServerAware)
-    pe->DLLCharacteristics |= IMAGE_DLL_CHARACTERISTICS_TERMINAL_SERVER_AWARE;
+  // [MSVC Compatibility] unused DLLCharacteristics
+  /*if (config->terminalServerAware)
+    pe->DLLCharacteristics |= IMAGE_DLL_CHARACTERISTICS_TERMINAL_SERVER_AWARE;*/
   pe->NumberOfRvaAndSize = numberOfDataDirectory;
   if (textSec->getVirtualSize()) {
     pe->BaseOfCode = textSec->getRVA();
@@ -1587,6 +1612,12 @@ template <typename PEHeaderTy> void Writer::writeHeader() {
 
   // Write section table
   for (OutputSection *sec : ctx.outputSections) {
+    // Fix the characteristics of some sections like ".voltbl" or ".retplne" or others
+    // Or the program will be crash sometimes.
+    if (sec->header.Characteristics == 0) {
+      sec->header.Characteristics |= IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                     IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE;
+    }
     sec->writeHeaderTo(buf, config->debug);
     buf += sizeof(coff_section);
   }
@@ -2001,7 +2032,8 @@ void Writer::writeBuildId() {
     buildId->buildId->PDB70.Age = 1;
     memcpy(buildId->buildId->PDB70.Signature, &hash, 8);
     // xxhash only gives us 8 bytes, so put some fixed data in the other half.
-    memcpy(&buildId->buildId->PDB70.Signature[8], "LLD PDB.", 8);
+    // Change PDB signature.
+    memcpy(&buildId->buildId->PDB70.Signature[8], "NewWorld", 8);
   }
 
   if (debugDirectory)
