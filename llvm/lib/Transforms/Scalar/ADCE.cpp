@@ -26,6 +26,7 @@
 #include "llvm/Analysis/DomTreeUpdater.h"
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/IteratedDominanceFrontier.h"
+#include "llvm/Analysis/MemorySSA.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CFG.h"
@@ -115,6 +116,7 @@ struct BlockInfoType {
 
 struct ADCEChanged {
   bool ChangedAnything = false;
+  bool ChangedNonDebugInstr = false;
   bool ChangedControlFlow = false;
 };
 
@@ -560,6 +562,8 @@ ADCEChanged AggressiveDeadCodeElimination::removeDeadInstructions() {
         continue;
 
       // Fallthrough and drop the intrinsic.
+    } else {
+      Changed.ChangedNonDebugInstr = true;
     }
 
     // Prepare to delete.
@@ -713,57 +717,19 @@ PreservedAnalyses ADCEPass::run(Function &F, FunctionAnalysisManager &FAM) {
     return PreservedAnalyses::all();
 
   PreservedAnalyses PA;
-  if (!Changed.ChangedControlFlow)
+  if (!Changed.ChangedControlFlow) {
     PA.preserveSet<CFGAnalyses>();
+    if (!Changed.ChangedNonDebugInstr) {
+      // Only removing debug instructions does not affect MemorySSA.
+      //
+      // Therefore we preserve MemorySSA when only removing debug instructions
+      // since otherwise later passes may behave differently which then makes
+      // the presence of debug info affect code generation.
+      PA.preserve<MemorySSAAnalysis>();
+    }
+  }
   PA.preserve<DominatorTreeAnalysis>();
   PA.preserve<PostDominatorTreeAnalysis>();
 
   return PA;
 }
-
-namespace {
-
-struct ADCELegacyPass : public FunctionPass {
-  static char ID; // Pass identification, replacement for typeid
-
-  ADCELegacyPass() : FunctionPass(ID) {
-    initializeADCELegacyPassPass(*PassRegistry::getPassRegistry());
-  }
-
-  bool runOnFunction(Function &F) override {
-    if (skipFunction(F))
-      return false;
-
-    // ADCE does not need DominatorTree, but require DominatorTree here
-    // to update analysis if it is already available.
-    auto *DTWP = getAnalysisIfAvailable<DominatorTreeWrapperPass>();
-    auto *DT = DTWP ? &DTWP->getDomTree() : nullptr;
-    auto &PDT = getAnalysis<PostDominatorTreeWrapperPass>().getPostDomTree();
-    ADCEChanged Changed =
-        AggressiveDeadCodeElimination(F, DT, PDT).performDeadCodeElimination();
-    return Changed.ChangedAnything;
-  }
-
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addRequired<PostDominatorTreeWrapperPass>();
-    if (!RemoveControlFlowFlag)
-      AU.setPreservesCFG();
-    else {
-      AU.addPreserved<DominatorTreeWrapperPass>();
-      AU.addPreserved<PostDominatorTreeWrapperPass>();
-    }
-    AU.addPreserved<GlobalsAAWrapperPass>();
-  }
-};
-
-} // end anonymous namespace
-
-char ADCELegacyPass::ID = 0;
-
-INITIALIZE_PASS_BEGIN(ADCELegacyPass, "adce",
-                      "Aggressive Dead Code Elimination", false, false)
-INITIALIZE_PASS_DEPENDENCY(PostDominatorTreeWrapperPass)
-INITIALIZE_PASS_END(ADCELegacyPass, "adce", "Aggressive Dead Code Elimination",
-                    false, false)
-
-FunctionPass *llvm::createAggressiveDCEPass() { return new ADCELegacyPass(); }

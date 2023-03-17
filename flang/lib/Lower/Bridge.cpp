@@ -41,8 +41,8 @@
 #include "flang/Optimizer/Dialect/FIRAttr.h"
 #include "flang/Optimizer/Dialect/FIRDialect.h"
 #include "flang/Optimizer/Dialect/FIROps.h"
+#include "flang/Optimizer/Dialect/Support/FIRContext.h"
 #include "flang/Optimizer/HLFIR/HLFIROps.h"
-#include "flang/Optimizer/Support/FIRContext.h"
 #include "flang/Optimizer/Support/FatalError.h"
 #include "flang/Optimizer/Support/InternalNames.h"
 #include "flang/Optimizer/Transforms/Passes.h"
@@ -3038,7 +3038,12 @@ private:
                   lhs = fir::getBase(genExprBox(loc, assign.lhs, stmtCtx));
                 mlir::Value rhs =
                     fir::getBase(genExprBox(loc, assign.rhs, stmtCtx));
-                fir::runtime::genAssign(*builder, loc, lhs, rhs);
+                if ((lhsType->IsPolymorphic() ||
+                     lhsType->IsUnlimitedPolymorphic()) &&
+                    Fortran::lower::isWholeAllocatable(assign.lhs))
+                  fir::runtime::genAssignPolymorphic(*builder, loc, lhs, rhs);
+                else
+                  fir::runtime::genAssign(*builder, loc, lhs, rhs);
                 return;
               }
 
@@ -3135,6 +3140,14 @@ private:
                 fir::factory::CharacterExprHelper{*builder, loc}.createAssign(
                     lhs, rhs);
               } else if (isDerivedCategory(lhsType->category())) {
+                // Handle parent component.
+                if (Fortran::lower::isParentComponent(assign.lhs)) {
+                  if (!fir::getBase(lhs).getType().isa<fir::BaseBoxType>())
+                    lhs = fir::getBase(builder->createBox(loc, lhs));
+                  lhs = Fortran::lower::updateBoxForParentComponent(*this, lhs,
+                                                                    assign.lhs);
+                }
+
                 // Fortran 2018 10.2.1.3 p13 and p14
                 // Recursively gen an assignment on each element pair.
                 fir::factory::genRecordAssignment(*builder, loc, lhs, rhs,

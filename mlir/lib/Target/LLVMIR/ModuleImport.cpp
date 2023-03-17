@@ -893,6 +893,8 @@ LogicalResult ModuleImport::convertGlobal(llvm::GlobalVariable *globalVar) {
   }
   if (globalVar->hasSection())
     globalOp.setSection(globalVar->getSection());
+  globalOp.setVisibility_(
+      convertVisibilityFromLLVM(globalVar->getVisibility()));
 
   return success();
 }
@@ -1042,7 +1044,7 @@ FailureOr<Value> ModuleImport::convertConstant(llvm::Constant *constant) {
     // resulting in a conflicting `valueMapping` entry.
     llvm::Instruction *inst = constExpr->getAsInstruction();
     auto guard = llvm::make_scope_exit([&]() {
-      assert(noResultOpMapping.find(inst) == noResultOpMapping.end() &&
+      assert(!noResultOpMapping.contains(inst) &&
              "expected constant expression to return a result");
       valueMapping.erase(inst);
       inst->deleteValue();
@@ -1610,6 +1612,8 @@ LogicalResult ModuleImport::processFunction(llvm::Function *func) {
 
   if (func->hasGC())
     funcOp.setGarbageCollector(StringRef(func->getGC()));
+
+  funcOp.setVisibility_(convertVisibilityFromLLVM(func->getVisibility()));
 
   // Handle Function attributes.
   processFunctionAttributes(func, funcOp);

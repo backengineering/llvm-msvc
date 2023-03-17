@@ -17,8 +17,8 @@
 
 #include "test_macros.h"
 
-typedef std::__murmur2_or_cityhash<uint32_t> Hash32;
-typedef std::__murmur2_or_cityhash<uint64_t> Hash64;
+typedef std::__murmur2_or_cityhash<std::uint32_t> Hash32;
+typedef std::__murmur2_or_cityhash<std::uint64_t> Hash64;
 
 void test(const void* key, int len) {
   for (int i=1; i <= len; ++i) {

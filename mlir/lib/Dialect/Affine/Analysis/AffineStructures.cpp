@@ -75,7 +75,8 @@ getFlattenedAffineExprs(ArrayRef<AffineExpr> exprs, unsigned numDims,
                         std::vector<SmallVector<int64_t, 8>> *flattenedExprs,
                         FlatAffineValueConstraints *localVarCst) {
   if (exprs.empty()) {
-    localVarCst->reset(numDims, numSymbols);
+    if (localVarCst)
+      *localVarCst = FlatAffineValueConstraints(numDims, numSymbols);
     return success();
   }
 
@@ -120,7 +121,9 @@ LogicalResult mlir::getFlattenedAffineExprs(
     AffineMap map, std::vector<SmallVector<int64_t, 8>> *flattenedExprs,
     FlatAffineValueConstraints *localVarCst) {
   if (map.getNumResults() == 0) {
-    localVarCst->reset(map.getNumDims(), map.getNumSymbols());
+    if (localVarCst)
+      *localVarCst =
+          FlatAffineValueConstraints(map.getNumDims(), map.getNumSymbols());
     return success();
   }
   return ::getFlattenedAffineExprs(map.getResults(), map.getNumDims(),
@@ -132,7 +135,9 @@ LogicalResult mlir::getFlattenedAffineExprs(
     IntegerSet set, std::vector<SmallVector<int64_t, 8>> *flattenedExprs,
     FlatAffineValueConstraints *localVarCst) {
   if (set.getNumConstraints() == 0) {
-    localVarCst->reset(set.getNumDims(), set.getNumSymbols());
+    if (localVarCst)
+      *localVarCst =
+          FlatAffineValueConstraints(set.getNumDims(), set.getNumSymbols());
     return success();
   }
   return ::getFlattenedAffineExprs(set.getConstraints(), set.getNumDims(),
@@ -229,50 +234,6 @@ FlatAffineValueConstraints::getHyperrectangular(ValueRange ivs, ValueRange lbs,
       llvm_unreachable("Unexpected FlatAffineValueConstraints creation error");
   }
   return res;
-}
-
-void FlatAffineValueConstraints::reset(unsigned numReservedInequalities,
-                                       unsigned numReservedEqualities,
-                                       unsigned newNumReservedCols,
-                                       unsigned newNumDims,
-                                       unsigned newNumSymbols,
-                                       unsigned newNumLocals) {
-  assert(newNumReservedCols >= newNumDims + newNumSymbols + newNumLocals + 1 &&
-         "minimum 1 column");
-  *this = FlatAffineValueConstraints(numReservedInequalities,
-                                     numReservedEqualities, newNumReservedCols,
-                                     newNumDims, newNumSymbols, newNumLocals);
-}
-
-void FlatAffineValueConstraints::reset(unsigned newNumDims,
-                                       unsigned newNumSymbols,
-                                       unsigned newNumLocals) {
-  reset(/*numReservedInequalities=*/0, /*numReservedEqualities=*/0,
-        /*numReservedCols=*/newNumDims + newNumSymbols + newNumLocals + 1,
-        newNumDims, newNumSymbols, newNumLocals);
-}
-
-void FlatAffineValueConstraints::reset(
-    unsigned numReservedInequalities, unsigned numReservedEqualities,
-    unsigned newNumReservedCols, unsigned newNumDims, unsigned newNumSymbols,
-    unsigned newNumLocals, ArrayRef<Value> valArgs) {
-  assert(newNumReservedCols >= newNumDims + newNumSymbols + newNumLocals + 1 &&
-         "minimum 1 column");
-  SmallVector<std::optional<Value>, 8> newVals;
-  if (!valArgs.empty())
-    newVals.assign(valArgs.begin(), valArgs.end());
-
-  *this = FlatAffineValueConstraints(
-      numReservedInequalities, numReservedEqualities, newNumReservedCols,
-      newNumDims, newNumSymbols, newNumLocals, newVals);
-}
-
-void FlatAffineValueConstraints::reset(unsigned newNumDims,
-                                       unsigned newNumSymbols,
-                                       unsigned newNumLocals,
-                                       ArrayRef<Value> valArgs) {
-  reset(0, 0, newNumDims + newNumSymbols + newNumLocals + 1, newNumDims,
-        newNumSymbols, newNumLocals, valArgs);
 }
 
 unsigned FlatAffineValueConstraints::appendDimVar(ValueRange vals) {
@@ -920,7 +881,8 @@ static bool detectAsFloorDiv(const FlatAffineValueConstraints &cst,
 std::pair<AffineMap, AffineMap>
 FlatAffineValueConstraints::getLowerAndUpperBound(
     unsigned pos, unsigned offset, unsigned num, unsigned symStartPos,
-    ArrayRef<AffineExpr> localExprs, MLIRContext *context) const {
+    ArrayRef<AffineExpr> localExprs, MLIRContext *context,
+    bool closedUB) const {
   assert(pos + offset < getNumDimVars() && "invalid dim start pos");
   assert(symStartPos >= (pos + offset) && "invalid sym start pos");
   assert(getNumLocalVars() == localExprs.size() &&
@@ -970,8 +932,8 @@ FlatAffineValueConstraints::getLowerAndUpperBound(
     auto expr =
         getAffineExprFromFlatForm(ub, dimCount, symCount, localExprs, context);
     expr = expr.floorDiv(std::abs(ineq[pos + offset]));
-    // Upper bound is exclusive.
-    ubExprs.push_back(expr + 1);
+    int64_t ubAdjustment = closedUB ? 0 : 1;
+    ubExprs.push_back(expr + ubAdjustment);
   }
 
   // Equalities. It's both a lower and a upper bound.
@@ -1009,7 +971,7 @@ FlatAffineValueConstraints::getLowerAndUpperBound(
 void FlatAffineValueConstraints::getSliceBounds(
     unsigned offset, unsigned num, MLIRContext *context,
     SmallVectorImpl<AffineMap> *lbMaps, SmallVectorImpl<AffineMap> *ubMaps,
-    bool getClosedUB) {
+    bool closedUB) {
   assert(num < getNumDimVars() && "invalid range");
 
   // Basic simplification.
@@ -1108,7 +1070,7 @@ void FlatAffineValueConstraints::getSliceBounds(
     // again.
   } while (changed);
 
-  int64_t ubAdjustment = getClosedUB ? 0 : 1;
+  int64_t ubAdjustment = closedUB ? 0 : 1;
 
   // Set the lower and upper bound maps for all the variables that were
   // computed as affine expressions of the rest as the "detected expr" and
@@ -1140,7 +1102,8 @@ void FlatAffineValueConstraints::getSliceBounds(
           tmpClone->removeRedundantInequalities();
         }
         std::tie(lbMap, ubMap) = tmpClone->getLowerAndUpperBound(
-            pos, offset, num, getNumDimVars(), /*localExprs=*/{}, context);
+            pos, offset, num, getNumDimVars(), /*localExprs=*/{}, context,
+            closedUB);
       }
 
       // If the above fails, we'll just use the constant lower bound and the

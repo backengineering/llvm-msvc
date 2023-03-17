@@ -12,17 +12,50 @@
 
 #include <sstream>
 
-namespace {
+enum class CrashReason {
+  eInvalidCrashReason,
 
-void AppendFaultAddr(std::string &str, lldb::addr_t addr) {
+  // SIGSEGV crash reasons.
+  eInvalidAddress,
+  ePrivilegedAddress,
+  eBoundViolation,
+  eAsyncTagCheckFault,
+  eSyncTagCheckFault,
+
+  // SIGILL crash reasons.
+  eIllegalOpcode,
+  eIllegalOperand,
+  eIllegalAddressingMode,
+  eIllegalTrap,
+  ePrivilegedOpcode,
+  ePrivilegedRegister,
+  eCoprocessorError,
+  eInternalStackError,
+
+  // SIGBUS crash reasons,
+  eIllegalAlignment,
+  eIllegalAddress,
+  eHardwareError,
+
+  // SIGFPE crash reasons,
+  eIntegerDivideByZero,
+  eIntegerOverflow,
+  eFloatDivideByZero,
+  eFloatOverflow,
+  eFloatUnderflow,
+  eFloatInexactResult,
+  eFloatInvalidOperation,
+  eFloatSubscriptRange
+};
+
+static void AppendFaultAddr(std::string &str, lldb::addr_t addr) {
   std::stringstream ss;
   ss << " (fault address: 0x" << std::hex << addr << ")";
   str += ss.str();
 }
 
-#if defined(si_lower) && defined(si_upper)
-void AppendBounds(std::string &str, lldb::addr_t lower_bound,
-                  lldb::addr_t upper_bound, lldb::addr_t addr) {
+static void AppendBounds(std::string &str, lldb::addr_t lower_bound,
+                         lldb::addr_t upper_bound, lldb::addr_t addr) {
   llvm::raw_string_ostream stream(str);
   if ((unsigned long)addr < lower_bound)
     stream << ": lower bound violation ";
@@ -37,12 +70,9 @@ void AppendBounds(std::string &str, lldb::addr_t lower_bound,
   stream << ")";
   stream.flush();
 }
-#endif
 
-CrashReason GetCrashReasonForSIGSEGV(const siginfo_t &info) {
-  assert(info.si_signo == SIGSEGV);
-
-  switch (info.si_code) {
+static CrashReason GetCrashReasonForSIGSEGV(int code) {
+  switch (code) {
 #ifdef SI_KERNEL
   case SI_KERNEL:
     // Some platforms will occasionally send nonstandard spurious SI_KERNEL
@@ -75,10 +105,8 @@ CrashReason GetCrashReasonForSIGSEGV(const siginfo_t &info) {
   return CrashReason::eInvalidCrashReason;
 }
 
-CrashReason GetCrashReasonForSIGILL(const siginfo_t &info) {
-  assert(info.si_signo == SIGILL);
-
-  switch (info.si_code) {
+static CrashReason GetCrashReasonForSIGILL(int code) {
+  switch (code) {
   case ILL_ILLOPC:
     return CrashReason::eIllegalOpcode;
   case ILL_ILLOPN:
@@ -100,10 +128,8 @@ CrashReason GetCrashReasonForSIGILL(const siginfo_t &info) {
   return CrashReason::eInvalidCrashReason;
 }
 
-CrashReason GetCrashReasonForSIGFPE(const siginfo_t &info) {
-  assert(info.si_signo == SIGFPE);
-
-  switch (info.si_code) {
+static CrashReason GetCrashReasonForSIGFPE(int code) {
+  switch (code) {
   case FPE_INTDIV:
     return CrashReason::eIntegerDivideByZero;
   case FPE_INTOVF:
@@ -125,10 +151,8 @@ CrashReason GetCrashReasonForSIGFPE(const siginfo_t &info) {
   return CrashReason::eInvalidCrashReason;
 }
 
-CrashReason GetCrashReasonForSIGBUS(const siginfo_t &info) {
-  assert(info.si_signo == SIGBUS);
-
-  switch (info.si_code) {
+static CrashReason GetCrashReasonForSIGBUS(int code) {
+  switch (code) {
   case BUS_ADRALN:
     return CrashReason::eIllegalAlignment;
   case BUS_ADRERR:
@@ -139,27 +163,9 @@ CrashReason GetCrashReasonForSIGBUS(const siginfo_t &info) {
 
   return CrashReason::eInvalidCrashReason;
 }
-}
 
-std::string GetCrashReasonString(CrashReason reason, const siginfo_t &info) {
-  std::string str;
-
-// make sure that siginfo_t has the bound fields available.
-#if defined(si_lower) && defined(si_upper)
-  if (reason == CrashReason::eBoundViolation) {
-    str = "signal SIGSEGV";
-    AppendBounds(str, reinterpret_cast<uintptr_t>(info.si_lower),
-                 reinterpret_cast<uintptr_t>(info.si_upper),
-                 reinterpret_cast<uintptr_t>(info.si_addr));
-    return str;
-  }
-#endif
-
-  return GetCrashReasonString(reason,
-                              reinterpret_cast<uintptr_t>(info.si_addr));
-}
-
-std::string GetCrashReasonString(CrashReason reason, lldb::addr_t fault_addr) {
+static std::string GetCrashReasonString(CrashReason reason,
+                                        lldb::addr_t fault_addr) {
   std::string str;
 
   switch (reason) {
@@ -247,109 +253,50 @@ std::string GetCrashReasonString(CrashReason reason, lldb::addr_t fault_addr) {
   return str;
 }
 
-const char *CrashReasonAsString(CrashReason reason) {
-  const char *str = nullptr;
-
-  switch (reason) {
-  case CrashReason::eInvalidCrashReason:
-    str = "eInvalidCrashReason";
-    break;
-
-  // SIGSEGV crash reasons.
-  case CrashReason::eInvalidAddress:
-    str = "eInvalidAddress";
-    break;
-  case CrashReason::ePrivilegedAddress:
-    str = "ePrivilegedAddress";
-    break;
-  case CrashReason::eBoundViolation:
-    str = "eBoundViolation";
-    break;
-  case CrashReason::eAsyncTagCheckFault:
-    str = "eAsyncTagCheckFault";
-    break;
-  case CrashReason::eSyncTagCheckFault:
-    str = "eSyncTagCheckFault";
-    break;
-
-  // SIGILL crash reasons.
-  case CrashReason::eIllegalOpcode:
-    str = "eIllegalOpcode";
-    break;
-  case CrashReason::eIllegalOperand:
-    str = "eIllegalOperand";
-    break;
-  case CrashReason::eIllegalAddressingMode:
-    str = "eIllegalAddressingMode";
-    break;
-  case CrashReason::eIllegalTrap:
-    str = "eIllegalTrap";
-    break;
-  case CrashReason::ePrivilegedOpcode:
-    str = "ePrivilegedOpcode";
-    break;
-  case CrashReason::ePrivilegedRegister:
-    str = "ePrivilegedRegister";
-    break;
-  case CrashReason::eCoprocessorError:
-    str = "eCoprocessorError";
-    break;
-  case CrashReason::eInternalStackError:
-    str = "eInternalStackError";
-    break;
-
-  // SIGBUS crash reasons:
-  case CrashReason::eIllegalAlignment:
-    str = "eIllegalAlignment";
-    break;
-  case CrashReason::eIllegalAddress:
-    str = "eIllegalAddress";
-    break;
-  case CrashReason::eHardwareError:
-    str = "eHardwareError";
-    break;
-
-  // SIGFPE crash reasons:
-  case CrashReason::eIntegerDivideByZero:
-    str = "eIntegerDivideByZero";
-    break;
-  case CrashReason::eIntegerOverflow:
-    str = "eIntegerOverflow";
-    break;
-  case CrashReason::eFloatDivideByZero:
-    str = "eFloatDivideByZero";
-    break;
-  case CrashReason::eFloatOverflow:
-    str = "eFloatOverflow";
-    break;
-  case CrashReason::eFloatUnderflow:
-    str = "eFloatUnderflow";
-    break;
-  case CrashReason::eFloatInexactResult:
-    str = "eFloatInexactResult";
-    break;
-  case CrashReason::eFloatInvalidOperation:
-    str = "eFloatInvalidOperation";
-    break;
-  case CrashReason::eFloatSubscriptRange:
-    str = "eFloatSubscriptRange";
-    break;
-  }
-  return str;
-}
-
-CrashReason GetCrashReason(const siginfo_t &info) {
-  switch (info.si_signo) {
+static CrashReason GetCrashReason(int signo, int code) {
+  switch (signo) {
   case SIGSEGV:
-    return GetCrashReasonForSIGSEGV(info);
+    return GetCrashReasonForSIGSEGV(code);
   case SIGBUS:
-    return GetCrashReasonForSIGBUS(info);
+    return GetCrashReasonForSIGBUS(code);
   case SIGFPE:
-    return GetCrashReasonForSIGFPE(info);
+    return GetCrashReasonForSIGFPE(code);
   case SIGILL:
-    return GetCrashReasonForSIGILL(info);
+    return GetCrashReasonForSIGILL(code);
   }
 
   assert(false && "unexpected signal");
   return CrashReason::eInvalidCrashReason;
+}
+
+static std::string GetCrashReasonString(int signo, int code, lldb::addr_t addr,
+                                        std::optional<lldb::addr_t> lower,
+                                        std::optional<lldb::addr_t> upper) {
+  CrashReason reason = GetCrashReason(signo, code);
+
+  if (lower && upper) {
+    std::string str;
+    if (reason == CrashReason::eBoundViolation) {
+      str = "signal SIGSEGV";
+      AppendBounds(str, *lower, *upper, addr);
+      return str;
+    }
+  }
+
+  return GetCrashReasonString(reason, addr);
+}
+
+std::string GetCrashReasonString(const siginfo_t &info) {
+#if defined(si_lower) && defined(si_upper)
+  std::optional<lldb::addr_t> lower =
+      reinterpret_cast<lldb::addr_t>(info.si_lower);
+  std::optional<lldb::addr_t> upper =
+      reinterpret_cast<lldb::addr_t>(info.si_upper);
+#else
+  std::optional<lldb::addr_t> lower;
+  std::optional<lldb::addr_t> upper;
+#endif
+  return GetCrashReasonString(info.si_signo, info.si_code,
+                              reinterpret_cast<uintptr_t>(info.si_addr), lower,
+                              upper);
 }

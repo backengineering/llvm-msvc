@@ -73,7 +73,7 @@ public:
     DCHECK(isAligned(reinterpret_cast<uptr>(this), alignof(ThisT)));
     PossibleRegions.init();
     u32 Seed;
-    const u64 Time = getMonotonicTime();
+    const u64 Time = getMonotonicTimeFast();
     if (!getRandom(reinterpret_cast<void *>(&Seed), sizeof(Seed)))
       Seed = static_cast<u32>(
           Time ^ (reinterpret_cast<uptr>(SizeClassInfoArray) >> 6));
@@ -122,11 +122,14 @@ public:
     return reinterpret_cast<void *>(static_cast<uptr>(CompactPtr));
   }
 
-  uptr compactPtrGroup(CompactPtrT CompactPtr) {
-    return CompactPtr >> GroupSizeLog;
+  uptr compactPtrGroupBase(CompactPtrT CompactPtr) {
+    const uptr Mask = (static_cast<uptr>(1) << GroupSizeLog) - 1;
+    return CompactPtr & ~Mask;
   }
 
-  uptr batchGroupBase(uptr GroupId) { return GroupId << GroupSizeLog; }
+  uptr decompactGroupBase(uptr CompactPtrGroupBase) {
+    return CompactPtrGroupBase;
+  }
 
   TransferBatch *popBatch(CacheT *C, uptr ClassId) {
     DCHECK_LT(ClassId, NumClasses);
@@ -172,11 +175,12 @@ public:
     // together.
     bool SameGroup = true;
     for (u32 I = 1; I < Size; ++I) {
-      if (compactPtrGroup(Array[I - 1]) != compactPtrGroup(Array[I]))
+      if (compactPtrGroupBase(Array[I - 1]) != compactPtrGroupBase(Array[I]))
         SameGroup = false;
       CompactPtrT Cur = Array[I];
       u32 J = I;
-      while (J > 0 && compactPtrGroup(Cur) < compactPtrGroup(Array[J - 1])) {
+      while (J > 0 &&
+             compactPtrGroupBase(Cur) < compactPtrGroupBase(Array[J - 1])) {
         Array[J] = Array[J - 1];
         --J;
       }
@@ -277,14 +281,14 @@ public:
     return true;
   }
 
-  uptr releaseToOS() {
+  uptr releaseToOS(ReleaseToOS ReleaseType) {
     uptr TotalReleasedBytes = 0;
     for (uptr I = 0; I < NumClasses; I++) {
       if (I == SizeClassMap::BatchClassId)
         continue;
       SizeClassInfo *Sci = getSizeClassInfo(I);
       ScopedLock L(Sci->Mutex);
-      TotalReleasedBytes += releaseToOSMaybe(Sci, I, /*Force=*/true);
+      TotalReleasedBytes += releaseToOSMaybe(Sci, I, ReleaseType);
     }
     return TotalReleasedBytes;
   }
@@ -363,6 +367,11 @@ private:
     const uptr End = Region + MapSize;
     if (End != MapEnd)
       unmap(reinterpret_cast<void *>(End), MapEnd - End);
+
+    DCHECK_EQ(Region % RegionSize, 0U);
+    static_assert(Config::PrimaryRegionSizeLog == GroupSizeLog,
+                  "Memory group should be the same size as Region");
+
     return Region;
   }
 
@@ -417,7 +426,7 @@ private:
       REQUIRES(Sci->Mutex) {
     DCHECK_GT(Size, 0U);
 
-    auto CreateGroup = [&](uptr GroupId) {
+    auto CreateGroup = [&](uptr CompactPtrGroupBase) {
       BatchGroup *BG = nullptr;
       TransferBatch *TB = nullptr;
       if (ClassId == SizeClassMap::BatchClassId) {
@@ -476,7 +485,7 @@ private:
         TB->clear();
       }
 
-      BG->GroupId = GroupId;
+      BG->CompactPtrGroupBase = CompactPtrGroupBase;
       // TODO(chiahungduan): Avoid the use of push_back() in `Batches`.
       BG->Batches.push_front(TB);
       BG->PushedBlocks = 0;
@@ -518,7 +527,7 @@ private:
     if (ClassId == SizeClassMap::BatchClassId) {
       if (Cur == nullptr) {
         // Don't need to classify BatchClassId.
-        Cur = CreateGroup(/*GroupId=*/0);
+        Cur = CreateGroup(/*CompactPtrGroupBase=*/0);
         Sci->FreeList.push_front(Cur);
       }
       InsertBlocks(Cur, Array, Size);
@@ -529,13 +538,15 @@ private:
     // will be pushed next. `Prev` is the element right before `Cur`.
     BatchGroup *Prev = nullptr;
 
-    while (Cur != nullptr && compactPtrGroup(Array[0]) > Cur->GroupId) {
+    while (Cur != nullptr &&
+           compactPtrGroupBase(Array[0]) > Cur->CompactPtrGroupBase) {
       Prev = Cur;
       Cur = Cur->Next;
     }
 
-    if (Cur == nullptr || compactPtrGroup(Array[0]) != Cur->GroupId) {
-      Cur = CreateGroup(compactPtrGroup(Array[0]));
+    if (Cur == nullptr ||
+        compactPtrGroupBase(Array[0]) != Cur->CompactPtrGroupBase) {
+      Cur = CreateGroup(compactPtrGroupBase(Array[0]));
       if (Prev == nullptr)
         Sci->FreeList.push_front(Cur);
       else
@@ -546,7 +557,7 @@ private:
     // id.
     if (SameGroup) {
       for (u32 I = 0; I < Size; ++I)
-        DCHECK_EQ(compactPtrGroup(Array[I]), Cur->GroupId);
+        DCHECK_EQ(compactPtrGroupBase(Array[I]), Cur->CompactPtrGroupBase);
 
       InsertBlocks(Cur, Array, Size);
       return;
@@ -556,17 +567,19 @@ private:
     // push them to their group together.
     u32 Count = 1;
     for (u32 I = 1; I < Size; ++I) {
-      if (compactPtrGroup(Array[I - 1]) != compactPtrGroup(Array[I])) {
-        DCHECK_EQ(compactPtrGroup(Array[I - 1]), Cur->GroupId);
+      if (compactPtrGroupBase(Array[I - 1]) != compactPtrGroupBase(Array[I])) {
+        DCHECK_EQ(compactPtrGroupBase(Array[I - 1]), Cur->CompactPtrGroupBase);
         InsertBlocks(Cur, Array + I - Count, Count);
 
-        while (Cur != nullptr && compactPtrGroup(Array[I]) > Cur->GroupId) {
+        while (Cur != nullptr &&
+               compactPtrGroupBase(Array[I]) > Cur->CompactPtrGroupBase) {
           Prev = Cur;
           Cur = Cur->Next;
         }
 
-        if (Cur == nullptr || compactPtrGroup(Array[I]) != Cur->GroupId) {
-          Cur = CreateGroup(compactPtrGroup(Array[I]));
+        if (Cur == nullptr ||
+            compactPtrGroupBase(Array[I]) != Cur->CompactPtrGroupBase) {
+          Cur = CreateGroup(compactPtrGroupBase(Array[I]));
           DCHECK_NE(Prev, nullptr);
           Sci->FreeList.insert(Prev, Cur);
         }
@@ -662,14 +675,14 @@ private:
 
     if (ClassId != SizeClassMap::BatchClassId) {
       u32 N = 1;
-      uptr CurGroup = compactPtrGroup(ShuffleArray[0]);
+      uptr CurGroup = compactPtrGroupBase(ShuffleArray[0]);
       for (u32 I = 1; I < NumberOfBlocks; I++) {
-        if (UNLIKELY(compactPtrGroup(ShuffleArray[I]) != CurGroup)) {
+        if (UNLIKELY(compactPtrGroupBase(ShuffleArray[I]) != CurGroup)) {
           shuffle(ShuffleArray + I - N, N, &Sci->RandState);
           pushBlocksImpl(C, ClassId, Sci, ShuffleArray + I - N, N,
                          /*SameGroup=*/true);
           N = 1;
-          CurGroup = compactPtrGroup(ShuffleArray[I]);
+          CurGroup = compactPtrGroupBase(ShuffleArray[I]);
         } else {
           ++N;
         }
@@ -714,7 +727,8 @@ private:
   }
 
   NOINLINE uptr releaseToOSMaybe(SizeClassInfo *Sci, uptr ClassId,
-                                 bool Force = false) REQUIRES(Sci->Mutex) {
+                                 ReleaseToOS ReleaseType = ReleaseToOS::Normal)
+      REQUIRES(Sci->Mutex) {
     const uptr BlockSize = getSizeByClassId(ClassId);
     const uptr PageSize = getPageSizeCached();
 
@@ -730,22 +744,24 @@ private:
     if (BytesPushed < PageSize)
       return 0; // Nothing new to release.
 
-    const bool CheckDensity = BlockSize < PageSize / 16U;
+    const bool CheckDensity =
+        BlockSize < PageSize / 16U && ReleaseType != ReleaseToOS::ForceAll;
     // Releasing smaller blocks is expensive, so we want to make sure that a
     // significant amount of bytes are free, and that there has been a good
     // amount of batches pushed to the freelist before attempting to release.
     if (CheckDensity) {
-      if (!Force && BytesPushed < Sci->AllocatedUser / 16U)
+      if (ReleaseType == ReleaseToOS::Normal &&
+          BytesPushed < Sci->AllocatedUser / 16U)
         return 0;
     }
 
-    if (!Force) {
+    if (ReleaseType == ReleaseToOS::Normal) {
       const s32 IntervalMs = atomic_load_relaxed(&ReleaseToOsIntervalMs);
       if (IntervalMs < 0)
         return 0;
       if (Sci->ReleaseInfo.LastReleaseAtNs +
               static_cast<u64>(IntervalMs) * 1000000 >
-          getMonotonicTime()) {
+          getMonotonicTimeFast()) {
         return 0; // Memory was returned recently.
       }
     }
@@ -758,11 +774,12 @@ private:
     const uptr Base = First * RegionSize;
     const uptr NumberOfRegions = Last - First + 1U;
     const uptr GroupSize = (1U << GroupSizeLog);
-    const uptr CurRegionGroupId =
-        compactPtrGroup(compactPtr(ClassId, Sci->CurrentRegion));
+    const uptr CurGroupBase =
+        compactPtrGroupBase(compactPtr(ClassId, Sci->CurrentRegion));
 
     ReleaseRecorder Recorder(Base);
-    PageReleaseContext Context(BlockSize, RegionSize, NumberOfRegions);
+    PageReleaseContext Context(BlockSize, NumberOfRegions,
+                               /*ReleaseSize=*/RegionSize);
 
     auto DecompactPtr = [](CompactPtrT CompactPtr) {
       return reinterpret_cast<uptr>(CompactPtr);
@@ -773,9 +790,13 @@ private:
       if (PushedBytesDelta * BlockSize < PageSize)
         continue;
 
-      uptr AllocatedGroupSize = BG.GroupId == CurRegionGroupId
+      const uptr GroupBase = decompactGroupBase(BG.CompactPtrGroupBase);
+      // The `GroupSize` may not be divided by `BlockSize`, which means there is
+      // an unused space at the end of Region. Exclude that space to avoid
+      // unused page map entry.
+      uptr AllocatedGroupSize = GroupBase == CurGroupBase
                                     ? Sci->CurrentRegionAllocated
-                                    : GroupSize;
+                                    : roundDownSlow(GroupSize, BlockSize);
       if (AllocatedGroupSize == 0)
         continue;
 
@@ -795,33 +816,25 @@ private:
       BG.PushedBlocksAtLastCheckpoint = BG.PushedBlocks;
 
       const uptr MaxContainedBlocks = AllocatedGroupSize / BlockSize;
-      // The first condition to do range marking is that all the blocks in the
-      // range need to be from the same region. In SizeClassAllocator32, this is
-      // true when GroupSize and RegionSize are the same. Another tricky case,
-      // while range marking, the last block in a region needs the logic to mark
-      // the last page. However, in SizeClassAllocator32, the RegionSize
-      // recorded in PageReleaseContext may be different from
-      // `CurrentRegionAllocated` of the current region. This exception excludes
-      // the chance of doing range marking for the current region.
-      const bool CanDoRangeMark =
-          GroupSize == RegionSize && BG.GroupId != CurRegionGroupId;
+      const uptr RegionIndex = (GroupBase - Base) / RegionSize;
 
-      if (CanDoRangeMark && NumBlocks == MaxContainedBlocks) {
+      if (NumBlocks == MaxContainedBlocks) {
         for (const auto &It : BG.Batches)
           for (u16 I = 0; I < It.getCount(); ++I)
-            DCHECK_EQ(compactPtrGroup(It.get(I)), BG.GroupId);
+            DCHECK_EQ(compactPtrGroupBase(It.get(I)), BG.CompactPtrGroupBase);
 
-        const uptr From = batchGroupBase(BG.GroupId);
-        const uptr To = batchGroupBase(BG.GroupId) + AllocatedGroupSize;
-        Context.markRangeAsAllCounted(From, To, Base);
+        const uptr To = GroupBase + AllocatedGroupSize;
+        Context.markRangeAsAllCounted(GroupBase, To, GroupBase, RegionIndex,
+                                      AllocatedGroupSize);
       } else {
-        if (CanDoRangeMark)
-          DCHECK_LT(NumBlocks, MaxContainedBlocks);
+        DCHECK_LT(NumBlocks, MaxContainedBlocks);
 
         // Note that we don't always visit blocks in each BatchGroup so that we
         // may miss the chance of releasing certain pages that cross
         // BatchGroups.
-        Context.markFreeBlocks(BG.Batches, DecompactPtr, Base);
+        Context.markFreeBlocksInRegion(BG.Batches, DecompactPtr, GroupBase,
+                                       RegionIndex, AllocatedGroupSize,
+                                       /*MayContainLastBlockInRegion=*/true);
       }
     }
 
@@ -840,7 +853,7 @@ private:
       Sci->ReleaseInfo.LastReleasedBytes = Recorder.getReleasedBytes();
       TotalReleasedBytes += Sci->ReleaseInfo.LastReleasedBytes;
     }
-    Sci->ReleaseInfo.LastReleaseAtNs = getMonotonicTime();
+    Sci->ReleaseInfo.LastReleaseAtNs = getMonotonicTimeFast();
 
     return TotalReleasedBytes;
   }

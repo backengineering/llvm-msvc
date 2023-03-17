@@ -5917,8 +5917,15 @@ bool Sema::CheckCXXDefaultArgExpr(SourceLocation CallLoc, FunctionDecl *FD,
     assert(!InitWithCleanup->getNumObjects() &&
            "default argument expression has capturing blocks?");
   }
+  // C++ [expr.const]p15.1:
+  //   An expression or conversion is in an immediate function context if it is
+  //   potentially evaluated and [...] its innermost enclosing non-block scope
+  //   is a function parameter scope of an immediate function.
   EnterExpressionEvaluationContext EvalContext(
-      *this, ExpressionEvaluationContext::PotentiallyEvaluated, Param);
+      *this,
+      FD->isConsteval() ? ExpressionEvaluationContext::ImmediateFunctionContext
+                        : ExpressionEvaluationContext::PotentiallyEvaluated,
+      Param);
   ExprEvalContexts.back().IsCurrentlyCheckingDefaultArgumentOrInitializer =
       SkipImmediateInvocations;
   MarkDeclarationsReferencedInExpr(Init, /*SkipLocalVariables*/ true);
@@ -6005,8 +6012,16 @@ ExprResult Sema::BuildCXXDefaultArgExpr(SourceLocation CallLoc,
     // Mark that we are replacing a default argument first.
     // If we are instantiating a template we won't have to
     // retransform immediate calls.
+    // C++ [expr.const]p15.1:
+    //   An expression or conversion is in an immediate function context if it
+    //   is potentially evaluated and [...] its innermost enclosing non-block
+    //   scope is a function parameter scope of an immediate function.
     EnterExpressionEvaluationContext EvalContext(
-        *this, ExpressionEvaluationContext::PotentiallyEvaluated, Param);
+        *this,
+        FD->isConsteval()
+            ? ExpressionEvaluationContext::ImmediateFunctionContext
+            : ExpressionEvaluationContext::PotentiallyEvaluated,
+        Param);
 
     if (Param->hasUninstantiatedDefaultArg()) {
       if (InstantiateDefaultArgument(CallLoc, FD, Param))
@@ -19889,16 +19904,11 @@ static void DoMarkVarDeclReferenced(
           DRE->setDecl(DRE->getDecl());
         else if (auto *ME = dyn_cast_or_null<MemberExpr>(E))
           ME->setMemberDecl(ME->getMemberDecl());
-      } else if (FirstInstantiation ||
-                 isa<VarTemplateSpecializationDecl>(Var)) {
-        // FIXME: For a specialization of a variable template, we don't
-        // distinguish between "declaration and type implicitly instantiated"
-        // and "implicit instantiation of definition requested", so we have
-        // no direct way to avoid enqueueing the pending instantiation
-        // multiple times.
+      } else if (FirstInstantiation) {
         SemaRef.PendingInstantiations
             .push_back(std::make_pair(Var, PointOfInstantiation));
       } else {
+        bool Inserted = false;
         for (auto &I : SemaRef.SavedPendingInstantiations) {
           auto Iter = llvm::find_if(
               I, [Var](const Sema::PendingImplicitInstantiation &P) {
@@ -19907,9 +19917,19 @@ static void DoMarkVarDeclReferenced(
           if (Iter != I.end()) {
             SemaRef.PendingInstantiations.push_back(*Iter);
             I.erase(Iter);
+            Inserted = true;
             break;
           }
         }
+
+        // FIXME: For a specialization of a variable template, we don't
+        // distinguish between "declaration and type implicitly instantiated"
+        // and "implicit instantiation of definition requested", so we have
+        // no direct way to avoid enqueueing the pending instantiation
+        // multiple times.
+        if (isa<VarTemplateSpecializationDecl>(Var) && !Inserted)
+          SemaRef.PendingInstantiations
+            .push_back(std::make_pair(Var, PointOfInstantiation));
       }
     }
   }

@@ -392,8 +392,25 @@ static bool collectSRATypes(DenseMap<uint64_t, GlobalPart> &Parts,
       if (isa<ScalableVectorType>(Ty))
         return false;
 
+      auto IsStored = [GV, &DL, &Offset](Value *V) {
+        auto *SI = dyn_cast<StoreInst>(V);
+        if (!SI)
+          return false;
+
+        Constant *StoredConst = dyn_cast<Constant>(SI->getOperand(0));
+        if (!StoredConst)
+          return true;
+
+        // Don't consider stores that only write the initializer value.
+        if (Constant *Result = ConstantFoldLoadFromConst(
+                GV->getInitializer(), StoredConst->getType(), Offset, DL))
+          return Result != StoredConst;
+
+        return true;
+      };
+
       It->second.IsLoaded |= isa<LoadInst>(V);
-      It->second.IsStored |= isa<StoreInst>(V);
+      It->second.IsStored |= IsStored(V);
       continue;
     }
 
@@ -423,6 +440,7 @@ static void transferSRADebugInfo(GlobalVariable *GV, GlobalVariable *NGV,
     DIExpression *Expr = GVE->getExpression();
     int64_t CurVarOffsetInBytes = 0;
     uint64_t CurVarOffsetInBits = 0;
+    uint64_t FragmentEndInBits = FragmentOffsetInBits + FragmentSizeInBits;
 
     // Calculate the offset (Bytes), Continue if unknown.
     if (!Expr->extractIfOffset(CurVarOffsetInBytes))
@@ -436,27 +454,50 @@ static void transferSRADebugInfo(GlobalVariable *GV, GlobalVariable *NGV,
     CurVarOffsetInBits = CHAR_BIT * (uint64_t)CurVarOffsetInBytes;
 
     // Current var starts after the fragment, ignore.
-    if (CurVarOffsetInBits >= (FragmentOffsetInBits + FragmentSizeInBits))
+    if (CurVarOffsetInBits >= FragmentEndInBits)
       continue;
 
     uint64_t CurVarSize = Var->getType()->getSizeInBits();
+    uint64_t CurVarEndInBits = CurVarOffsetInBits + CurVarSize;
     // Current variable ends before start of fragment, ignore.
-    if (CurVarSize != 0 &&
-        (CurVarOffsetInBits + CurVarSize) <= FragmentOffsetInBits)
+    if (CurVarSize != 0 && /* CurVarSize is known */
+        CurVarEndInBits <= FragmentOffsetInBits)
       continue;
 
-    // Current variable fits in the fragment.
-    if (CurVarOffsetInBits == FragmentOffsetInBits &&
-        CurVarSize == FragmentSizeInBits)
-      Expr = DIExpression::get(Expr->getContext(), {});
-    // If the FragmentSize is smaller than the variable,
+    // Current variable fits in (not greater than) the fragment,
+    // does not need fragment expression.
+    if (CurVarSize != 0 && /* CurVarSize is known */
+        CurVarOffsetInBits >= FragmentOffsetInBits &&
+        CurVarEndInBits <= FragmentEndInBits) {
+      uint64_t CurVarOffsetInFragment =
+          (CurVarOffsetInBits - FragmentOffsetInBits) / 8;
+      if (CurVarOffsetInFragment != 0)
+        Expr = DIExpression::get(Expr->getContext(), {dwarf::DW_OP_plus_uconst,
+                                                      CurVarOffsetInFragment});
+      else
+        Expr = DIExpression::get(Expr->getContext(), {});
+      auto *NGVE =
+          DIGlobalVariableExpression::get(GVE->getContext(), Var, Expr);
+      NGV->addDebugInfo(NGVE);
+      continue;
+    }
+    // Current variable does not fit in single fragment,
     // emit a fragment expression.
-    else if (FragmentSizeInBits < VarSize) {
+    if (FragmentSizeInBits < VarSize) {
+      if (CurVarOffsetInBits > FragmentOffsetInBits)
+        continue;
+      uint64_t CurVarFragmentOffsetInBits =
+          FragmentOffsetInBits - CurVarOffsetInBits;
+      uint64_t CurVarFragmentSizeInBits = FragmentSizeInBits;
+      if (CurVarSize != 0 && CurVarEndInBits < FragmentEndInBits)
+        CurVarFragmentSizeInBits -= (FragmentEndInBits - CurVarEndInBits);
+      if (CurVarOffsetInBits)
+        Expr = DIExpression::get(Expr->getContext(), {});
       if (auto E = DIExpression::createFragmentExpression(
-              Expr, FragmentOffsetInBits, FragmentSizeInBits))
+              Expr, CurVarFragmentOffsetInBits, CurVarFragmentSizeInBits))
         Expr = *E;
       else
-        return;
+        continue;
     }
     auto *NGVE = DIGlobalVariableExpression::get(GVE->getContext(), Var, Expr);
     NGV->addDebugInfo(NGVE);
@@ -497,12 +538,12 @@ static GlobalVariable *SRAGlobal(GlobalVariable *GV, const DataLayout &DL) {
 
   // Check that the types are non-overlapping.
   uint64_t Offset = 0;
-  for (const auto &Pair : TypesVector) {
+  for (const auto &[OffsetForTy, Ty] : TypesVector) {
     // Overlaps with previous type.
-    if (Pair.first < Offset)
+    if (OffsetForTy < Offset)
       return nullptr;
 
-    Offset = Pair.first + DL.getTypeAllocSize(Pair.second);
+    Offset = OffsetForTy + DL.getTypeAllocSize(Ty);
   }
 
   // Some accesses go beyond the end of the global, don't bother.
@@ -512,16 +553,16 @@ static GlobalVariable *SRAGlobal(GlobalVariable *GV, const DataLayout &DL) {
   // Collect initializers for new globals.
   Constant *OrigInit = GV->getInitializer();
   DenseMap<uint64_t, Constant *> Initializers;
-  for (const auto &Pair : TypesVector) {
-    Constant *NewInit = ConstantFoldLoadFromConst(OrigInit, Pair.second,
-                                                  APInt(64, Pair.first), DL);
+  for (const auto &[OffsetForTy, Ty] : TypesVector) {
+    Constant *NewInit =
+        ConstantFoldLoadFromConst(OrigInit, Ty, APInt(64, OffsetForTy), DL);
     if (!NewInit) {
       LLVM_DEBUG(dbgs() << "Global SRA: Failed to evaluate initializer of "
-                        << *GV << " with type " << *Pair.second << " at offset "
-                        << Pair.first << "\n");
+                        << *GV << " with type " << *Ty << " at offset "
+                        << OffsetForTy << "\n");
       return nullptr;
     }
-    Initializers.insert({Pair.first, NewInit});
+    Initializers.insert({OffsetForTy, NewInit});
   }
 
   LLVM_DEBUG(dbgs() << "PERFORMING GLOBAL SRA ON: " << *GV << "\n");
@@ -534,26 +575,24 @@ static GlobalVariable *SRAGlobal(GlobalVariable *GV, const DataLayout &DL) {
   // Create replacement globals.
   DenseMap<uint64_t, GlobalVariable *> NewGlobals;
   unsigned NameSuffix = 0;
-  for (auto &Pair : TypesVector) {
-    uint64_t Offset = Pair.first;
-    Type *Ty = Pair.second;
+  for (auto &[OffsetForTy, Ty] : TypesVector) {
     GlobalVariable *NGV = new GlobalVariable(
         *GV->getParent(), Ty, false, GlobalVariable::InternalLinkage,
-        Initializers[Offset], GV->getName() + "." + Twine(NameSuffix++), GV,
-        GV->getThreadLocalMode(), GV->getAddressSpace());
+        Initializers[OffsetForTy], GV->getName() + "." + Twine(NameSuffix++),
+        GV, GV->getThreadLocalMode(), GV->getAddressSpace());
     NGV->copyAttributesFrom(GV);
-    NewGlobals.insert({Offset, NGV});
+    NewGlobals.insert({OffsetForTy, NGV});
 
     // Calculate the known alignment of the field.  If the original aggregate
     // had 256 byte alignment for example, something might depend on that:
     // propagate info to each field.
-    Align NewAlign = commonAlignment(StartAlignment, Offset);
+    Align NewAlign = commonAlignment(StartAlignment, OffsetForTy);
     if (NewAlign > DL.getABITypeAlign(Ty))
       NGV->setAlignment(NewAlign);
 
     // Copy over the debug info for the variable.
-    transferSRADebugInfo(GV, NGV, Offset * 8, DL.getTypeAllocSizeInBits(Ty),
-                         VarSize);
+    transferSRADebugInfo(GV, NGV, OffsetForTy * 8,
+                         DL.getTypeAllocSizeInBits(Ty), VarSize);
   }
 
   // Replace uses of the original global with uses of the new global.

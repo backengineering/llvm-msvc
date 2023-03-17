@@ -278,6 +278,10 @@ def err_avx_calling_convention : Error<warn_avx_calling_convention.Summary>;
 def err_alias_to_undefined : Error<
   "%select{alias|ifunc}0 must point to a defined "
   "%select{variable or |}1function">;
+def note_alias_requires_mangled_name : Note<
+  "the %select{function or variable|function}0 specified in an %select{alias|ifunc}1 must refer to its mangled name">;
+def note_alias_mangled_name_alternative: Note<
+  "function by that name is mangled as \"%0\"">;
 def warn_alias_to_weak_alias : Warning<
   "%select{alias|ifunc}2 will always resolve to %0 even if weak definition of "
   "%1 is overridden">,
@@ -304,6 +308,10 @@ def warn_atomic_op_oversized : Warning<
   "significant performance penalty"
   "; the access size (%0 bytes) exceeds the max lock-free size (%1  bytes)">,
 InGroup<AtomicAlignment>;
+
+def warn_sync_op_misaligned : Warning<
+  "__sync builtin operation MUST have natural alignment (consider using __atomic).">,
+  InGroup<SyncAlignment>;
 
 def warn_alias_with_section : Warning<
   "%select{alias|ifunc}1 will not be in section '%0' but in the same section "

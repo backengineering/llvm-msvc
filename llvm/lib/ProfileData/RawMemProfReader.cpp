@@ -149,20 +149,22 @@ Error report(Error E, const StringRef Context) {
 }
 
 bool isRuntimePath(const StringRef Path) {
-  return StringRef(llvm::sys::path::convert_to_slash(Path))
-      .contains("memprof/memprof_");
+  const StringRef Filename = llvm::sys::path::filename(Path);
+  // This list should be updated in case new files with additional interceptors
+  // are added to the memprof runtime.
+  return Filename.equals("memprof_malloc_linux.cpp") ||
+         Filename.equals("memprof_interceptors.cpp") ||
+         Filename.equals("memprof_new_delete.cpp");
 }
 
 std::string getBuildIdString(const SegmentEntry &Entry) {
-  constexpr size_t Size = sizeof(Entry.BuildId) / sizeof(uint8_t);
-  constexpr uint8_t Zeros[Size] = {0};
   // If the build id is unset print a helpful string instead of all zeros.
-  if (memcmp(Entry.BuildId, Zeros, Size) == 0)
+  if (Entry.BuildIdSize == 0)
     return "<None>";
 
   std::string Str;
   raw_string_ostream OS(Str);
-  for (size_t I = 0; I < Size; I++) {
+  for (size_t I = 0; I < Entry.BuildIdSize; I++) {
     OS << format_hex_no_prefix(Entry.BuildId[I], 2);
   }
   return OS.str();

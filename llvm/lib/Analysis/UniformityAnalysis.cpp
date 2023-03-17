@@ -32,12 +32,10 @@ bool llvm::GenericUniformityAnalysisImpl<SSAContext>::markDefsDivergent(
 
 template <> void llvm::GenericUniformityAnalysisImpl<SSAContext>::initialize() {
   for (auto &I : instructions(F)) {
-    if (TTI->isSourceOfDivergence(&I)) {
-      assert(!I.isTerminator());
+    if (TTI->isSourceOfDivergence(&I))
       markDivergent(I);
-    } else if (TTI->isAlwaysUniform(&I)) {
+    else if (TTI->isAlwaysUniform(&I))
       addUniformOverride(I);
-    }
   }
   for (auto &Arg : F.args()) {
     if (TTI->isSourceOfDivergence(&Arg)) {
@@ -50,13 +48,10 @@ template <>
 void llvm::GenericUniformityAnalysisImpl<SSAContext>::pushUsers(
     const Value *V) {
   for (const auto *User : V->users()) {
-    const auto *UserInstr = dyn_cast<const Instruction>(User);
-    if (!UserInstr)
-      continue;
-    if (isAlwaysUniform(*UserInstr))
-      continue;
-    if (markDivergent(*UserInstr)) {
-      Worklist.push_back(UserInstr);
+    if (const auto *UserInstr = dyn_cast<const Instruction>(User)) {
+      if (markDivergent(*UserInstr)) {
+        Worklist.push_back(UserInstr);
+      }
     }
   }
 }
@@ -79,6 +74,19 @@ bool llvm::GenericUniformityAnalysisImpl<SSAContext>::usesValueFromCycle(
       if (DefCycle.contains(I->getParent()))
         return true;
     }
+  }
+  return false;
+}
+
+template <>
+bool llvm::GenericUniformityAnalysisImpl<SSAContext>::isDivergentUse(
+    const Use &U) const {
+  const auto *V = U.get();
+  if (isDivergent(V))
+    return true;
+  if (const auto *DefInstr = dyn_cast<Instruction>(V)) {
+    const auto *UseInstr = cast<Instruction>(U.getUser());
+    return isTemporalDivergent(*UseInstr->getParent(), *DefInstr);
   }
   return false;
 }
@@ -127,6 +135,7 @@ UniformityInfoWrapperPass::UniformityInfoWrapperPass() : FunctionPass(ID) {
 INITIALIZE_PASS_BEGIN(UniformityInfoWrapperPass, "uniformity",
                       "Uniformity Analysis", true, true)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(CycleInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
 INITIALIZE_PASS_END(UniformityInfoWrapperPass, "uniformity",
                     "Uniformity Analysis", true, true)
@@ -134,7 +143,7 @@ INITIALIZE_PASS_END(UniformityInfoWrapperPass, "uniformity",
 void UniformityInfoWrapperPass::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
   AU.addRequired<DominatorTreeWrapperPass>();
-  AU.addRequired<CycleInfoWrapperPass>();
+  AU.addRequiredTransitive<CycleInfoWrapperPass>();
   AU.addRequired<TargetTransformInfoWrapperPass>();
 }
 

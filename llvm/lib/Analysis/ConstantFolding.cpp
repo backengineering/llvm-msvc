@@ -822,7 +822,8 @@ Constant *SymbolicallyEvaluateBinop(unsigned Opc, Constant *Op0, Constant *Op1,
 /// If array indices are not pointer-sized integers, explicitly cast them so
 /// that they aren't implicitly casted by the getelementptr.
 Constant *CastGEPIndices(Type *SrcElemTy, ArrayRef<Constant *> Ops,
-                         Type *ResultTy, std::optional<unsigned> InRangeIndex,
+                         Type *ResultTy, bool InBounds,
+                         std::optional<unsigned> InRangeIndex,
                          const DataLayout &DL, const TargetLibraryInfo *TLI) {
   Type *IntIdxTy = DL.getIndexType(ResultTy);
   Type *IntIdxScalarTy = IntIdxTy->getScalarType();
@@ -851,7 +852,7 @@ Constant *CastGEPIndices(Type *SrcElemTy, ArrayRef<Constant *> Ops,
     return nullptr;
 
   Constant *C = ConstantExpr::getGetElementPtr(
-      SrcElemTy, Ops[0], NewIdxs, /*InBounds=*/false, InRangeIndex);
+      SrcElemTy, Ops[0], NewIdxs, InBounds, InRangeIndex);
   return ConstantFoldConstant(C, DL, TLI);
 }
 
@@ -886,7 +887,8 @@ Constant *SymbolicallyEvaluateGEP(const GEPOperator *GEP,
     return nullptr;
 
   if (Constant *C = CastGEPIndices(SrcElemTy, Ops, ResTy,
-                                   GEP->getInRangeIndex(), DL, TLI))
+                                   GEP->isInBounds(), GEP->getInRangeIndex(),
+                                   DL, TLI))
     return C;
 
   Constant *Ptr = Ops[0];
@@ -1050,11 +1052,15 @@ Constant *ConstantFoldInstOperandsImpl(const Value *InstOrCE, unsigned Opcode,
     return ConstantFoldCastOperand(Opcode, Ops[0], DestTy, DL);
 
   if (auto *GEP = dyn_cast<GEPOperator>(InstOrCE)) {
+    Type *SrcElemTy = GEP->getSourceElementType();
+    if (!ConstantExpr::isSupportedGetElementPtr(SrcElemTy))
+      return nullptr;
+
     if (Constant *C = SymbolicallyEvaluateGEP(GEP, Ops, DL, TLI))
       return C;
 
-    return ConstantExpr::getGetElementPtr(GEP->getSourceElementType(), Ops[0],
-                                          Ops.slice(1), GEP->isInBounds(),
+    return ConstantExpr::getGetElementPtr(SrcElemTy, Ops[0], Ops.slice(1),
+                                          GEP->isInBounds(),
                                           GEP->getInRangeIndex());
   }
 
@@ -2630,18 +2636,18 @@ static Constant *ConstantFoldScalarCall2(StringRef Name,
     } else if (auto *Op2C = dyn_cast<ConstantInt>(Operands[1])) {
       switch (IntrinsicID) {
       case Intrinsic::is_fpclass: {
-        uint32_t Mask = Op2C->getZExtValue();
+        FPClassTest Mask = static_cast<FPClassTest>(Op2C->getZExtValue());
         bool Result =
           ((Mask & fcSNan) && Op1V.isNaN() && Op1V.isSignaling()) ||
           ((Mask & fcQNan) && Op1V.isNaN() && !Op1V.isSignaling()) ||
-          ((Mask & fcNegInf) && Op1V.isInfinity() && Op1V.isNegative()) ||
+          ((Mask & fcNegInf) && Op1V.isNegInfinity()) ||
           ((Mask & fcNegNormal) && Op1V.isNormal() && Op1V.isNegative()) ||
           ((Mask & fcNegSubnormal) && Op1V.isDenormal() && Op1V.isNegative()) ||
           ((Mask & fcNegZero) && Op1V.isZero() && Op1V.isNegative()) ||
           ((Mask & fcPosZero) && Op1V.isZero() && !Op1V.isNegative()) ||
           ((Mask & fcPosSubnormal) && Op1V.isDenormal() && !Op1V.isNegative()) ||
           ((Mask & fcPosNormal) && Op1V.isNormal() && !Op1V.isNegative()) ||
-          ((Mask & fcPosInf) && Op1V.isInfinity() && !Op1V.isNegative());
+          ((Mask & fcPosInf) && Op1V.isPosInfinity());
         return ConstantInt::get(Ty, Result);
       }
       default:

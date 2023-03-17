@@ -2474,8 +2474,8 @@ operand bundle to not miscompile programs containing it.
 - The bundle operands for an unknown operand bundle escape in unknown
   ways before control is transferred to the callee or invokee.
 - Calls and invokes with operand bundles have unknown read / write
-  effect on the heap on entry and exit (even if the call target is
-  ``readnone`` or ``readonly``), unless they're overridden with
+  effect on the heap on entry and exit (even if the call target specifies
+  a ``memory`` attribute), unless they're overridden with
   callsite specific attributes.
 - An operand bundle at a call site cannot change the implementation
   of the called function.  Inter-procedural optimizations work as
@@ -6472,14 +6472,14 @@ representing the maximum relative error, for example:
 ^^^^^^^^^^^^^^^^^^^^
 
 ``range`` metadata may be attached only to ``load``, ``call`` and ``invoke`` of
-integer types. It expresses the possible ranges the loaded value or the value
-returned by the called function at this call site is in. If the loaded or
-returned value is not in the specified range, a poison value is returned
-instead. The ranges are represented with a flattened list of integers. The
-loaded value or the value returned is known to be in the union of the ranges
+integer or vector of integer types. It expresses the possible ranges the loaded
+value or the value returned by the called function at this call site is in. If
+the loaded or returned value is not in the specified range, a poison value is
+returned instead. The ranges are represented with a flattened list of integers.
+The loaded value or the value returned is known to be in the union of the ranges
 defined by each consecutive pair. Each pair has the following properties:
 
--  The type must match the type loaded by the instruction.
+-  The type must match the scalar type of the instruction.
 -  The pair ``a,b`` represents the range ``[a,b)``.
 -  Both ``a`` and ``b`` are constants.
 -  The range is allowed to wrap.
@@ -6488,6 +6488,8 @@ defined by each consecutive pair. Each pair has the following properties:
 
 In addition, the pairs must be in signed order of the lower bound and
 they must be non-contiguous.
+
+For vector-typed instructions, the range is applied element-wise.
 
 Examples:
 
@@ -6498,6 +6500,7 @@ Examples:
       %c = call i8 @foo(),       !range !2 ; Can only be 0, 1, 3, 4 or 5
       %d = invoke i8 @bar() to label %cont
              unwind label %lpad, !range !3 ; Can only be -2, -1, 3, 4 or 5
+      %e = load <2 x i8>, ptr %x, !range 0 ; Can only be <0 or 1, 0 or 1>
     ...
     !0 = !{ i8 0, i8 2 }
     !1 = !{ i8 255, i8 2 }
@@ -7455,6 +7458,72 @@ Example:
 
 Clang emits ``kcfi_type`` metadata nodes for address-taken functions with
 ``-fsanitize=kcfi``.
+
+.. _md_memprof:
+
+'``memprof``' Metadata
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``memprof`` metadata is used to record memory profile data on heap
+allocation calls. Multiple context-sensitive profiles can be represented
+with a single ``memprof`` metadata attachment.
+
+Example:
+
+.. code-block:: text
+
+    %call = call ptr @_Znam(i64 10), !memprof !0, !callsite !5
+    !0 = !{!1, !3}
+    !1 = !{!2, !"cold"}
+    !2 = !{i64 4854880825882961848, i64 1905834578520680781}
+    !3 = !{!4, !"notcold"}
+    !4 = !{i64 4854880825882961848, i64 -6528110295079665978}
+    !5 = !{i64 4854880825882961848}
+
+Each operand in the ``memprof`` metadata attachment describes the profiled
+behavior of memory allocated by the associated allocation for a given context.
+In the above example, there were 2 profiled contexts, one allocating memory
+that was typically cold and one allocating memory that was typically not cold.
+
+The format of the metadata describing a context specific profile (e.g.
+``!1`` and ``!3`` above) requires a first operand that is a metadata node
+describing the context, followed by a list of string metadata tags describing
+the profile behavior (e.g. ``cold`` and ``notcold``) above. The metadata nodes
+describing the context (e.g. ``!2`` and ``!4`` above) are unique ids
+corresponding to callsites, which can be matched to associated IR calls via
+:ref:`callsite metadata<md_callsite>`. In practice these ids are formed via
+a hash of the callsite's debug info, and the associated call may be in a
+different module. The contexts are listed in order from leaf-most call (the
+allocation itself) to the outermost callsite context required for uniquely
+identifying the described profile behavior (note this may not be the top of
+the profiled call stack).
+
+.. _md_callsite:
+
+'``callsite``' Metadata
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``callsite`` metadata is used to identify callsites involved in memory
+profile contexts described in :ref:`memprof metadata<md_memprof>`.
+
+It is attached both to the profile allocation calls (see the example in
+:ref:`memprof metadata<md_memprof>`), as well as to other callsites
+in profiled contexts described in heap allocation ``memprof`` metadata.
+
+Example:
+
+.. code-block:: text
+
+    %call = call ptr @_Z1Bb(void), !callsite !0
+    !0 = !{i64 -6528110295079665978, i64 5462047985461644151}
+
+Each operand in the ``callsite`` metadata attachment is a unique id
+corresponding to a callsite (possibly inlined). In practice these ids are
+formed via a hash of the callsite's debug info. If the call was not inlined
+into any callers it will contain a single operand (id). If it was inlined
+it will contain a list of ids, including the ids of the callsites in the
+full inline sequence, in order from the leaf-most call's id to the outermost
+inlined call.
 
 Module Flags Metadata
 =====================
@@ -10758,14 +10827,14 @@ to LLVM:
       return &s[1].Z.B[5][13];
     }
 
-The LLVM code generated by Clang is:
+The LLVM code generated by Clang is approximately:
 
 .. code-block:: llvm
 
     %struct.RT = type { i8, [10 x [20 x i32]], i8 }
     %struct.ST = type { i32, double, %struct.RT }
 
-    define ptr @foo(ptr %s) nounwind uwtable readnone optsize ssp {
+    define ptr @foo(ptr %s) {
     entry:
       %arrayidx = getelementptr inbounds %struct.ST, ptr %s, i64 1, i32 2, i32 1, i64 5, i64 13
       ret ptr %arrayidx
@@ -12885,7 +12954,7 @@ Syntax:
       declare <pointer type>
         @llvm.experimental.gc.get.pointer.base(
           <pointer type> readnone nocapture %derived_ptr)
-          nounwind readnone willreturn
+          nounwind willreturn memory(none)
 
 Overview:
 """""""""
@@ -12923,7 +12992,7 @@ Syntax:
       declare i64
         @llvm.experimental.gc.get.pointer.offset(
           <pointer type> readnone nocapture %derived_ptr)
-          nounwind readnone willreturn
+          nounwind willreturn memory(none)
 
 Overview:
 """""""""
@@ -25592,7 +25661,7 @@ Syntax:
 
 ::
 
-      declare type @llvm.ssa.copy(type %operand) returned(1) readnone
+      declare type @llvm.ssa.copy(type returned %operand) memory(none)
 
 Arguments:
 """"""""""
@@ -25619,7 +25688,7 @@ Syntax:
 
 ::
 
-      declare i1 @llvm.type.test(ptr %ptr, metadata %type) nounwind readnone
+      declare i1 @llvm.type.test(ptr %ptr, metadata %type) nounwind memory(none)
 
 
 Arguments:
@@ -25644,7 +25713,7 @@ Syntax:
 
 ::
 
-      declare {ptr, i1} @llvm.type.checked.load(ptr %ptr, i32 %offset, metadata %type) argmemonly nounwind readonly
+      declare {ptr, i1} @llvm.type.checked.load(ptr %ptr, i32 %offset, metadata %type) nounwind memory(argmem: read)
 
 
 Arguments:
@@ -25734,7 +25803,7 @@ Syntax:
 
 ::
 
-      declare void @llvm.donothing() nounwind readnone
+      declare void @llvm.donothing() nounwind memory(none)
 
 Overview:
 """""""""
@@ -26030,7 +26099,7 @@ Syntax:
 
 ::
 
-      declare ptr @llvm.load.relative.iN(ptr %ptr, iN %offset) argmemonly nounwind readonly
+      declare ptr @llvm.load.relative.iN(ptr %ptr, iN %offset) nounwind memory(argmem: read)
 
 Overview:
 """""""""
@@ -26089,9 +26158,9 @@ This is an overloaded intrinsic. You can use llvm.is.constant with any argument 
 
 ::
 
-      declare i1 @llvm.is.constant.i32(i32 %operand) nounwind readnone
-      declare i1 @llvm.is.constant.f32(float %operand) nounwind readnone
-      declare i1 @llvm.is.constant.TYPENAME(TYPE %operand) nounwind readnone
+      declare i1 @llvm.is.constant.i32(i32 %operand) nounwind memory(none)
+      declare i1 @llvm.is.constant.f32(float %operand) nounwind memory(none)
+      declare i1 @llvm.is.constant.TYPENAME(TYPE %operand) nounwind memory(none)
 
 Overview:
 """""""""
@@ -26134,7 +26203,7 @@ Syntax:
 
 ::
 
-      declare ptrty llvm.ptrmask(ptrty %ptr, intty %mask) readnone speculatable
+      declare ptrty llvm.ptrmask(ptrty %ptr, intty %mask) speculatable memory(none)
 
 Arguments:
 """"""""""
@@ -26170,7 +26239,7 @@ Syntax:
 
 ::
 
-      declare ptr @llvm.threadlocal.address(ptr) nounwind readnone willreturn
+      declare ptr @llvm.threadlocal.address(ptr) nounwind willreturn memory(none)
 
 Arguments:
 """"""""""

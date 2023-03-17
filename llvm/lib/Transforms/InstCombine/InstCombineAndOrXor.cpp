@@ -1273,161 +1273,6 @@ static Value *matchIsFiniteTest(InstCombiner::BuilderTy &Builder, FCmpInst *LHS,
   return Builder.CreateFCmp(FCmpInst::getOrderedPredicate(PredR), RHS0, RHS1);
 }
 
-/// Returns a pair of values, which if passed to llvm.is.fpclass, returns the
-/// same result as an fcmp with the given operands.
-static std::pair<Value *, unsigned> fcmpToClassTest(FCmpInst::Predicate Pred,
-                                                    Value *LHS, Value *RHS) {
-  const APFloat *ConstRHS;
-  if (!match(RHS, m_APFloat(ConstRHS)))
-    return {nullptr, 0};
-
-  if (ConstRHS->isZero()) {
-    switch (Pred) {
-    // TODO: Compares eq/ne with 0 depends on the denormal handling mode.
-    case FCmpInst::FCMP_ORD:
-      // Canonical form of ord/uno is with a zero. We could also handle
-      // non-canonical other non-NaN constants or LHS == RHS.
-      return {LHS, ~fcNan & fcAllFlags};
-    case FCmpInst::FCMP_UNO:
-      return {LHS, fcNan};
-    default:
-      break;
-    }
-
-    return {nullptr, 0};
-  }
-
-  Value *Src = LHS;
-  const bool IsFabs = match(LHS, m_FAbs(m_Value(Src)));
-
-  // Compute the test mask that would return true for the ordered comparisons.
-  unsigned Mask;
-
-  if (ConstRHS->isInfinity()) {
-    switch (Pred) {
-    case FCmpInst::FCMP_OEQ:
-    case FCmpInst::FCMP_UNE: {
-      // Match __builtin_isinf patterns
-      //
-      //   fcmp oeq x, +inf -> is_fpclass x, fcPosInf
-      //   fcmp oeq fabs(x), +inf -> is_fpclass x, fcInf
-      //   fcmp oeq x, -inf -> is_fpclass x, fcNegInf
-      //   fcmp oeq fabs(x), -inf -> is_fpclass x, 0 -> false
-      //
-      //   fcmp une x, +inf -> is_fpclass x, ~fcPosInf
-      //   fcmp une fabs(x), +inf -> is_fpclass x, ~fcInf
-      //   fcmp une x, -inf -> is_fpclass x, ~fcNegInf
-      //   fcmp une fabs(x), -inf -> is_fpclass x, fcAllFlags -> true
-
-      if (ConstRHS->isNegative()) {
-        Mask = fcNegInf;
-        if (IsFabs)
-          Mask = 0;
-      } else {
-        Mask = fcPosInf;
-        if (IsFabs)
-          Mask |= fcNegInf;
-      }
-
-      break;
-    }
-    case FCmpInst::FCMP_ONE:
-    case FCmpInst::FCMP_UEQ: {
-      // Match __builtin_isinf patterns
-      //   fcmp one x, -inf -> is_fpclass x, fcNegInf
-      //   fcmp one fabs(x), -inf -> is_fpclass x, ~fcNegInf & ~fcNan
-      //   fcmp one x, +inf -> is_fpclass x, ~fcNegInf & ~fcNan
-      //   fcmp one fabs(x), +inf -> is_fpclass x, ~fcInf & fcNan
-      //
-      //   fcmp ueq x, +inf -> is_fpclass x, fcPosInf|fcNan
-      //   fcmp ueq (fabs x), +inf -> is_fpclass x, fcInf|fcNan
-      //   fcmp ueq x, -inf -> is_fpclass x, fcNegInf|fcNan
-      //   fcmp ueq fabs(x), -inf -> is_fpclass x, fcNan
-      if (ConstRHS->isNegative()) {
-        Mask = ~fcNegInf & ~fcNan;
-        if (IsFabs)
-          Mask = ~fcNan;
-      } else {
-        Mask = ~fcPosInf & ~fcNan;
-        if (IsFabs)
-          Mask &= ~fcNegInf;
-      }
-
-      Mask &= fcAllFlags;
-      break;
-    }
-    case FCmpInst::FCMP_OLT:
-    case FCmpInst::FCMP_UGE: {
-      if (ConstRHS->isNegative()) // TODO
-        return {nullptr, 0};
-
-      // fcmp olt fabs(x), +inf -> fcFinite
-      // fcmp uge fabs(x), +inf -> ~fcFinite
-      // fcmp olt x, +inf -> fcFinite|fcNegInf
-      // fcmp uge x, +inf -> ~(fcFinite|fcNegInf)
-      Mask = fcFinite;
-      if (!IsFabs)
-        Mask |= fcNegInf;
-      break;
-    }
-    case FCmpInst::FCMP_OGE:
-    case FCmpInst::FCMP_ULT: {
-      if (ConstRHS->isNegative()) // TODO
-        return {nullptr, 0};
-
-      // fcmp oge fabs(x), +inf -> fcInf
-      // fcmp oge x, +inf -> fcPosInf
-      // fcmp ult fabs(x), +inf -> ~fcInf
-      // fcmp ult x, +inf -> ~fcPosInf
-      Mask = fcPosInf;
-      if (IsFabs)
-        Mask |= fcNegInf;
-      break;
-    }
-    default:
-      return {nullptr, 0};
-    }
-  } else if (ConstRHS->isSmallestNormalized() && !ConstRHS->isNegative()) {
-    // Match pattern that's used in __builtin_isnormal.
-    switch (Pred) {
-    case FCmpInst::FCMP_OLT:
-    case FCmpInst::FCMP_UGE: {
-      // fcmp olt x, smallest_normal -> fcNegInf|fcNegNormal|fcSubnormal|fcZero
-      // fcmp olt fabs(x), smallest_normal -> fcSubnormal|fcZero
-      // fcmp uge x, smallest_normal -> fcNan|fcPosNormal|fcPosInf
-      // fcmp uge fabs(x), smallest_normal -> ~(fcSubnormal|fcZero)
-      Mask = fcZero | fcSubnormal;
-      if (!IsFabs)
-        Mask |= fcNegNormal | fcNegInf;
-
-      break;
-    }
-    case FCmpInst::FCMP_OGE:
-    case FCmpInst::FCMP_ULT: {
-      // fcmp oge x, smallest_normal -> fcPosNormal | fcPosInf
-      // fcmp oge fabs(x), smallest_normal -> fcInf | fcNormal
-      // fcmp ult x, smallest_normal -> ~(fcPosNormal | fcPosInf)
-      // fcmp ult fabs(x), smallest_normal -> ~(fcInf | fcNormal)
-      Mask = fcPosInf | fcPosNormal;
-      if (IsFabs)
-        Mask |= fcNegInf | fcNegNormal;
-      break;
-    }
-    default:
-      return {nullptr, 0};
-    }
-  } else
-    return {nullptr, 0};
-
-  // Invert the comparison for the unordered cases.
-  if (FCmpInst::isUnordered(Pred))
-    Mask = ~Mask & fcAllFlags;
-
-  assert((Mask & ~fcAllFlags) == 0);
-
-  return {Src, Mask};
-}
-
 Value *InstCombinerImpl::foldLogicOfFCmps(FCmpInst *LHS, FCmpInst *RHS,
                                           bool IsAnd, bool IsLogicalSelect) {
   Value *LHS0 = LHS->getOperand(0), *LHS1 = LHS->getOperand(1);
@@ -1501,9 +1346,11 @@ Value *InstCombinerImpl::foldLogicOfFCmps(FCmpInst *LHS, FCmpInst *RHS,
   // potentially eliminate 4-6 instructions. If we can represent a test with a
   // single fcmp with fneg and fabs, that's likely a better canonical form.
   if (LHS->hasOneUse() && RHS->hasOneUse()) {
-    auto [ClassValRHS, ClassMaskRHS] = fcmpToClassTest(PredR, RHS0, RHS1);
+    auto [ClassValRHS, ClassMaskRHS] =
+        fcmpToClassTest(PredR, *RHS->getFunction(), RHS0, RHS1);
     if (ClassValRHS) {
-      auto [ClassValLHS, ClassMaskLHS] = fcmpToClassTest(PredL, LHS0, LHS1);
+      auto [ClassValLHS, ClassMaskLHS] =
+          fcmpToClassTest(PredL, *LHS->getFunction(), LHS0, LHS1);
       if (ClassValLHS == ClassValRHS) {
         unsigned CombinedMask = IsAnd ? (ClassMaskLHS & ClassMaskRHS)
                                       : (ClassMaskLHS | ClassMaskRHS);
@@ -1525,8 +1372,9 @@ static bool matchIsFPClassLikeFCmp(Value *Op, Value *&ClassVal,
   if (!FCmp || !FCmp->hasOneUse())
     return false;
 
-  std::tie(ClassVal, ClassMask) = fcmpToClassTest(
-      FCmp->getPredicate(), FCmp->getOperand(0), FCmp->getOperand(1));
+  std::tie(ClassVal, ClassMask) =
+      fcmpToClassTest(FCmp->getPredicate(), *FCmp->getParent()->getParent(),
+                      FCmp->getOperand(0), FCmp->getOperand(1));
   return ClassVal != nullptr;
 }
 

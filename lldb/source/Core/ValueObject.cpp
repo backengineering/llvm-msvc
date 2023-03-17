@@ -1600,20 +1600,12 @@ bool ValueObject::IsRuntimeSupportValue() {
   if (!process)
     return false;
 
-  if (!GetVariable())
-    return false;
-
-  auto *runtime = process->GetLanguageRuntime(GetVariable()->GetLanguage());
-  if (runtime)
-    if (runtime->ShouldHideVariable(GetName().GetStringRef()))
-      return true;
-
   // We trust that the compiler did the right thing and marked runtime support
   // values as artificial.
-  if (!GetVariable()->IsArtificial())
+  if (!GetVariable() || !GetVariable()->IsArtificial())
     return false;
 
-  if (runtime)
+  if (auto *runtime = process->GetLanguageRuntime(GetVariable()->GetLanguage()))
     if (runtime->IsAllowedRuntimeValue(GetName()))
       return false;
 
@@ -1867,7 +1859,7 @@ ValueObjectSP ValueObject::GetDynamicValue(DynamicValueType use_dynamic) {
   if (!IsDynamic() && m_dynamic_value == nullptr) {
     CalculateDynamicValue(use_dynamic);
   }
-  if (m_dynamic_value)
+  if (m_dynamic_value && m_dynamic_value->GetError().Success())
     return m_dynamic_value->GetSP();
   else
     return ValueObjectSP();

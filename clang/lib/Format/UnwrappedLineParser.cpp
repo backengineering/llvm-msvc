@@ -1389,6 +1389,11 @@ void UnwrappedLineParser::parseStructuralElement(
   }
 
   if (Style.isVerilog()) {
+    if (Keywords.isVerilogStructuredProcedure(*FormatTok)) {
+      parseForOrWhileLoop(/*HasParens=*/false);
+      return;
+    }
+
     // Skip things that can exist before keywords like 'if' and 'case'.
     while (true) {
       if (FormatTok->isOneOf(Keywords.kw_priority, Keywords.kw_unique,
@@ -2963,8 +2968,14 @@ void UnwrappedLineParser::parseLoopBody(bool KeepBraces, bool WrapRightBrace) {
     NestedTooDeep.pop_back();
 }
 
-void UnwrappedLineParser::parseForOrWhileLoop() {
-  assert(FormatTok->isOneOf(tok::kw_for, tok::kw_while, TT_ForEachMacro) &&
+void UnwrappedLineParser::parseForOrWhileLoop(bool HasParens) {
+  assert((FormatTok->isOneOf(tok::kw_for, tok::kw_while, TT_ForEachMacro) ||
+          (Style.isVerilog() &&
+           FormatTok->isOneOf(Keywords.kw_always, Keywords.kw_always_comb,
+                              Keywords.kw_always_ff, Keywords.kw_always_latch,
+                              Keywords.kw_final, Keywords.kw_initial,
+                              Keywords.kw_foreach, Keywords.kw_forever,
+                              Keywords.kw_repeat))) &&
          "'for', 'while' or foreach macro expected");
   const bool KeepBraces = !Style.RemoveBracesLLVM ||
                           !FormatTok->isOneOf(tok::kw_for, tok::kw_while);
@@ -2975,8 +2986,11 @@ void UnwrappedLineParser::parseForOrWhileLoop() {
     nextToken();
   if (Style.isCpp() && FormatTok->is(tok::kw_co_await))
     nextToken();
-  if (FormatTok->is(tok::l_paren))
+  if (HasParens && FormatTok->is(tok::l_paren))
     parseParens();
+  // Event control.
+  if (Style.isVerilog())
+    parseVerilogSensitivityList();
 
   handleAttributes();
   parseLoopBody(KeepBraces, /*WrapRightBrace=*/true);
@@ -3441,17 +3455,6 @@ void UnwrappedLineParser::parseConstraintExpression() {
                       /*ClosingBraceKind=*/tok::greater);
       break;
 
-    case tok::kw_bool:
-      // bool is only allowed if it is directly followed by a paren for a cast:
-      // concept C = bool(...);
-      // and bool is the only type, all other types as cast must be inside a
-      // cast to bool an thus are handled by the other cases.
-      if (Tokens->peekNextToken()->isNot(tok::l_paren))
-        return;
-      nextToken();
-      parseParens();
-      break;
-
     default:
       if (!FormatTok->Tok.getIdentifierInfo()) {
         // Identifiers are part of the default case, we check for more then
@@ -3701,13 +3704,13 @@ void UnwrappedLineParser::parseJavaEnumBody() {
 void UnwrappedLineParser::parseRecord(bool ParseAsExpr) {
   const FormatToken &InitialToken = *FormatTok;
   nextToken();
+  handleAttributes();
 
   // The actual identifier can be a nested name specifier, and in macros
   // it is often token-pasted.
-  // An [[attribute]] can be before the identifier.
   while (FormatTok->isOneOf(tok::identifier, tok::coloncolon, tok::hashhash,
                             tok::kw___attribute, tok::kw___declspec,
-                            tok::kw_alignas, tok::l_square, tok::r_square) ||
+                            tok::kw_alignas) ||
          ((Style.Language == FormatStyle::LK_Java || Style.isJavaScript()) &&
           FormatTok->isOneOf(tok::period, tok::comma))) {
     if (Style.isJavaScript() &&
@@ -3725,15 +3728,10 @@ void UnwrappedLineParser::parseRecord(bool ParseAsExpr) {
         FormatTok->is(tok::identifier) &&
         FormatTok->TokenText != FormatTok->TokenText.upper();
     nextToken();
-    // We can have macros or attributes in between 'class' and the class name.
+    // We can have macros in between 'class' and the class name.
     if (!IsNonMacroIdentifier) {
       if (FormatTok->is(tok::l_paren)) {
         parseParens();
-      } else if (FormatTok->is(TT_AttributeSquare)) {
-        parseSquare();
-        // Consume the closing TT_AttributeSquare.
-        if (FormatTok->Next && FormatTok->is(TT_AttributeSquare))
-          nextToken();
       }
     }
   }

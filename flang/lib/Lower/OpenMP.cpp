@@ -61,7 +61,7 @@ getOmpObjectSymbol(const Fortran::parser::OmpObject &ompObject) {
   return sym;
 }
 
-class dataSharingProcessor {
+class DataSharingProcessor {
   bool hasLastPrivateOp;
   mlir::OpBuilder::InsertPoint lastPrivIP;
   mlir::OpBuilder::InsertPoint insPt;
@@ -92,7 +92,7 @@ class dataSharingProcessor {
   void insertLastPrivateCompare(mlir::Operation *op);
 
 public:
-  dataSharingProcessor(mlir::Operation *op,
+  DataSharingProcessor(mlir::Operation *op,
                        Fortran::lower::AbstractConverter &converter,
                        const Fortran::parser::OmpClauseList &opClauseList,
                        Fortran::lower::pft::Evaluation &eval)
@@ -102,7 +102,7 @@ public:
   bool process();
 };
 
-bool dataSharingProcessor::process() {
+bool DataSharingProcessor::process() {
   insPt = firOpBuilder.saveInsertionPoint();
   collectSymbolsForPrivatization();
   insertLastPrivateCompare(op);
@@ -118,7 +118,7 @@ bool dataSharingProcessor::process() {
   return hasLastPrivateOp;
 }
 
-void dataSharingProcessor::privatizeSymbol(
+void DataSharingProcessor::privatizeSymbol(
     const Fortran::semantics::Symbol *sym,
     [[maybe_unused]] mlir::OpBuilder::InsertPoint *lastPrivIP) {
   // Privatization for symbols which are pre-determined (like loop index
@@ -144,7 +144,7 @@ void dataSharingProcessor::privatizeSymbol(
     converter.copyHostAssociateVar(*sym, lastPrivIP);
 }
 
-void dataSharingProcessor::collectOmpObjectListSymbol(
+void DataSharingProcessor::collectOmpObjectListSymbol(
     const Fortran::parser::OmpObjectList &ompObjectList,
     llvm::SetVector<const Fortran::semantics::Symbol *> &symbolSet) {
   for (const Fortran::parser::OmpObject &ompObject : ompObjectList.v) {
@@ -153,7 +153,7 @@ void dataSharingProcessor::collectOmpObjectListSymbol(
   }
 }
 
-void dataSharingProcessor::collectSymbolsForPrivatization() {
+void DataSharingProcessor::collectSymbolsForPrivatization() {
   bool hasCollapse = false;
   for (const Fortran::parser::OmpClause &clause : opClauseList.v) {
     if (const auto &privateClause =
@@ -177,7 +177,7 @@ void dataSharingProcessor::collectSymbolsForPrivatization() {
     TODO(converter.getCurrentLocation(), "Collapse clause with lastprivate");
 }
 
-bool dataSharingProcessor ::needBarrier() {
+bool DataSharingProcessor ::needBarrier() {
   for (auto sym : privatizedSymbols) {
     if (sym->test(Fortran::semantics::Symbol::Flag::OmpFirstPrivate) &&
         sym->test(Fortran::semantics::Symbol::Flag::OmpLastPrivate))
@@ -186,7 +186,7 @@ bool dataSharingProcessor ::needBarrier() {
   return false;
 }
 
-void dataSharingProcessor ::insertBarrier() {
+void DataSharingProcessor ::insertBarrier() {
   // Emit implicit barrier to synchronize threads and avoid data races on
   // initialization of firstprivate variables and post-update of lastprivate
   // variables.
@@ -198,7 +198,7 @@ void dataSharingProcessor ::insertBarrier() {
     firOpBuilder.create<mlir::omp::BarrierOp>(converter.getCurrentLocation());
 }
 
-void dataSharingProcessor::insertLastPrivateCompare(mlir::Operation *op) {
+void DataSharingProcessor::insertLastPrivateCompare(mlir::Operation *op) {
   mlir::arith::CmpIOp cmpOp;
   bool cmpCreated = false;
   for (const Fortran::parser::OmpClause &clause : opClauseList.v) {
@@ -302,7 +302,7 @@ void dataSharingProcessor::insertLastPrivateCompare(mlir::Operation *op) {
   }
 }
 
-void dataSharingProcessor::collectSymbols(
+void DataSharingProcessor::collectSymbols(
     Fortran::semantics::Symbol::Flag flag) {
   converter.collectSymbolSet(eval, defaultSymbols, flag,
                              /*collectSymbols=*/true,
@@ -319,7 +319,7 @@ void dataSharingProcessor::collectSymbols(
   }
 }
 
-void dataSharingProcessor::collectDefaultSymbols() {
+void DataSharingProcessor::collectDefaultSymbols() {
   for (const Fortran::parser::OmpClause &clause : opClauseList.v) {
     if (const auto &defaultClause =
             std::get_if<Fortran::parser::OmpClause::Default>(&clause.u)) {
@@ -333,12 +333,12 @@ void dataSharingProcessor::collectDefaultSymbols() {
   }
 }
 
-void dataSharingProcessor::privatize() {
+void DataSharingProcessor::privatize() {
   for (auto sym : privatizedSymbols)
     privatizeSymbol(sym, &lastPrivIP);
 }
 
-void dataSharingProcessor::defaultPrivatize() {
+void DataSharingProcessor::defaultPrivatize() {
   for (auto sym : defaultSymbols)
     if (!symbolsInNestedRegions.contains(sym) &&
         !symbolsInParentRegions.contains(sym) &&
@@ -645,7 +645,7 @@ createBodyOfOp(Op &op, Fortran::lower::AbstractConverter &converter,
 
   // Handle privatization. Do not privatize if this is the outer operation.
   if (clauses && !outerCombined) {
-    dataSharingProcessor dsp(op, converter, *clauses, eval);
+    DataSharingProcessor dsp(op, converter, *clauses, eval);
     bool lastPrivateOp = dsp.process();
     // LastPrivatization, due to introduction of
     // new control flow, changes the insertion point,
@@ -1112,7 +1112,8 @@ static int getOperationIdentity(llvm::StringRef reductionOpName,
                                 mlir::Location loc) {
   if (reductionOpName.contains("add"))
     return 0;
-  if (reductionOpName.contains("multiply") || reductionOpName.contains("and"))
+  if (reductionOpName.contains("multiply") || reductionOpName.contains("and") ||
+      reductionOpName.contains("eqv"))
     return 1;
   TODO(loc, "Reduction of some intrinsic operators is not supported");
 }
@@ -1120,17 +1121,38 @@ static int getOperationIdentity(llvm::StringRef reductionOpName,
 static Value getReductionInitValue(mlir::Location loc, mlir::Type type,
                                    llvm::StringRef reductionOpName,
                                    fir::FirOpBuilder &builder) {
-  assert(type.isIntOrIndexOrFloat() &&
-         "only integer and float types are currently supported");
-  if (type.isa<FloatType>())
+  assert((fir::isa_integer(type) || fir::isa_real(type) ||
+          type.isa<fir::LogicalType>()) &&
+         "only integer, logical and real types are currently supported");
+  if (reductionOpName.contains("max")) {
+    if (auto ty = type.dyn_cast<mlir::FloatType>()) {
+      const llvm::fltSemantics &sem = ty.getFloatSemantics();
+      return builder.createRealConstant(
+          loc, type, llvm::APFloat::getLargest(sem, /*Negative=*/true));
+    }
+    unsigned bits = type.getIntOrFloatBitWidth();
+    int64_t minInt = llvm::APInt::getSignedMinValue(bits).getSExtValue();
+    return builder.createIntegerConstant(loc, type, minInt);
+  } else {
+    if (type.isa<FloatType>())
+      return builder.create<mlir::arith::ConstantOp>(
+          loc, type,
+          builder.getFloatAttr(
+              type, (double)getOperationIdentity(reductionOpName, loc)));
+
+    if (type.isa<fir::LogicalType>()) {
+      Value intConst = builder.create<mlir::arith::ConstantOp>(
+          loc, builder.getI1Type(),
+          builder.getIntegerAttr(builder.getI1Type(),
+                                 getOperationIdentity(reductionOpName, loc)));
+      return builder.createConvert(loc, type, intConst);
+    }
+
     return builder.create<mlir::arith::ConstantOp>(
         loc, type,
-        builder.getFloatAttr(
-            type, (double)getOperationIdentity(reductionOpName, loc)));
-
-  return builder.create<mlir::arith::ConstantOp>(
-      loc, type,
-      builder.getIntegerAttr(type, getOperationIdentity(reductionOpName, loc)));
+        builder.getIntegerAttr(type,
+                               getOperationIdentity(reductionOpName, loc)));
+  }
 }
 
 template <typename FloatOp, typename IntegerOp>
@@ -1144,6 +1166,65 @@ static Value getReductionOperation(fir::FirOpBuilder &builder, mlir::Type type,
   return builder.create<FloatOp>(loc, op1, op2);
 }
 
+static omp::ReductionDeclareOp
+createMinimalReductionDecl(fir::FirOpBuilder &builder,
+                           llvm::StringRef reductionOpName, mlir::Type type,
+                           mlir::Location loc) {
+  mlir::ModuleOp module = builder.getModule();
+  mlir::OpBuilder modBuilder(module.getBodyRegion());
+
+  mlir::omp::ReductionDeclareOp decl =
+      modBuilder.create<omp::ReductionDeclareOp>(loc, reductionOpName, type);
+  builder.createBlock(&decl.getInitializerRegion(),
+                      decl.getInitializerRegion().end(), {type}, {loc});
+  builder.setInsertionPointToEnd(&decl.getInitializerRegion().back());
+  Value init = getReductionInitValue(loc, type, reductionOpName, builder);
+  builder.create<omp::YieldOp>(loc, init);
+
+  builder.createBlock(&decl.getReductionRegion(),
+                      decl.getReductionRegion().end(), {type, type},
+                      {loc, loc});
+
+  return decl;
+}
+
+/// Creates an OpenMP reduction declaration and inserts it into the provided
+/// symbol table. The declaration has a constant initializer with the neutral
+/// value `initValue`, and the reduction combiner carried over from `reduce`.
+/// TODO: Generalize this for non-integer types, add atomic region.
+static omp::ReductionDeclareOp
+createReductionDecl(fir::FirOpBuilder &builder, llvm::StringRef reductionOpName,
+                    const Fortran::parser::ProcedureDesignator &procDesignator,
+                    mlir::Type type, mlir::Location loc) {
+  OpBuilder::InsertionGuard guard(builder);
+  mlir::ModuleOp module = builder.getModule();
+
+  auto decl =
+      module.lookupSymbol<mlir::omp::ReductionDeclareOp>(reductionOpName);
+  if (decl)
+    return decl;
+
+  decl = createMinimalReductionDecl(builder, reductionOpName, type, loc);
+  builder.setInsertionPointToEnd(&decl.getReductionRegion().back());
+  mlir::Value op1 = decl.getReductionRegion().front().getArgument(0);
+  mlir::Value op2 = decl.getReductionRegion().front().getArgument(1);
+
+  Value reductionOp;
+  if (const auto *name{
+          Fortran::parser::Unwrap<Fortran::parser::Name>(procDesignator)}) {
+    if (name->source == "max") {
+      reductionOp =
+          getReductionOperation<mlir::arith::MaxFOp, mlir::arith::MaxSIOp>(
+              builder, type, loc, op1, op2);
+    } else {
+      TODO(loc, "Reduction of some intrinsic operators is not supported");
+    }
+  }
+
+  builder.create<omp::YieldOp>(loc, reductionOp);
+  return decl;
+}
+
 /// Creates an OpenMP reduction declaration and inserts it into the provided
 /// symbol table. The declaration has a constant initializer with the neutral
 /// value `initValue`, and the reduction combiner carried over from `reduce`.
@@ -1154,23 +1235,13 @@ static omp::ReductionDeclareOp createReductionDecl(
     mlir::Type type, mlir::Location loc) {
   OpBuilder::InsertionGuard guard(builder);
   mlir::ModuleOp module = builder.getModule();
-  mlir::OpBuilder modBuilder(module.getBodyRegion());
+
   auto decl =
       module.lookupSymbol<mlir::omp::ReductionDeclareOp>(reductionOpName);
-  if (!decl)
-    decl =
-        modBuilder.create<omp::ReductionDeclareOp>(loc, reductionOpName, type);
-  else
+  if (decl)
     return decl;
-  builder.createBlock(&decl.getInitializerRegion(),
-                      decl.getInitializerRegion().end(), {type}, {loc});
-  builder.setInsertionPointToEnd(&decl.getInitializerRegion().back());
-  Value init = getReductionInitValue(loc, type, reductionOpName, builder);
-  builder.create<omp::YieldOp>(loc, init);
 
-  builder.createBlock(&decl.getReductionRegion(),
-                      decl.getReductionRegion().end(), {type, type},
-                      {loc, loc});
+  decl = createMinimalReductionDecl(builder, reductionOpName, type, loc);
   builder.setInsertionPointToEnd(&decl.getReductionRegion().back());
   mlir::Value op1 = decl.getReductionRegion().front().getArgument(0);
   mlir::Value op2 = decl.getReductionRegion().front().getArgument(1);
@@ -1187,9 +1258,25 @@ static omp::ReductionDeclareOp createReductionDecl(
         getReductionOperation<mlir::arith::MulFOp, mlir::arith::MulIOp>(
             builder, type, loc, op1, op2);
     break;
-  case Fortran::parser::DefinedOperator::IntrinsicOperator::AND:
-    reductionOp = builder.create<mlir::arith::AndIOp>(loc, op1, op2);
+  case Fortran::parser::DefinedOperator::IntrinsicOperator::AND: {
+    Value op1I1 = builder.createConvert(loc, builder.getI1Type(), op1);
+    Value op2I1 = builder.createConvert(loc, builder.getI1Type(), op2);
+
+    Value andiOp = builder.create<mlir::arith::AndIOp>(loc, op1I1, op2I1);
+
+    reductionOp = builder.createConvert(loc, type, andiOp);
     break;
+  }
+  case Fortran::parser::DefinedOperator::IntrinsicOperator::EQV: {
+    Value op1I1 = builder.createConvert(loc, builder.getI1Type(), op1);
+    Value op2I1 = builder.createConvert(loc, builder.getI1Type(), op2);
+
+    Value cmpiOp = builder.create<mlir::arith::CmpIOp>(
+        loc, arith::CmpIPredicate::eq, op1I1, op2I1);
+
+    reductionOp = builder.createConvert(loc, type, cmpiOp);
+    break;
+  }
   default:
     TODO(loc, "Reduction of some intrinsic operators is not supported");
   }
@@ -1262,6 +1349,13 @@ getSIMDModifier(const Fortran::parser::OmpScheduleClause &x) {
   return mlir::omp::ScheduleModifier::none;
 }
 
+static std::string getReductionName(llvm::StringRef name, mlir::Type ty) {
+  return (llvm::Twine(name) +
+          (ty.isIntOrIndex() ? llvm::Twine("_i_") : llvm::Twine("_f_")) +
+          llvm::Twine(ty.getIntOrFloatBitWidth()))
+      .str();
+}
+
 static std::string getReductionName(
     Fortran::parser::DefinedOperator::IntrinsicOperator intrinsicOp,
     mlir::Type ty) {
@@ -1276,15 +1370,14 @@ static std::string getReductionName(
     break;
   case Fortran::parser::DefinedOperator::IntrinsicOperator::AND:
     return "and_reduction";
+  case Fortran::parser::DefinedOperator::IntrinsicOperator::EQV:
+    return "eqv_reduction";
   default:
     reductionName = "other_reduction";
     break;
   }
 
-  return (llvm::Twine(reductionName) +
-          (ty.isIntOrIndex() ? llvm::Twine("_i_") : llvm::Twine("_f_")) +
-          llvm::Twine(ty.getIntOrFloatBitWidth()))
-      .str();
+  return getReductionName(reductionName, ty);
 }
 
 static void genOMP(Fortran::lower::AbstractConverter &converter,
@@ -1385,6 +1478,7 @@ static void genOMP(Fortran::lower::AbstractConverter &converter,
         case Fortran::parser::DefinedOperator::IntrinsicOperator::Add:
         case Fortran::parser::DefinedOperator::IntrinsicOperator::Multiply:
         case Fortran::parser::DefinedOperator::IntrinsicOperator::AND:
+        case Fortran::parser::DefinedOperator::IntrinsicOperator::EQV:
           break;
 
         default:
@@ -1401,8 +1495,11 @@ static void genOMP(Fortran::lower::AbstractConverter &converter,
                   symVal.getType().cast<fir::ReferenceType>().getEleTy();
               reductionVars.push_back(symVal);
               if (redType.isa<fir::LogicalType>())
-                redType = firOpBuilder.getI1Type();
-              if (redType.isIntOrIndexOrFloat()) {
+                decl = createReductionDecl(
+                    firOpBuilder,
+                    getReductionName(intrinsicOp, firOpBuilder.getI1Type()),
+                    intrinsicOp, redType, currentLocation);
+              else if (redType.isIntOrIndexOrFloat()) {
                 decl = createReductionDecl(
                     firOpBuilder, getReductionName(intrinsicOp, redType),
                     intrinsicOp, redType, currentLocation);
@@ -1415,9 +1512,34 @@ static void genOMP(Fortran::lower::AbstractConverter &converter,
             }
           }
         }
-      } else {
-        TODO(currentLocation,
-             "Reduction of intrinsic procedures is not supported");
+      } else if (auto reductionIntrinsic =
+                     std::get_if<Fortran::parser::ProcedureDesignator>(
+                         &redOperator.u)) {
+        if (const auto *name{Fortran::parser::Unwrap<Fortran::parser::Name>(
+                reductionIntrinsic)}) {
+          if (name->source != "max") {
+            TODO(currentLocation,
+                 "Reduction of intrinsic procedures is not supported");
+          }
+          for (const auto &ompObject : objectList.v) {
+            if (const auto *name{Fortran::parser::Unwrap<Fortran::parser::Name>(
+                    ompObject)}) {
+              if (const auto *symbol{name->symbol}) {
+                mlir::Value symVal = converter.getSymbolAddress(*symbol);
+                mlir::Type redType =
+                    symVal.getType().cast<fir::ReferenceType>().getEleTy();
+                reductionVars.push_back(symVal);
+                assert(redType.isIntOrIndexOrFloat() &&
+                       "Unsupported reduction type");
+                decl = createReductionDecl(
+                    firOpBuilder, getReductionName("max", redType),
+                    *reductionIntrinsic, redType, currentLocation);
+                reductionDeclSymbols.push_back(SymbolRefAttr::get(
+                    firOpBuilder.getContext(), decl.getSymName()));
+              }
+            }
+          }
+        }
       }
     } else if (const auto &simdlenClause =
                    std::get_if<Fortran::parser::OmpClause::Simdlen>(
@@ -2076,6 +2198,21 @@ void Fortran::lower::genOpenMPDeclarativeConstruct(
       ompDeclConstruct.u);
 }
 
+static mlir::Operation *getCompareFromReductionOp(mlir::Operation *reductionOp,
+                                                  mlir::Value loadVal) {
+  for (auto reductionOperand : reductionOp->getOperands()) {
+    if (auto compareOp = reductionOperand.getDefiningOp()) {
+      if (compareOp->getOperand(0) == loadVal ||
+          compareOp->getOperand(1) == loadVal)
+        assert((mlir::isa<mlir::arith::CmpIOp>(compareOp) ||
+                mlir::isa<mlir::arith::CmpFOp>(compareOp)) &&
+               "Expected comparison not found in reduction intrinsic");
+      return compareOp;
+    }
+  }
+  return nullptr;
+}
+
 // Generate an OpenMP reduction operation.
 // TODO: Currently assumes it is either an integer addition/multiplication
 // reduction, or a logical and reduction. Generalize this for various reduction
@@ -2105,6 +2242,7 @@ void Fortran::lower::genOpenMPReduction(
         case Fortran::parser::DefinedOperator::IntrinsicOperator::Add:
         case Fortran::parser::DefinedOperator::IntrinsicOperator::Multiply:
         case Fortran::parser::DefinedOperator::IntrinsicOperator::AND:
+        case Fortran::parser::DefinedOperator::IntrinsicOperator::EQV:
           break;
         default:
           continue;
@@ -2116,9 +2254,7 @@ void Fortran::lower::genOpenMPReduction(
               mlir::Value reductionVal = converter.getSymbolAddress(*symbol);
               mlir::Type reductionType =
                   reductionVal.getType().cast<fir::ReferenceType>().getEleTy();
-
-              if (intrinsicOp !=
-                  Fortran::parser::DefinedOperator::IntrinsicOperator::AND) {
+              if (!reductionType.isa<fir::LogicalType>()) {
                 if (!reductionType.isIntOrIndexOrFloat())
                   continue;
               }
@@ -2126,8 +2262,7 @@ void Fortran::lower::genOpenMPReduction(
                 if (auto loadOp = mlir::dyn_cast<fir::LoadOp>(
                         reductionValUse.getOwner())) {
                   mlir::Value loadVal = loadOp.getRes();
-                  if (intrinsicOp == Fortran::parser::DefinedOperator::
-                                         IntrinsicOperator::AND) {
+                  if (reductionType.isa<fir::LogicalType>()) {
                     mlir::Operation *reductionOp = findReductionChain(loadVal);
                     fir::ConvertOp convertOp =
                         getConvertFromReductionOp(reductionOp, loadVal);
@@ -2137,6 +2272,40 @@ void Fortran::lower::genOpenMPReduction(
                   } else if (auto reductionOp =
                                  findReductionChain(loadVal, &reductionVal)) {
                     updateReduction(reductionOp, firOpBuilder, loadVal,
+                                    reductionVal);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } else if (auto reductionIntrinsic =
+                     std::get_if<Fortran::parser::ProcedureDesignator>(
+                         &redOperator.u)) {
+        if (const auto *name{Fortran::parser::Unwrap<Fortran::parser::Name>(
+                reductionIntrinsic)}) {
+          if (name->source != "max") {
+            continue;
+          }
+          for (const auto &ompObject : objectList.v) {
+            if (const auto *name{Fortran::parser::Unwrap<Fortran::parser::Name>(
+                    ompObject)}) {
+              if (const auto *symbol{name->symbol}) {
+                mlir::Value reductionVal = converter.getSymbolAddress(*symbol);
+                for (mlir::OpOperand &reductionValUse :
+                     reductionVal.getUses()) {
+                  if (auto loadOp = mlir::dyn_cast<fir::LoadOp>(
+                          reductionValUse.getOwner())) {
+                    mlir::Value loadVal = loadOp.getRes();
+                    // Max is lowered as a compare -> select.
+                    // Match the pattern here.
+                    mlir::Operation *reductionOp =
+                        findReductionChain(loadVal, &reductionVal);
+                    assert(mlir::isa<mlir::arith::SelectOp>(reductionOp) &&
+                           "Selection Op not found in reduction intrinsic");
+                    mlir::Operation *compareOp =
+                        getCompareFromReductionOp(reductionOp, loadVal);
+                    updateReduction(compareOp, firOpBuilder, loadVal,
                                     reductionVal);
                   }
                 }

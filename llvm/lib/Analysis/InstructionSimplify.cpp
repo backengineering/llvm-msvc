@@ -539,12 +539,16 @@ static Value *threadBinOpOverPHI(Instruction::BinaryOps Opcode, Value *LHS,
 
   // Evaluate the BinOp on the incoming phi values.
   Value *CommonValue = nullptr;
-  for (Value *Incoming : PI->incoming_values()) {
+  for (Use &Incoming : PI->incoming_values()) {
     // If the incoming value is the phi node itself, it can safely be skipped.
     if (Incoming == PI)
       continue;
-    Value *V = PI == LHS ? simplifyBinOp(Opcode, Incoming, RHS, Q, MaxRecurse)
-                         : simplifyBinOp(Opcode, LHS, Incoming, Q, MaxRecurse);
+    Instruction *InTI = PI->getIncomingBlock(Incoming)->getTerminator();
+    Value *V = PI == LHS
+                   ? simplifyBinOp(Opcode, Incoming, RHS,
+                                   Q.getWithInstruction(InTI), MaxRecurse)
+                   : simplifyBinOp(Opcode, LHS, Incoming,
+                                   Q.getWithInstruction(InTI), MaxRecurse);
     // If the operation failed to simplify, or simplified to a different value
     // to previously, then give up.
     if (!V || (CommonValue && V != CommonValue))
@@ -1445,10 +1449,11 @@ static Value *simplifyShlInst(Value *Op0, Value *Op1, bool IsNSW, bool IsNUW,
           simplifyShift(Instruction::Shl, Op0, Op1, IsNSW, Q, MaxRecurse))
     return V;
 
+  Type *Ty = Op0->getType();
   // undef << X -> 0
   // undef << X -> undef if (if it's NSW/NUW)
   if (Q.isUndefValue(Op0))
-    return IsNSW || IsNUW ? Op0 : Constant::getNullValue(Op0->getType());
+    return IsNSW || IsNUW ? Op0 : Constant::getNullValue(Ty);
 
   // (X >> A) << A -> X
   Value *X;
@@ -1461,6 +1466,13 @@ static Value *simplifyShlInst(Value *Op0, Value *Op1, bool IsNSW, bool IsNUW,
     return Op0;
   // NOTE: could use computeKnownBits() / LazyValueInfo,
   // but the cost-benefit analysis suggests it isn't worth it.
+
+  // "nuw" guarantees that only zeros are shifted out, and "nsw" guarantees
+  // that the sign-bit does not change, so the only input that does not
+  // produce poison is 0, and "0 << (bitwidth-1) --> 0".
+  if (IsNSW && IsNUW &&
+      match(Op1, m_SpecificInt(Ty->getScalarSizeInBits() - 1)))
+    return Constant::getNullValue(Ty);
 
   return nullptr;
 }
@@ -4919,6 +4931,10 @@ static Value *simplifyGEPInst(Type *SrcTy, Value *Ptr,
   if (!isa<Constant>(Ptr) ||
       !all_of(Indices, [](Value *V) { return isa<Constant>(V); }))
     return nullptr;
+
+  if (!ConstantExpr::isSupportedGetElementPtr(SrcTy))
+    return ConstantFoldGetElementPtr(SrcTy, cast<Constant>(Ptr), InBounds,
+                                     std::nullopt, Indices);
 
   auto *CE = ConstantExpr::getGetElementPtr(SrcTy, cast<Constant>(Ptr), Indices,
                                             InBounds);

@@ -1278,6 +1278,25 @@ void RewriteInstance::discoverFileObjects() {
     llvm_unreachable("Unknown marker");
   }
 
+  if (BC->isAArch64()) {
+    // Check for dynamic relocations that might be contained in
+    // constant islands.
+    for (const BinarySection &Section : BC->allocatableSections()) {
+      const uint64_t SectionAddress = Section.getAddress();
+      for (const Relocation &Rel : Section.dynamicRelocations()) {
+        const uint64_t RelAddress = SectionAddress + Rel.Offset;
+        BinaryFunction *BF =
+            BC->getBinaryFunctionContainingAddress(RelAddress,
+                                                   /*CheckPastEnd*/ false,
+                                                   /*UseMaxSize*/ true);
+        if (BF) {
+          assert(Rel.isRelative() && "Expected relative relocation for island");
+          BF->markIslandDynamicRelocationAtAddress(RelAddress);
+        }
+      }
+    }
+  }
+
   if (opts::LinuxKernelMode) {
     // Read all special linux kernel sections and their relocations
     processLKSections();
@@ -1679,9 +1698,6 @@ Error RewriteInstance::readSpecialSections() {
   HasSymbolTable = (bool)BC->getUniqueSectionByName(".symtab");
   LSDASection = BC->getUniqueSectionByName(".gcc_except_table");
   EHFrameSection = BC->getUniqueSectionByName(".eh_frame");
-  GOTPLTSection = BC->getUniqueSectionByName(".got.plt");
-  RelaPLTSection = BC->getUniqueSectionByName(".rela.plt");
-  RelaDynSection = BC->getUniqueSectionByName(".rela.dyn");
   BuildIDSection = BC->getUniqueSectionByName(".note.gnu.build-id");
   SDTSection = BC->getUniqueSectionByName(".note.stapsdt");
   PseudoProbeDescSection = BC->getUniqueSectionByName(".pseudo_probe_desc");
@@ -3177,6 +3193,12 @@ void RewriteInstance::postProcessFunctions() {
   for (auto &BFI : BC->getBinaryFunctions()) {
     BinaryFunction &Function = BFI.second;
 
+    // Set function as non-simple if it has dynamic relocations
+    // in constant island, we don't want this function to be optimized
+    // e.g. function splitting is unsupported.
+    if (Function.hasDynamicRelocationAtIsland())
+      Function.setSimple(false);
+
     if (Function.empty())
       continue;
 
@@ -4042,6 +4064,13 @@ void RewriteInstance::mapAllocatableSections(RuntimeDyld &RTDyld) {
   // Allocate read-only sections first, then writable sections.
   enum : uint8_t { ST_READONLY, ST_READWRITE };
   for (uint8_t SType = ST_READONLY; SType <= ST_READWRITE; ++SType) {
+    const uint64_t LastNextAvailableAddress = NextAvailableAddress;
+    if (SType == ST_READWRITE) {
+      // Align R+W segment to regular page size
+      NextAvailableAddress = alignTo(NextAvailableAddress, BC->RegularPageSize);
+      NewWritableSegmentAddress = NextAvailableAddress;
+    }
+
     for (BinarySection &Section : BC->allocatableSections()) {
       if (!Section.hasValidSectionID())
         continue;
@@ -4088,6 +4117,21 @@ void RewriteInstance::mapAllocatableSections(RuntimeDyld &RTDyld) {
         NextAvailableAddress += Section.getOutputSize();
       }
     }
+
+    if (SType == ST_READONLY) {
+      if (PHDRTableAddress) {
+        // Segment size includes the size of the PHDR area.
+        NewTextSegmentSize = NextAvailableAddress - PHDRTableAddress;
+      } else {
+        // Existing PHDR table would be updated.
+        NewTextSegmentSize = NextAvailableAddress - NewTextSegmentAddress;
+      }
+    } else if (SType == ST_READWRITE) {
+      NewWritableSegmentSize = NextAvailableAddress - NewWritableSegmentAddress;
+      // Restore NextAvailableAddress if no new writable sections
+      if (!NewWritableSegmentSize)
+        NextAvailableAddress = LastNextAvailableAddress;
+    }
   }
 }
 
@@ -4108,16 +4152,32 @@ void RewriteInstance::patchELFPHDRTable() {
   // Write/re-write program headers.
   Phnum = Obj.getHeader().e_phnum;
   if (PHDRTableOffset) {
-    // Writing new pheader table.
-    Phnum += 1; // only adding one new segment
-    // Segment size includes the size of the PHDR area.
-    NewTextSegmentSize = NextAvailableAddress - PHDRTableAddress;
+    // Writing new pheader table and adding one new entry for R+X segment.
+    Phnum += 1;
+    if (NewWritableSegmentSize) {
+      // Adding one more entry for R+W segment.
+      Phnum += 1;
+    }
   } else {
     assert(!PHDRTableAddress && "unexpected address for program header table");
-    // Update existing table.
     PHDRTableOffset = Obj.getHeader().e_phoff;
-    NewTextSegmentSize = NextAvailableAddress - NewTextSegmentAddress;
+    if (NewWritableSegmentSize) {
+      errs() << "Unable to add writable segment with UseGnuStack option\n";
+      exit(1);
+    }
   }
+
+  // NOTE Currently .eh_frame_hdr appends to the last segment, recalculate
+  // last segments size based on the NextAvailableAddress variable.
+  if (!NewWritableSegmentSize) {
+    if (PHDRTableAddress)
+      NewTextSegmentSize = NextAvailableAddress - PHDRTableAddress;
+    else
+      NewTextSegmentSize = NextAvailableAddress - NewTextSegmentAddress;
+  } else {
+    NewWritableSegmentSize = NextAvailableAddress - NewWritableSegmentAddress;
+  }
+
   OS.seek(PHDRTableOffset);
 
   bool ModdedGnuStack = false;
@@ -4149,6 +4209,19 @@ void RewriteInstance::patchELFPHDRTable() {
     return NewPhdr;
   };
 
+  auto createNewWritableSectionsPhdr = [&]() {
+    ELF64LEPhdrTy NewPhdr;
+    NewPhdr.p_type = ELF::PT_LOAD;
+    NewPhdr.p_offset = getFileOffsetForAddress(NewWritableSegmentAddress);
+    NewPhdr.p_vaddr = NewWritableSegmentAddress;
+    NewPhdr.p_paddr = NewWritableSegmentAddress;
+    NewPhdr.p_filesz = NewWritableSegmentSize;
+    NewPhdr.p_memsz = NewWritableSegmentSize;
+    NewPhdr.p_align = BC->RegularPageSize;
+    NewPhdr.p_flags = ELF::PF_R | ELF::PF_W;
+    return NewPhdr;
+  };
+
   // Copy existing program headers with modifications.
   for (const ELF64LE::Phdr &Phdr : cantFail(Obj.program_headers())) {
     ELF64LE::Phdr NewPhdr = Phdr;
@@ -4177,6 +4250,11 @@ void RewriteInstance::patchELFPHDRTable() {
       ELF64LE::Phdr NewTextPhdr = createNewTextPhdr();
       OS.write(reinterpret_cast<const char *>(&NewTextPhdr),
                sizeof(NewTextPhdr));
+      if (NewWritableSegmentSize) {
+        ELF64LEPhdrTy NewWritablePhdr = createNewWritableSectionsPhdr();
+        OS.write(reinterpret_cast<const char *>(&NewWritablePhdr),
+                 sizeof(NewWritablePhdr));
+      }
       AddedSegment = true;
     }
     OS.write(reinterpret_cast<const char *>(&NewPhdr), sizeof(NewPhdr));
@@ -4186,6 +4264,11 @@ void RewriteInstance::patchELFPHDRTable() {
     // Append the new header to the end of the table.
     ELF64LE::Phdr NewTextPhdr = createNewTextPhdr();
     OS.write(reinterpret_cast<const char *>(&NewTextPhdr), sizeof(NewTextPhdr));
+    if (NewWritableSegmentSize) {
+      ELF64LEPhdrTy NewWritablePhdr = createNewWritableSectionsPhdr();
+      OS.write(reinterpret_cast<const char *>(&NewWritablePhdr),
+               sizeof(NewWritablePhdr));
+    }
   }
 
   assert((!opts::UseGnuStack || ModdedGnuStack) &&
@@ -5133,6 +5216,7 @@ RewriteInstance::patchELFAllocatableRelaSections(ELFObjectFile<ELFT> *File) {
   auto setSectionFileOffsets = [&](uint64_t Address, uint64_t &Start,
                                    uint64_t &End) {
     ErrorOr<BinarySection &> Section = BC->getSectionForAddress(Address);
+    assert(Section && "cannot get relocation section");
     Start = Section->getInputFileOffset();
     End = Start + Section->getSize();
   };
@@ -5157,6 +5241,11 @@ RewriteInstance::patchELFAllocatableRelaSections(ELFObjectFile<ELFT> *File) {
 
   auto writeRelocations = [&](bool PatchRelative) {
     for (BinarySection &Section : BC->allocatableSections()) {
+      const uint64_t SectionInputAddress = Section.getAddress();
+      uint64_t SectionAddress = Section.getOutputAddress();
+      if (!SectionAddress)
+        SectionAddress = SectionInputAddress;
+
       for (const Relocation &Rel : Section.dynamicRelocations()) {
         const bool IsRelative = Rel.isRelative();
         if (PatchRelative != IsRelative)
@@ -5166,13 +5255,13 @@ RewriteInstance::patchELFAllocatableRelaSections(ELFObjectFile<ELFT> *File) {
           ++DynamicRelativeRelocationsCount;
 
         Elf_Rela NewRelA;
-        uint64_t SectionAddress = Section.getOutputAddress();
-        SectionAddress =
-            SectionAddress == 0 ? Section.getAddress() : SectionAddress;
         MCSymbol *Symbol = Rel.Symbol;
         uint32_t SymbolIdx = 0;
         uint64_t Addend = Rel.Addend;
+        uint64_t RelOffset =
+            getNewFunctionOrDataAddress(SectionInputAddress + Rel.Offset);
 
+        RelOffset = RelOffset == 0 ? SectionAddress + Rel.Offset : RelOffset;
         if (Rel.Symbol) {
           SymbolIdx = getOutputDynamicSymbolIndex(Symbol);
         } else {
@@ -5183,11 +5272,10 @@ RewriteInstance::patchELFAllocatableRelaSections(ELFObjectFile<ELFT> *File) {
         }
 
         NewRelA.setSymbolAndType(SymbolIdx, Rel.Type, EF.isMips64EL());
-        NewRelA.r_offset = SectionAddress + Rel.Offset;
+        NewRelA.r_offset = RelOffset;
         NewRelA.r_addend = Addend;
 
-        const bool IsJmpRel =
-            !!(IsJmpRelocation.find(Rel.Type) != IsJmpRelocation.end());
+        const bool IsJmpRel = IsJmpRelocation.contains(Rel.Type);
         uint64_t &Offset = IsJmpRel ? RelPltOffset : RelDynOffset;
         const uint64_t &EndOffset =
             IsJmpRel ? RelPltEndOffset : RelDynEndOffset;

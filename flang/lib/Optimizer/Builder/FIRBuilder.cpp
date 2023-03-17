@@ -352,11 +352,19 @@ fir::FirOpBuilder::convertWithSemantics(mlir::Location loc, mlir::Type toTy,
             "element types expected to match"));
     return create<fir::BoxAddrOp>(loc, toTy, val);
   }
+  if (fir::isa_ref_type(fromTy) && toTy.isa<fir::BoxProcType>()) {
+    // Call is expecting a boxed procedure, not a reference to other data type.
+    // Convert the reference to a procedure and embox it.
+    mlir::Type procTy = toTy.cast<fir::BoxProcType>().getEleTy();
+    mlir::Value proc = createConvert(loc, procTy, val);
+    return create<fir::EmboxProcOp>(loc, toTy, proc);
+  }
 
-  if ((fir::isPolymorphicType(fromTy) &&
-       (fir::isAllocatableType(fromTy) || fir::isPointerType(fromTy)) &&
-       fir::isPolymorphicType(toTy)) ||
-      (fir::isPolymorphicType(fromTy) && toTy.isa<fir::BoxType>()))
+  if (((fir::isPolymorphicType(fromTy) &&
+        (fir::isAllocatableType(fromTy) || fir::isPointerType(fromTy)) &&
+        fir::isPolymorphicType(toTy)) ||
+       (fir::isPolymorphicType(fromTy) && toTy.isa<fir::BoxType>())) &&
+      !(fir::isUnlimitedPolymorphicType(fromTy) && fir::isAssumedType(toTy)))
     return create<fir::ReboxOp>(loc, toTy, val, mlir::Value{},
                                 /*slice=*/mlir::Value{});
 
@@ -499,7 +507,8 @@ mlir::Value fir::FirOpBuilder::createSlice(mlir::Location loc,
 
 mlir::Value fir::FirOpBuilder::createBox(mlir::Location loc,
                                          const fir::ExtendedValue &exv,
-                                         bool isPolymorphic) {
+                                         bool isPolymorphic,
+                                         bool isAssumedType) {
   mlir::Value itemAddr = fir::getBase(exv);
   if (itemAddr.getType().isa<fir::BaseBoxType>())
     return itemAddr;
@@ -509,11 +518,20 @@ mlir::Value fir::FirOpBuilder::createBox(mlir::Location loc,
         << itemAddr.getType();
     llvm_unreachable("not a memory reference type");
   }
-  mlir::Type boxTy = fir::BoxType::get(elementType);
+  mlir::Type boxTy;
   mlir::Value tdesc;
-  if (isPolymorphic) {
-    elementType = fir::updateTypeForUnlimitedPolymorphic(elementType);
-    boxTy = fir::ClassType::get(elementType);
+  // Avoid to wrap a box/class with box/class.
+  if (elementType.isa<fir::BaseBoxType>()) {
+    boxTy = elementType;
+  } else {
+    boxTy = fir::BoxType::get(elementType);
+    if (isPolymorphic) {
+      elementType = fir::updateTypeForUnlimitedPolymorphic(elementType);
+      if (isAssumedType)
+        boxTy = fir::BoxType::get(elementType);
+      else
+        boxTy = fir::ClassType::get(elementType);
+    }
   }
 
   return exv.match(
@@ -612,6 +630,18 @@ mlir::Value fir::FirOpBuilder::genExtentFromTriplet(mlir::Location loc,
   auto cmp = create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sgt,
                                          div, zero);
   return create<mlir::arith::SelectOp>(loc, cmp, div, zero);
+}
+
+mlir::Value fir::FirOpBuilder::genAbsentOp(mlir::Location loc,
+                                           mlir::Type argTy) {
+  if (!fir::isCharacterProcedureTuple(argTy))
+    return create<fir::AbsentOp>(loc, argTy);
+
+  auto boxProc =
+      create<fir::AbsentOp>(loc, argTy.cast<mlir::TupleType>().getType(0));
+  mlir::Value charLen = create<fir::UndefOp>(loc, getCharacterLengthType());
+  return fir::factory::createCharacterProcedureTuple(*this, loc, argTy, boxProc,
+                                                     charLen);
 }
 
 void fir::FirOpBuilder::setCommonAttributes(mlir::Operation *op) const {

@@ -1141,6 +1141,10 @@ bool ObjectFileMachO::IsSharedCacheBinary() const {
   return m_header.flags & MH_DYLIB_IN_CACHE;
 }
 
+bool ObjectFileMachO::IsKext() const {
+  return m_header.filetype == MH_KEXT_BUNDLE;
+}
+
 uint32_t ObjectFileMachO::GetAddressByteSize() const {
   return m_data.GetAddressByteSize();
 }
@@ -4552,7 +4556,7 @@ void ObjectFileMachO::ParseSymtab(Symtab &symtab) {
   // Count how many trie symbols we'll add to the symbol table
   int trie_symbol_table_augment_count = 0;
   for (auto &e : external_sym_trie_entries) {
-    if (symbols_added.find(e.entry.address) == symbols_added.end())
+    if (!symbols_added.contains(e.entry.address))
       trie_symbol_table_augment_count++;
   }
 
@@ -4599,8 +4603,7 @@ void ObjectFileMachO::ParseSymtab(Symtab &symtab) {
   if (function_starts_count > 0) {
     uint32_t num_synthetic_function_symbols = 0;
     for (i = 0; i < function_starts_count; ++i) {
-      if (symbols_added.find(function_starts.GetEntryRef(i).addr) ==
-          symbols_added.end())
+      if (!symbols_added.contains(function_starts.GetEntryRef(i).addr))
         ++num_synthetic_function_symbols;
     }
 
@@ -4612,7 +4615,7 @@ void ObjectFileMachO::ParseSymtab(Symtab &symtab) {
       for (i = 0; i < function_starts_count; ++i) {
         const FunctionStarts::Entry *func_start_entry =
             function_starts.GetEntryAtIndex(i);
-        if (symbols_added.find(func_start_entry->addr) == symbols_added.end()) {
+        if (!symbols_added.contains(func_start_entry->addr)) {
           addr_t symbol_file_addr = func_start_entry->addr;
           uint32_t symbol_flags = 0;
           if (func_start_entry->data)
@@ -7028,6 +7031,12 @@ bool ObjectFileMachO::LoadCoreFileImages(lldb_private::Process &process) {
           &process, image.filename, image.uuid, image.load_address,
           false /* value_is_offset */, image.currently_executing,
           false /* notify */);
+      if (module_sp) {
+        // We've already set the load address in the Target,
+        // don't do any more processing on this module.
+        added_modules.Append(module_sp, false /* notify */);
+        continue;
+      }
     }
 
     // If we have a slide, we need to find the original binary
@@ -7038,6 +7047,12 @@ bool ObjectFileMachO::LoadCoreFileImages(lldb_private::Process &process) {
           &process, image.filename, image.uuid, image.slide,
           true /* value_is_offset */, image.currently_executing,
           false /* notify */);
+      if (module_sp) {
+        // We've already set the load address in the Target,
+        // don't do any more processing on this module.
+        added_modules.Append(module_sp, false /* notify */);
+        continue;
+      }
     }
 
     // Try to find the binary by UUID or filename on the local

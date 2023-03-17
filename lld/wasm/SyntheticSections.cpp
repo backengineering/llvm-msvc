@@ -22,8 +22,7 @@
 using namespace llvm;
 using namespace llvm::wasm;
 
-namespace lld {
-namespace wasm {
+namespace lld::wasm {
 
 OutStruct out;
 
@@ -900,6 +899,7 @@ static size_t getHashSize() {
   case BuildIdKind::None:
     return 0;
   }
+  llvm_unreachable("build id kind not implemented");
 }
 
 BuildIdSection::BuildIdSection()
@@ -922,5 +922,4 @@ void BuildIdSection::writeBuildId(llvm::ArrayRef<uint8_t> buf) {
   memcpy(hashPlaceholderPtr, buf.data(), hashSize);
 }
 
-} // namespace wasm
-} // namespace lld
+} // namespace wasm::lld
