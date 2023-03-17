@@ -1581,7 +1581,7 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
         //[MSVC Compalibility] Use file name and line to replace '__FUNCTION__'
 #ifdef _WIN32
         if (II == Ident__FUNCTION__) {
-          FN += "(";
+          FN += "(Line:";
           FN += Twine(PLoc.getLine()).str();
           FN += ")";
         }
