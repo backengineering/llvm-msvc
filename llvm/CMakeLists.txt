@@ -84,10 +84,8 @@ endif()
 
 set(CMAKE_CXX_STANDARD ${LLVM_REQUIRED_CXX_STANDARD} CACHE STRING "C++ standard to conform to")
 
-if (LLVM_ENABLE_PATCHMAN)
-  #Include PatchMan headers
-  include_directories(${CMAKE_SOURCE_DIR}/../PatchMan/include)
-endif()
+#Include PatchMan headers
+include_directories(${CMAKE_SOURCE_DIR}/../PatchMan/include)
 
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
@@ -1365,10 +1363,8 @@ if (LLVM_INCLUDE_UTILS AND LLVM_INCLUDE_TOOLS)
   add_subdirectory(utils/llvm-locstats)
 endif()
 
-if (LLVM_ENABLE_PATCHMAN)
-  #Add PatchMan subdirectory
-  add_subdirectory(../PatchMan ../PatchMan/build)
+#Add PatchMan subdirectory
+add_subdirectory(../PatchMan ../PatchMan/build)
   
-  #Add PatchMan Dependencies for LLVMipo
-  add_dependencies(LLVMipo PatchManIRPass)
-endif()
+#Add PatchMan Dependencies for LLVMipo
+add_dependencies(LLVMipo PatchManIRPass)
