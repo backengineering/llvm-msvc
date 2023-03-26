@@ -225,6 +225,13 @@ def InsnDirectiveOpcode : AsmOperandClass {
   let PredicateMethod = "isImm";
 }
 
+def uimm6 : Operand<XLenVT> {
+  let ParserMatchClass = UImmAsmOperand<6>;
+  let DecoderMethod = "decodeUImmOperand<6>";
+  let OperandType = "OPERAND_UIMM6";
+  let OperandNamespace = "RISCVOp";
+}
+
 def uimm7_opcode : Operand<XLenVT> {
   let ParserMatchClass = InsnDirectiveOpcode;
   let DecoderMethod = "decodeUImmOperand<7>";
@@ -1090,6 +1097,17 @@ def : InstAlias<"zext.b $rd, $rs", (ANDI GPR:$rd, GPR:$rs, 0xFF), 0>;
 // .insn directive instructions
 //===----------------------------------------------------------------------===//
 
+def AnyRegOperand : AsmOperandClass {
+  let Name = "AnyRegOperand";
+  let RenderMethod = "addRegOperands";
+  let PredicateMethod = "isAnyReg";
+}
+
+def AnyReg : Operand<XLenVT> {
+  let OperandType = "OPERAND_REGISTER";
+  let ParserMatchClass = AnyRegOperand;
+}
+
 // isCodeGenOnly = 1 to hide them from the tablegened assembly parser.
 let isCodeGenOnly = 1, hasSideEffects = 1, mayLoad = 1, mayStore = 1,
     hasNoSchedulingInfo = 1 in {
@@ -1625,7 +1643,7 @@ multiclass LdPat<PatFrag LoadOp, RVInst Inst, ValueType vt = XLenVT> {
 }
 
 defm : LdPat<sextloadi8, LB>;
-defm : LdPat<extloadi8, LB>;
+defm : LdPat<extloadi8, LBU>; // Prefer unsigned due to no c.lb in Zcb.
 defm : LdPat<sextloadi16, LH>;
 defm : LdPat<extloadi16, LH>;
 defm : LdPat<load, LW, i32>, Requires<[IsRV32]>;
@@ -1865,14 +1883,6 @@ let Predicates = [IsRV64] in {
 def : Pat<(binop_allwusers<add> GPR:$rs1, (AddiPair:$rs2)),
           (ADDIW (ADDIW GPR:$rs1, (AddiPairImmLarge AddiPair:$rs2)),
                  (AddiPairImmSmall AddiPair:$rs2))>;
-}
-
-/// Empty pseudo for RISCVInitUndefPass
-let hasSideEffects = 0, mayLoad = 0, mayStore = 0, Size = 0, isCodeGenOnly = 1 in {
-  def PseudoRVVInitUndefM1     :  Pseudo<(outs VR:$vd), (ins), [], "">;
-  def PseudoRVVInitUndefM2     :  Pseudo<(outs VRM2:$vd), (ins), [], "">;
-  def PseudoRVVInitUndefM4     :  Pseudo<(outs VRM4:$vd), (ins), [], "">;
-  def PseudoRVVInitUndefM8     :  Pseudo<(outs VRM8:$vd), (ins), [], "">;
 }
 
 //===----------------------------------------------------------------------===//

@@ -493,16 +493,28 @@ GuardWideningImpl::computeWideningScore(Instruction *DominatedInstr,
     const auto *DominatingBlock = DominatingGuard->getParent();
     const auto *DominatedBlock = DominatedInstr->getParent();
 
-    // Descent as low as we can, always taking the likely successor.
-    while (DominatedBlock != DominatingBlock)
-      if (auto *LikelySucc = GetLikelySuccessor(DominatingBlock))
-        DominatingBlock = LikelySucc;
-      else
+    // Descend as low as we can, always taking the likely successor.
+    assert(DT.isReachableFromEntry(DominatingBlock) && "Unreached code");
+    assert(DT.isReachableFromEntry(DominatedBlock) && "Unreached code");
+    assert(DT.dominates(DominatingBlock, DominatedBlock) && "No dominance");
+    while (DominatedBlock != DominatingBlock) {
+      auto *LikelySucc = GetLikelySuccessor(DominatingBlock);
+      // No likely successor?
+      if (!LikelySucc)
         break;
+      // Only go down the dominator tree.
+      if (!DT.properlyDominates(DominatingBlock, LikelySucc))
+        break;
+      DominatingBlock = LikelySucc;
+    }
 
-    // Same Block?
+    // Found?
     if (DominatedBlock == DominatingBlock)
       return false;
+    // We followed the likely successor chain and went past the dominated
+    // block. It means that the dominated guard is in dead/very cold code.
+    if (!DT.dominates(DominatingBlock, DominatedBlock))
+      return true;
     // TODO: diamond, triangle cases
     if (!PDT) return true;
     return !PDT->dominates(DominatedBlock, DominatingBlock);

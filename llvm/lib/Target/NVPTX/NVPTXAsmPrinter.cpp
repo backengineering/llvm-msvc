@@ -429,7 +429,7 @@ bool NVPTXAsmPrinter::isLoopHeaderOfNoUnroll(
         if (MDNode *UnrollCountMD =
                 GetUnrollMetadata(LoopID, "llvm.loop.unroll.count")) {
           if (mdconst::extract<ConstantInt>(UnrollCountMD->getOperand(1))
-                  ->getZExtValue() == 1)
+                  ->isOne())
             return true;
         }
       }
@@ -1148,7 +1148,7 @@ void NVPTXAsmPrinter::printModuleLevelGV(const GlobalVariable *GVar,
       }
     }
   } else {
-    unsigned int ElementSize = 0;
+    uint64_t ElementSize = 0;
 
     // Although PTX has direct support for struct type and array type and
     // LLVM IR is very similar to PTX, the LLVM CodeGen does not support for

@@ -62,8 +62,8 @@ int main(int, char**)
 #endif
 
     test<char>();
-    test<ptrdiff_t>();
-    test<size_t>();
+    test<std::ptrdiff_t>();
+    test<std::size_t>();
 
     return 0;
 }

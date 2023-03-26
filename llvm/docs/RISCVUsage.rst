@@ -15,9 +15,9 @@ supported variations of the RISC-V specification.  It lives in the
 Base ISAs
 =========
 
-The specification defines four base instruction sets: RV32I, RV32E, RV64I,
-and RV128I. Currently, LLVM fully supports RV32I, and RV64I.  RV32E is
-supported by the assembly-based tools only.  RV128I is not supported.
+The specification defines five base instruction sets: RV32I, RV32E, RV64I,
+RV64E, and RV128I. Currently, LLVM fully supports RV32I, and RV64I.  RV32E and
+RV64E are supported by the assembly-based tools only.  RV128I is not supported.
 
 To specify the target triple:
 
@@ -27,7 +27,7 @@ To specify the target triple:
      Architecture Description
      ============ ==============================================================
      ``riscv32``   RISC-V with XLEN=32 (i.e. RV32I or RV32E)
-     ``riscv64``   RISC-V with XLEN=64 (i.e. RV64I)
+     ``riscv64``   RISC-V with XLEN=64 (i.e. RV64I or RV64E)
      ============ ==============================================================
 
 To select an E variant ISA (e.g. RV32E instead of RV32I), use the base
@@ -163,6 +163,9 @@ The primary goal of experimental support is to assist in the process of ratifica
 
 ``experimental-zvfh``
   LLVM implements `this draft text <https://github.com/riscv/riscv-v-spec/pull/780>`_.
+
+``experimental-zvkb``, ``experimental-zvkg``, ``experimental-zvkn``, ``experimental-zvknha``, ``experimental-zvknhb``, ``experimental-zvkns``, ``experimental-zvks``, ``experimental-zvksed``, ``experimental-zvksh``
+  LLVM implements the `0.3 draft specification <https://github.com/riscv/riscv-crypto/releases/download/v20230206/riscv-crypto-spec-vector.pdf>`_. Note that current vector crypto extension version can be found in: <https://github.com/riscv/riscv-crypto>.
 
 To use an experimental extension from `clang`, you must add `-menable-experimental-extensions` to the command line, and specify the exact version of the experimental extension you are using.  To use an experimental extension with LLVM's internal developer tools (e.g. `llc`, `llvm-objdump`, `llvm-mc`), you must prefix the extension name with `experimental-`.  Note that you don't need to specify the version with internal tools, and shouldn't include the `experimental-` prefix with `clang`.
 

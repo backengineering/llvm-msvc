@@ -1049,7 +1049,7 @@ def err_lambda_template_parameter_list_empty : Error<
 // C++2b static lambdas
 def err_static_lambda: ExtWarn<
   "static lambdas are a C++2b extension">, InGroup<CXX2b>;
-def warn_cxx20_compat_static_lambda: ExtWarn<
+def warn_cxx20_compat_static_lambda : Warning<
   "static lambdas are incompatible with C++ standards before C++2b">,
   InGroup<CXXPre2bCompat>, DefaultIgnore;
 def err_static_mutable_lambda : Error<
@@ -1300,6 +1300,10 @@ def note_pragma_attribute_namespace_on_attribute : Note<
 def warn_no_support_for_eval_method_source_on_m32 : Warning<
   "Setting the floating point evaluation method to `source` on a target"
   " without SSE is not supported.">, InGroup<Pragmas>;
+// - #pragma __debug
+def warn_pragma_debug_dependent_argument : Warning<
+  "%select{value|type}0-dependent expression passed as an argument to debug "
+  "command">, InGroup<IgnoredPragmas>;
 
 // OpenCL EXTENSION pragma (OpenCL 1.1 [9.1])
 def warn_pragma_expected_colon : Warning<

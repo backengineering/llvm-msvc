@@ -150,6 +150,9 @@ static void parseCodeGenArgs(Fortran::frontend::CodeGenOptions &opts,
       opts.PrepareForThinLTO = true;
   }
 
+  if (auto *a = args.getLastArg(clang::driver::options::OPT_save_temps_EQ))
+    opts.SaveTempsDir = a->getValue();
+
   // -mrelocation-model option.
   if (const llvm::opt::Arg *a =
           args.getLastArg(clang::driver::options::OPT_mrelocation_model)) {
@@ -816,6 +819,11 @@ bool CompilerInvocation::createFromArgs(
       diags.Report(clang::diag::err_drv_unknown_argument_with_suggestion)
           << argString << nearest;
     success = false;
+  }
+
+  // -flang-experimental-hlfir
+  if (args.hasArg(clang::driver::options::OPT_flang_experimental_hlfir)) {
+    res.loweringOpts.setLowerToHighLevelFIR(true);
   }
 
   success &= parseFrontendArgs(res.getFrontendOpts(), args, diags);

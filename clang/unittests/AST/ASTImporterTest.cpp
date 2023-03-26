@@ -8495,8 +8495,8 @@ TEST_P(ASTImporterOptionSpecificTestBase,
                                                    clang::SourceRange()));
   FromD->markEmpty();
 
-  CXXRecordDecl *ToD = cast<CXXRecordDecl>(Import(FromD, Lang_CXX20));
-  EXPECT_EQ(true, ToD->isEmpty());
+  CXXRecordDecl *ToD = Import(FromD, Lang_CXX20);
+  EXPECT_TRUE(ToD->isEmpty());
   for (auto *FD : ToD->fields())
     EXPECT_EQ(true, FD->hasAttr<NoUniqueAddressAttr>());
 }

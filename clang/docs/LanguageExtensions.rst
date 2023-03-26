@@ -2358,6 +2358,46 @@ evaluated, so any side effects of the expression will be discarded.
 
 Query for this feature with ``__has_builtin(__builtin_assume)``.
 
+.. _langext-__builtin_assume_separate_storage:
+
+``__builtin_assume_separate_storage``
+-------------------------------------
+
+``__builtin_assume_separate_storage`` is used to provide the optimizer with the
+knowledge that its two arguments point to separately allocated objects.
+
+**Syntax**:
+
+.. code-block:: c++
+
+    __builtin_assume_separate_storage(const volatile void *, const volatile void *)
+
+**Example of Use**:
+
+.. code-block:: c++
+
+  int foo(int *x, int *y) {
+      __builtin_assume_separate_storage(x, y);
+      *x = 0;
+      *y = 1;
+      // The optimizer may optimize this to return 0 without reloading from *x.
+      return *x;
+  }
+
+**Description**:
+
+The arguments to this function are assumed to point into separately allocated
+storage (either different variable definitions or different dynamic storage
+allocations). The optimizer may use this fact to aid in alias analysis. If the
+arguments point into the same storage, the behavior is undefined. Note that the
+definition of "storage" here refers to the outermost enclosing allocation of any
+particular object (so for example, it's never correct to call this function
+passing the addresses of fields in the same struct, elements of the same array,
+etc.).
+
+Query for this feature with ``__has_builtin(__builtin_assume_separate_storage)``.
+
+
 ``__builtin_offsetof``
 ----------------------
 
@@ -4877,3 +4917,21 @@ The following x86-specific intrinsics can be used in constant expressions:
 * ``_rotwr``
 * ``_lrotl``
 * ``_lrotr``
+
+Debugging the Compiler
+======================
+
+Clang supports a number of pragma directives that help debugging the compiler itself.
+Syntax is the following: `#pragma clang __debug <command> <arguments>`.
+Note, all of debugging pragmas are subject to change.
+
+`dump`
+------
+Accepts either a single identifier or an expression. When a single identifier is passed,
+the lookup results for the identifier are printed to `stderr`. When an expression is passed, 
+the AST for the expression is printed to `stderr`. The expression is an unevaluated operand,
+so things like overload resolution and template instantiations are performed,
+but the expression has no runtime effects.
+Type- and value-dependent expressions are not supported yet.
+
+This facility is designed to aid with testing name lookup machinery.

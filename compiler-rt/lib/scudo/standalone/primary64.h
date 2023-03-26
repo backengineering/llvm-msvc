@@ -64,32 +64,8 @@ public:
 
   void init(s32 ReleaseToOsInterval) NO_THREAD_SAFETY_ANALYSIS {
     DCHECK(isAligned(reinterpret_cast<uptr>(this), alignof(ThisT)));
-    DCHECK_EQ(PrimaryBase, 0U);
 
-    // Reserve the space required for the Primary.
-    PrimaryBase = reinterpret_cast<uptr>(map(
-        nullptr, PrimarySize, "scudo:primary_reserve", MAP_NOACCESS, &Data));
-
-    u32 Seed;
-    const u64 Time = getMonotonicTimeFast();
-    if (!getRandom(reinterpret_cast<void *>(&Seed), sizeof(Seed)))
-      Seed = static_cast<u32>(Time ^ (PrimaryBase >> 12));
     const uptr PageSize = getPageSizeCached();
-    for (uptr I = 0; I < NumClasses; I++) {
-      RegionInfo *Region = getRegionInfo(I);
-      // The actual start of a region is offset by a random number of pages
-      // when PrimaryEnableRandomOffset is set.
-      Region->RegionBeg = (PrimaryBase + (I << Config::PrimaryRegionSizeLog)) +
-                          (Config::PrimaryEnableRandomOffset
-                               ? ((getRandomModN(&Seed, 16) + 1) * PageSize)
-                               : 0);
-      Region->RandState = getRandomU32(&Seed);
-      Region->ReleaseInfo.LastReleaseAtNs = Time;
-    }
-    shuffle(RegionInfoArray, NumClasses, &Seed);
-
-    setOption(Option::ReleaseInterval, static_cast<sptr>(ReleaseToOsInterval));
-
     const uptr GroupSize = (1U << GroupSizeLog);
     const uptr PagesInGroup = GroupSize / PageSize;
     const uptr MinSizeClass = getSizeByClassId(1);
@@ -126,6 +102,37 @@ public:
     // use its size of in-use blocks as a heuristic.
     SmallerBlockReleasePageDelta =
         PagesInGroup * (1 + MinSizeClass / 16U) / 100;
+
+    DCHECK_EQ(PrimaryBase, 0U);
+    // Reserve the space required for the Primary.
+    PrimaryBase = reinterpret_cast<uptr>(map(
+        nullptr, PrimarySize, "scudo:primary_reserve", MAP_NOACCESS, &Data));
+
+    u32 Seed;
+    const u64 Time = getMonotonicTimeFast();
+    if (!getRandom(reinterpret_cast<void *>(&Seed), sizeof(Seed)))
+      Seed = static_cast<u32>(Time ^ (PrimaryBase >> 12));
+
+    for (uptr I = 0; I < NumClasses; I++) {
+      RegionInfo *Region = getRegionInfo(I);
+      // The actual start of a region is offset by a random number of pages
+      // when PrimaryEnableRandomOffset is set.
+      Region->RegionBeg = (PrimaryBase + (I << Config::PrimaryRegionSizeLog)) +
+                          (Config::PrimaryEnableRandomOffset
+                               ? ((getRandomModN(&Seed, 16) + 1) * PageSize)
+                               : 0);
+      Region->RandState = getRandomU32(&Seed);
+      // Releasing small blocks is expensive, set a higher threshold to avoid
+      // frequent page releases.
+      if (isSmallBlock(getSizeByClassId(I)))
+        Region->TryReleaseThreshold = PageSize * SmallerBlockReleasePageDelta;
+      else
+        Region->TryReleaseThreshold = PageSize;
+      Region->ReleaseInfo.LastReleaseAtNs = Time;
+    }
+    shuffle(RegionInfoArray, NumClasses, &Seed);
+
+    setOption(Option::ReleaseInterval, static_cast<sptr>(ReleaseToOsInterval));
   }
 
   void unmapTestOnly() NO_THREAD_SAFETY_ANALYSIS {
@@ -423,7 +430,7 @@ private:
   };
 
   struct ReleaseToOsInfo {
-    uptr PushedBlocksAtLastRelease;
+    uptr BytesInFreeListAtLastCheckpoint;
     uptr RangesReleased;
     uptr LastReleasedBytes;
     u64 LastReleaseAtNs;
@@ -440,6 +447,8 @@ private:
     uptr MappedUser GUARDED_BY(Mutex) = 0;
     // Bytes allocated for user memory.
     uptr AllocatedUser GUARDED_BY(Mutex) = 0;
+    // The minimum size of pushed blocks to trigger page release.
+    uptr TryReleaseThreshold GUARDED_BY(Mutex) = 0;
     MapPlatformData Data GUARDED_BY(Mutex) = {};
     ReleaseToOsInfo ReleaseInfo GUARDED_BY(Mutex) = {};
     bool Exhausted GUARDED_BY(Mutex) = false;
@@ -484,6 +493,11 @@ private:
   static uptr decompactGroupBase(uptr Base, uptr CompactPtrGroupBase) {
     DCHECK_EQ(CompactPtrGroupBase % (static_cast<uptr>(1) << (GroupScale)), 0U);
     return Base + (CompactPtrGroupBase << CompactPtrScale);
+  }
+
+  ALWAYS_INLINE static bool isSmallBlock(uptr BlockSize) {
+    const uptr PageSize = getPageSizeCached();
+    return BlockSize < PageSize / 16U;
   }
 
   // Push the blocks to their batch group. The layout will be like,
@@ -572,7 +586,7 @@ private:
       // TODO(chiahungduan): Avoid the use of push_back() in `Batches`.
       BG->Batches.push_front(TB);
       BG->PushedBlocks = 0;
-      BG->PushedBlocksAtLastCheckpoint = 0;
+      BG->BytesInBGAtLastCheckpoint = 0;
       BG->MaxCachedPerBatch =
           TransferBatch::getMaxCached(getSizeByClassId(ClassId));
 
@@ -814,24 +828,49 @@ private:
     const uptr BytesInFreeList =
         Region->AllocatedUser -
         (Region->Stats.PoppedBlocks - Region->Stats.PushedBlocks) * BlockSize;
-    if (BytesInFreeList < PageSize)
-      return 0; // No chance to release anything.
-    const uptr BytesPushed = (Region->Stats.PushedBlocks -
-                              Region->ReleaseInfo.PushedBlocksAtLastRelease) *
-                             BlockSize;
-    if (BytesPushed < PageSize)
-      return 0; // Nothing new to release.
 
-    const bool CheckDensity =
-        BlockSize < PageSize / 16U && ReleaseType != ReleaseToOS::ForceAll;
+    bool MaySkip = false;
+
+    // Always update `BytesInFreeListAtLastCheckpoint` with the smallest value
+    // so that we won't underestimate the releasable pages. For example, the
+    // following is the region usage,
+    //
+    //  BytesInFreeListAtLastCheckpoint   AllocatedUser
+    //                v                         v
+    //  |--------------------------------------->
+    //         ^                   ^
+    //  BytesInFreeList     ReleaseThreshold
+    //
+    // In general, if we have collected enough bytes and the amount of free
+    // bytes meets the ReleaseThreshold, we will try to do page release. If we
+    // don't update `BytesInFreeListAtLastCheckpoint` when the current
+    // `BytesInFreeList` is smaller, we may take longer time to wait for enough
+    // freed blocks because we miss the bytes between
+    // (BytesInFreeListAtLastCheckpoint - BytesInFreeList).
+    if (BytesInFreeList <=
+        Region->ReleaseInfo.BytesInFreeListAtLastCheckpoint) {
+      Region->ReleaseInfo.BytesInFreeListAtLastCheckpoint = BytesInFreeList;
+      MaySkip = true;
+    }
+
+    const uptr RegionPushedBytesDelta =
+        BytesInFreeList - Region->ReleaseInfo.BytesInFreeListAtLastCheckpoint;
+    if (RegionPushedBytesDelta < PageSize)
+      MaySkip = true;
+
+    const bool CheckDensity = isSmallBlock(BlockSize);
     // Releasing smaller blocks is expensive, so we want to make sure that a
     // significant amount of bytes are free, and that there has been a good
     // amount of batches pushed to the freelist before attempting to release.
     if (CheckDensity) {
       if (ReleaseType == ReleaseToOS::Normal &&
-          BytesPushed < Region->AllocatedUser / 16U)
-        return 0;
+          RegionPushedBytesDelta < Region->TryReleaseThreshold) {
+        MaySkip = true;
+      }
     }
+
+    if (MaySkip && ReleaseType != ReleaseToOS::ForceAll)
+      return 0;
 
     if (ReleaseType == ReleaseToOS::Normal) {
       const s32 IntervalMs = atomic_load_relaxed(&ReleaseToOsIntervalMs);
@@ -865,16 +904,15 @@ private:
     // of groups.
     uptr NumberOfBatchGroups = Region->FreeList.size();
 
+    // We are examining each group and will take the minimum distance to the
+    // release threshold as the next Region::TryReleaseThreshold(). Note that if
+    // the size of free blocks has reached the release threshold, the distance
+    // to the next release will be PageSize * SmallerBlockReleasePageDelta. See
+    // the comment on `SmallerBlockReleasePageDelta` for more details.
+    uptr MinDistToThreshold = GroupSize;
+
     for (BatchGroup *BG = Region->FreeList.front(), *Prev = nullptr;
          BG != nullptr;) {
-      const uptr PushedBytesDelta =
-          BG->PushedBlocks - BG->PushedBlocksAtLastCheckpoint;
-      if (PushedBytesDelta * BlockSize < PageSize) {
-        Prev = BG;
-        BG = BG->Next;
-        continue;
-      }
-
       // Group boundary is always GroupSize-aligned from CompactPtr base. The
       // layout of memory groups is like,
       //
@@ -908,21 +946,54 @@ private:
       const uptr NumBlocks = (BG->Batches.size() - 1) * BG->MaxCachedPerBatch +
                              BG->Batches.front()->getCount();
       const uptr BytesInBG = NumBlocks * BlockSize;
+
+      if (ReleaseType != ReleaseToOS::ForceAll &&
+          BytesInBG <= BG->BytesInBGAtLastCheckpoint) {
+        BG->BytesInBGAtLastCheckpoint = BytesInBG;
+        Prev = BG;
+        BG = BG->Next;
+        continue;
+      }
+
+      const uptr PushedBytesDelta = BG->BytesInBGAtLastCheckpoint - BytesInBG;
+
       // Given the randomness property, we try to release the pages only if the
       // bytes used by free blocks exceed certain proportion of group size. Note
       // that this heuristic only applies when all the spaces in a BatchGroup
       // are allocated.
       if (CheckDensity) {
-        const bool HighDensity = (BytesInBG * 100U) / AllocatedGroupSize >=
-                                 (100U - 1U - BlockSize / 16U);
+        const uptr ReleaseThreshold =
+            (AllocatedGroupSize * (100 - 1U - BlockSize / 16U)) / 100U;
+        const bool HighDensity = BytesInBG >= ReleaseThreshold;
         const bool MayHaveReleasedAll = NumBlocks >= (GroupSize / BlockSize);
         // If all blocks in the group are released, we will do range marking
         // which is fast. Otherwise, we will wait until we have accumulated
         // a certain amount of free memory.
         const bool ReachReleaseDelta =
-            MayHaveReleasedAll ? true
-                               : PushedBytesDelta * BlockSize >=
-                                     PageSize * SmallerBlockReleasePageDelta;
+            MayHaveReleasedAll
+                ? true
+                : PushedBytesDelta >= PageSize * SmallerBlockReleasePageDelta;
+
+        if (!HighDensity) {
+          DCHECK_LE(BytesInBG, ReleaseThreshold);
+          // The following is the usage of a memroy group,
+          //
+          //     BytesInBG             ReleaseThreshold
+          //  /             \                 v
+          //  +---+---------------------------+-----+
+          //  |   |         |                 |     |
+          //  +---+---------------------------+-----+
+          //       \        /                       ^
+          //    PushedBytesDelta                 GroupEnd
+          MinDistToThreshold =
+              Min(MinDistToThreshold,
+                  ReleaseThreshold - BytesInBG + PushedBytesDelta);
+        } else {
+          // If it reaches high density at this round, the next time we will try
+          // to release is based on SmallerBlockReleasePageDelta
+          MinDistToThreshold =
+              Min(MinDistToThreshold, PageSize * SmallerBlockReleasePageDelta);
+        }
 
         if (!HighDensity || !ReachReleaseDelta) {
           Prev = BG;
@@ -969,11 +1040,28 @@ private:
       BatchGroup *Cur = BG;
       BG = BG->Next;
 
+      // Ideally, we may want to update this only after successful release.
+      // However, for smaller blocks, each block marking is a costly operation.
+      // Therefore, we update it earlier.
+      // TODO: Consider updating this after page release if `ReleaseRecorder`
+      // can tell the releasd bytes in each group.
+      Cur->BytesInBGAtLastCheckpoint = BytesInBG;
+
       if (Prev != nullptr)
         Region->FreeList.extract(Prev, Cur);
       else
         Region->FreeList.pop_front();
       GroupToRelease.push_back(Cur);
+    }
+
+    // Only small blocks have the adaptive `TryReleaseThreshold`.
+    if (isSmallBlock(BlockSize)) {
+      // If the MinDistToThreshold is not updated, that means each memory group
+      // may have only pushed less than a page size. In that case, just set it
+      // back to normal.
+      if (MinDistToThreshold == GroupSize)
+        MinDistToThreshold = PageSize * SmallerBlockReleasePageDelta;
+      Region->TryReleaseThreshold = MinDistToThreshold;
     }
 
     if (GroupToRelease.empty())
@@ -999,8 +1087,6 @@ private:
                                ReleaseRangeSize, ReleaseOffset);
 
     for (BatchGroup &BG : GroupToRelease) {
-      BG.PushedBlocksAtLastCheckpoint = BG.PushedBlocks;
-
       const uptr BatchGroupBase =
           decompactGroupBase(CompactPtrBase, BG.CompactPtrGroupBase);
       const uptr BatchGroupEnd = BatchGroupBase + GroupSize;
@@ -1045,8 +1131,7 @@ private:
     releaseFreeMemoryToOS(Context, Recorder, SkipRegion);
 
     if (Recorder.getReleasedRangesCount() > 0) {
-      Region->ReleaseInfo.PushedBlocksAtLastRelease =
-          Region->Stats.PushedBlocks;
+      Region->ReleaseInfo.BytesInFreeListAtLastCheckpoint = BytesInFreeList;
       Region->ReleaseInfo.RangesReleased += Recorder.getReleasedRangesCount();
       Region->ReleaseInfo.LastReleasedBytes = Recorder.getReleasedBytes();
     }

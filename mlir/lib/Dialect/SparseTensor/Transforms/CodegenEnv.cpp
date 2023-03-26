@@ -28,18 +28,36 @@ static bool isMaterializing(Value val) {
          val.getDefiningOp<bufferization::AllocTensorOp>();
 }
 
+/// Makes target array's elements sorted according to the `order` array.
+static void sortArrayBasedOnOrder(std::vector<LoopId> &target,
+                                  ArrayRef<LoopId> order) {
+  std::sort(target.begin(), target.end(), [&order](LoopId l, LoopId r) {
+    assert(l != r);
+    int idxL = -1, idxR = -1;
+    for (int i = 0, e = order.size(); i < e; i++) {
+      if (order[i] == l)
+        idxL = i;
+      if (order[i] == r)
+        idxR = i;
+    }
+    assert(idxL >= 0 && idxR >= 0);
+    return idxL < idxR;
+  });
+}
+
 //===----------------------------------------------------------------------===//
 // Code generation environment constructor and general methods
 //===----------------------------------------------------------------------===//
 
 CodegenEnv::CodegenEnv(linalg::GenericOp linop, SparsificationOptions opts,
                        unsigned numTensors, unsigned numLoops,
-                       unsigned numFilterLoops)
+                       unsigned numFilterLoops, unsigned maxRank)
     : linalgOp(linop), sparseOptions(opts),
-      latticeMerger(numTensors, numLoops, numFilterLoops), loopEmitter(),
-      topSort(), sparseOut(nullptr), outerParNest(-1u), insChain(), expValues(),
-      expFilled(), expAdded(), expCount(), redVal(), redExp(kInvalidId),
-      redCustom(kInvalidId), redValidLexInsert() {}
+      latticeMerger(numTensors, numLoops, numFilterLoops, maxRank),
+      loopEmitter(), topSort(), sparseOut(nullptr), outerParNest(-1u),
+      insChain(), expValues(), expFilled(), expAdded(), expCount(), redVal(),
+      redExp(detail::kInvalidId), redCustom(detail::kInvalidId),
+      redValidLexInsert() {}
 
 LogicalResult CodegenEnv::initTensorExp() {
   // Builds the tensor expression for the Linalg operation in SSA form.
@@ -57,15 +75,42 @@ void CodegenEnv::startEmit() {
     insChain = sparseOut->get();
     latticeMerger.setHasSparseOut(true);
   }
+
+  // Sort the related loop array such that they are in the same order as they
+  // appears on the topoOrder.
+  // TODO: since we only handle affine addition for slice based codegen, and
+  // addition is assoicative, the order how we evaluate the expression does
+  // not matter. However, to support multiplication, the order of the loop
+  // index should match the evaluation order to the affine expression AST.
+
   // Initialize loop emitter.
-  SmallVector<Value> tensors;
-  for (OpOperand &t : linalgOp->getOpOperands())
+  SmallVector<Value> tensors; // input tensors passed to loop emitter
+  for (OpOperand &t : linalgOp->getOpOperands()) {
     tensors.push_back(t.get());
-  loopEmitter.initialize(tensors,
-                         StringAttr::get(linalgOp.getContext(),
-                                         linalg::GenericOp::getOperationName()),
-                         /*hasOutput=*/true,
-                         /*isSparseOut=*/sparseOut != nullptr, topSort);
+    Level rank = linalgOp.getMatchingIndexingMap(&t).getNumResults();
+    for (Level lvl = 0; lvl < rank; lvl++) {
+      sortArrayBasedOnOrder(
+          latticeMerger.getDependentLoops(t.getOperandNumber(), lvl), topSort);
+    }
+  }
+
+  loopEmitter.initialize(
+      tensors,
+      StringAttr::get(linalgOp.getContext(),
+                      linalg::GenericOp::getOperationName()),
+      /*hasOutput=*/true,
+      /*isSparseOut=*/sparseOut != nullptr, topSort,
+      // TODO: compute the map and pass it to loop emitter directly instead of
+      // passing in a callback.
+      [this](TensorId t, Level lvl) -> std::vector<std::pair<TensorId, Level>> {
+        // Translates from a list of loop index to a list of [tid, dim] pair.
+        std::vector<LoopId> rLoops = this->merger().getDependentLoops(t, lvl);
+        std::vector<std::pair<TensorId, Level>> ret;
+        ret.reserve(rLoops.size());
+        for (LoopId l : rLoops)
+          ret.emplace_back(this->merger().getLoopDefiningLvl(l));
+        return ret;
+      });
 }
 
 std::optional<Operation *> CodegenEnv::genLoopBoundary(
@@ -86,6 +131,9 @@ std::optional<Operation *> CodegenEnv::genLoopBoundary(
   auto r = callback(params); // may update parameters
   unsigned i = 0;
   if (isReduc()) {
+    // FIXME: This requires `updateExprValue` to perform updates without
+    // checking for a previous value; but it's not clear whether that's
+    // by design or might be a potential source for bugs.
     updateReduc(params[i++]);
     if (redValidLexInsert)
       setValidLexInsert(params[i++]);
@@ -230,20 +278,26 @@ void CodegenEnv::endExpand() {
 //===----------------------------------------------------------------------===//
 
 void CodegenEnv::startReduc(ExprId exp, Value val) {
-  assert(!isReduc() && exp != kInvalidId);
+  assert(!isReduc() && exp != detail::kInvalidId);
   redExp = exp;
   updateReduc(val);
 }
 
 void CodegenEnv::updateReduc(Value val) {
   assert(isReduc());
-  redVal = exp(redExp).val = val;
+  redVal = val;
+  // NOTE: `genLoopBoundary` requires that this performs a unilateral
+  // update without checking for a previous value first.  (It's not
+  // clear whether any other callsites also require that.)
+  latticeMerger.updateExprValue(redExp, val);
 }
 
 Value CodegenEnv::endReduc() {
+  assert(isReduc());
   Value val = redVal;
-  updateReduc(Value());
-  redExp = kInvalidId;
+  redVal = val;
+  latticeMerger.clearExprValue(redExp);
+  redExp = detail::kInvalidId;
   return val;
 }
 
@@ -258,7 +312,7 @@ void CodegenEnv::clearValidLexInsert() {
 }
 
 void CodegenEnv::startCustomReduc(ExprId exp) {
-  assert(!isCustomReduc() && exp != kInvalidId);
+  assert(!isCustomReduc() && exp != detail::kInvalidId);
   redCustom = exp;
 }
 
@@ -269,5 +323,5 @@ Value CodegenEnv::getCustomRedId() {
 
 void CodegenEnv::endCustomReduc() {
   assert(isCustomReduc());
-  redCustom = kInvalidId;
+  redCustom = detail::kInvalidId;
 }

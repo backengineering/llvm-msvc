@@ -44,7 +44,7 @@ test()
         if (small)
         {
             const std::size_t result = h(t);
-            LIBCPP_ASSERT(result == static_cast<size_t>(t));
+            LIBCPP_ASSERT(result == static_cast<std::size_t>(t));
             ((void)result); // Prevent unused warning
         }
     }
@@ -72,7 +72,7 @@ int main(int, char**)
 
 //  LWG #2119
     test<std::ptrdiff_t>();
-    test<size_t>();
+    test<std::size_t>();
 
     test<std::int8_t>();
     test<std::int16_t>();
@@ -90,7 +90,7 @@ int main(int, char**)
     test<std::int_least64_t>();
 
     test<intmax_t>();
-    test<intptr_t>();
+    test<std::intptr_t>();
 
     test<std::uint8_t>();
     test<std::uint16_t>();
@@ -108,7 +108,7 @@ int main(int, char**)
     test<std::uint_least64_t>();
 
     test<uintmax_t>();
-    test<uintptr_t>();
+    test<std::uintptr_t>();
 
 #ifndef TEST_HAS_NO_INT128
     test<__int128_t>();

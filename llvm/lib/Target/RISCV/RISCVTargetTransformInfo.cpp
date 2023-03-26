@@ -25,7 +25,7 @@ static cl::opt<unsigned> RVVRegisterWidthLMUL(
     cl::desc(
         "The LMUL to use for getRegisterBitWidth queries. Affects LMUL used "
         "by autovectorized code. Fractional LMULs are not supported."),
-    cl::init(1), cl::Hidden);
+    cl::init(2), cl::Hidden);
 
 static cl::opt<unsigned> SLPMaxVF(
     "riscv-v-slp-max-vf",
@@ -292,6 +292,19 @@ InstructionCost RISCVTTIImpl::getShuffleCost(TTI::ShuffleKind Kind,
     // TODO: Most of these cases will return getInvalid in generic code, and
     // must be implemented here.
     break;
+  case TTI::SK_InsertSubvector:
+    // Example sequence:
+    // vsetivli     zero, 4, e8, mf2, tu, ma (ignored)
+    // vslideup.vi  v8, v9, 2
+    return LT.first * getLMULCost(LT.second);
+  case TTI::SK_Select: {
+    // Example sequence:
+    // li           a0, 90
+    // vsetivli     zero, 8, e8, mf2, ta, ma (ignored)
+    // vmv.s.x      v0, a0
+    // vmerge.vvm   v8, v9, v8, v0
+    return LT.first * 3 * getLMULCost(LT.second);
+  }
   case TTI::SK_Broadcast: {
     bool HasScalar = (Args.size() > 0) && (Operator::getOpcode(Args[0]) ==
                                            Instruction::InsertElement);

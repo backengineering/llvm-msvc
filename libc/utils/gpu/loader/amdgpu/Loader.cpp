@@ -32,6 +32,7 @@ constexpr const char *KERNEL_START = "_start.kd";
 struct kernel_args_t {
   int argc;
   void *argv;
+  void *envp;
   void *ret;
   void *inbox;
   void *outbox;
@@ -71,6 +72,11 @@ static void handle_error(hsa_status_t code) {
   if (hsa_status_string(code, &desc) != HSA_STATUS_SUCCESS)
     desc = "Unknown error";
   fprintf(stderr, "%s\n", desc);
+  exit(EXIT_FAILURE);
+}
+
+static void handle_error(const char *msg) {
+  fprintf(stderr, "%s\n", msg);
   exit(EXIT_FAILURE);
 }
 
@@ -164,7 +170,7 @@ hsa_status_t get_agent_memory_pool(hsa_agent_t agent,
   return iterate_agent_memory_pools(agent, cb);
 }
 
-int load(int argc, char **argv, void *image, size_t size) {
+int load(int argc, char **argv, char **envp, void *image, size_t size) {
   // Initialize the HSA runtime used to communicate with the device.
   if (hsa_status_t err = hsa_init())
     handle_error(err);
@@ -278,26 +284,23 @@ int load(int argc, char **argv, void *image, size_t size) {
 
   // Allocate fine-grained memory on the host to hold the pointer array for the
   // copied argv and allow the GPU agent to access it.
-  void *dev_argv;
-  if (hsa_status_t err =
-          hsa_amd_memory_pool_allocate(finegrained_pool, argc * sizeof(char *),
-                                       /*flags=*/0, &dev_argv))
-    handle_error(err);
-  hsa_amd_agents_allow_access(1, &dev_agent, nullptr, dev_argv);
-
-  // Copy each string in the argument vector to global memory on the device.
-  for (int i = 0; i < argc; ++i) {
-    size_t size = strlen(argv[i]) + 1;
-    void *dev_str;
+  auto allocator = [&](uint64_t size) -> void * {
+    void *dev_ptr = nullptr;
     if (hsa_status_t err = hsa_amd_memory_pool_allocate(finegrained_pool, size,
-                                                        /*flags=*/0, &dev_str))
+                                                        /*flags=*/0, &dev_ptr))
       handle_error(err);
-    hsa_amd_agents_allow_access(1, &dev_agent, nullptr, dev_str);
-    // Load the host memory buffer with the pointer values of the newly
-    // allocated strings.
-    std::memcpy(dev_str, argv[i], size);
-    static_cast<void **>(dev_argv)[i] = dev_str;
-  }
+    hsa_amd_agents_allow_access(1, &dev_agent, nullptr, dev_ptr);
+    return dev_ptr;
+  };
+  void *dev_argv = copy_argument_vector(argc, argv, allocator);
+  if (!dev_argv)
+    handle_error("Failed to allocate device argv");
+
+  // Allocate fine-grained memory on the host to hold the pointer array for the
+  // copied environment array and allow the GPU agent to access it.
+  void *dev_envp = copy_environment(envp, allocator);
+  if (!dev_envp)
+    handle_error("Failed to allocate device environment");
 
   // Allocate space for the return pointer and initialize it to zero.
   void *dev_ret;
@@ -333,6 +336,7 @@ int load(int argc, char **argv, void *image, size_t size) {
   kernel_args_t *kernel_args = reinterpret_cast<kernel_args_t *>(args);
   kernel_args->argc = argc;
   kernel_args->argv = dev_argv;
+  kernel_args->envp = dev_envp;
   kernel_args->ret = dev_ret;
   kernel_args->inbox = server_outbox;
   kernel_args->outbox = server_inbox;

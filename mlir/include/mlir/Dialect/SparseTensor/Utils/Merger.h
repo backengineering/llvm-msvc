@@ -23,6 +23,113 @@
 namespace mlir {
 namespace sparse_tensor {
 
+// TODO: These type aliases currently only serve to make the code more
+// self-documenting, however because they are not type-checked they can
+// do nothing to prevent mixups.  We should really change them from mere
+// aliases to actual struct definitions, so that we can type-check them.
+
+/// Tensor identifiers.  The valid set of identifiers is defined by the
+/// first argument passed to the `Merger` ctor.
+using TensorId = unsigned;
+
+/// Loop identifiers.  The valid set of identifiers is defined by the
+/// second two arguments to the `Merger` ctor.
+///
+/// These identifiers serve as proxies for the `$dim` argument to
+/// `linalg::IndexOp`, however the numerical value of a `LoopId` should
+/// not necessarily be equated with the numerical value of the corresponding
+/// `$dim` argument.  The `$dim` arguments are De Bruijn indices: that
+/// is, they identify the loop which binds the loop-variable by counting
+/// the enclosing loops from innermost to outermost, starting from zero.
+/// Whereas `LoopId` are considered to be arbitrary names for identifying
+/// loops; since the `Merger` does not care about the actual ordering of
+/// loops, and leaves it up to the `LoopEmitter` to specify the actual
+/// loop ordering (`LoopOrd`).
+///
+/// TODO: Despite the above claim that `$dim` and `LoopId` need not be
+/// numerically equal, some code in the `Merger` class does equate them
+/// (e.g., `buildTensorExp`).  So we need to explicate the exact relationship
+/// between `$dim`, `LoopId`, and `LoopOrd`; especially with regards to their
+/// providence.  If `LoopId` really is supposed to be equated with `$dim`,
+/// then we should change the name to `LoopIdx` or similar, to capture the
+/// fact that its numerical value is not invariant when entering/exiting
+/// loops (unlike `TensorId`, `ExprId`, `LatPointId`, and `LatSetId` which
+/// are invariant identifiers).
+using LoopId = unsigned;
+
+/// A compressed representation of `std::pair<TensorId, LoopId>`.
+/// The compression scheme is such that this also serves as an index
+/// into the bitvector stored in `LatPoint` (since that bitvector is
+/// just the implementation for a set of `TensorLoopId` values).
+using TensorLoopId = unsigned;
+
+/// `TensorExp` identifiers.  These are allocated by `Merger::addExp`,
+/// and serve as unique identifiers for the corresponding `TensorExp` object.
+using ExprId = unsigned;
+
+/// `LatPoint` identifiers.  These are allocated by `Merger::addLat`,
+/// and serve as unique identifiers for the corresponding `LatPoint` object.
+using LatPointId = unsigned;
+
+/// `LatSet` identifiers.  These are allocated by `Merger::addSet` (and
+/// by other methods calling that one), and serve as unique identifiers
+/// for the corresponding `SmallVector<LatPointId>` object.
+using LatSetId = unsigned;
+
+namespace detail {
+/// A constant serving as the canonically invalid identifier, regardless
+/// of the identifier type.
+static constexpr unsigned kInvalidId = -1u;
+} // namespace detail
+
+/// Tensor expression. Represents an MLIR expression in tensor index notation.
+struct TensorExp final {
+  enum class Kind;
+
+  /// Child subexpressions for non-leaf expressions.
+  struct Children final {
+    ExprId e0;
+    ExprId e1;
+  };
+
+  // The `x` parameter has different types depending on the value of the
+  // `k` parameter.  The correspondences are:
+  // * `kTensor`    -> `TensorId`
+  // * `kInvariant` -> `kInvalidId`
+  // * `kLoopVar`   -> `LoopId`
+  // * else         -> `ExprId`
+  //
+  // The `y`, `v`, and `op` parameters either must or must not be
+  // `kInvalidId`/`nullptr`, depending on the value of the `k` parameter;
+  // however, they have uniform C++ types regardless of the value of `k`.
+  TensorExp(Kind k, unsigned x, ExprId y, Value v, Operation *op);
+
+  /// Tensor expression kind.
+  Kind kind;
+
+  union {
+    /// `kTensor` expressions simply have a tensor identifier.
+    TensorId tensor;
+
+    /// `kLoopVar` expressions simply have a loop identifier.
+    LoopId loop;
+
+    /// All other expressions hold the `ExprId`s of their children.
+    Children children;
+  };
+
+  /// Direct link to IR for an invariant or the destination value (to
+  /// infer destination type) of a cast operation During code generation,
+  /// this field may be used to cache "hoisted" loop invariant tensor loads.
+  Value val;
+
+  /// Code blocks used by semirings. For the case of kUnary, kBinary, kReduce,
+  /// and kSelect, this holds the original operation with all regions. For
+  /// kBinaryBranch, this holds the YieldOp for the left or right half
+  /// to be merged into a nested scf loop.
+  Operation *op;
+};
+
 /// Tensor expression kind.
 ///
 /// The `kLoopVar` leaf kind is for representing `linalg::IndexOp`.
@@ -30,17 +137,13 @@ namespace sparse_tensor {
 /// in question, and its value will be the current iteration's value
 /// of that loop-variable.  See the `LoopId` documentation for more details.
 //
-// TODO: make this an `enum class` nested in the `TensorExp` class;
-// to improve namespacing, and match the pattern used by other "Kind"
-// enums in MLIR.
-//
 // TODO: Modify this definition so that the numeric values already encode
 // the `ExpArity` (while extending the notion of "arity" to include not
 // just the number of `ExprId` children the node has, but also whether the
 // node has a `Value` and/or `Operation*`).  Doing this will avoid needing
 // to enumerate all the kinds in `getExpArity` and in the `TensorExp` ctor,
 // and should help clean up a few other places as well.
-enum Kind {
+enum class TensorExp::Kind {
   // Leaf.
   kTensor = 0,
   kInvariant,
@@ -104,114 +207,11 @@ enum Kind {
   kReduce, // semiring reduction op
 };
 
-// TODO: These type aliases currently only serve to make the code more
-// self-documenting, however because they are not type-checked they can
-// do nothing to prevent mixups.  We should really change them from mere
-// aliases to actual struct definitions, so that we can type-check them.
-
-/// Tensor identifiers.  The valid set of identifiers is defined by the
-/// first argument passed to the `Merger` ctor.
-using TensorId = unsigned;
-
-/// Loop identifiers.  The valid set of identifiers is defined by the
-/// second two arguments to the `Merger` ctor.
-///
-/// These identifiers serve as proxies for the `$dim` argument to
-/// `linalg::IndexOp`, however the numerical value of a `LoopId` should
-/// not necessarily be equated with the numerical value of the corresponding
-/// `$dim` argument.  The `$dim` arguments are De Bruijn indices: that
-/// is, they identify the loop which binds the loop-variable by counting
-/// the enclosing loops from innermost to outermost, starting from zero.
-/// Whereas `LoopId` are considered to be arbitrary names for identifying
-/// loops; since the `Merger` does not care about the actual ordering of
-/// loops, and leaves it up to the `LoopEmitter` to specify the actual
-/// loop ordering (`LoopOrd`).
-///
-/// TODO: Despite the above claim that `$dim` and `LoopId` need not be
-/// numerically equal, some code in the `Merger` class does equate them
-/// (e.g., `buildTensorExp`).  So we need to explicate the exact relationship
-/// between `$dim`, `LoopId`, and `LoopOrd`; especially with regards to their
-/// providence.  If `LoopId` really is supposed to be equated with `$dim`,
-/// then we should change the name to `LoopIdx` or similar, to capture the
-/// fact that its numerical value is not invariant when entering/exiting
-/// loops (unlike `TensorId`, `ExprId`, `LatPointId`, and `LatSetId` which
-/// are invariant identifiers).
-using LoopId = unsigned;
-
-/// A compressed representation of `std::pair<TensorId, LoopId>`.
-/// The compression scheme is such that this also serves as an index
-/// into the bitvector stored in `LatPoint` (since that bitvector is
-/// just the implementation for a set of `TensorLoopId` values).
-using TensorLoopId = unsigned;
-
-/// `TensorExp` identifiers.  These are allocated by `Merger::addExp`,
-/// and serve as unique identifiers for the corresponding `TensorExp` object.
-using ExprId = unsigned;
-
-/// `LatPoint` identifiers.  These are allocated by `Merger::addLat`,
-/// and serve as unique identifiers for the corresponding `LatPoint` object.
-using LatPointId = unsigned;
-
-/// `LatSet` identifiers.  These are allocated by `Merger::addSet` (and
-/// by other methods calling that one), and serve as unique identifiers
-/// for the corresponding `SmallVector<LatPointId>` object.
-using LatSetId = unsigned;
-
-/// A constant serving as the canonically invalid identifier, regardless
-/// of the identifier type.
-static constexpr unsigned kInvalidId = -1u;
-
-/// Children subexpressions of tensor operations.
-struct Children {
-  ExprId e0;
-  ExprId e1;
-};
-
-/// Tensor expression. Represents a MLIR expression in tensor index notation.
-struct TensorExp {
-  // The `x` parameter has different types depending on the value of the
-  // `k` parameter.  The correspondences are:
-  // * `kTensor`    -> `TensorId`
-  // * `kInvariant` -> `kInvalidId`
-  // * `kLoopVar`   -> `LoopId`
-  // * else         -> `ExprId`
-  //
-  // The `y`, `v`, and `op` parameters either must or must not be
-  // `kInvalidId`/`nullptr`, depending on the value of the `k` parameter;
-  // however, they have uniform C++ types regardless of the value of `k`.
-  TensorExp(Kind k, unsigned x, ExprId y, Value v, Operation *op);
-
-  /// Tensor expression kind.
-  Kind kind;
-
-  union {
-    /// `kTensor` expressions simply have a tensor identifier.
-    TensorId tensor;
-
-    /// `kLoopVar` expressions simply have a loop identifier.
-    LoopId loop;
-
-    /// All other expressions hold the `ExprId`s of their children.
-    Children children;
-  };
-
-  /// Direct link to IR for an invariant or the destination value (to
-  /// infer destination type) of a cast operation During code generation,
-  /// this field may be used to cache "hoisted" loop invariant tensor loads.
-  Value val;
-
-  /// Code blocks used by semirings. For the case of kUnary, kBinary, kReduce,
-  /// and kSelect, this holds the original operation with all regions. For
-  /// kBinaryBranch, this holds the YieldOp for the left or right half
-  /// to be merged into a nested scf loop.
-  Operation *op;
-};
-
 /// Lattice point.  Each lattice point consists of a formal conjunction
 /// of `TensorLoopId`s, together with the identifier of the corresponding
 /// tensor expression.  The formal conjunction is represented as a set of
 /// `TensorLoopId`, where that set is implemented as a `BitVector`.
-struct LatPoint {
+struct LatPoint final {
   /// Construct the lattice point from a given set of `TensorLoopId`s.
   LatPoint(const BitVector &bits, ExprId e);
 
@@ -256,6 +256,9 @@ public:
   /// }
   ///
   /// to filter out coordinates that are not equal to the affine expression.
+  ///
+  /// The maxLvlRank specifies the max level rank of all inputs/output tensors.
+  /// It is used to pre-allocate sufficient memory for internal storage.
   //
   // TODO: we want to make the filter loop more efficient in the future,
   // e.g., by avoiding scanning the full list of stored coordinates (keeping
@@ -266,22 +269,23 @@ public:
   // gave the number of input tensors, instead of the current number of
   // input+output tensors.
   Merger(unsigned numInputOutputTensors, unsigned numNativeLoops,
-         unsigned numFilterLoops);
+         unsigned numFilterLoops, unsigned maxLvlRank);
 
   /// Constructs a new tensor expression, and returns its identifier.
   /// The type of the `e0` argument varies according to the value of the
   /// `k` argument, as described by the `TensorExp` ctor.
-  ExprId addExp(Kind k, unsigned e0, ExprId e1 = kInvalidId, Value v = Value(),
-                Operation *op = nullptr);
-  ExprId addExp(Kind k, ExprId e, Value v, Operation *op = nullptr) {
-    return addExp(k, e, kInvalidId, v, op);
+  ExprId addExp(TensorExp::Kind k, unsigned e0, ExprId e1 = detail::kInvalidId,
+                Value v = Value(), Operation *op = nullptr);
+  ExprId addExp(TensorExp::Kind k, ExprId e, Value v, Operation *op = nullptr) {
+    return addExp(k, e, detail::kInvalidId, v, op);
   }
-  ExprId addExp(Kind k, Value v, Operation *op = nullptr) {
-    return addExp(k, kInvalidId, kInvalidId, v, op);
+  ExprId addExp(TensorExp::Kind k, Value v, Operation *op = nullptr) {
+    return addExp(k, detail::kInvalidId, detail::kInvalidId, v, op);
   }
 
   /// Constructs a new iteration lattice point, and returns its identifier.
   LatPointId addLat(TensorId t, LoopId i, ExprId e);
+  LatPointId addLat(const BitVector &bits, ExprId e);
 
   /// Constructs a new (initially empty) set, and returns its identifier.
   LatSetId addSet();
@@ -290,30 +294,31 @@ public:
   /// of `LoopId` (effectively constructing a larger "intersection" of those
   /// loops) with a newly constructed tensor (sub)expression of given kind.
   /// Returns the identifier of the new lattice point.
-  LatPointId conjLat(Kind kind, LatPointId p0, LatPointId p1,
+  LatPointId conjLat(TensorExp::Kind kind, LatPointId p0, LatPointId p1,
                      Operation *op = nullptr);
 
   /// Conjunctive merge of two lattice sets: `(s0 /\_op s1)`.
   /// Returns the identifier of the new set.
-  LatSetId conjSet(Kind kind, LatSetId s0, LatSetId s1,
+  LatSetId conjSet(TensorExp::Kind kind, LatSetId s0, LatSetId s1,
                    Operation *op = nullptr);
 
   /// Disjunctive merge of two lattice sets: `(s0 /\_op s1, s0, s1)`.
   /// Returns the identifier of the new set.
-  LatSetId disjSet(Kind kind, LatSetId s0, LatSetId s1,
+  LatSetId disjSet(TensorExp::Kind kind, LatSetId s0, LatSetId s1,
                    Operation *op = nullptr);
 
   /// Disjunctive merge of two lattice sets with custom handling of the
   /// overlap, left, and right regions.  Any region may be left missing
   /// in the output.  Returns the identifier of the new set.
-  LatSetId combiSet(Kind kind, LatSetId s0, LatSetId s1, Operation *orig,
-                    bool includeLeft, Kind ltrans, Operation *opleft,
-                    bool includeRight, Kind rtrans, Operation *opright);
+  LatSetId combiSet(TensorExp::Kind kind, LatSetId s0, LatSetId s1,
+                    Operation *orig, bool includeLeft, TensorExp::Kind ltrans,
+                    Operation *opleft, bool includeRight,
+                    TensorExp::Kind rtrans, Operation *opright);
 
   /// Maps the unary operator over the lattice set of the operand, i.e. each
   /// lattice point on an expression E is simply copied over, but with OP E
   /// as new expression. Returns the identifier of the new set.
-  LatSetId mapSet(Kind kind, LatSetId s, Value v = Value(),
+  LatSetId mapSet(TensorExp::Kind kind, LatSetId s, Value v = Value(),
                   Operation *op = nullptr);
 
   /// Optimizes the iteration lattice points in the given set. This
@@ -377,7 +382,8 @@ public:
 
   /// Returns true if the expression is `(kTensor t)`.
   bool expIsTensor(ExprId e, TensorId t) const {
-    return tensorExps[e].kind == kTensor && tensorExps[e].tensor == t;
+    return tensorExps[e].kind == TensorExp::Kind::kTensor &&
+           tensorExps[e].tensor == t;
   }
 
   /// Returns true if the expression contains the tensor as an operand.
@@ -399,11 +405,17 @@ public:
   /// to sparse level-type.
   bool hasAnySparse(const BitVector &bits) const;
 
+  /// Returns true if bits contains a dependent index reduction condition on
+  /// sparse levels.
+  bool hasSparseIdxReduction(const BitVector &bits) const;
+
   /// Gets the level-type of the `t`th tensor on `i`th loop.
   DimLevelType getDimLevelType(TensorId t, LoopId i) const {
     assert(t < numTensors && i < numLoops);
     return lvlTypes[t][i];
   }
+
+  /// Gets the level-type of the TensorLoopId.
   DimLevelType getDimLevelType(TensorLoopId b) const {
     return getDimLevelType(tensor(b), loop(b));
   }
@@ -435,26 +447,113 @@ public:
 
   /// Iterates over a set of `TensorLoopId`s, invoking the callback
   /// for each `TensorLoopId` and passing it the corresponding tensor
-  /// identifier, level, and level-type.
-  void
-  foreachTensorLoopId(LatPointId p,
-                      function_ref<void(TensorLoopId, TensorId,
-                                        std::optional<Level>, DimLevelType)>
-                          callback) const {
-    for (const TensorLoopId b : latPoints[p].bits.set_bits())
-      callback(b, tensor(b), getLvl(b), getDimLevelType(b));
+  /// identifier, level, and level-type, following with a boolean value
+  /// indicating whether it is a dependent index reduction loop condition.
+  void foreachTensorLoopId(
+      LatPointId p, function_ref<void(TensorLoopId, TensorId,
+                                      std::optional<Level>, DimLevelType, bool)>
+                        callback) {
+    for (const TensorLoopId b : latPoints[p].bits.set_bits()) {
+      TensorId t = tensor(b);
+      if (isLvlWithNonTrivialIdxExp(b)) {
+        // This must be an undefined level.
+        assert(!getLvl(b).has_value());
+        // Slice the tid along the dependent level to iterate current loop.
+        callback(b, t, loopToDependencies[loop(b)][t], getDimLevelType(b),
+                 /*isIdxReduc=*/true);
+      } else {
+        callback(b, t, getLvl(b), getDimLevelType(b), /*isIdxReduc=*/false);
+      }
+    }
   }
 
   /// Sets whether the output tensor is sparse or not.
   void setHasSparseOut(bool s) { hasSparseOut = s; }
 
+  /// Establishes the two-way map that i <-> <t, lvl>.
+  void setLoopDependentTensorLevel(LoopId i, TensorId t, Level lvl) {
+    assert(lvl < numLoops);
+    loopToDependencies[i][t] = lvl;
+    levelToDependentIdx[t][lvl].push_back(i);
+  }
+
+  /// Whether the loop has dependent slice.
+  bool hasDependentLvl(LoopId i, TensorId tid) {
+    return loopToDependencies[i][tid].has_value();
+  }
+
+  /// Returns the list of loop indices which appear in the non-trivial index
+  /// expression on t_l, e.g., A[i+j] => {i, j}
+  std::vector<LoopId> &getDependentLoops(TensorId t, Level lvl) {
+    return levelToDependentIdx[t][lvl];
+  }
+
+  /// Returns the defining [tid, lvl] for the loop.
+  std::pair<TensorId, Level> getLoopDefiningLvl(LoopId i) const {
+    return loopBounds[i];
+  }
+
+  /// Checks whether the TensorLoopId represents a tensor level with
+  /// non-trivial index expression on it.
+  bool isLvlWithNonTrivialIdxExp(TensorLoopId b) const {
+    return loopToDependencies[loop(b)][tensor(b)].has_value();
+  }
+
   /// Convenience getters to immediately access the stored nodes.
-  /// Typically it is inadvisible to keep the reference around, as in
-  /// `TensorExpr &te = merger.exp(e)`, since insertions into the merger
-  /// may cause data movement and invalidate the underlying memory address.
-  TensorExp &exp(ExprId e) { return tensorExps[e]; }
-  LatPoint &lat(LatPointId p) { return latPoints[p]; }
-  SmallVector<LatPointId> &set(LatSetId s) { return latSets[s]; }
+  /// These methods return `const&` because the underlying objects must
+  /// not be mutated by client code.  The only exception is for mutating
+  /// the value associated with an expression, for which there are
+  /// dedicated methods below.
+  ///
+  /// NOTE: It is inadvisable to keep the reference alive for a long
+  /// time (e.g., as in `TensorExpr &te = merger.exp(e)`), since insertions
+  /// into the merger can cause data movement which will invalidate the
+  /// underlying memory address.  This isn't just a problem with the `&`
+  /// references, but also applies to the `ArrayRef`.  In particular,
+  /// using `for (LatPointId p : merger.set(s))` will run into the same
+  /// dangling-reference problems if the loop body inserts new sets.
+  const TensorExp &exp(ExprId e) const { return tensorExps[e]; }
+  const LatPoint &lat(LatPointId p) const { return latPoints[p]; }
+  ArrayRef<LatPointId> set(LatSetId s) const { return latSets[s]; }
+
+  /// Checks whether the given expression has an associated value.
+  bool hasExprValue(ExprId e) const {
+    return static_cast<bool>(tensorExps[e].val);
+  }
+
+  /// Sets the expression to have the associated value.  Asserts that
+  /// the new value is defined, and that the expression does not already
+  /// have a value.  If you want to overwrite a previous associated value,
+  /// use `updateExprValue` instead.
+  void setExprValue(ExprId e, Value v) {
+    assert(v && "Got an undefined value");
+    auto &val = tensorExps[e].val;
+    assert(!val && "Expression already has an associated value");
+    val = v;
+  }
+
+  /// Clears the value associated with the expression.  Asserts that the
+  /// expression does indeed have an associated value before clearing it.
+  /// If you don't want to check for a previous associated value first,
+  /// then use `updateExprValue` instead.
+  void clearExprValue(ExprId e) {
+    auto &val = tensorExps[e].val;
+    assert(val && "Expression does not have an associated value to clear");
+    val = Value();
+  }
+
+  /// Unilaterally updates the expression to have the associated value.
+  /// That is, unlike `setExprValue` and `clearExprValue`, this method
+  /// does not perform any checks on whether the expression had a
+  /// previously associated value nor whether the new value is defined.
+  //
+  // TODO: The unilateral update semantics are required by the
+  // current implementation of `CodegenEnv::genLoopBoundary`; however,
+  // that implementation seems a bit dubious.  We would much rather have
+  // the semantics `{ clearExprValue(e); setExprValue(e, v); }` or
+  // `{ clearExprValue(e); if (v) setExprValue(e, v); }` since those
+  // provide better invariants.
+  void updateExprValue(ExprId e, Value v) { tensorExps[e].val = v; }
 
 #ifndef NDEBUG
   /// Print methods (for debugging).
@@ -510,6 +609,20 @@ private:
 
   // Map that converts pair<TensorId, Level> to the corresponding LoopId.
   std::vector<std::vector<std::optional<LoopId>>> lvlToLoop;
+
+  // Map from a loop to its dependencies if any.
+  // The dependencies of a loop is a set of (tensor, level) pairs.
+  // It is currently only set for non-trivial index expressions.
+  // E.g., A[i+j] => i and j will have dependencies {A0} to indicate that
+  // i and j are used in the non-trivial index expression on A0.
+  std::vector<std::vector<std::optional<Level>>> loopToDependencies;
+  // The inverse map of ldxToDependencies from tensor level -> dependent loop
+  // E.g., A[i+j], we have A0 => {i, j}, to indicate that A0 uses both {i, j}
+  // to compute its indices.
+  std::vector<std::vector<std::vector<LoopId>>> levelToDependentIdx;
+
+  // Map from a loop to the [tid, lvl] pair that defines the loop boundary.
+  std::vector<std::pair<TensorId, Level>> loopBounds;
 
   llvm::SmallVector<TensorExp> tensorExps;
   llvm::SmallVector<LatPoint> latPoints;

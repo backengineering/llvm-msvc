@@ -208,12 +208,14 @@ Value LoopEmitter::genSparseCrd(OpBuilder &builder, Location loc, TensorId tid,
 }
 
 LoopEmitter::LoopEmitter(ValueRange tensors, StringAttr loopTag, bool hasOutput,
-                         bool isSparseOut, ArrayRef<LoopId> topSort) {
-  initialize(tensors, loopTag, hasOutput, isSparseOut, topSort);
+                         bool isSparseOut, ArrayRef<LoopId> topSort,
+                         DependentLvlGetter dimGetter) {
+  initialize(tensors, loopTag, hasOutput, isSparseOut, topSort, dimGetter);
 }
 
 void LoopEmitter::initialize(ValueRange ts, StringAttr loopTag, bool hasOutput,
-                             bool isSparseOut, ArrayRef<LoopId> topSort) {
+                             bool isSparseOut, ArrayRef<LoopId> topSort,
+                             DependentLvlGetter dimGetter) {
   // First initialize the top-level type of the fields.
   this->loopTag = loopTag;
   this->hasOutput = hasOutput;
@@ -241,6 +243,9 @@ void LoopEmitter::initialize(ValueRange ts, StringAttr loopTag, bool hasOutput,
   this->loopIdToOrd.assign(numLoops, 0);
   this->loopStack.reserve(numLoops);
   this->loopSeqStack.reserve(numLoops);
+
+  this->dependentLvlMap.assign(
+      numTensors, std::vector<std::vector<std::pair<TensorId, Level>>>());
 
   // Initialize nested types of `TensorId`-indexed fields.
   for (TensorId tid = 0; tid < numTensors; tid++) {
@@ -283,6 +288,18 @@ void LoopEmitter::initialize(ValueRange ts, StringAttr loopTag, bool hasOutput,
     coordinatesBuffers[tid].assign(lvlRank, Value());
     sliceOffsets[tid].assign(lvlRank, Value());
     sliceStrides[tid].assign(lvlRank, Value());
+    dependentLvlMap[tid].assign(lvlRank,
+                                std::vector<std::pair<TensorId, Level>>());
+    if (dimGetter) {
+      auto reassoc = collapseReassoc[tid];
+      Level dstRank = reassoc ? reassoc.size() : lvlRank;
+      for (Level l = 0; l < dstRank; l++) {
+        dependentLvlMap[tid][l] = dimGetter(tid, l);
+        // TODO: View-base collapse and dependent index reduction are not
+        // compatible right now.
+        assert(!reassoc || dependentLvlMap[tid][l].empty());
+      }
+    }
   }
 
   // Construct the inverse of the `topSort` from the sparsifier.
@@ -439,7 +456,7 @@ Operation *LoopEmitter::enterLoopOverTensorAtLvl(
   for (auto [t, l] : llvm::zip(tids, lvls)) {
     // TODO: this check for validity of the (t,l) pairs should be
     // checked/enforced at the callsites, if possible.
-    assert(t < lvlTypes.size() && l < lvlTypes[t].size());
+    assert(isValidLevel(t, l));
     assert(!coords[t][l]); // We cannot re-enter the same level
     const auto lvlTp = lvlTypes[t][l];
     const bool isSparse = isCompressedDLT(lvlTp) || isSingletonDLT(lvlTp);
@@ -555,7 +572,7 @@ Operation *LoopEmitter::enterLoopOverTensorAtLvl(
 Operation *LoopEmitter::enterFilterLoopOverTensorAtLvl(
     OpBuilder &builder, Location loc, TensorId tid, Level lvl,
     AffineExpr affine, MutableArrayRef<Value> reduc) {
-  assert(tid < lvlTypes.size() && lvl < lvlTypes[tid].size());
+  assert(isValidLevel(tid, lvl));
   assert(!affine.isa<AffineDimExpr>() && !isDenseDLT(lvlTypes[tid][lvl]));
   // We can not re-enter the same level.
   assert(!coords[tid][lvl]);
@@ -845,7 +862,7 @@ Operation *LoopEmitter::enterCoIterationOverTensorsAtLvls(
 
 void LoopEmitter::prepareLoopOverTensorAtLvl(OpBuilder &builder, Location loc,
                                              TensorId tid, Level dstLvl) {
-  assert(tid < lvlTypes.size() && dstLvl < lvlTypes[tid].size());
+  assert(isValidLevel(tid, dstLvl));
   const auto lvlTp = lvlTypes[tid][dstLvl];
 
   if (isDenseDLT(lvlTp))
@@ -997,8 +1014,8 @@ void LoopEmitter::exitForLoop(RewriterBase &rewriter, Location loc,
   }
 }
 
-void LoopEmitter::exitCoIterationLoop(OpBuilder &builder, Location loc,
-                                      MutableArrayRef<Value> reduc) {
+void LoopEmitter::exitWhileLoop(OpBuilder &builder, Location loc,
+                                MutableArrayRef<Value> reduc) {
   const LoopInfo &loopInfo = loopStack.back();
   auto whileOp = llvm::cast<scf::WhileOp>(loopInfo.loop);
   builder.setInsertionPointToEnd(loopInfo.userCodeBlock);
@@ -1082,7 +1099,7 @@ void LoopEmitter::exitCurrentLoop(RewriterBase &rewriter, Location loc,
   assert(loopInfo.tids.size() == loopInfo.lvls.size());
   SmallVector<Value> red;
   if (llvm::isa<scf::WhileOp>(loopInfo.loop)) {
-    exitCoIterationLoop(rewriter, loc, reduc);
+    exitWhileLoop(rewriter, loc, reduc);
   } else {
     exitForLoop(rewriter, loc, reduc);
   }
