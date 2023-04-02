@@ -95,9 +95,64 @@ static void moveConstantAllocasToEntryBlock(
   }
 }
 
+/// Tries to find and return the alignment of the pointer `value` by looking for
+/// an alignment attribute on the defining allocation op or function argument.
+/// If no such attribute is found, returns 1 (i.e., assume that no alignment is
+/// guaranteed).
+static unsigned getAlignmentOf(Value value) {
+  if (Operation *definingOp = value.getDefiningOp()) {
+    if (auto alloca = dyn_cast<LLVM::AllocaOp>(definingOp))
+      return alloca.getAlignment().value_or(1);
+    if (auto addressOf = dyn_cast<LLVM::AddressOfOp>(definingOp))
+      if (auto global = SymbolTable::lookupNearestSymbolFrom<LLVM::GlobalOp>(
+              definingOp, addressOf.getGlobalNameAttr()))
+        return global.getAlignment().value_or(1);
+    // We don't currently handle this operation; assume no alignment.
+    return 1;
+  }
+  // Since there is no defining op, this is a block argument. Probably this
+  // comes directly from a function argument, so check that this is the case.
+  Operation *parentOp = value.getParentBlock()->getParentOp();
+  if (auto func = dyn_cast<LLVM::LLVMFuncOp>(parentOp)) {
+    // Use the alignment attribute set for this argument in the parent
+    // function if it has been set.
+    auto blockArg = value.cast<BlockArgument>();
+    if (Attribute alignAttr = func.getArgAttr(
+            blockArg.getArgNumber(), LLVM::LLVMDialect::getAlignAttrName()))
+      return cast<IntegerAttr>(alignAttr).getValue().getLimitedValue();
+  }
+  // We didn't find anything useful; assume no alignment.
+  return 1;
+}
+
+/// Copies the data from a byval pointer argument into newly alloca'ed memory
+/// and returns the value of the alloca.
+static Value handleByValArgumentInit(OpBuilder &builder, Location loc,
+                                     Value argument, Type elementType,
+                                     unsigned elementTypeSize,
+                                     unsigned targetAlignment) {
+  // Allocate the new value on the stack.
+  Value one = builder.create<LLVM::ConstantOp>(loc, builder.getI64Type(),
+                                               builder.getI64IntegerAttr(1));
+  Value allocaOp = builder.create<LLVM::AllocaOp>(
+      loc, argument.getType(), elementType, one, targetAlignment);
+  // Copy the pointee to the newly allocated value.
+  Value copySize = builder.create<LLVM::ConstantOp>(
+      loc, builder.getI64Type(), builder.getI64IntegerAttr(elementTypeSize));
+  Value isVolatile = builder.create<LLVM::ConstantOp>(
+      loc, builder.getI1Type(), builder.getBoolAttr(false));
+  builder.create<LLVM::MemcpyOp>(loc, allocaOp, argument, copySize, isVolatile);
+  return allocaOp;
+}
+
+/// Handles a function argument marked with the byval attribute by introducing a
+/// memcpy if necessary, either due to the pointee being writeable in the
+/// callee, and/or due to an alignment mismatch. `requestedAlignment` specifies
+/// the alignment set in the "align" argument attribute (or 1 if no align
+/// attribute was set).
 static Value handleByValArgument(OpBuilder &builder, Operation *callable,
-                                 Value argument,
-                                 NamedAttribute byValAttribute) {
+                                 Value argument, Type elementType,
+                                 unsigned requestedAlignment) {
   auto func = cast<LLVM::LLVMFuncOp>(callable);
   LLVM::MemoryEffectsAttr memoryEffects = func.getMemoryAttr();
   // If there is no memory effects attribute, assume that the function is
@@ -105,32 +160,43 @@ static Value handleByValArgument(OpBuilder &builder, Operation *callable,
   bool isReadOnly = memoryEffects &&
                     memoryEffects.getArgMem() != LLVM::ModRefInfo::ModRef &&
                     memoryEffects.getArgMem() != LLVM::ModRefInfo::Mod;
-  if (isReadOnly)
+  // Check if there's an alignment mismatch requiring us to copy.
+  DataLayout dataLayout(callable->getParentOfType<DataLayoutOpInterface>());
+  unsigned minimumAlignment = dataLayout.getTypeABIAlignment(elementType);
+  if (isReadOnly && (requestedAlignment <= minimumAlignment ||
+                     getAlignmentOf(argument) >= requestedAlignment))
     return argument;
-  // Resolve the pointee type and its size.
-  auto ptrType = cast<LLVM::LLVMPointerType>(argument.getType());
-  Type elementType = cast<TypeAttr>(byValAttribute.getValue()).getValue();
-  unsigned int typeSize =
-      DataLayout(callable->getParentOfType<DataLayoutOpInterface>())
-          .getTypeSize(elementType);
-  // Allocate the new value on the stack.
-  Value one = builder.create<LLVM::ConstantOp>(
-      func.getLoc(), builder.getI64Type(), builder.getI64IntegerAttr(1));
-  Value allocaOp =
-      builder.create<LLVM::AllocaOp>(func.getLoc(), ptrType, elementType, one);
-  // Copy the pointee to the newly allocated value.
-  Value copySize = builder.create<LLVM::ConstantOp>(
-      func.getLoc(), builder.getI64Type(), builder.getI64IntegerAttr(typeSize));
-  Value isVolatile = builder.create<LLVM::ConstantOp>(
-      func.getLoc(), builder.getI1Type(), builder.getBoolAttr(false));
-  builder.create<LLVM::MemcpyOp>(func.getLoc(), allocaOp, argument, copySize,
-                                 isVolatile);
-  return allocaOp;
+  unsigned targetAlignment = std::max(requestedAlignment, minimumAlignment);
+  return handleByValArgumentInit(builder, func.getLoc(), argument, elementType,
+                                 dataLayout.getTypeSize(elementType),
+                                 targetAlignment);
+}
+
+/// Returns true if the given argument or result attribute is supported by the
+/// inliner, false otherwise.
+static bool isArgOrResAttrSupported(NamedAttribute attr) {
+  if (attr.getName() == LLVM::LLVMDialect::getInAllocaAttrName())
+    return false;
+  if (attr.getName() == LLVM::LLVMDialect::getNoAliasAttrName())
+    return false;
+  return true;
 }
 
 namespace {
 struct LLVMInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
+
+  LLVMInlinerInterface(Dialect *dialect)
+      : DialectInlinerInterface(dialect),
+        // Cache set of StringAttrs for fast lookup in `isLegalToInline`.
+        disallowedFunctionAttrs({
+            StringAttr::get(dialect->getContext(), "noduplicate"),
+            StringAttr::get(dialect->getContext(), "noinline"),
+            StringAttr::get(dialect->getContext(), "optnone"),
+            StringAttr::get(dialect->getContext(), "presplitcoroutine"),
+            StringAttr::get(dialect->getContext(), "returns_twice"),
+            StringAttr::get(dialect->getContext(), "strictfp"),
+        }) {}
 
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
@@ -149,24 +215,28 @@ struct LLVMInlinerInterface : public DialectInlinerInterface {
       return false;
     }
     if (auto attrs = funcOp.getArgAttrs()) {
-      for (Attribute attr : *attrs) {
-        auto attrDict = cast<DictionaryAttr>(attr);
+      for (DictionaryAttr attrDict : attrs->getAsRange<DictionaryAttr>()) {
         for (NamedAttribute attr : attrDict) {
-          if (attr.getName() == LLVM::LLVMDialect::getByValAttrName())
-            continue;
-          // TODO: Handle all argument attributes;
-          LLVM_DEBUG(llvm::dbgs() << "Cannot inline " << funcOp.getSymName()
-                                  << ": unhandled argument attribute \""
-                                  << attr.getName() << "\"\n");
-          return false;
+          if (!isArgOrResAttrSupported(attr)) {
+            LLVM_DEBUG(llvm::dbgs() << "Cannot inline " << funcOp.getSymName()
+                                    << ": unhandled argument attribute "
+                                    << attr.getName() << "\n");
+            return false;
+          }
         }
       }
     }
-    // TODO: Handle result attributes;
-    if (funcOp.getResAttrs()) {
-      LLVM_DEBUG(llvm::dbgs() << "Cannot inline " << funcOp.getSymName()
-                              << ": unhandled result attribute\n");
-      return false;
+    if (auto attrs = funcOp.getResAttrs()) {
+      for (DictionaryAttr attrDict : attrs->getAsRange<DictionaryAttr>()) {
+        for (NamedAttribute attr : attrDict) {
+          if (!isArgOrResAttrSupported(attr)) {
+            LLVM_DEBUG(llvm::dbgs() << "Cannot inline " << funcOp.getSymName()
+                                    << ": unhandled return attribute "
+                                    << attr.getName() << "\n");
+            return false;
+          }
+        }
+      }
     }
     // TODO: Handle exceptions.
     if (funcOp.getPersonality()) {
@@ -176,18 +246,11 @@ struct LLVMInlinerInterface : public DialectInlinerInterface {
     }
     if (funcOp.getPassthrough()) {
       // TODO: Used attributes should not be passthrough.
-      DenseSet<StringAttr> disallowed(
-          {StringAttr::get(funcOp->getContext(), "noduplicate"),
-           StringAttr::get(funcOp->getContext(), "noinline"),
-           StringAttr::get(funcOp->getContext(), "optnone"),
-           StringAttr::get(funcOp->getContext(), "presplitcoroutine"),
-           StringAttr::get(funcOp->getContext(), "returns_twice"),
-           StringAttr::get(funcOp->getContext(), "strictfp")});
       if (llvm::any_of(*funcOp.getPassthrough(), [&](Attribute attr) {
             auto stringAttr = dyn_cast<StringAttr>(attr);
             if (!stringAttr)
               return false;
-            if (disallowed.contains(stringAttr)) {
+            if (disallowedFunctionAttrs.contains(stringAttr)) {
               LLVM_DEBUG(llvm::dbgs()
                          << "Cannot inline " << funcOp.getSymName()
                          << ": found disallowed function attribute "
@@ -226,14 +289,25 @@ struct LLVMInlinerInterface : public DialectInlinerInterface {
         return false;
       }
     }
-    if (!isa<LLVM::CallOp, LLVM::AllocaOp, LLVM::LifetimeStartOp,
-             LLVM::LifetimeEndOp, LLVM::LoadOp, LLVM::StoreOp>(op)) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Cannot inline: unhandled side effecting operation \""
-                 << op->getName() << "\"\n");
-      return false;
-    }
-    return true;
+    // clang-format off
+    if (isa<LLVM::AllocaOp,
+            LLVM::CallOp,
+            LLVM::DbgDeclareOp,
+            LLVM::DbgValueOp,
+            LLVM::LifetimeEndOp,
+            LLVM::LifetimeStartOp,
+            LLVM::LoadOp,
+            LLVM::MemcpyOp,
+            LLVM::MemmoveOp,
+            LLVM::MemsetOp,
+            LLVM::StoreOp,
+            LLVM::UnreachableOp>(op))
+      return true;
+    // clang-format on
+    LLVM_DEBUG(llvm::dbgs()
+               << "Cannot inline: unhandled side effecting operation \""
+               << op->getName() << "\"\n");
+    return false;
   }
 
   /// Handle the given inlined return by replacing it with a branch. This
@@ -268,9 +342,19 @@ struct LLVMInlinerInterface : public DialectInlinerInterface {
   Value handleArgument(OpBuilder &builder, Operation *call, Operation *callable,
                        Value argument, Type targetType,
                        DictionaryAttr argumentAttrs) const final {
-    if (auto attr =
-            argumentAttrs.getNamed(LLVM::LLVMDialect::getByValAttrName()))
-      return handleByValArgument(builder, callable, argument, *attr);
+    if (std::optional<NamedAttribute> attr =
+            argumentAttrs.getNamed(LLVM::LLVMDialect::getByValAttrName())) {
+      Type elementType = cast<TypeAttr>(attr->getValue()).getValue();
+      unsigned requestedAlignment = 1;
+      if (std::optional<NamedAttribute> alignAttr =
+              argumentAttrs.getNamed(LLVM::LLVMDialect::getAlignAttrName())) {
+        requestedAlignment = cast<IntegerAttr>(alignAttr->getValue())
+                                 .getValue()
+                                 .getLimitedValue();
+      }
+      return handleByValArgument(builder, callable, argument, elementType,
+                                 requestedAlignment);
+    }
     return argument;
   }
 
@@ -284,6 +368,11 @@ struct LLVMInlinerInterface : public DialectInlinerInterface {
     // which newly inlined block was previously the entry block of the callee.
     moveConstantAllocasToEntryBlock(inlinedBlocks);
   }
+
+  // Keeping this (immutable) state on the interface allows us to look up
+  // StringAttrs instead of looking up strings, since StringAttrs are bound to
+  // the current context and thus cannot be initialized as static fields.
+  const DenseSet<StringAttr> disallowedFunctionAttrs;
 };
 
 } // end anonymous namespace

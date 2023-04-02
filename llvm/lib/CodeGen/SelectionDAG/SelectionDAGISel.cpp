@@ -1336,7 +1336,7 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
   }
 }
 
-      /// isFoldedOrDeadInstruction - Return true if the specified instruction is
+/// isFoldedOrDeadInstruction - Return true if the specified instruction is
 /// side-effect free and is either dead or folded into a generated instruction.
 /// Return false if it needs to be emitted.
 static bool isFoldedOrDeadInstruction(const Instruction *I,

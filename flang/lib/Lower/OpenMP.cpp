@@ -683,7 +683,8 @@ createTargetDataOp(Fortran::lower::AbstractConverter &converter,
   llvm::SmallVector<mlir::IntegerAttr> mapTypes;
 
   auto addMapClause = [&firOpBuilder, &converter, &mapOperands,
-                       &mapTypes](const auto &mapClause) {
+                       &mapTypes](const auto &mapClause,
+                                  mlir::Location &currentLocation) {
     auto mapType = std::get<Fortran::parser::OmpMapType::Type>(
         std::get<std::optional<Fortran::parser::OmpMapType>>(mapClause->v.t)
             ->t);
@@ -725,10 +726,26 @@ createTargetDataOp(Fortran::lower::AbstractConverter &converter,
             mapTypeBits));
 
     llvm::SmallVector<mlir::Value> mapOperand;
+    /// Check for unsupported map operand types.
+    for (const Fortran::parser::OmpObject &ompObject :
+         std::get<Fortran::parser::OmpObjectList>(mapClause->v.t).v) {
+      if (Fortran::parser::Unwrap<Fortran::parser::ArrayElement>(ompObject) ||
+          Fortran::parser::Unwrap<Fortran::parser::StructureComponent>(
+              ompObject))
+        TODO(currentLocation,
+             "OMPD_target_data for Array Expressions or Structure Components");
+    }
     genObjectList(std::get<Fortran::parser::OmpObjectList>(mapClause->v.t),
                   converter, mapOperand);
 
     for (mlir::Value mapOp : mapOperand) {
+      /// Check for unsupported map operand types.
+      mlir::Type checkType = mapOp.getType();
+      if (auto refType = checkType.dyn_cast<fir::ReferenceType>())
+        checkType = refType.getElementType();
+      if (checkType.isa<fir::BoxType>())
+        TODO(currentLocation, "OMPD_target_data MapOperand BoxType");
+
       mapOperands.push_back(mapOp);
       mapTypes.push_back(mapTypeAttr);
     }
@@ -764,7 +781,7 @@ createTargetDataOp(Fortran::lower::AbstractConverter &converter,
       nowaitAttr = firOpBuilder.getUnitAttr();
     } else if (const auto &mapClause =
                    std::get_if<Fortran::parser::OmpClause::Map>(&clause.u)) {
-      addMapClause(mapClause);
+      addMapClause(mapClause, currentLocation);
     } else {
       TODO(currentLocation, "OMPD_target unhandled clause");
     }
@@ -1116,7 +1133,7 @@ genOMP(Fortran::lower::AbstractConverter &converter,
 ///    1 * x = x
 static int getOperationIdentity(llvm::StringRef reductionOpName,
                                 mlir::Location loc) {
-  if (reductionOpName.contains("add"))
+  if (reductionOpName.contains("add") || reductionOpName.contains("or"))
     return 0;
   if (reductionOpName.contains("multiply") || reductionOpName.contains("and") ||
       reductionOpName.contains("eqv"))
@@ -1273,6 +1290,15 @@ static omp::ReductionDeclareOp createReductionDecl(
     reductionOp = builder.createConvert(loc, type, andiOp);
     break;
   }
+  case Fortran::parser::DefinedOperator::IntrinsicOperator::OR: {
+    Value op1I1 = builder.createConvert(loc, builder.getI1Type(), op1);
+    Value op2I1 = builder.createConvert(loc, builder.getI1Type(), op2);
+
+    Value oriOp = builder.create<mlir::arith::OrIOp>(loc, op1I1, op2I1);
+
+    reductionOp = builder.createConvert(loc, type, oriOp);
+    break;
+  }
   case Fortran::parser::DefinedOperator::IntrinsicOperator::EQV: {
     Value op1I1 = builder.createConvert(loc, builder.getI1Type(), op1);
     Value op2I1 = builder.createConvert(loc, builder.getI1Type(), op2);
@@ -1378,6 +1404,8 @@ static std::string getReductionName(
     return "and_reduction";
   case Fortran::parser::DefinedOperator::IntrinsicOperator::EQV:
     return "eqv_reduction";
+  case Fortran::parser::DefinedOperator::IntrinsicOperator::OR:
+    return "or_reduction";
   default:
     reductionName = "other_reduction";
     break;
@@ -1485,6 +1513,7 @@ static void genOMP(Fortran::lower::AbstractConverter &converter,
         case Fortran::parser::DefinedOperator::IntrinsicOperator::Multiply:
         case Fortran::parser::DefinedOperator::IntrinsicOperator::AND:
         case Fortran::parser::DefinedOperator::IntrinsicOperator::EQV:
+        case Fortran::parser::DefinedOperator::IntrinsicOperator::OR:
           break;
 
         default:
@@ -2249,6 +2278,7 @@ void Fortran::lower::genOpenMPReduction(
         case Fortran::parser::DefinedOperator::IntrinsicOperator::Multiply:
         case Fortran::parser::DefinedOperator::IntrinsicOperator::AND:
         case Fortran::parser::DefinedOperator::IntrinsicOperator::EQV:
+        case Fortran::parser::DefinedOperator::IntrinsicOperator::OR:
           break;
         default:
           continue;
@@ -2307,6 +2337,7 @@ void Fortran::lower::genOpenMPReduction(
                     // Match the pattern here.
                     mlir::Operation *reductionOp =
                         findReductionChain(loadVal, &reductionVal);
+                    if (reductionOp == nullptr) continue;
                     assert(mlir::isa<mlir::arith::SelectOp>(reductionOp) &&
                            "Selection Op not found in reduction intrinsic");
                     mlir::Operation *compareOp =

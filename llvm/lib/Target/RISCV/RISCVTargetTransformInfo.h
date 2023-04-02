@@ -51,6 +51,10 @@ class RISCVTTIImpl : public BasicTTIImplBase<RISCVTTIImpl> {
   /// Return the cost of LMUL. The larger the LMUL, the higher the cost.
   InstructionCost getLMULCost(MVT VT);
 
+  /// Return the cost of accessing a constant pool entry of the specified
+  /// type.
+  InstructionCost getConstantPoolLoadCost(Type *Ty,
+                                          TTI::TargetCostKind CostKind);
 public:
   explicit RISCVTTIImpl(const RISCVTargetMachine *TM, const Function &F)
       : BaseT(TM, F.getParent()->getDataLayout()), ST(TM->getSubtargetImpl(F)),
@@ -230,6 +234,10 @@ public:
   bool forceScalarizeMaskedScatter(VectorType *VTy, Align Alignment) {
     // Scalarize masked scatter for RV64 if EEW=64 indices aren't supported.
     return ST->is64Bit() && !ST->hasVInstructionsI64();
+  }
+
+  bool isVScaleKnownToBeAPowerOfTwo() const {
+    return TLI->isVScaleKnownToBeAPowerOfTwo();
   }
 
   /// \returns How the target needs this vector-predicated operation to be

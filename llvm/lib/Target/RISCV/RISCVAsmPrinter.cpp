@@ -1,4 +1,4 @@
-//===-- RISCVAsmPrinter.cpp - RISCV LLVM assembly writer ------------------===//
+//===-- RISCVAsmPrinter.cpp - RISC-V LLVM assembly writer -----------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 //
 // This file contains a printer that converts from our internal representation
-// of machine-dependent LLVM code to the RISCV assembly language.
+// of machine-dependent LLVM code to the RISC-V assembly language.
 //
 //===----------------------------------------------------------------------===//
 
@@ -53,7 +53,7 @@ public:
                            std::unique_ptr<MCStreamer> Streamer)
       : AsmPrinter(TM, std::move(Streamer)) {}
 
-  StringRef getPassName() const override { return "RISCV Assembly Printer"; }
+  StringRef getPassName() const override { return "RISC-V Assembly Printer"; }
 
   bool runOnMachineFunction(MachineFunction &MF) override;
 
@@ -181,13 +181,18 @@ bool RISCVAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
   if (ExtraCode)
     return AsmPrinter::PrintAsmMemoryOperand(MI, OpNo, ExtraCode, OS);
 
-  const MachineOperand &MO = MI->getOperand(OpNo);
-  // For now, we only support register memory operands in registers and
-  // assume there is no addend
-  if (!MO.isReg())
+  const MachineOperand &AddrReg = MI->getOperand(OpNo);
+  assert(MI->getNumOperands() > OpNo + 1 && "Expected additional operand");
+  const MachineOperand &DispImm = MI->getOperand(OpNo + 1);
+  // All memory operands should have a register and an immediate operand (see
+  // RISCVDAGToDAGISel::SelectInlineAsmMemoryOperand).
+  if (!AddrReg.isReg())
+    return true;
+  if (!DispImm.isImm())
     return true;
 
-  OS << "0(" << RISCVInstPrinter::getRegisterName(MO.getReg()) << ")";
+  OS << DispImm.getImm() << "("
+     << RISCVInstPrinter::getRegisterName(AddrReg.getReg()) << ")";
   return false;
 }
 
