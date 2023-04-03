@@ -1393,9 +1393,4 @@ void WinEHFuncInfo::addIPToStateRange(const InvokeInst *II,
   LabelToStateMap[InvokeBegin] = std::make_pair(InvokeStateMap[II], InvokeEnd);
 }
 
-void WinEHFuncInfo::addIPToStateRange(int State, MCSymbol* InvokeBegin,
-    MCSymbol* InvokeEnd) {
-    LabelToStateMap[InvokeBegin] = std::make_pair(State, InvokeEnd);
-}
-
 WinEHFuncInfo::WinEHFuncInfo() = default;
