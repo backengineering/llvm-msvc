@@ -175,9 +175,16 @@ Changes in existing checks
   <clang-tidy/checks/bugprone/suspicious-include>` check.
   Global options of the same name should be used instead.
 
+- Improved :doc:`bugprone-unchecked-optional-access
+  <clang-tidy/checks/bugprone/unchecked-optional-access>` check to properly handle calls
+  to ``std::forward``.
+
 - Improved :doc:`bugprone-use-after-move
   <clang-tidy/checks/bugprone/use-after-move>` check to also cover constructor
   initializers.
+
+- Deprecated :doc:`cert-dcl21-cpp
+  <clang-tidy/checks/cert/dcl21-cpp>` check.
 
 - Deprecated check-local options `HeaderFileExtensions`
   in :doc:`google-build-namespaces
@@ -254,6 +261,11 @@ Changes in existing checks
   <clang-tidy/checks/readability/misleading-indentation>` check when warning would
   be unnecessarily emitted for template dependent ``if constexpr``.
 
+- Improved :doc:`readability-static-accessed-through-instance
+  <clang-tidy/checks/readability/static-accessed-through-instance>` check to
+  support unscoped enumerations through instances and fixed usage of anonymous
+  structs or classes.
+
 - Fixed a false positive in :doc:`cppcoreguidelines-slicing
   <clang-tidy/checks/cppcoreguidelines/slicing>` check when warning would be
   emitted in constructor for virtual base class initialization.
@@ -270,6 +282,10 @@ Changes in existing checks
 - Fixed an issue in :doc:`google-readability-avoid-underscore-in-googletest-name
   <clang-tidy/checks/google/readability-avoid-underscore-in-googletest-name>` when using
   ``DISABLED_`` in the test suite name.
+
+- Fixed a false positive in :doc:`performance-no-automatic-move
+  <clang-tidy/checks/performance/no-automatic-move>` when warning would be
+  emitted for a const local variable to which NRVO is applied.
 
 Removed checks
 ^^^^^^^^^^^^^^

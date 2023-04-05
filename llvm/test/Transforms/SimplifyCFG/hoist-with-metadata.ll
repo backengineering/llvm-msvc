@@ -61,10 +61,11 @@ out:
   ret void
 }
 
+; !range violation only returns poison, and is thus safe to speculate.
 define i32 @speculate_range(i1 %c, ptr dereferenceable(8) align 8 %p) {
 ; CHECK-LABEL: @speculate_range(
 ; CHECK-NEXT:  entry:
-; CHECK-NEXT:    [[V:%.*]] = load i32, ptr [[P:%.*]], align 4
+; CHECK-NEXT:    [[V:%.*]] = load i32, ptr [[P:%.*]], align 4, !range [[RNG2:![0-9]+]]
 ; CHECK-NEXT:    [[SPEC_SELECT:%.*]] = select i1 [[C:%.*]], i32 [[V]], i32 0
 ; CHECK-NEXT:    ret i32 [[SPEC_SELECT]]
 ;
@@ -80,10 +81,12 @@ join:
   ret i32 %phi
 }
 
+; !nonnull is safe to speculate, but !noundef is not, as the latter causes
+; immediate undefined behavior.
 define ptr @speculate_nonnull(i1 %c, ptr dereferenceable(8) align 8 %p) {
 ; CHECK-LABEL: @speculate_nonnull(
 ; CHECK-NEXT:  entry:
-; CHECK-NEXT:    [[V:%.*]] = load ptr, ptr [[P:%.*]], align 8
+; CHECK-NEXT:    [[V:%.*]] = load ptr, ptr [[P:%.*]], align 8, !nonnull !1
 ; CHECK-NEXT:    [[SPEC_SELECT:%.*]] = select i1 [[C:%.*]], ptr [[V]], ptr null
 ; CHECK-NEXT:    ret ptr [[SPEC_SELECT]]
 ;
@@ -99,11 +102,12 @@ join:
   ret ptr %phi
 }
 
-
+; !align is safe to speculate, but !dereferenceable is not, as the latter causes
+; immediate undefined behavior.
 define ptr @speculate_align(i1 %c, ptr dereferenceable(8) align 8 %p) {
 ; CHECK-LABEL: @speculate_align(
 ; CHECK-NEXT:  entry:
-; CHECK-NEXT:    [[V:%.*]] = load ptr, ptr [[P:%.*]], align 8
+; CHECK-NEXT:    [[V:%.*]] = load ptr, ptr [[P:%.*]], align 8, !align !3
 ; CHECK-NEXT:    [[SPEC_SELECT:%.*]] = select i1 [[C:%.*]], ptr [[V]], ptr null
 ; CHECK-NEXT:    ret ptr [[SPEC_SELECT]]
 ;
@@ -119,10 +123,31 @@ join:
   ret ptr %phi
 }
 
+define void @hoist_fpmath(i1 %c, double %x) {
+; CHECK-LABEL: @hoist_fpmath(
+; CHECK-NEXT:  if:
+; CHECK-NEXT:    [[T:%.*]] = fadd double [[X:%.*]], 1.000000e+00, !fpmath !4
+; CHECK-NEXT:    ret void
+;
+if:
+  br i1 %c, label %then, label %else
+then:
+  %t = fadd double %x, 1.0, !fpmath !{ float 2.5 }
+  br label %out
+else:
+  %e = fadd double %x, 1.0, !fpmath !{ float 5.0 }
+  br label %out
+out:
+  ret void
+}
+
 !0 = !{ i8 0, i8 1 }
 !1 = !{ i8 3, i8 5 }
 !2 = !{}
 ;.
 ; CHECK: [[RNG0]] = !{i8 0, i8 1, i8 3, i8 5}
 ; CHECK: [[META1:![0-9]+]] = !{}
+; CHECK: [[RNG2]] = !{i32 0, i32 10}
+; CHECK: [[META3:![0-9]+]] = !{i64 4}
+; CHECK: [[META4:![0-9]+]] = !{float 2.500000e+00}
 ;.

@@ -1838,6 +1838,15 @@ public:
     for (const auto &arg : llvm::enumerate(procRef.arguments())) {
       auto *expr =
           Fortran::evaluate::UnwrapExpr<Fortran::lower::SomeExpr>(arg.value());
+
+      if (!expr && arg.value() && arg.value()->GetAssumedTypeDummy()) {
+        // Assumed type optional.
+        const Fortran::evaluate::Symbol *assumedTypeSym =
+            arg.value()->GetAssumedTypeDummy();
+        auto symBox = symMap.lookupSymbol(*assumedTypeSym);
+        operands.emplace_back(symBox.getAddr());
+        continue;
+      }
       if (!expr) {
         // Absent optional.
         operands.emplace_back(fir::getAbsentIntrinsicArgument());
@@ -2058,17 +2067,7 @@ public:
           return temp;
         },
         [&](const fir::PolymorphicValue &p) -> ExtValue {
-          mlir::Type type = p.getAddr().getType();
-          mlir::Value value = p.getAddr();
-          if (fir::isa_ref_type(type))
-            value = builder.create<fir::LoadOp>(loc, value);
-          mlir::Value temp = builder.createTemporary(loc, value.getType());
-          builder.create<fir::StoreOp>(loc, value, temp);
-          mlir::Value empty;
-          mlir::ValueRange emptyRange;
-          auto boxTy = fir::ClassType::get(value.getType());
-          return builder.create<fir::EmboxOp>(loc, boxTy, temp, empty, empty,
-                                              emptyRange, p.getSourceBox());
+          TODO(loc, "creating polymorphic temporary");
         },
         [&](const auto &) -> ExtValue {
           fir::emitFatalError(loc, "expr is not a scalar value");

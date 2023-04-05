@@ -85,15 +85,8 @@ bool ByteCodeExprGen<Emitter>::VisitCastExpr(const CastExpr *CE) {
     if (!this->visit(SubExpr))
       return false;
 
-    const CXXRecordDecl *FromDecl = getRecordDecl(SubExpr);
-    assert(FromDecl);
-    const CXXRecordDecl *ToDecl = getRecordDecl(CE);
-    assert(ToDecl);
-    const Record *R = getRecord(FromDecl);
-    const Record::Base *ToBase = R->getBase(ToDecl);
-    assert(ToBase);
-
-    return this->emitGetPtrBasePop(ToBase->Offset, CE);
+    return this->emitDerivedToBaseCasts(getRecordTy(SubExpr->getType()),
+                                        getRecordTy(CE->getType()), CE);
   }
 
   case CK_FloatingCast: {
@@ -1357,7 +1350,7 @@ bool ByteCodeExprGen<Emitter>::visitRecordInitializer(const Expr *Initializer) {
   if (const auto CtorExpr = dyn_cast<CXXConstructExpr>(Initializer)) {
     const Function *Func = getFunction(CtorExpr->getConstructor());
 
-    if (!Func || !Func->isConstexpr())
+    if (!Func)
       return false;
 
     // The This pointer is already on the stack because this is an initializer,
@@ -1377,12 +1370,12 @@ bool ByteCodeExprGen<Emitter>::visitRecordInitializer(const Expr *Initializer) {
 
     unsigned InitIndex = 0;
     for (const Expr *Init : InitList->inits()) {
-      const Record::Field *FieldToInit = R->getField(InitIndex);
 
       if (!this->emitDupPtr(Initializer))
         return false;
 
       if (std::optional<PrimType> T = classify(Init)) {
+        const Record::Field *FieldToInit = R->getField(InitIndex);
         if (!this->visit(Init))
           return false;
 
@@ -1391,19 +1384,35 @@ bool ByteCodeExprGen<Emitter>::visitRecordInitializer(const Expr *Initializer) {
 
         if (!this->emitPopPtr(Initializer))
           return false;
+        ++InitIndex;
       } else {
-        // Non-primitive case. Get a pointer to the field-to-initialize
-        // on the stack and recurse into visitInitializer().
-        if (!this->emitGetPtrField(FieldToInit->Offset, Init))
-          return false;
+        // Initializer for a direct base class.
+        if (const Record::Base *B = R->getBase(Init->getType())) {
+          if (!this->emitGetPtrBasePop(B->Offset, Init))
+            return false;
 
-        if (!this->visitInitializer(Init))
-          return false;
+          if (!this->visitInitializer(Init))
+            return false;
 
-        if (!this->emitPopPtr(Initializer))
-          return false;
+          if (!this->emitPopPtr(Initializer))
+            return false;
+          // Base initializers don't increase InitIndex, since they don't count
+          // into the Record's fields.
+        } else {
+          const Record::Field *FieldToInit = R->getField(InitIndex);
+          // Non-primitive case. Get a pointer to the field-to-initialize
+          // on the stack and recurse into visitInitializer().
+          if (!this->emitGetPtrField(FieldToInit->Offset, Init))
+            return false;
+
+          if (!this->visitInitializer(Init))
+            return false;
+
+          if (!this->emitPopPtr(Initializer))
+            return false;
+          ++InitIndex;
+        }
       }
-      ++InitIndex;
     }
 
     return true;
@@ -1831,37 +1840,41 @@ bool ByteCodeExprGen<Emitter>::VisitUnaryOperator(const UnaryOperator *E) {
 
 template <class Emitter>
 bool ByteCodeExprGen<Emitter>::VisitDeclRefExpr(const DeclRefExpr *E) {
-  const auto *Decl = E->getDecl();
+  const auto *D = E->getDecl();
+
+  if (const auto *ECD = dyn_cast<EnumConstantDecl>(D)) {
+    return this->emitConst(ECD->getInitVal(), E);
+  } else if (const auto *BD = dyn_cast<BindingDecl>(D)) {
+    return this->visit(BD->getBinding());
+  } else if (const auto *FuncDecl = dyn_cast<FunctionDecl>(D)) {
+    const Function *F = getFunction(FuncDecl);
+    return F && this->emitGetFnPtr(F, E);
+  }
+
   // References are implemented via pointers, so when we see a DeclRefExpr
   // pointing to a reference, we need to get its value directly (i.e. the
   // pointer to the actual value) instead of a pointer to the pointer to the
   // value.
-  bool IsReference = Decl->getType()->isReferenceType();
+  bool IsReference = D->getType()->isReferenceType();
 
-  if (auto It = Locals.find(Decl); It != Locals.end()) {
+  // Check for local/global variables and parameters.
+  if (auto It = Locals.find(D); It != Locals.end()) {
     const unsigned Offset = It->second.Offset;
 
     if (IsReference)
       return this->emitGetLocal(PT_Ptr, Offset, E);
     return this->emitGetPtrLocal(Offset, E);
-  } else if (auto GlobalIndex = P.getGlobal(Decl)) {
+  } else if (auto GlobalIndex = P.getGlobal(D)) {
     if (IsReference)
       return this->emitGetGlobal(PT_Ptr, *GlobalIndex, E);
 
     return this->emitGetPtrGlobal(*GlobalIndex, E);
-  } else if (const auto *PVD = dyn_cast<ParmVarDecl>(Decl)) {
+  } else if (const auto *PVD = dyn_cast<ParmVarDecl>(D)) {
     if (auto It = this->Params.find(PVD); It != this->Params.end()) {
       if (IsReference)
         return this->emitGetParam(PT_Ptr, It->second, E);
       return this->emitGetPtrParam(It->second, E);
     }
-  } else if (const auto *ECD = dyn_cast<EnumConstantDecl>(Decl)) {
-    return this->emitConst(ECD->getInitVal(), E);
-  } else if (const auto *BD = dyn_cast<BindingDecl>(Decl)) {
-    return this->visit(BD->getBinding());
-  } else if (const auto *FuncDecl = dyn_cast<FunctionDecl>(Decl)) {
-    const Function *F = getFunction(FuncDecl);
-    return F && this->emitGetFnPtr(F, E);
   }
 
   return false;
@@ -1871,6 +1884,38 @@ template <class Emitter>
 void ByteCodeExprGen<Emitter>::emitCleanup() {
   for (VariableScope<Emitter> *C = VarScope; C; C = C->getParent())
     C->emitDestruction();
+}
+
+template <class Emitter>
+bool ByteCodeExprGen<Emitter>::emitDerivedToBaseCasts(
+    const RecordType *DerivedType, const RecordType *BaseType, const Expr *E) {
+  // Pointer of derived type is already on the stack.
+  const auto *FinalDecl = cast<CXXRecordDecl>(BaseType->getDecl());
+  const RecordDecl *CurDecl = DerivedType->getDecl();
+  const Record *CurRecord = getRecord(CurDecl);
+  assert(CurDecl && FinalDecl);
+  for (;;) {
+    assert(CurRecord->getNumBases() > 0);
+    // One level up
+    for (const Record::Base &B : CurRecord->bases()) {
+      const auto *BaseDecl = cast<CXXRecordDecl>(B.Decl);
+
+      if (BaseDecl == FinalDecl || BaseDecl->isDerivedFrom(FinalDecl)) {
+        // This decl will lead us to the final decl, so emit a base cast.
+        if (!this->emitGetPtrBasePop(B.Offset, E))
+          return false;
+
+        CurRecord = B.R;
+        CurDecl = BaseDecl;
+        break;
+      }
+    }
+    if (CurDecl == FinalDecl)
+      return true;
+  }
+
+  llvm_unreachable("Couldn't find the base class?");
+  return false;
 }
 
 /// When calling this, we have a pointer of the local-to-destroy
