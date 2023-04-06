@@ -883,7 +883,7 @@ multiclass vextract_for_size_split<int Opcode,
                      "vextract" # To.EltTypeName # "x" # To.NumElts #
                           "\t{$idx, $src1, $dst {${mask}}|"
                           "$dst {${mask}}, $src1, $idx}", []>,
-                    EVEX_K, EVEX, Sched<[SchedMR]>, NotMemoryFoldable;
+                    EVEX_K, EVEX, Sched<[SchedMR]>;
   }
 }
 
@@ -1998,7 +1998,7 @@ multiclass WriteFVarBlendask<bits<8> opc, string OpcodeStr,
              (ins _.KRCWM:$mask, _.RC:$src1, _.RC:$src2),
              !strconcat(OpcodeStr,
              "\t{$src2, $src1, ${dst} {${mask}} {z}|${dst} {${mask}} {z}, $src1, $src2}"),
-             []>, EVEX_4V, EVEX_KZ, Sched<[sched]>, NotMemoryFoldable;
+             []>, EVEX_4V, EVEX_KZ, Sched<[sched]>;
   let mayLoad = 1 in {
   def rm  : AVX5128I<opc, MRMSrcMem, (outs _.RC:$dst),
              (ins _.RC:$src1, _.MemOp:$src2),
@@ -2017,7 +2017,7 @@ multiclass WriteFVarBlendask<bits<8> opc, string OpcodeStr,
              !strconcat(OpcodeStr,
              "\t{$src2, $src1, ${dst} {${mask}} {z}|${dst} {${mask}} {z}, $src1, $src2}"),
              []>, EVEX_4V, EVEX_KZ, EVEX_CD8<_.EltSize, CD8VF>,
-             Sched<[sched.Folded, sched.ReadAfterFold]>, NotMemoryFoldable;
+             Sched<[sched.Folded, sched.ReadAfterFold]>;
   }
   }
 }
@@ -2038,7 +2038,7 @@ multiclass WriteFVarBlendask_rmb<bits<8> opc, string OpcodeStr,
             "\t{${src2}", _.BroadcastStr, ", $src1, $dst {${mask}} {z}|",
             "$dst {${mask}} {z}, $src1, ${src2}", _.BroadcastStr, "}"), []>,
       EVEX_4V, EVEX_KZ, EVEX_B, EVEX_CD8<_.EltSize, CD8VF>,
-      Sched<[sched.Folded, sched.ReadAfterFold]>, NotMemoryFoldable;
+      Sched<[sched.Folded, sched.ReadAfterFold]>;
 
   def rmb : AVX5128I<opc, MRMSrcMem, (outs _.RC:$dst),
       (ins _.RC:$src1, _.ScalarMemOp:$src2),
@@ -3533,21 +3533,19 @@ multiclass avx512_store<bits<8> opc, string OpcodeStr, string BaseName,
   def rr_REV  : AVX512PI<opc, MRMDestReg, (outs _.RC:$dst), (ins _.RC:$src),
                          OpcodeStr # "\t{$src, $dst|$dst, $src}",
                          [], _.ExeDomain>, EVEX,
-                         FoldGenData<BaseName#_.ZSuffix#rr>, Sched<[Sched.RR]>,
+                         Sched<[Sched.RR]>,
                          EVEX2VEXOverride<EVEX2VEXOvrd#"rr_REV">;
   def rrk_REV : AVX512PI<opc, MRMDestReg, (outs  _.RC:$dst),
                          (ins _.KRCWM:$mask, _.RC:$src),
                          OpcodeStr # "\t{$src, ${dst} {${mask}}|"#
                          "${dst} {${mask}}, $src}",
                          [], _.ExeDomain>,  EVEX, EVEX_K,
-                         FoldGenData<BaseName#_.ZSuffix#rrk>,
                          Sched<[Sched.RR]>;
   def rrkz_REV : AVX512PI<opc, MRMDestReg, (outs  _.RC:$dst),
                           (ins _.KRCWM:$mask, _.RC:$src),
                           OpcodeStr # "\t{$src, ${dst} {${mask}} {z}|" #
                           "${dst} {${mask}} {z}, $src}",
                           [], _.ExeDomain>, EVEX, EVEX_KZ,
-                          FoldGenData<BaseName#_.ZSuffix#rrkz>,
                           Sched<[Sched.RR]>;
   }
 
@@ -3561,8 +3559,7 @@ multiclass avx512_store<bits<8> opc, string OpcodeStr, string BaseName,
   def mrk : AVX512PI<opc, MRMDestMem, (outs),
                      (ins _.MemOp:$dst, _.KRCWM:$mask, _.RC:$src),
               OpcodeStr # "\t{$src, ${dst} {${mask}}|${dst} {${mask}}, $src}",
-               [], _.ExeDomain>, EVEX, EVEX_K, Sched<[Sched.MR]>,
-               NotMemoryFoldable;
+               [], _.ExeDomain>, EVEX, EVEX_K, Sched<[Sched.MR]>;
 
   def: Pat<(mstore (_.VT _.RC:$src), addr:$ptr, _.KRCWM:$mask),
            (!cast<Instruction>(BaseName#_.ZSuffix#mrk) addr:$ptr,
@@ -4198,8 +4195,7 @@ multiclass avx512_move_scalar<string asm, SDNode OpNode, PatFrag vzload_frag,
   def mrk: AVX512PI<0x11, MRMDestMem, (outs),
               (ins _.ScalarMemOp:$dst, VK1WM:$mask, _.RC:$src),
               !strconcat(asm, "\t{$src, $dst {${mask}}|$dst {${mask}}, $src}"),
-              [], _.ExeDomain>, EVEX, EVEX_K, Sched<[WriteFStore]>,
-              NotMemoryFoldable;
+              [], _.ExeDomain>, EVEX, EVEX_K, Sched<[WriteFStore]>;
   }
 }
 
@@ -4537,7 +4533,6 @@ let hasSideEffects = 0, isCodeGenOnly = 1, ForceDisassemble = 1 in {
         (ins VR128X:$src1, VR128X:$src2),
         "vmovsh\t{$src2, $src1, $dst|$dst, $src1, $src2}",
         []>, T_MAP5XS, EVEX_4V, VEX_LIG,
-        FoldGenData<"VMOVSHZrr">,
         Sched<[SchedWriteFShuffle.XMM]>;
 
     let Constraints = "$src0 = $dst" in
@@ -4547,7 +4542,6 @@ let hasSideEffects = 0, isCodeGenOnly = 1, ForceDisassemble = 1 in {
         "vmovsh\t{$src2, $src1, $dst {${mask}}|"#
           "$dst {${mask}}, $src1, $src2}",
         []>, T_MAP5XS, EVEX_K, EVEX_4V, VEX_LIG,
-        FoldGenData<"VMOVSHZrrk">,
         Sched<[SchedWriteFShuffle.XMM]>;
 
     def VMOVSHZrrkz_REV: AVX512<0x11, MRMDestReg, (outs VR128X:$dst),
@@ -4555,14 +4549,12 @@ let hasSideEffects = 0, isCodeGenOnly = 1, ForceDisassemble = 1 in {
         "vmovsh\t{$src2, $src1, $dst {${mask}} {z}|"#
           "$dst {${mask}} {z}, $src1, $src2}",
         []>, EVEX_KZ, T_MAP5XS, EVEX_4V, VEX_LIG,
-        FoldGenData<"VMOVSHZrrkz">,
         Sched<[SchedWriteFShuffle.XMM]>;
   }
   def VMOVSSZrr_REV: AVX512<0x11, MRMDestReg, (outs VR128X:$dst),
                            (ins VR128X:$src1, VR128X:$src2),
                            "vmovss\t{$src2, $src1, $dst|$dst, $src1, $src2}",
                            []>, XS, EVEX_4V, VEX_LIG,
-                           FoldGenData<"VMOVSSZrr">,
                            Sched<[SchedWriteFShuffle.XMM]>;
 
   let Constraints = "$src0 = $dst" in
@@ -4572,7 +4564,6 @@ let hasSideEffects = 0, isCodeGenOnly = 1, ForceDisassemble = 1 in {
                              "vmovss\t{$src2, $src1, $dst {${mask}}|"#
                                         "$dst {${mask}}, $src1, $src2}",
                              []>, EVEX_K, XS, EVEX_4V, VEX_LIG,
-                             FoldGenData<"VMOVSSZrrk">,
                              Sched<[SchedWriteFShuffle.XMM]>;
 
   def VMOVSSZrrkz_REV: AVX512<0x11, MRMDestReg, (outs VR128X:$dst),
@@ -4580,14 +4571,12 @@ let hasSideEffects = 0, isCodeGenOnly = 1, ForceDisassemble = 1 in {
                          "vmovss\t{$src2, $src1, $dst {${mask}} {z}|"#
                                     "$dst {${mask}} {z}, $src1, $src2}",
                          []>, EVEX_KZ, XS, EVEX_4V, VEX_LIG,
-                         FoldGenData<"VMOVSSZrrkz">,
                          Sched<[SchedWriteFShuffle.XMM]>;
 
   def VMOVSDZrr_REV: AVX512<0x11, MRMDestReg, (outs VR128X:$dst),
                            (ins VR128X:$src1, VR128X:$src2),
                            "vmovsd\t{$src2, $src1, $dst|$dst, $src1, $src2}",
                            []>, XD, EVEX_4V, VEX_LIG, REX_W,
-                           FoldGenData<"VMOVSDZrr">,
                            Sched<[SchedWriteFShuffle.XMM]>;
 
   let Constraints = "$src0 = $dst" in
@@ -4597,8 +4586,7 @@ let hasSideEffects = 0, isCodeGenOnly = 1, ForceDisassemble = 1 in {
                              "vmovsd\t{$src2, $src1, $dst {${mask}}|"#
                                         "$dst {${mask}}, $src1, $src2}",
                              []>, EVEX_K, XD, EVEX_4V, VEX_LIG,
-                             REX_W, FoldGenData<"VMOVSDZrrk">,
-                             Sched<[SchedWriteFShuffle.XMM]>;
+                             REX_W, Sched<[SchedWriteFShuffle.XMM]>;
 
   def VMOVSDZrrkz_REV: AVX512<0x11, MRMDestReg, (outs VR128X:$dst),
                               (ins f64x_info.KRCWM:$mask, VR128X:$src1,
@@ -4606,8 +4594,7 @@ let hasSideEffects = 0, isCodeGenOnly = 1, ForceDisassemble = 1 in {
                               "vmovsd\t{$src2, $src1, $dst {${mask}} {z}|"#
                                          "$dst {${mask}} {z}, $src1, $src2}",
                               []>, EVEX_KZ, XD, EVEX_4V, VEX_LIG,
-                              REX_W, FoldGenData<"VMOVSDZrrkz">,
-                              Sched<[SchedWriteFShuffle.XMM]>;
+                              REX_W, Sched<[SchedWriteFShuffle.XMM]>;
 }
 
 def : InstAlias<"vmovsh.s\t{$src2, $src1, $dst|$dst, $src1, $src2}",
@@ -6734,7 +6721,7 @@ def VMOVHLPSZrr : AVX512PSI<0x12, MRMSrcReg, (outs VR128X:$dst),
           (ins VR128X:$src1, VR128X:$src2),
           "vmovhlps\t{$src2, $src1, $dst|$dst, $src1, $src2}",
           [(set VR128X:$dst, (v4f32 (X86Movhlps VR128X:$src1, VR128X:$src2)))]>,
-          Sched<[SchedWriteFShuffle.XMM]>, EVEX_4V, NotMemoryFoldable;
+          Sched<[SchedWriteFShuffle.XMM]>, EVEX_4V;
 
 //===----------------------------------------------------------------------===//
 // VMOVHPS/PD VMOVLPS Instructions
@@ -9232,7 +9219,7 @@ let ExeDomain = GenericDomain, Uses = [MXCSR], mayRaiseFPException = 1 in {
     def mrk : AVX512AIi8<0x1D, MRMDestMem, (outs),
                (ins x86memop:$dst, _dest.KRCWM:$mask, _src.RC:$src1, i32u8imm:$src2),
                "vcvtps2ph\t{$src2, $src1, $dst {${mask}}|$dst {${mask}}, $src1, $src2}", []>,
-                EVEX_K, Sched<[MR]>, NotMemoryFoldable;
+                EVEX_K, Sched<[MR]>;
   }
 }
 }
@@ -9915,7 +9902,7 @@ multiclass avx512_trunc_common<bits<8> opc, string OpcodeStr, SDNode OpNode,
     def mrk : AVX512XS8I<opc, MRMDestMem, (outs),
                (ins x86memop:$dst, SrcInfo.KRCWM:$mask, SrcInfo.RC:$src),
                OpcodeStr # "\t{$src, $dst {${mask}}|$dst {${mask}}, $src}", []>,
-               EVEX, EVEX_K, Sched<[sched.Folded]>, NotMemoryFoldable;
+               EVEX, EVEX_K, Sched<[sched.Folded]>;
   }//mayStore = 1, hasSideEffects = 0
 }
 
@@ -10748,13 +10735,13 @@ multiclass compress_by_elt_width<bits<8> opc, string OpcodeStr,
 
 // FIXME: Is there a better scheduler class for VPCOMPRESS?
 defm VPCOMPRESSD : compress_by_elt_width <0x8B, "vpcompressd", WriteVarShuffle256,
-                                          avx512vl_i32_info>, EVEX, NotMemoryFoldable;
+                                          avx512vl_i32_info>, EVEX;
 defm VPCOMPRESSQ : compress_by_elt_width <0x8B, "vpcompressq", WriteVarShuffle256,
-                                          avx512vl_i64_info>, EVEX, REX_W, NotMemoryFoldable;
+                                          avx512vl_i64_info>, EVEX, REX_W;
 defm VCOMPRESSPS : compress_by_elt_width <0x8A, "vcompressps", WriteVarShuffle256,
-                                          avx512vl_f32_info>, EVEX, NotMemoryFoldable;
+                                          avx512vl_f32_info>, EVEX;
 defm VCOMPRESSPD : compress_by_elt_width <0x8A, "vcompresspd", WriteVarShuffle256,
-                                          avx512vl_f64_info>, EVEX, REX_W, NotMemoryFoldable;
+                                          avx512vl_f64_info>, EVEX, REX_W;
 
 // expand
 multiclass expand_by_vec_width<bits<8> opc, X86VectorVTInfo _,
@@ -11650,8 +11637,7 @@ multiclass avx512_extract_elt_w<string OpcodeStr, X86VectorVTInfo _> {
     def rr_REV : AVX512Ii8<0x15, MRMDestReg, (outs GR32orGR64:$dst),
                    (ins _.RC:$src1, u8imm:$src2),
                    OpcodeStr#"\t{$src2, $src1, $dst|$dst, $src1, $src2}", []>,
-                   EVEX, TAPD, FoldGenData<NAME#rr>,
-                   Sched<[WriteVecExtract]>;
+                   EVEX, TAPD, Sched<[WriteVecExtract]>;
 
     defm NAME : avx512_extract_elt_bw_m<0x15, OpcodeStr, X86pextrw, _>, TAPD;
   }
@@ -12560,11 +12546,9 @@ defm VPSHRD  : VBMI2_shift_imm<0x72, 0x73, "vpshrd", X86VShrd, SchedWriteVecIMul
 
 // Compress
 defm VPCOMPRESSB : compress_by_elt_width<0x63, "vpcompressb", WriteVarShuffle256,
-                                         avx512vl_i8_info, HasVBMI2>, EVEX,
-                                         NotMemoryFoldable;
+                                         avx512vl_i8_info, HasVBMI2>, EVEX;
 defm VPCOMPRESSW : compress_by_elt_width <0x63, "vpcompressw", WriteVarShuffle256,
-                                          avx512vl_i16_info, HasVBMI2>, EVEX, REX_W,
-                                          NotMemoryFoldable;
+                                          avx512vl_i16_info, HasVBMI2>, EVEX, REX_W;
 // Expand
 defm VPEXPANDB : expand_by_elt_width <0x62, "vpexpandb", WriteVarShuffle256,
                                       avx512vl_i8_info, HasVBMI2>, EVEX;
