@@ -1052,7 +1052,7 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
 
   // Pre pass
   { 
-	  // Bitcode Auto Generator Pass(Pre)
+      // Bitcode Auto Generator Pass(Pre)
       MPM.addPassToFront(BitcodeAutoGeneratorPrePass(true));
   }
 
