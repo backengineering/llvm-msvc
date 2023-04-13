@@ -593,10 +593,35 @@ Value *GuardWideningImpl::freezeAndPush(Value *Orig, Instruction *InsertPt) {
   Instruction *InsertPtAtDef = getFreezeInsertPt(Orig, DT);
   if (!InsertPtAtDef)
     return new FreezeInst(Orig, "gw.freeze", InsertPt);
+  if (isa<Constant>(Orig) || isa<GlobalValue>(Orig))
+    return new FreezeInst(Orig, "gw.freeze", InsertPtAtDef);
+
   SmallSet<Value *, 16> Visited;
   SmallVector<Value *, 16> Worklist;
   SmallSet<Instruction *, 16> DropPoisonFlags;
   SmallVector<Value *, 16> NeedFreeze;
+  DenseMap<Value *, FreezeInst *> CacheOfFreezes;
+
+  // A bit overloaded data structures. Visited contains constant/GV
+  // if we already met it. In this case CacheOfFreezes has a freeze if it is
+  // required.
+  auto handleConstantOrGlobal = [&](Use &U) {
+    Value *Def = U.get();
+    if (!isa<Constant>(Def) && !isa<GlobalValue>(Def))
+      return false;
+
+    if (Visited.insert(Def).second) {
+      if (isGuaranteedNotToBePoison(Def, nullptr, InsertPt, &DT))
+        return true;
+      CacheOfFreezes[Def] = new FreezeInst(Def, Def->getName() + ".gw.fr",
+                                           getFreezeInsertPt(Def, DT));
+    }
+
+    if (CacheOfFreezes.count(Def))
+      U.set(CacheOfFreezes[Def]);
+    return true;
+  };
+
   Worklist.push_back(Orig);
   while (!Worklist.empty()) {
     Value *V = Worklist.pop_back_val();
@@ -621,7 +646,9 @@ Value *GuardWideningImpl::freezeAndPush(Value *Orig, Instruction *InsertPt) {
       continue;
     }
     DropPoisonFlags.insert(I);
-    append_range(Worklist, I->operands());
+    for (Use &U : I->operands())
+      if (!handleConstantOrGlobal(U))
+        Worklist.push_back(U.get());
   }
   for (Instruction *I : DropPoisonFlags)
     I->dropPoisonGeneratingFlagsAndMetadata();
@@ -633,7 +660,8 @@ Value *GuardWideningImpl::freezeAndPush(Value *Orig, Instruction *InsertPt) {
     ++FreezeAdded;
     if (V == Orig)
       Result = FI;
-    V->replaceUsesWithIf(FI, [&](Use & U)->bool { return U.getUser() != FI; });
+    V->replaceUsesWithIf(
+        FI, [&](const Use & U)->bool { return U.getUser() != FI; });
   }
 
   return Result;

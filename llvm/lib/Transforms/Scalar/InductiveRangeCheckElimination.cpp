@@ -145,8 +145,7 @@ class InductiveRangeCheck {
   Use *CheckUse = nullptr;
 
   static bool parseRangeCheckICmp(Loop *L, ICmpInst *ICI, ScalarEvolution &SE,
-                                  Value *&Index, Value *&Length,
-                                  bool &IsSigned);
+                                  Value *&Index, Value *&Length);
 
   static void
   extractRangeChecksFromCond(Loop *L, ScalarEvolution &SE, Use &ConditionUse,
@@ -291,7 +290,7 @@ INITIALIZE_PASS_END(IRCELegacyPass, "irce", "Inductive range check elimination",
 bool
 InductiveRangeCheck::parseRangeCheckICmp(Loop *L, ICmpInst *ICI,
                                          ScalarEvolution &SE, Value *&Index,
-                                         Value *&Length, bool &IsSigned) {
+                                         Value *&Length) {
   auto IsLoopInvariant = [&SE, L](Value *V) {
     return SE.isLoopInvariant(SE.getSCEV(V), L);
   };
@@ -308,7 +307,6 @@ InductiveRangeCheck::parseRangeCheckICmp(Loop *L, ICmpInst *ICI,
     std::swap(LHS, RHS);
     [[fallthrough]];
   case ICmpInst::ICMP_SGE:
-    IsSigned = true;
     if (match(RHS, m_ConstantInt<0>())) {
       Index = LHS;
       return true; // Lower.
@@ -319,7 +317,6 @@ InductiveRangeCheck::parseRangeCheckICmp(Loop *L, ICmpInst *ICI,
     std::swap(LHS, RHS);
     [[fallthrough]];
   case ICmpInst::ICMP_SGT:
-    IsSigned = true;
     if (match(RHS, m_ConstantInt<-1>())) {
       Index = LHS;
       return true; // Lower.
@@ -336,7 +333,6 @@ InductiveRangeCheck::parseRangeCheckICmp(Loop *L, ICmpInst *ICI,
     std::swap(LHS, RHS);
     [[fallthrough]];
   case ICmpInst::ICMP_UGT:
-    IsSigned = false;
     if (IsLoopInvariant(LHS)) {
       Index = RHS;
       Length = LHS;
@@ -370,8 +366,7 @@ void InductiveRangeCheck::extractRangeChecksFromCond(
     return;
 
   Value *Length = nullptr, *Index;
-  bool IsSigned;
-  if (!parseRangeCheckICmp(L, ICI, SE, Index, Length, IsSigned))
+  if (!parseRangeCheckICmp(L, ICI, SE, Index, Length))
     return;
 
   const auto *IndexAddRec = dyn_cast<SCEVAddRecExpr>(SE.getSCEV(Index));
@@ -622,7 +617,7 @@ class LoopConstrainer {
   // Information about the original loop we started out with.
   Loop &OriginalLoop;
 
-  const SCEV *LatchTakenCount = nullptr;
+  const IntegerType *ExitCountTy = nullptr;
   BasicBlock *OriginalPreheader = nullptr;
 
   // The preheader of the main loop.  This may or may not be different from
@@ -791,6 +786,9 @@ LoopStructure::parseLoopStructure(ScalarEvolution &SE, Loop &L,
     FailureReason = "could not compute latch count";
     return std::nullopt;
   }
+  assert(SE.getLoopDisposition(LatchCount, &L) ==
+             ScalarEvolution::LoopInvariant &&
+         "loop variant exit count doesn't make sense!");
 
   ICmpInst::Predicate Pred = ICI->getPredicate();
   Value *LeftValue = ICI->getOperand(0);
@@ -1015,10 +1013,6 @@ LoopStructure::parseLoopStructure(ScalarEvolution &SE, Loop &L,
   }
   BasicBlock *LatchExit = LatchBr->getSuccessor(LatchBrExitIdx);
 
-  assert(SE.getLoopDisposition(LatchCount, &L) ==
-             ScalarEvolution::LoopInvariant &&
-         "loop variant exit count doesn't make sense!");
-
   assert(!L.contains(LatchExit) && "expected an exit block!");
   const DataLayout &DL = Preheader->getModule()->getDataLayout();
   SCEVExpander Expander(SE, DL, "irce");
@@ -1060,14 +1054,11 @@ static const SCEV *NoopOrExtend(const SCEV *S, Type *Ty, ScalarEvolution &SE,
 
 std::optional<LoopConstrainer::SubRanges>
 LoopConstrainer::calculateSubRanges(bool IsSignedPredicate) const {
-  IntegerType *Ty = cast<IntegerType>(LatchTakenCount->getType());
-
   auto *RTy = cast<IntegerType>(Range.getType());
-
   // We only support wide range checks and narrow latches.
-  if (!AllowNarrowLatchCondition && RTy != Ty)
+  if (!AllowNarrowLatchCondition && RTy != ExitCountTy)
     return std::nullopt;
-  if (RTy->getBitWidth() < Ty->getBitWidth())
+  if (RTy->getBitWidth() < ExitCountTy->getBitWidth())
     return std::nullopt;
 
   LoopConstrainer::SubRanges Result;
@@ -1401,10 +1392,12 @@ Loop *LoopConstrainer::createClonedLoopStructure(Loop *Original, Loop *Parent,
 
 bool LoopConstrainer::run() {
   BasicBlock *Preheader = nullptr;
-  LatchTakenCount = SE.getExitCount(&OriginalLoop, MainLoopStructure.Latch);
+  const SCEV *LatchTakenCount =
+      SE.getExitCount(&OriginalLoop, MainLoopStructure.Latch);
   Preheader = OriginalLoop.getLoopPreheader();
   assert(!isa<SCEVCouldNotCompute>(LatchTakenCount) && Preheader != nullptr &&
          "preconditions!");
+  ExitCountTy = cast<IntegerType>(LatchTakenCount->getType());
 
   OriginalPreheader = Preheader;
   MainLoopPreheader = Preheader;

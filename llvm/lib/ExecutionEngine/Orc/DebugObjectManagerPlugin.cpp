@@ -93,8 +93,8 @@ Error ELFDebugObjectSection<ELFT>::validateInBounds(StringRef Buffer,
 
 template <typename ELFT>
 void ELFDebugObjectSection<ELFT>::dump(raw_ostream &OS, StringRef Name) {
-  if (Header->sh_addr) {
-    OS << formatv("  {0:x16} {1}\n", Header->sh_addr, Name);
+  if (uint64_t Addr = Header->sh_addr) {
+    OS << formatv("  {0:x16} {1}\n", Addr, Name);
   } else {
     OS << formatv("                     {0}\n", Name);
   }
@@ -389,13 +389,14 @@ createDebugObjectFromBuffer(ExecutionSession &ES, LinkGraph &G,
 
 DebugObjectManagerPlugin::DebugObjectManagerPlugin(
     ExecutionSession &ES, std::unique_ptr<DebugObjectRegistrar> Target,
-    bool RequireDebugSections)
+    bool RequireDebugSections, bool AutoRegisterCode)
     : ES(ES), Target(std::move(Target)),
-      RequireDebugSections(RequireDebugSections) {}
+      RequireDebugSections(RequireDebugSections),
+      AutoRegisterCode(AutoRegisterCode) {}
 
 DebugObjectManagerPlugin::DebugObjectManagerPlugin(
     ExecutionSession &ES, std::unique_ptr<DebugObjectRegistrar> Target)
-    : DebugObjectManagerPlugin(ES, std::move(Target), true) {}
+    : DebugObjectManagerPlugin(ES, std::move(Target), true, true) {}
 
 DebugObjectManagerPlugin::~DebugObjectManagerPlugin() = default;
 
@@ -464,7 +465,8 @@ Error DebugObjectManagerPlugin::notifyEmitted(
           FinalizePromise.set_value(TargetMem.takeError());
           return;
         }
-        if (Error Err = Target->registerDebugObject(*TargetMem)) {
+        if (Error Err =
+                Target->registerDebugObject(*TargetMem, AutoRegisterCode)) {
           FinalizePromise.set_value(std::move(Err));
           return;
         }
