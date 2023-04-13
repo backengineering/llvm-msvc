@@ -24,6 +24,7 @@
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
+#include "llvm/Bitcode/BitcodeAutoGeneratorPass.h"
 #include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -1047,6 +1048,18 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
         MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
                                     EmitLTOSummary));
     }
+  }
+
+  // Pre pass
+  { 
+	  // Bitcode Auto Generator Pass(Pre)
+      MPM.addPassToFront(BitcodeAutoGeneratorPrePass(true));
+  }
+
+  // Post pass
+  { 
+      // Bitcode Auto Generator Pass(Post)
+      MPM.addPass(BitcodeAutoGeneratorPostPass(true));
   }
 
   // Now that we have all of the passes ready, run them.
