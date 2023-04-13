@@ -551,6 +551,16 @@ public:
         new PassModelT(std::forward<PassT>(Pass))));
   }
 
+  template <typename PassT>
+  LLVM_ATTRIBUTE_MINSIZE
+      std::enable_if_t<!std::is_same<PassT, PassManager>::value>
+      addPassToFront(PassT &&Pass) {
+    using PassModelT = detail::PassModel<IRUnitT, PassT, PreservedAnalyses,
+                                         AnalysisManagerT, ExtraArgTs...>;
+    Passes.insert(Passes.begin(), std::unique_ptr<PassConceptT>(new PassModelT(
+                                      std::forward<PassT>(Pass))));
+  }
+
   /// When adding a pass manager pass that has the same type as this pass
   /// manager, simply move the passes over. This is because we don't have use
   /// cases rely on executing nested pass managers. Doing this could reduce
