@@ -1299,9 +1299,15 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
   llvm::WinEHFuncInfo *EHInfo = MF->getWinEHFuncInfo();
   if (!EHInfo)
     return;
-  for (auto MBBI = MF->begin(), E = MF->end(); MBBI != E; ++MBBI) {
+  for (auto MBBI = MF->begin(); MBBI != MF->end(); ++MBBI) {
     MachineBasicBlock *MBB = &*MBBI;
+    // Filter IPToState when MBB is empty
+    if (MBB->empty())
+      continue;
     const BasicBlock *BB = MBB->getBasicBlock();
+    // Filter IPToState when BB is nullptr
+    if (BB == nullptr)
+      continue;
     int State = EHInfo->BlockToStateMap[BB];
     if (BB->getFirstMayFaultInst()) {
       // Report IP range only for blocks with Faulty inst
