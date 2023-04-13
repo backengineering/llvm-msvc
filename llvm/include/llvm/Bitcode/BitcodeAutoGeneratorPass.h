@@ -1,3 +1,5 @@
+// This code defines the header file for a pass that generates LLVM bitcode
+// automatically.
 #ifndef LLVM_LIB_BITCODE_AUTO_GENERATOR_H
 #define LLVM_LIB_BITCODE_AUTO_GENERATOR_H
 
