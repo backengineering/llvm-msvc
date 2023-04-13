@@ -125,7 +125,6 @@
 #include "llvm/Transforms/Utils/InjectTLIMappings.h"
 #include "llvm/Transforms/Utils/LibCallsShrinkWrap.h"
 #include "llvm/Transforms/Utils/Mem2Reg.h"
-#include "llvm/Transforms/Utils/MoveAutoInit.h"
 #include "llvm/Transforms/Utils/NameAnonGlobals.h"
 #include "llvm/Transforms/Utils/RelLookupTableConverter.h"
 #include "llvm/Transforms/Utils/SimplifyCFGOptions.h"
@@ -656,8 +655,6 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
   FPM.addPass(MemCpyOptPass());
 
   FPM.addPass(DSEPass());
-  FPM.addPass(MoveAutoInitPass());
-
   FPM.addPass(createFunctionToLoopPassAdaptor(
       LICMPass(PTO.LicmMssaOptCap, PTO.LicmMssaNoAccForPromotionCap,
                /*AllowSpeculation=*/true),
@@ -1503,9 +1500,6 @@ ModulePassManager PassBuilder::buildThinLTODefaultPipeline(
     OptimizationLevel Level, const ModuleSummaryIndex *ImportSummary) {
   ModulePassManager MPM;
 
-  // Convert @llvm.global.annotations to !annotation metadata.
-  MPM.addPass(Annotation2MetadataPass());
-
   if (ImportSummary) {
     // These passes import type identifier resolutions for whole-program
     // devirtualization and CFI. They must run early because other passes may
@@ -1566,9 +1560,6 @@ ModulePassManager
 PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
                                      ModuleSummaryIndex *ExportSummary) {
   ModulePassManager MPM;
-
-  // Convert @llvm.global.annotations to !annotation metadata.
-  MPM.addPass(Annotation2MetadataPass());
 
   for (auto &C : FullLinkTimeOptimizationEarlyEPCallbacks)
     C(MPM, Level);
@@ -1802,7 +1793,6 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
 
   // Nuke dead stores.
   MainFPM.addPass(DSEPass());
-  MainFPM.addPass(MoveAutoInitPass());
   MainFPM.addPass(MergedLoadStoreMotionPass());
 
   LoopPassManager LPM;
