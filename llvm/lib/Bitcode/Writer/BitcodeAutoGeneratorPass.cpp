@@ -64,10 +64,10 @@ void generateBitCode(Module &M, StringRef FolderName) {
   std::string BCOutputFile(CurrentProjectPath.begin(),
                            CurrentProjectPath.end());
 
-  std::error_code Ec;
+  std::error_code EC;
   sys::fs::OpenFlags OpenFlags = sys::fs::OF_None;
   std::unique_ptr<ToolOutputFile> Out =
-      std::make_unique<ToolOutputFile>(BCOutputFile, Ec, OpenFlags);
+      std::make_unique<ToolOutputFile>(BCOutputFile, EC, OpenFlags);
   if (!Out.get()) {
     return;
   }
