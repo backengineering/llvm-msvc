@@ -84,9 +84,6 @@ endif()
 
 set(CMAKE_CXX_STANDARD ${LLVM_REQUIRED_CXX_STANDARD} CACHE STRING "C++ standard to conform to")
 
-#Include PatchMan headers
-include_directories(${CMAKE_SOURCE_DIR}/../PatchMan/include)
-
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
 if (CYGWIN)
@@ -719,11 +716,6 @@ option(LLVM_INCLUDE_EXAMPLES "Generate build targets for the LLVM examples" ON)
 if(LLVM_BUILD_EXAMPLES)
   add_compile_definitions(BUILD_EXAMPLES)
 endif(LLVM_BUILD_EXAMPLES)
-
-if (LLVM_ENABLE_PATCHMAN)
-  #Add PatchMan Define
-  add_definitions(-DENABLE_PATCHMAN)
-endif()
 
 option(LLVM_BUILD_TESTS
   "Build LLVM unit tests. If OFF, just generate build targets." OFF)
@@ -1362,9 +1354,3 @@ endif()
 if (LLVM_INCLUDE_UTILS AND LLVM_INCLUDE_TOOLS)
   add_subdirectory(utils/llvm-locstats)
 endif()
-
-#Add PatchMan subdirectory
-add_subdirectory(../PatchMan ../PatchMan/build)
-  
-#Add PatchMan Dependencies for LLVMipo
-add_dependencies(LLVMipo PatchManIRPass)
