@@ -25,7 +25,7 @@ separators(sys::path::Style style = sys::path::Style::native) {
 
 // Generate an ir file from the LLVM IR module M and save it to the
 // specified FolderName directory
-void generateIR(Module &M, StringRef FolderName) {
+void autoGenerateIR(Module &M, StringRef FolderName) {
   // Get the current working directory
   SmallVector<char, 300> CurrentProjectDir;
   if (auto Error = sys::fs::current_path(CurrentProjectDir)) {
@@ -88,7 +88,7 @@ void generateIR(Module &M, StringRef FolderName) {
 PreservedAnalyses IRAutoGeneratorPrePass::run(Module &M,
                                               ModuleAnalysisManager &AM) {
   if (Enable) {
-    generateIR(M, "IRAutoGeneratorPre");
+    autoGenerateIR(M, "IRAutoGeneratorPre");
   }
 
   return PreservedAnalyses::all();
@@ -101,7 +101,7 @@ PreservedAnalyses IRAutoGeneratorPostPass::run(Module &M,
                                                ModuleAnalysisManager &AM) {
 
   if (Enable) {
-    generateIR(M, "IRAutoGeneratorPost");
+    autoGenerateIR(M, "IRAutoGeneratorPost");
   }
 
   return PreservedAnalyses::all();

@@ -21,7 +21,7 @@ separators(sys::path::Style style = sys::path::Style::native) {
 
 // Generate a bitcode file from the LLVM IR module M and save it to the
 // specified FolderName directory
-void generateBitCode(Module &M, StringRef FolderName) {
+void autoGenerateBitCode(Module &M, StringRef FolderName) {
 
   // Get the current working directory
   SmallVector<char, 300> CurrentProjectDir;
@@ -83,7 +83,7 @@ void generateBitCode(Module &M, StringRef FolderName) {
 PreservedAnalyses BitcodeAutoGeneratorPrePass::run(Module &M,
                                                    ModuleAnalysisManager &AM) {
   if (Enable) {
-    generateBitCode(M, "BitcodeAutoGeneratorPre");
+    autoGenerateBitCode(M, "BitcodeAutoGeneratorPre");
   }
 
   return PreservedAnalyses::all();
@@ -95,7 +95,7 @@ PreservedAnalyses BitcodeAutoGeneratorPrePass::run(Module &M,
 PreservedAnalyses BitcodeAutoGeneratorPostPass::run(Module &M,
                                                     ModuleAnalysisManager &AM) {
   if (Enable) {
-    generateBitCode(M, "BitcodeAutoGeneratorPost");
+    autoGenerateBitCode(M, "BitcodeAutoGeneratorPost");
   }
 
   return PreservedAnalyses::all();
