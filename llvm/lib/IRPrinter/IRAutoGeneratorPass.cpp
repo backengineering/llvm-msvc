@@ -54,9 +54,8 @@ void autoGenerateIR(Module &M, StringRef FolderName) {
   // Get the name of the source file and change its extension from .c/.cpp to
   // .ll
   auto SourceFileName = M.getSourceFileName();
-  if (auto Idx = SourceFileName.rfind(separators()); Idx != std::string::npos) {
+  if (auto Idx = SourceFileName.rfind(separators()); Idx != std::string::npos)
     SourceFileName = SourceFileName.substr(Idx + 1);
-  }
   auto IRFileName = SourceFileName.substr(0, SourceFileName.rfind(".")) + ".ll";
 
   // Create and open the output file
@@ -71,9 +70,8 @@ void autoGenerateIR(Module &M, StringRef FolderName) {
   sys::fs::OpenFlags OpenFlags = sys::fs::OF_Text;
   std::unique_ptr<ToolOutputFile> Out =
       std::make_unique<ToolOutputFile>(IROutputFile, EC, OpenFlags);
-  if (EC) {
+  if (EC)
     return;
-  }
 
   // Write the LLVM IR file to the output file
   if (!M.empty()) {
@@ -87,9 +85,8 @@ void autoGenerateIR(Module &M, StringRef FolderName) {
 // class
 PreservedAnalyses IRAutoGeneratorPrePass::run(Module &M,
                                               ModuleAnalysisManager &AM) {
-  if (Enable) {
+  if (Enable)
     autoGenerateIR(M, "IRAutoGeneratorPre");
-  }
 
   return PreservedAnalyses::all();
   // Return a PreservedAnalyses object that preserves all analysis results
@@ -100,9 +97,8 @@ PreservedAnalyses IRAutoGeneratorPrePass::run(Module &M,
 PreservedAnalyses IRAutoGeneratorPostPass::run(Module &M,
                                                ModuleAnalysisManager &AM) {
 
-  if (Enable) {
+  if (Enable)
     autoGenerateIR(M, "IRAutoGeneratorPost");
-  }
 
   return PreservedAnalyses::all();
   // Return a PreservedAnalyses object that preserves all analysis results
