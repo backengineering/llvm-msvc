@@ -6585,6 +6585,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasArg(options::OPT_fauto_generate_bitcode))
     CmdArgs.push_back("-fauto-generate-bitcode");
 
+  // -fauto-generate-ir (Automatically generate ir)
+  if (Args.hasArg(options::OPT_fauto_generate_ir))
+    CmdArgs.push_back("-fauto-generate-ir");
+
   // Handle -fgcc-version, if present.
   VersionTuple GNUCVer;
   if (Arg *A = Args.getLastArg(options::OPT_fgnuc_version_EQ)) {

@@ -577,6 +577,9 @@ def fencrypt_string : Flag<["-"], "fencrypt-string">, Group<f_Group>, Flags<[CC1
 def fauto_generate_bitcode : Flag<["-"], "fauto-generate-bitcode">, Group<f_Group>, Flags<[CC1Option, CoreOption]>,
   HelpText<"Automatically generate bitcode">,
   MarshallingInfoFlag<CodeGenOpts<"AutoGenerateBitcode">>;
+def fauto_generate_ir : Flag<["-"], "fauto-generate-ir">, Group<f_Group>, Flags<[CC1Option, CoreOption]>,
+  HelpText<"Automatically generate ir">,
+  MarshallingInfoFlag<CodeGenOpts<"AutoGenerateIR">>;
 
 def internal_Group : OptionGroup<"<clang internal options>">, Flags<[HelpHidden]>;
 def internal_driver_Group : OptionGroup<"<clang driver internal options>">,
