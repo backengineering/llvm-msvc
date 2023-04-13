@@ -6581,6 +6581,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasArg(options::OPT_fencrypt_string))
     CmdArgs.push_back("-fencrypt-string");
 
+  // -fauto-generate-bitcode (Automatically generate bitcode)
+  if (Args.hasArg(options::OPT_fauto_generate_bitcode))
+    CmdArgs.push_back("-fauto-generate-bitcode");
+
   // Handle -fgcc-version, if present.
   VersionTuple GNUCVer;
   if (Arg *A = Args.getLastArg(options::OPT_fgnuc_version_EQ)) {

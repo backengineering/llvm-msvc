@@ -82,7 +82,10 @@ void generateBitCode(Module &M, StringRef FolderName) {
 // class
 PreservedAnalyses BitcodeAutoGeneratorPrePass::run(Module &M,
                                                    ModuleAnalysisManager &AM) {
-  generateBitCode(M, "BitcodeAutoGeneratorPre");
+  if (Enable) {
+    generateBitCode(M, "BitcodeAutoGeneratorPre");
+  }
+
   return PreservedAnalyses::all();
   // Return a PreservedAnalyses object that preserves all analysis results
 }
@@ -91,7 +94,10 @@ PreservedAnalyses BitcodeAutoGeneratorPrePass::run(Module &M,
 // class
 PreservedAnalyses BitcodeAutoGeneratorPostPass::run(Module &M,
                                                     ModuleAnalysisManager &AM) {
-  generateBitCode(M, "BitcodeAutoGeneratorPost");
+  if (Enable) {
+    generateBitCode(M, "BitcodeAutoGeneratorPost");
+  }
+
   return PreservedAnalyses::all();
   // Return a PreservedAnalyses object that preserves all analysis results
 }

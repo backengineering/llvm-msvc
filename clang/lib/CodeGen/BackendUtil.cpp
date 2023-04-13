@@ -1051,15 +1051,16 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   }
 
   // Pre pass
-  { 
-      // Bitcode auto generator pass(Pre)
-      MPM.addPassToFront(BitcodeAutoGeneratorPrePass(true));
+  {
+    // Bitcode auto generator pass(Pre)
+    MPM.addPassToFront(
+        BitcodeAutoGeneratorPrePass(CodeGenOpts.AutoGenerateBitcode));
   }
 
   // Post pass
-  { 
-      // Bitcode auto generator pass(Post)
-      MPM.addPass(BitcodeAutoGeneratorPostPass(true));
+  {
+    // Bitcode auto generator pass(Post)
+    MPM.addPass(BitcodeAutoGeneratorPostPass(CodeGenOpts.AutoGenerateBitcode));
   }
 
   // Now that we have all of the passes ready, run them.

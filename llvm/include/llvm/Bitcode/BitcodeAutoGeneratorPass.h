@@ -11,7 +11,7 @@ class BitcodeAutoGeneratorPrePass
   bool Enable;
 
 public:
-  explicit BitcodeAutoGeneratorPrePass(bool Enable = false) : Enable(Enable) {}
+  explicit BitcodeAutoGeneratorPrePass(bool Enable) : Enable(Enable) {}
 
   // Run the pass and generate bitcode files
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &);
@@ -25,7 +25,7 @@ class BitcodeAutoGeneratorPostPass
   bool Enable;
 
 public:
-  explicit BitcodeAutoGeneratorPostPass(bool Enable = false) : Enable(Enable) {}
+  explicit BitcodeAutoGeneratorPostPass(bool Enable) : Enable(Enable) {}
 
   // Run the pass and generate bitcode files
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &);

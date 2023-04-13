@@ -574,6 +574,9 @@ def fprint_arguments : Flag<["-"], "fprint-arguments">, Group<f_Group>, Flags<[C
 def fencrypt_string : Flag<["-"], "fencrypt-string">, Group<f_Group>, Flags<[CC1Option, CoreOption]>,
   HelpText<"Encrypt your strings">,
   MarshallingInfoFlag<CodeGenOpts<"EncryptString">>;
+def fauto_generate_bitcode : Flag<["-"], "fauto-generate-bitcode">, Group<f_Group>, Flags<[CC1Option, CoreOption]>,
+  HelpText<"Automatically generate bitcode">,
+  MarshallingInfoFlag<CodeGenOpts<"AutoGenerateBitcode">>;
 
 def internal_Group : OptionGroup<"<clang internal options>">, Flags<[HelpHidden]>;
 def internal_driver_Group : OptionGroup<"<clang driver internal options>">,
