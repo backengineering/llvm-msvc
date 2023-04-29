@@ -54,6 +54,7 @@
 #include <memory>
 #include <optional>
 #include <tuple>
+#include <regex>
 
 #include "IntrinsicRewrite.h"
 
@@ -244,20 +245,22 @@ void LinkerDriver::addBuffer(std::unique_ptr<MemoryBuffer> mb,
   }
 }
 
-void LinkerDriver::enqueuePath(StringRef path, bool wholeArchive, bool lazy) {
+void LinkerDriver::enqueuePathInternal(StringRef path, bool wholeArchive,
+                                   bool lazy) {
   auto future = std::make_shared<std::future<MBErrPair>>(
       createFutureForFile(std::string(path)));
   std::string pathStr = std::string(path);
   enqueueTask([=]() {
     auto mbOrErr = future->get();
     if (mbOrErr.second) {
-      std::string msg =
-          "could not open '" + pathStr + "': " + mbOrErr.second.message();
-      // Check if the filename is a typo for an option flag. OptTable thinks
-      // that all args that are not known options and that start with / are
-      // filenames, but e.g. `/nodefaultlibs` is more likely a typo for
-      // the option `/nodefaultlib` than a reference to a file in the root
-      // directory.
+      std::string msg = "could not open '" + pathStr +
+                        "': " + mbOrErr.second.message() +
+                        " in LinkerDriver::enqueuePathInternal";
+      // Check if the filename is a typo for an option flag. OptTable
+      // thinks that all args that are not known options and that start
+      // with / are filenames, but e.g. `/nodefaultlibs` is more likely a
+      // typo for the option `/nodefaultlib` than a reference to a file in
+      // the root directory.
       std::string nearest;
       if (ctx.optTable.findNearest(pathStr, nearest) > 1)
         message(msg); //[MSVC Compatibility]
@@ -266,6 +269,45 @@ void LinkerDriver::enqueuePath(StringRef path, bool wholeArchive, bool lazy) {
     } else
       ctx.driver.addBuffer(std::move(mbOrErr.first), wholeArchive, lazy);
   });
+}
+
+void LinkerDriver::enqueuePath(StringRef path, bool wholeArchive, bool lazy) {
+  // Get the filename part of the path
+  StringRef fileName = sys::path::filename(path);
+
+  // Check if the filename contains wildcard character *
+  if (fileName.contains("*")) {
+    // Construct a regular expression that matches the wildcard pattern
+    std::string regexStr = std::regex_replace("^" + fileName.str() + "$",
+                                              std::regex("\\."), "\\.");
+    regexStr = std::regex_replace(regexStr, std::regex("\\*"), ".*");
+    std::regex regex(regexStr);
+
+    // Traverse all the files in the parent directory of path recursively,
+    // and enqueue those files that match the regular expression.
+    std::error_code ec;
+    for (sys::fs::recursive_directory_iterator
+             i(sys::path::parent_path(path), ec),
+         e;
+         i != e; i.increment(ec)) {
+      if (ec) {
+        std::string msg = "could not open '" + path.str() +
+                          "': " + ec.message() +
+                          " in LinkerDriver::enqueuePath";
+        error(msg);
+        break;
+      }
+
+      // Check if the current filename matches the regular expression
+      if (std::regex_match(sys::path::filename(i->path()).str(), regex)) {
+        // Enqueue the matched file
+        enqueuePathInternal(i->path(), wholeArchive, lazy);
+      }
+    }
+  } else {
+    // If the filename doesn't contain wildcard, simply enqueue the file
+    enqueuePathInternal(path, wholeArchive, lazy);
+  }
 }
 
 void LinkerDriver::addArchiveBuffer(MemoryBufferRef mb, StringRef symName,
