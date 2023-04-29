@@ -272,43 +272,41 @@ void LinkerDriver::enqueuePathInternal(StringRef path, bool wholeArchive,
 }
 
 void LinkerDriver::enqueuePath(StringRef path, bool wholeArchive, bool lazy) {
-  // Get the filename part of the path
-  StringRef fileName = sys::path::filename(path);
-
   // Check if the filename contains wildcard character *
-  if (fileName.contains("*")) {
-    // Construct a regular expression that matches the wildcard pattern
-    std::string regexStr =
-        std::regex_replace("^" + path.str() + "$", std::regex("\\\\"), "\\\\");
-    regexStr = std::regex_replace(regexStr, std::regex("/"), "\\\\");
-    regexStr = std::regex_replace(regexStr, std::regex("\\."), "\\.");
-    regexStr = std::regex_replace(regexStr, std::regex("\\*"), ".*");
-    std::regex regex(regexStr);
-
-    // Traverse all the files in the parent directory of path recursively,
-    // and enqueue those files that match the regular expression.
-    std::error_code ec;
-    for (sys::fs::recursive_directory_iterator
-             i(sys::path::parent_path(path), ec),
-         e;
-         i != e; i.increment(ec)) {
-      if (ec) {
-        std::string msg = "could not open '" + path.str() +
-                          "': " + ec.message() +
-                          " in LinkerDriver::enqueuePath";
-        error(msg);
-        break;
-      }
-
-      // Check if the current filename matches the regular expression
-      if (std::regex_match(i->path(), regex)) {
-        // Enqueue the matched file
-        enqueuePathInternal(i->path(), wholeArchive, lazy);
-      }
-    }
-  } else {
+  bool hasWildcard = sys::path::filename(path).contains("*");
+  if (!hasWildcard) {
     // If the filename doesn't contain wildcard, simply enqueue the file
     enqueuePathInternal(path, wholeArchive, lazy);
+    return;
+  }
+
+  // Construct a regular expression that matches the wildcard pattern
+  std::string regexStr =
+      std::regex_replace("^" + path.str() + "$", std::regex("\\\\"), "\\\\");
+  regexStr = std::regex_replace(regexStr, std::regex("/"), "\\\\");
+  regexStr = std::regex_replace(regexStr, std::regex("\\."), "\\.");
+  regexStr = std::regex_replace(regexStr, std::regex("\\*"), ".*");
+  std::regex regex(regexStr);
+
+  // Traverse all the files in the parent directory of path recursively,
+  // and enqueue those files that match the regular expression.
+  std::error_code ec;
+  for (sys::fs::recursive_directory_iterator
+           i(sys::path::parent_path(path), ec),
+       e;
+       i != e; i.increment(ec)) {
+    if (ec) {
+      std::string msg = "could not open '" + path.str() + "': " + ec.message() +
+                        " in LinkerDriver::enqueuePath";
+      error(msg);
+      break;
+    }
+
+    // Check if the current filename matches the regular expression
+    if (std::regex_match(i->path(), regex)) {
+      // Enqueue the matched file
+      enqueuePathInternal(i->path(), wholeArchive, lazy);
+    }
   }
 }
 
