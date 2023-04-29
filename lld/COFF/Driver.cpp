@@ -278,8 +278,10 @@ void LinkerDriver::enqueuePath(StringRef path, bool wholeArchive, bool lazy) {
   // Check if the filename contains wildcard character *
   if (fileName.contains("*")) {
     // Construct a regular expression that matches the wildcard pattern
-    std::string regexStr = std::regex_replace("^" + fileName.str() + "$",
-                                              std::regex("\\."), "\\.");
+    std::string regexStr =
+        std::regex_replace("^" + path.str() + "$", std::regex("\\\\"), "\\\\");
+    regexStr = std::regex_replace(regexStr, std::regex("/"), "\\\\");
+    regexStr = std::regex_replace(regexStr, std::regex("\\."), "\\.");
     regexStr = std::regex_replace(regexStr, std::regex("\\*"), ".*");
     std::regex regex(regexStr);
 
@@ -299,7 +301,7 @@ void LinkerDriver::enqueuePath(StringRef path, bool wholeArchive, bool lazy) {
       }
 
       // Check if the current filename matches the regular expression
-      if (std::regex_match(sys::path::filename(i->path()).str(), regex)) {
+      if (std::regex_match(i->path(), regex)) {
         // Enqueue the matched file
         enqueuePathInternal(i->path(), wholeArchive, lazy);
       }
