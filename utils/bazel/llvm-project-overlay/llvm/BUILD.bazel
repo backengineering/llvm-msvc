@@ -573,7 +573,7 @@ cc_library(
 )
 
 cc_library(
-    name = "LLVMTableGenGlobalISel",
+    name = "TableGenGlobalISel",
     srcs = glob([
         "utils/TableGen/GlobalISel/*.cpp",
     ]) + [
@@ -617,9 +617,9 @@ cc_binary(
     copts = llvm_copts,
     stamp = 0,
     deps = [
-        ":LLVMTableGenGlobalISel",
         ":Support",
         ":TableGen",
+        ":TableGenGlobalISel",
         ":config",
         ":llvm-tblgen-headers",
     ],
@@ -1038,7 +1038,6 @@ cc_library(
         ],
     ) + [
         "include/llvm-c/Analysis.h",
-        "include/llvm-c/Initialization.h",
     ],
     copts = llvm_copts,
     textual_hdrs = glob([
@@ -1218,7 +1217,6 @@ cc_library(
     deps = [
         ":Analysis",
         ":Core",
-        ":InstCombineTableGen",
         ":Support",
         ":Target",
         ":TransformUtils",
@@ -1777,6 +1775,7 @@ llvm_target_lib_list = [lib for lib in [
             ("-gen-searchable-tables", "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc"),
         ],
         "tbl_deps": [
+            ":InstCombineTableGen",
             ":amdgpu_isel_target_gen",
             ":r600_target_gen",
         ],
@@ -3450,12 +3449,33 @@ cc_binary(
     ],
 )
 
+gentbl(
+    name = "GSYMUtilOptionsTableGen",
+    strip_include_prefix = "tools/llvm-gsymutil",
+    tbl_outs = [(
+        "-gen-opt-parser-defs",
+        "tools/llvm-gsymutil/Opts.inc",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "tools/llvm-gsymutil/Opts.td",
+    td_srcs = ["include/llvm/Option/OptParser.td"],
+)
+
+expand_template(
+    name = "gsymutil_main",
+    out = "llvm-gsymutil-driver.cpp",
+    substitutions = {
+        "@TOOL_NAME@": "llvm_gsymutil",
+    },
+    template = "cmake/modules/llvm-driver-template.cpp.in",
+)
+
 cc_binary(
     name = "llvm-gsymutil",
     srcs = glob([
         "tools/llvm-gsymutil/*.cpp",
         "tools/llvm-gsymutil/*.h",
-    ]),
+    ]) + ["llvm-gsymutil-driver.cpp"],
     copts = llvm_copts,
     stamp = 0,
     deps = [
@@ -3463,8 +3483,10 @@ cc_binary(
         ":DebugInfo",
         ":DebugInfoDWARF",
         ":DebugInfoGSYM",
+        ":GSYMUtilOptionsTableGen",
         ":MC",
         ":Object",
+        ":Option",
         ":Support",
         ":Target",
         ":TargetParser",

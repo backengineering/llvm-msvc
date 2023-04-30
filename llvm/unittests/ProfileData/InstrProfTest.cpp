@@ -249,7 +249,7 @@ TEST_F(InstrProfTest, test_merge_temporal_prof_traces_truncated) {
   SmallTrace.FunctionNameRefs = {IndexedInstrProf::ComputeHash("foo"),
                                  IndexedInstrProf::ComputeHash("bar")};
 
-  SmallVector Traces = {LargeTrace, SmallTrace};
+  SmallVector<TemporalProfTraceTy, 4> Traces = {LargeTrace, SmallTrace};
   Writer.addTemporalProfileTraces(Traces, 2);
 
   auto Profile = Writer.writeBuffer();
@@ -275,7 +275,7 @@ TEST_F(InstrProfTest, test_merge_traces_from_writer) {
   FooTrace.FunctionNameRefs = {IndexedInstrProf::ComputeHash("foo")};
   BarTrace.FunctionNameRefs = {IndexedInstrProf::ComputeHash("bar")};
 
-  SmallVector Traces1({FooTrace}), Traces2({BarTrace});
+  SmallVector<TemporalProfTraceTy, 4> Traces1({FooTrace}), Traces2({BarTrace});
   Writer.addTemporalProfileTraces(Traces1, 1);
   Writer2.addTemporalProfileTraces(Traces2, 1);
   Writer.mergeRecordsFromWriter(std::move(Writer2), Err);
@@ -302,10 +302,11 @@ TEST_F(InstrProfTest, test_merge_traces_sampled) {
   GooTrace.FunctionNameRefs = {IndexedInstrProf::ComputeHash("Goo")};
 
   // Add some sampled traces
-  SmallVector SampledTraces = {FooTrace, BarTrace, GooTrace};
+  SmallVector<TemporalProfTraceTy, 4> SampledTraces = {FooTrace, BarTrace,
+                                                       GooTrace};
   Writer.addTemporalProfileTraces(SampledTraces, 5);
   // Add some unsampled traces
-  SmallVector UnsampledTraces = {BarTrace, GooTrace};
+  SmallVector<TemporalProfTraceTy, 4> UnsampledTraces = {BarTrace, GooTrace};
   Writer.addTemporalProfileTraces(UnsampledTraces, 2);
   UnsampledTraces = {FooTrace};
   Writer.addTemporalProfileTraces(UnsampledTraces, 1);
@@ -868,7 +869,9 @@ TEST_P(MaybeSparseInstrProfTest, get_icall_data_merge1_saturation) {
   const uint64_t MaxEdgeCount = getInstrMaxCountValue();
 
   instrprof_error Result;
-  auto Err = [&](Error E) { Result = InstrProfError::take(std::move(E)); };
+  auto Err = [&](Error E) {
+    Result = std::get<0>(InstrProfError::take(std::move(E)));
+  };
   Result = instrprof_error::success;
   Writer.addRecord({"foo", 0x1234, {1}}, Err);
   ASSERT_EQ(Result, instrprof_error::success);
@@ -1353,16 +1356,18 @@ TEST(ProfileReaderTest, ReadsLargeFiles) {
   if (!RawProfile)
     GTEST_SKIP();
   auto RawProfileReaderOrErr = InstrProfReader::create(std::move(RawProfile));
-  ASSERT_TRUE(InstrProfError::take(RawProfileReaderOrErr.takeError()) ==
-              instrprof_error::unrecognized_format);
+  ASSERT_TRUE(
+      std::get<0>(InstrProfError::take(RawProfileReaderOrErr.takeError())) ==
+      instrprof_error::unrecognized_format);
 
   auto IndexedProfile = WritableMemoryBuffer::getNewUninitMemBuffer(LargeSize);
   if (!IndexedProfile)
     GTEST_SKIP();
   auto IndexedReaderOrErr =
       IndexedInstrProfReader::create(std::move(IndexedProfile), nullptr);
-  ASSERT_TRUE(InstrProfError::take(IndexedReaderOrErr.takeError()) ==
-              instrprof_error::bad_magic);
+  ASSERT_TRUE(
+      std::get<0>(InstrProfError::take(IndexedReaderOrErr.takeError())) ==
+      instrprof_error::bad_magic);
 }
 #endif
 

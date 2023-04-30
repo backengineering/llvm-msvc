@@ -289,6 +289,12 @@ genBounds(mlir::Location loc, fir::FirOpBuilder &builder, Entity entity);
 llvm::SmallVector<std::pair<mlir::Value, mlir::Value>>
 genBounds(mlir::Location loc, fir::FirOpBuilder &builder, mlir::Value shape);
 
+/// Generate lower bounds from a shape. If \p shape is null or is a fir.shape,
+/// the returned vector will contain \p rank ones.
+llvm::SmallVector<mlir::Value> genLowerbounds(mlir::Location loc,
+                                              fir::FirOpBuilder &builder,
+                                              mlir::Value shape, unsigned rank);
+
 /// Compute fir.shape<> (no lower bounds) for an entity.
 mlir::Value genShape(mlir::Location loc, fir::FirOpBuilder &builder,
                      Entity entity);
@@ -308,6 +314,11 @@ mlir::Value genLBound(mlir::Location loc, fir::FirOpBuilder &builder,
 llvm::SmallVector<mlir::Value> getIndexExtents(mlir::Location loc,
                                                fir::FirOpBuilder &builder,
                                                mlir::Value shape);
+
+/// Return explicit extents. If the base is a fir.box, this won't read it to
+/// return the extents and will instead return an empty vector.
+llvm::SmallVector<mlir::Value>
+getExplicitExtentsFromShape(mlir::Value shape, fir::FirOpBuilder &builder);
 
 /// Read length parameters into result if this entity has any.
 void genLengthParameters(mlir::Location loc, fir::FirOpBuilder &builder,

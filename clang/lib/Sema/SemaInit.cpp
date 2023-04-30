@@ -2370,7 +2370,7 @@ static void ExpandAnonymousFieldDesignator(Sema &SemaRef,
       Replacements.push_back(Designator::CreateFieldDesignator(
           (IdentifierInfo *)nullptr, SourceLocation(), SourceLocation()));
     assert(isa<FieldDecl>(*PI));
-    Replacements.back().setField(cast<FieldDecl>(*PI));
+    Replacements.back().setFieldDecl(cast<FieldDecl>(*PI));
   }
 
   // Expand the current designator into the set of replacement
@@ -2591,7 +2591,7 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
       return true;
     }
 
-    FieldDecl *KnownField = D->getField();
+    FieldDecl *KnownField = D->getFieldDecl();
     if (!KnownField) {
       const IdentifierInfo *FieldName = D->getFieldName();
       DeclContext::lookup_result Lookup = RT->getDecl()->lookup(FieldName);
@@ -2762,7 +2762,7 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
 
     // Update the designator with the field declaration.
     if (!VerifyOnly)
-      D->setField(*Field);
+      D->setFieldDecl(*Field);
 
     // Make sure that our non-designated initializer list has space
     // for a subobject corresponding to this field.
@@ -3251,7 +3251,7 @@ ExprResult Sema::ActOnDesignatedInitializer(Designation &Desig,
 
     if (D.isFieldDesignator()) {
       Designators.push_back(ASTDesignator::CreateFieldDesignator(
-          D.getField(), D.getDotLoc(), D.getFieldLoc()));
+          D.getFieldDecl(), D.getDotLoc(), D.getFieldLoc()));
     } else if (D.isArrayDesignator()) {
       Expr *Index = static_cast<Expr *>(D.getArrayIndex());
       llvm::APSInt IndexValue;
@@ -5449,8 +5449,9 @@ static void TryOrBuildParenListInitialization(
   } else if (auto *RT = Entity.getType()->getAs<RecordType>()) {
     const CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
 
-    auto BaseRange = map_range(RD->bases(), [&S](auto &base) {
-      return InitializedEntity::InitializeBase(S.getASTContext(), &base, false);
+    auto BaseRange = map_range(RD->bases(), [&](auto &base) {
+      return InitializedEntity::InitializeBase(S.getASTContext(), &base, false,
+                                               &Entity);
     });
     auto FieldRange = map_range(RD->fields(), [](auto *field) {
       return InitializedEntity::InitializeMember(field);
@@ -6885,7 +6886,7 @@ PerformConstructorInitialization(Sema &S,
 
   if (isExplicitTemporary(Entity, Kind, NumArgs)) {
     // An explicitly-constructed temporary, e.g., X(1, 2).
-    if (S.DiagnoseUseOfDecl(Constructor, Loc))
+    if (S.DiagnoseUseOfDecl(Step.Function.FoundDecl, Loc))
       return ExprError();
 
     TypeSourceInfo *TSInfo = Entity.getTypeSourceInfo();
@@ -6900,8 +6901,6 @@ PerformConstructorInitialization(Sema &S,
     if (auto *Shadow = dyn_cast<ConstructorUsingShadowDecl>(
             Step.Function.FoundDecl.getDecl())) {
       CalleeDecl = S.findInheritingConstructor(Loc, Constructor, Shadow);
-      if (S.DiagnoseUseOfDecl(CalleeDecl, Loc))
-        return ExprError();
     }
     S.MarkFunctionReferenced(Loc, CalleeDecl);
 
@@ -10608,7 +10607,7 @@ QualType Sema::DeduceTemplateSpecializationFromInitializer(
 
     // Make sure we didn't select an unusable deduction guide, and mark it
     // as referenced.
-    DiagnoseUseOfDecl(Best->Function, Kind.getLocation());
+    DiagnoseUseOfDecl(Best->FoundDecl, Kind.getLocation());
     MarkFunctionReferenced(Kind.getLocation(), Best->Function);
     break;
   }

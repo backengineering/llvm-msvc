@@ -59,7 +59,7 @@
 #include "llvm/Transforms/Scalar/InferAddressSpaces.h"
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Utils/SimplifyLibCalls.h"
-#include "llvm/Transforms/Vectorize.h"
+#include "llvm/Transforms/Vectorize/LoadStoreVectorizer.h"
 #include <optional>
 
 using namespace llvm;
@@ -648,6 +648,10 @@ void AMDGPUTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
         }
         if (PassName == "amdgpu-unify-divergent-exit-nodes") {
           PM.addPass(AMDGPUUnifyDivergentExitNodesPass());
+          return true;
+        }
+        if (PassName == "amdgpu-atomic-optimizer") {
+          PM.addPass(AMDGPUAtomicOptimizerPass(*this));
           return true;
         }
         return false;

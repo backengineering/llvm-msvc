@@ -8,6 +8,8 @@ declare i16 @llvm.bswap.i16(i16)
 declare i8 @llvm.ctpop.i8(i8)
 declare <2 x i8> @llvm.uadd.sat.2xi8(<2 x i8>, <2 x i8>)
 declare i8 @llvm.uadd.sat.i8(i8, i8)
+declare i8 @llvm.fshr.i8(i8, i8, i8)
+declare i8 @llvm.fshl.i8(i8, i8, i8)
 
 ;; Throughout use: X > Y || Y == 0 which folds to X > Y iff X known
 ;; non-zero. Do this because many of the expressions already have
@@ -166,4 +168,432 @@ define <2 x i1> @check_add_sat_vec(<2 x i8> %x, <2 x i8> %y, <2 x i8> %w) {
   %cmp1 = icmp eq <2 x i8> %w, <i8 0, i8 0>
   %r = or <2 x i1> %cmp0, %cmp1
   ret <2 x i1> %r
+}
+
+define <2 x i1> @shl_nz_bounded_cnt_vec(<2 x i32> %x, <2 x i32> %y) {
+; CHECK-LABEL: @shl_nz_bounded_cnt_vec(
+; CHECK-NEXT:    ret <2 x i1> zeroinitializer
+;
+  %cnt = and <2 x i32> %x, <i32 16, i32 24>
+  %val = or <2 x i32> %y, <i32 131088, i32 16>
+  %shl = shl <2 x i32> %val, %cnt
+  %r = icmp eq <2 x i32> %shl, zeroinitializer
+  ret <2 x i1> %r
+}
+
+define i1 @shl_nz_bounded_cnt(i32 %cnt, i32 %y) {
+; CHECK-LABEL: @shl_nz_bounded_cnt(
+; CHECK-NEXT:    [[CNT_ULT4:%.*]] = icmp ult i32 [[CNT:%.*]], 4
+; CHECK-NEXT:    call void @llvm.assume(i1 [[CNT_ULT4]])
+; CHECK-NEXT:    ret i1 false
+;
+  %cnt_ult4 = icmp ult i32 %cnt, 4
+  call void @llvm.assume(i1 %cnt_ult4)
+  %val = or i32 %y, 131072
+  %shl = shl i32 %val, %cnt
+  %r = icmp eq i32 %shl, 0
+  ret i1 %r
+}
+
+define <2 x i1> @shl_nz_bounded_cnt_vec_todo_no_common_bit(<2 x i32> %x, <2 x i32> %y) {
+; CHECK-LABEL: @shl_nz_bounded_cnt_vec_todo_no_common_bit(
+; CHECK-NEXT:    [[CNT:%.*]] = and <2 x i32> [[X:%.*]], <i32 16, i32 32>
+; CHECK-NEXT:    [[VAL:%.*]] = or <2 x i32> [[Y:%.*]], <i32 16, i32 16>
+; CHECK-NEXT:    [[SHL:%.*]] = shl <2 x i32> [[VAL]], [[CNT]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq <2 x i32> [[SHL]], zeroinitializer
+; CHECK-NEXT:    ret <2 x i1> [[R]]
+;
+  %cnt = and <2 x i32> %x, <i32 16, i32 32>
+  %val = or <2 x i32> %y, <i32 16, i32 16>
+  %shl = shl <2 x i32> %val, %cnt
+  %r = icmp eq <2 x i32> %shl, zeroinitializer
+  ret <2 x i1> %r
+}
+
+define i1 @shl_maybe_zero_bounded_cnt_fail(i32 %x, i32 %y) {
+; CHECK-LABEL: @shl_maybe_zero_bounded_cnt_fail(
+; CHECK-NEXT:    [[CNT:%.*]] = and i32 [[X:%.*]], 16
+; CHECK-NEXT:    [[VAL:%.*]] = or i32 [[Y:%.*]], 65536
+; CHECK-NEXT:    [[SHL:%.*]] = shl i32 [[VAL]], [[CNT]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq i32 [[SHL]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %cnt = and i32 %x, 16
+  %val = or i32 %y, 65536
+  %shl = shl i32 %val, %cnt
+  %r = icmp eq i32 %shl, 0
+  ret i1 %r
+}
+
+define i1 @shl_non_zero_nsw(i8 %s, i8 %cnt) {
+; CHECK-LABEL: @shl_non_zero_nsw(
+; CHECK-NEXT:    [[NZ:%.*]] = icmp ne i8 [[S:%.*]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[NZ]])
+; CHECK-NEXT:    ret i1 false
+;
+  %nz = icmp ne i8 %s, 0
+  call void @llvm.assume(i1 %nz)
+  %v = shl nsw i8 %s, %cnt
+  %r = icmp eq i8 %v, 0
+  ret i1 %r
+}
+
+define i1 @shl_maybe_zero_nsw_fail(i8 %s, i8 %cnt) {
+; CHECK-LABEL: @shl_maybe_zero_nsw_fail(
+; CHECK-NEXT:    [[V:%.*]] = shl nsw i8 [[S:%.*]], [[CNT:%.*]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq i8 [[V]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %v = shl nsw i8 %s, %cnt
+  %r = icmp eq i8 %v, 0
+  ret i1 %r
+}
+
+define i1 @shl_out_of_range_is_poison(i32 %v, i32 %c) {
+; CHECK-LABEL: @shl_out_of_range_is_poison(
+; CHECK-NEXT:    ret i1 poison
+;
+  %sval = or i32 %v, 32
+  %shl = shl i32 %c, %sval
+  %z = icmp eq i32 %shl, 0
+  ret i1 %z
+}
+
+define i1 @lshr_nz_bounded_cnt(i32 %cnt, i32 %y) {
+; CHECK-LABEL: @lshr_nz_bounded_cnt(
+; CHECK-NEXT:    [[CNT_ULT4:%.*]] = icmp ult i32 [[CNT:%.*]], 4
+; CHECK-NEXT:    call void @llvm.assume(i1 [[CNT_ULT4]])
+; CHECK-NEXT:    ret i1 false
+;
+  %cnt_ult4 = icmp ult i32 %cnt, 4
+  call void @llvm.assume(i1 %cnt_ult4)
+  %val = or i32 %y, 90
+  %shl = lshr i32 %val, %cnt
+  %r = icmp eq i32 %shl, 0
+  ret i1 %r
+}
+
+define <2 x i1> @ashr_nz_bounded_cnt_vec(<2 x i32> %x, <2 x i32> %y) {
+; CHECK-LABEL: @ashr_nz_bounded_cnt_vec(
+; CHECK-NEXT:    ret <2 x i1> zeroinitializer
+;
+  %cnt = and <2 x i32> %x, <i32 16, i32 24>
+  %val = or <2 x i32> %y, <i32 402784272, i32 268697601>
+  %shl = ashr <2 x i32> %val, %cnt
+  %r = icmp eq <2 x i32> %shl, zeroinitializer
+  ret <2 x i1> %r
+}
+
+
+define i1 @lshr_nz_bounded_cnt_fail(i32 %cnt, i32 %y) {
+; CHECK-LABEL: @lshr_nz_bounded_cnt_fail(
+; CHECK-NEXT:    [[CNT_ULT:%.*]] = icmp ult i32 [[CNT:%.*]], 20
+; CHECK-NEXT:    call void @llvm.assume(i1 [[CNT_ULT]])
+; CHECK-NEXT:    [[VAL:%.*]] = or i32 [[Y:%.*]], 131072
+; CHECK-NEXT:    [[SHL:%.*]] = lshr i32 [[VAL]], [[CNT]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq i32 [[SHL]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %cnt_ult = icmp ult i32 %cnt, 20
+  call void @llvm.assume(i1 %cnt_ult)
+  %val = or i32 %y, 131072
+  %shl = lshr i32 %val, %cnt
+  %r = icmp eq i32 %shl, 0
+  ret i1 %r
+}
+
+define <2 x i1> @ashr_nz_bounded_cnt_vec_fail(<2 x i32> %x, <2 x i32> %y) {
+; CHECK-LABEL: @ashr_nz_bounded_cnt_vec_fail(
+; CHECK-NEXT:    [[CNT:%.*]] = and <2 x i32> [[X:%.*]], <i32 24, i32 24>
+; CHECK-NEXT:    [[VAL:%.*]] = or <2 x i32> [[Y:%.*]], <i32 131088, i32 268697601>
+; CHECK-NEXT:    [[SHL:%.*]] = ashr <2 x i32> [[VAL]], [[CNT]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq <2 x i32> [[SHL]], zeroinitializer
+; CHECK-NEXT:    ret <2 x i1> [[R]]
+;
+  %cnt = and <2 x i32> %x, <i32 24, i32 24>
+  %val = or <2 x i32> %y, <i32 131088, i32 268697601>
+  %shl = ashr <2 x i32> %val, %cnt
+  %r = icmp eq <2 x i32> %shl, zeroinitializer
+  ret <2 x i1> %r
+}
+
+
+
+
+define i1 @lshr_nonzero_and_shift_out_zeros(i32 %cnt, i32 %y) {
+; CHECK-LABEL: @lshr_nonzero_and_shift_out_zeros(
+; CHECK-NEXT:    [[CNT_ULT:%.*]] = icmp ult i32 [[CNT:%.*]], 4
+; CHECK-NEXT:    call void @llvm.assume(i1 [[CNT_ULT]])
+; CHECK-NEXT:    [[VAL:%.*]] = and i32 [[Y:%.*]], -131072
+; CHECK-NEXT:    [[VAL_NZ:%.*]] = icmp ne i32 [[VAL]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[VAL_NZ]])
+; CHECK-NEXT:    ret i1 false
+;
+  %cnt_ult = icmp ult i32 %cnt, 4
+  call void @llvm.assume(i1 %cnt_ult)
+
+  %val = and i32 %y, -131072
+
+  %val_nz =  icmp ne i32 %val, 0
+  call void @llvm.assume(i1 %val_nz)
+
+  %shl = lshr i32 %val, %cnt
+  %r = icmp eq i32 %shl, 0
+  ret i1 %r
+}
+
+
+define i1 @ashr_nonzero_and_shift_out_zeros(i32 %ccnt, i32 %y) {
+; CHECK-LABEL: @ashr_nonzero_and_shift_out_zeros(
+; CHECK-NEXT:    [[VAL:%.*]] = and i32 [[Y:%.*]], -131072
+; CHECK-NEXT:    [[VAL_NZ:%.*]] = icmp ne i32 [[VAL]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[VAL_NZ]])
+; CHECK-NEXT:    ret i1 false
+;
+  %cnt = and i32 %ccnt, 7
+  %val = and i32 %y, -131072
+  %val_nz =  icmp ne i32 %val, 0
+  call void @llvm.assume(i1 %val_nz)
+  %shl = ashr i32 %val, %cnt
+  %r = icmp eq i32 %shl, 0
+  ret i1 %r
+}
+
+
+define i1 @shl_nonzero_and_shift_out_zeros(i32 %ccnt, i32 %y) {
+; CHECK-LABEL: @shl_nonzero_and_shift_out_zeros(
+; CHECK-NEXT:    [[VAL:%.*]] = and i32 [[Y:%.*]], 131071
+; CHECK-NEXT:    [[VAL_NZ:%.*]] = icmp ne i32 [[VAL]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[VAL_NZ]])
+; CHECK-NEXT:    ret i1 false
+;
+  %cnt = and i32 %ccnt, 6
+  %val = and i32 %y, 131071
+  %val_nz =  icmp ne i32 %val, 0
+  call void @llvm.assume(i1 %val_nz)
+  %shl = shl i32 %val, %cnt
+  %r = icmp eq i32 %shl, 0
+  ret i1 %r
+}
+
+
+
+define i1 @lshr_nonzero_and_shift_out_zeros_fail(i32 %cnt, i32 %y) {
+; CHECK-LABEL: @lshr_nonzero_and_shift_out_zeros_fail(
+; CHECK-NEXT:    [[CNT_ULT:%.*]] = icmp ult i32 [[CNT:%.*]], 19
+; CHECK-NEXT:    call void @llvm.assume(i1 [[CNT_ULT]])
+; CHECK-NEXT:    [[VAL:%.*]] = and i32 [[Y:%.*]], -131072
+; CHECK-NEXT:    [[VAL_NZ:%.*]] = icmp ne i32 [[VAL]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[VAL_NZ]])
+; CHECK-NEXT:    [[SHL:%.*]] = lshr i32 [[VAL]], [[CNT]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq i32 [[SHL]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %cnt_ult = icmp ult i32 %cnt, 19
+  call void @llvm.assume(i1 %cnt_ult)
+
+  %val = and i32 %y, -131072
+
+  %val_nz =  icmp ne i32 %val, 0
+  call void @llvm.assume(i1 %val_nz)
+
+  %shl = lshr i32 %val, %cnt
+  %r = icmp eq i32 %shl, 0
+  ret i1 %r
+}
+
+
+define i1 @ashr_nonzero_and_shift_out_zeros_fail(i32 %ccnt, i32 %y) {
+; CHECK-LABEL: @ashr_nonzero_and_shift_out_zeros_fail(
+; CHECK-NEXT:    [[CNT:%.*]] = and i32 [[CCNT:%.*]], 18
+; CHECK-NEXT:    [[VAL:%.*]] = and i32 [[Y:%.*]], -131072
+; CHECK-NEXT:    [[VAL_NZ:%.*]] = icmp ne i32 [[VAL]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[VAL_NZ]])
+; CHECK-NEXT:    [[SHL:%.*]] = ashr i32 [[VAL]], [[CNT]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq i32 [[SHL]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %cnt = and i32 %ccnt, 18
+  %val = and i32 %y, -131072
+  %val_nz =  icmp ne i32 %val, 0
+  call void @llvm.assume(i1 %val_nz)
+  %shl = ashr i32 %val, %cnt
+  %r = icmp eq i32 %shl, 0
+  ret i1 %r
+}
+
+
+define i1 @shl_nonzero_and_shift_out_zeros_fail(i32 %ccnt, i32 %y) {
+; CHECK-LABEL: @shl_nonzero_and_shift_out_zeros_fail(
+; CHECK-NEXT:    [[CNT:%.*]] = and i32 [[CCNT:%.*]], 6
+; CHECK-NEXT:    [[VAL:%.*]] = and i32 [[Y:%.*]], 268435455
+; CHECK-NEXT:    [[VAL_NZ:%.*]] = icmp ne i32 [[VAL]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[VAL_NZ]])
+; CHECK-NEXT:    [[SHL:%.*]] = shl i32 [[VAL]], [[CNT]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq i32 [[SHL]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %cnt = and i32 %ccnt, 6
+  %val = and i32 %y, 268435455
+  %val_nz =  icmp ne i32 %val, 0
+  call void @llvm.assume(i1 %val_nz)
+  %shl = shl i32 %val, %cnt
+  %r = icmp eq i32 %shl, 0
+  ret i1 %r
+}
+
+define i1 @sub_nonzero_ops_ne(i8 %xx, i8 %yy, i8 %z) {
+; CHECK-LABEL: @sub_nonzero_ops_ne(
+; CHECK-NEXT:    ret i1 false
+;
+  %x = and i8 %xx, 191
+  %y = or i8 %yy, 64
+  %s = sub i8 %x, %y
+  %exp = or i8 %z, %s
+  %r = icmp eq i8 %exp, 0
+  ret i1 %r
+}
+
+define i1 @sub_nonzero_ops_ne_fail(i8 %xx, i8 %yy, i8 %z) {
+; CHECK-LABEL: @sub_nonzero_ops_ne_fail(
+; CHECK-NEXT:    [[X:%.*]] = and i8 [[XX:%.*]], -64
+; CHECK-NEXT:    [[Y:%.*]] = or i8 [[YY:%.*]], 64
+; CHECK-NEXT:    [[S:%.*]] = sub i8 [[X]], [[Y]]
+; CHECK-NEXT:    [[EXP:%.*]] = or i8 [[Z:%.*]], [[S]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq i8 [[EXP]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %x = and i8 %xx, 192
+  %y = or i8 %yy, 64
+  %s = sub i8 %x, %y
+  %exp = or i8 %z, %s
+  %r = icmp eq i8 %exp, 0
+  ret i1 %r
+}
+
+define i1 @add_nonzero_nuw(i8 %x, i8 %y) {
+; CHECK-LABEL: @add_nonzero_nuw(
+; CHECK-NEXT:    [[X_NZ:%.*]] = icmp ne i8 [[X:%.*]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[X_NZ]])
+; CHECK-NEXT:    ret i1 false
+;
+  %x_nz = icmp ne i8 %x, 0
+  call void @llvm.assume(i1 %x_nz)
+  %a = add nuw i8 %x, %y
+  %r = icmp eq i8 %a, 0
+  ret i1 %r
+}
+
+define i1 @add_nonzero_nsw_fail(i8 %x, i8 %y) {
+; CHECK-LABEL: @add_nonzero_nsw_fail(
+; CHECK-NEXT:    [[X_NZ:%.*]] = icmp ne i8 [[X:%.*]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[X_NZ]])
+; CHECK-NEXT:    [[A:%.*]] = add nsw i8 [[X]], [[Y:%.*]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq i8 [[A]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %x_nz = icmp ne i8 %x, 0
+  call void @llvm.assume(i1 %x_nz)
+  %a = add nsw i8 %x, %y
+  %r = icmp eq i8 %a, 0
+  ret i1 %r
+}
+
+define i1 @udiv_y_le_x(i8 %xx, i8 %yy, i8 %z) {
+; CHECK-LABEL: @udiv_y_le_x(
+; CHECK-NEXT:    ret i1 false
+;
+  %x = or i8 %xx, 7
+  %y = and i8 %yy, 7
+  %d = udiv i8 %x, %y
+  %o = or i8 %d, %z
+  %r = icmp eq i8 %o, 0
+  ret i1 %r
+}
+
+define i1 @udiv_y_le_x_fail(i8 %xx, i8 %yy, i8 %z) {
+; CHECK-LABEL: @udiv_y_le_x_fail(
+; CHECK-NEXT:    [[X:%.*]] = or i8 [[XX:%.*]], 6
+; CHECK-NEXT:    [[Y:%.*]] = and i8 [[YY:%.*]], 7
+; CHECK-NEXT:    [[D:%.*]] = udiv i8 [[X]], [[Y]]
+; CHECK-NEXT:    [[O:%.*]] = or i8 [[D]], [[Z:%.*]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq i8 [[O]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %x = or i8 %xx, 6
+  %y = and i8 %yy, 7
+  %d = udiv i8 %x, %y
+  %o = or i8 %d, %z
+  %r = icmp eq i8 %o, 0
+  ret i1 %r
+}
+
+define i1 @fshr_non_zero(i8 %x, i8 %y, i8 %z) {
+; CHECK-LABEL: @fshr_non_zero(
+; CHECK-NEXT:    [[PRED0:%.*]] = icmp ne i8 [[X:%.*]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[PRED0]])
+; CHECK-NEXT:    ret i1 false
+;
+  %pred0 = icmp ne i8 %x, 0
+  call void @llvm.assume(i1 %pred0)
+  %v = tail call i8 @llvm.fshr.i8(i8 %x, i8 %x, i8 %y)
+  %or = or i8 %v, %z
+  %r = icmp eq i8 %or, 0
+  ret i1 %r
+}
+
+define i1 @fshr_non_zero_fail(i8 %x, i8 %y, i8 %z, i8 %w) {
+; CHECK-LABEL: @fshr_non_zero_fail(
+; CHECK-NEXT:    [[PRED0:%.*]] = icmp ne i8 [[X:%.*]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[PRED0]])
+; CHECK-NEXT:    [[PRED1:%.*]] = icmp ne i8 [[W:%.*]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[PRED1]])
+; CHECK-NEXT:    [[V:%.*]] = tail call i8 @llvm.fshr.i8(i8 [[X]], i8 [[W]], i8 [[Y:%.*]])
+; CHECK-NEXT:    [[OR:%.*]] = or i8 [[V]], [[Z:%.*]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq i8 [[OR]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %pred0 = icmp ne i8 %x, 0
+  call void @llvm.assume(i1 %pred0)
+  %pred1 = icmp ne i8 %w, 0
+  call void @llvm.assume(i1 %pred1)
+  %v = tail call i8 @llvm.fshr.i8(i8 %x, i8 %w, i8 %y)
+  %or = or i8 %v, %z
+  %r = icmp eq i8 %or, 0
+  ret i1 %r
+}
+
+define i1 @fshl_non_zero(i8 %x, i8 %y, i8 %z) {
+; CHECK-LABEL: @fshl_non_zero(
+; CHECK-NEXT:    [[PRED0:%.*]] = icmp ne i8 [[X:%.*]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[PRED0]])
+; CHECK-NEXT:    ret i1 false
+;
+  %pred0 = icmp ne i8 %x, 0
+  call void @llvm.assume(i1 %pred0)
+  %v = tail call i8 @llvm.fshl.i8(i8 %x, i8 %x, i8 %y)
+  %or = or i8 %v, %z
+  %r = icmp eq i8 %or, 0
+  ret i1 %r
+}
+
+define i1 @fshl_non_zero_fail(i8 %x, i8 %y, i8 %z, i8 %w) {
+; CHECK-LABEL: @fshl_non_zero_fail(
+; CHECK-NEXT:    [[PRED0:%.*]] = icmp ne i8 [[X:%.*]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[PRED0]])
+; CHECK-NEXT:    [[PRED1:%.*]] = icmp ne i8 [[W:%.*]], 0
+; CHECK-NEXT:    call void @llvm.assume(i1 [[PRED1]])
+; CHECK-NEXT:    [[V:%.*]] = tail call i8 @llvm.fshl.i8(i8 [[X]], i8 [[W]], i8 [[Y:%.*]])
+; CHECK-NEXT:    [[OR:%.*]] = or i8 [[V]], [[Z:%.*]]
+; CHECK-NEXT:    [[R:%.*]] = icmp eq i8 [[OR]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %pred0 = icmp ne i8 %x, 0
+  call void @llvm.assume(i1 %pred0)
+  %pred1 = icmp ne i8 %w, 0
+  call void @llvm.assume(i1 %pred1)
+  %v = tail call i8 @llvm.fshl.i8(i8 %x, i8 %w, i8 %y)
+  %or = or i8 %v, %z
+  %r = icmp eq i8 %or, 0
+  ret i1 %r
 }

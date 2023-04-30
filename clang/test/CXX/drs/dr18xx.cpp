@@ -51,6 +51,22 @@ namespace dr1815 { // dr1815: no
 #endif
 }
 
+namespace dr1821 { // dr1821: yes
+struct A {
+  template <typename> struct B {
+    void f();
+  };
+  template <typename T> void B<T>::f(){};
+  // expected-error@-1 {{non-friend class member 'f' cannot have a qualified name}}
+
+  struct C {
+    void f();
+  };
+  void C::f() {}
+  // expected-error@-1 {{non-friend class member 'f' cannot have a qualified name}}
+};
+} // namespace dr1821
+
 namespace dr1822 { // dr1822: yes
 #if __cplusplus >= 201103L
   int a;
@@ -167,4 +183,32 @@ void dr1891() { // dr1891: 4
   b = b; // expected-error {{copy assignment operator is implicitly deleted}}
   b = static_cast<B&&>(b); // expected-error {{copy assignment operator is implicitly deleted}}
 #endif
+}
+
+namespace dr1894 { // dr1894: 3.8
+                   // NB: reusing part of dr407 test
+namespace A {
+  struct S {};
+}
+namespace B {
+  typedef int S;
+}
+namespace E {
+  typedef A::S S;
+  using A::S;
+  struct S s;
+}
+namespace F {
+  typedef A::S S;
+}
+namespace G {
+  using namespace A;
+  using namespace F;
+  struct S s;
+}
+namespace H {
+  using namespace F;
+  using namespace A;
+  struct S s;
+}
 }

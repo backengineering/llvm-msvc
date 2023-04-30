@@ -204,8 +204,8 @@ struct LinalgPromotionOptions {
   /// If ith element of `useFullTiles` is true the full view should be used
   /// for the promoted buffer of the ith operand in `operandsToPromote`.
   /// Otherwise the partial view will be used. The decision is defaulted to
-  /// `useFullTileBuffersDefault` when `useFullTileBuffers` is None and for
-  /// operands missing from `useFullTileBuffers`.
+  /// `useFullTileBuffersDefault` when `useFullTileBuffers` is std::nullopt and
+  /// for operands missing from `useFullTileBuffers`.
   std::optional<llvm::SmallBitVector> useFullTileBuffers;
   LinalgPromotionOptions &setUseFullTileBuffers(ArrayRef<bool> useFullTiles) {
     unsigned size = useFullTiles.size();
@@ -589,6 +589,13 @@ LogicalResult vectorize(RewriterBase &rewriter, LinalgOp linalgOp,
 /// Emit a suitable vector form for a Copy op with fully static shape.
 LogicalResult vectorizeCopy(RewriterBase &builder, memref::CopyOp copyOp);
 
+/// Vectorize a `padOp` with (1) static result type, (2) constant padding value
+/// and (3) all-zero lowPad to
+///   `transfer_write_in_bounds(transfer_read_masked(pad_source, pad_value))`.
+FailureOr<vector::TransferWriteOp>
+maskedVectorize(RewriterBase &rewriter, tensor::PadOp padOp,
+                ArrayRef<int64_t> inputVectorSizes);
+
 /// Emit a loop nest of `scf.for` with the proper body for `linalgOp`.
 FailureOr<LinalgLoops> linalgOpToLoops(RewriterBase &rewriter,
                                        LinalgOp linalgOp);
@@ -899,6 +906,27 @@ splitReductionByScaling(RewriterBase &b, LinalgOp op,
 FailureOr<SmallVector<Value>> collapseGenericOpIterationDims(
     GenericOp genericOp, ArrayRef<ReassociationIndices> foldedIterationDims,
     RewriterBase &rewriter);
+
+struct LowerPackResult {
+  tensor::PadOp padOp;
+  tensor::ExpandShapeOp expandShapeOp;
+  linalg::TransposeOp transposeOp;
+};
+
+/// Rewrite pack as pad + reshape + transpose.
+FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
+                                     tensor::PackOp packOp);
+
+struct LowerUnPackOpResult {
+  tensor::EmptyOp emptyOp;
+  linalg::TransposeOp transposeOp;
+  tensor::CollapseShapeOp collapseShapeOp;
+  tensor::ExtractSliceOp extractSliceOp;
+};
+
+/// Rewrite pack as empty + transpose + reshape + extract_slice.
+FailureOr<LowerUnPackOpResult> lowerUnPack(RewriterBase &rewriter,
+                                           tensor::UnPackOp unPackOp);
 
 /// Struct to hold the result of a `pack` call.
 struct PackResult {

@@ -72,6 +72,8 @@ protected:
     A3 = findInstructionByNameOrNull(F, "A3");
     A4 = findInstructionByNameOrNull(F, "A4");
     A5 = findInstructionByNameOrNull(F, "A5");
+    A6 = findInstructionByNameOrNull(F, "A6");
+    A7 = findInstructionByNameOrNull(F, "A7");
 
     CxtI = findInstructionByNameOrNull(F, "CxtI");
     CxtI2 = findInstructionByNameOrNull(F, "CxtI2");
@@ -83,7 +85,8 @@ protected:
   Function *F = nullptr;
   Instruction *A = nullptr;
   // Instructions (optional)
-  Instruction *A2 = nullptr, *A3 = nullptr, *A4 = nullptr, *A5 = nullptr;
+  Instruction *A2 = nullptr, *A3 = nullptr, *A4 = nullptr, *A5 = nullptr,
+              *A6 = nullptr, *A7 = nullptr;
 
   // Context instructions (optional)
   Instruction *CxtI = nullptr, *CxtI2 = nullptr, *CxtI3 = nullptr;
@@ -979,6 +982,20 @@ TEST_F(ValueTrackingTest, programUndefinedIfPoison) {
   EXPECT_EQ(programUndefinedIfPoison(A), true);
 }
 
+TEST_F(ValueTrackingTest, programUndefinedIfPoisonSelect) {
+  parseAssembly("declare i32 @any_num()"
+                "define void @test(i1 %Cond) {\n"
+                "  %A = call i32 @any_num()\n"
+                "  %B = add i32 %A, 1\n"
+                "  %C = select i1 %Cond, i32 %A, i32 %B\n"
+                "  udiv i32 1, %C"
+                "  ret void\n"
+                "}\n");
+  // If A is poison, B is also poison, and therefore C is poison regardless of
+  // the value of %Cond.
+  EXPECT_EQ(programUndefinedIfPoison(A), true);
+}
+
 TEST_F(ValueTrackingTest, programUndefinedIfUndefOrPoison) {
   parseAssembly("declare i32 @any_num()"
                 "define void @test(i32 %mask) {\n"
@@ -1445,7 +1462,7 @@ TEST_F(ComputeKnownFPClassTest, FabsUnknown) {
       "  %A = call float @llvm.fabs.f32(float %arg)"
       "  ret float %A\n"
       "}\n");
-  expectKnownFPClass(fcAllFlags, false);
+  expectKnownFPClass(fcPositive | fcNan, false);
 }
 
 TEST_F(ComputeKnownFPClassTest, FNegFabsUnknown) {
@@ -1456,7 +1473,7 @@ TEST_F(ComputeKnownFPClassTest, FNegFabsUnknown) {
       "  %A = fneg float %fabs"
       "  ret float %A\n"
       "}\n");
-  expectKnownFPClass(fcAllFlags, true);
+  expectKnownFPClass(fcNegative | fcNan, true);
 }
 
 TEST_F(ComputeKnownFPClassTest, NegFabsNInf) {
@@ -1467,7 +1484,7 @@ TEST_F(ComputeKnownFPClassTest, NegFabsNInf) {
       "  %A = fneg float %fabs"
       "  ret float %A\n"
       "}\n");
-  expectKnownFPClass(~fcInf, true);
+  expectKnownFPClass((fcNegative & ~fcNegInf) | fcNan, true);
 }
 
 TEST_F(ComputeKnownFPClassTest, FNegFabsNNaN) {
@@ -1478,7 +1495,7 @@ TEST_F(ComputeKnownFPClassTest, FNegFabsNNaN) {
       "  %A = fneg float %fabs"
       "  ret float %A\n"
       "}\n");
-  expectKnownFPClass(~fcNan, true);
+  expectKnownFPClass(fcNegative, true);
 }
 
 TEST_F(ComputeKnownFPClassTest, CopySignNNanSrc0) {
@@ -1502,7 +1519,7 @@ TEST_F(ComputeKnownFPClassTest, CopySignNInfSrc0_NegSign) {
       "  %A = call float @llvm.copysign.f32(float %ninf, float -1.0)"
       "  ret float %A\n"
       "}\n");
-  expectKnownFPClass(fcNegFinite, true);
+  expectKnownFPClass(fcNegFinite | fcNan, true);
 }
 
 TEST_F(ComputeKnownFPClassTest, CopySignNInfSrc0_PosSign) {
@@ -1514,7 +1531,7 @@ TEST_F(ComputeKnownFPClassTest, CopySignNInfSrc0_PosSign) {
       "  %A = call float @llvm.copysign.f32(float %ninf, float 1.0)"
       "  ret float %A\n"
       "}\n");
-  expectKnownFPClass(fcPosFinite, false);
+  expectKnownFPClass(fcPosFinite | fcNan, false);
 }
 
 TEST_F(ComputeKnownFPClassTest, UIToFP) {
@@ -1524,8 +1541,8 @@ TEST_F(ComputeKnownFPClassTest, UIToFP) {
       "  %A2 = uitofp i16 %arg1 to half"
       "  ret float %A\n"
       "}\n");
-  expectKnownFPClass(fcPosFinite, false, A);
-  expectKnownFPClass(fcPositive, false, A2);
+  expectKnownFPClass(fcPosFinite & ~fcSubnormal, false, A);
+  expectKnownFPClass(fcPositive & ~fcSubnormal, false, A2);
 }
 
 TEST_F(ComputeKnownFPClassTest, SIToFP) {
@@ -1536,9 +1553,9 @@ TEST_F(ComputeKnownFPClassTest, SIToFP) {
       "  %A3 = sitofp i17 %arg2 to half"
       "  ret float %A\n"
       "}\n");
-  expectKnownFPClass(fcFinite, std::nullopt, A);
-  expectKnownFPClass(fcFinite, std::nullopt, A2);
-  expectKnownFPClass(~fcNan, std::nullopt, A3);
+  expectKnownFPClass(fcFinite & ~fcNegZero & ~fcSubnormal, std::nullopt, A);
+  expectKnownFPClass(fcFinite & ~fcNegZero & ~fcSubnormal, std::nullopt, A2);
+  expectKnownFPClass(~(fcNan | fcNegZero | fcSubnormal), std::nullopt, A3);
 }
 
 TEST_F(ComputeKnownFPClassTest, FAdd) {
@@ -1573,6 +1590,97 @@ TEST_F(ComputeKnownFPClassTest, FSub) {
   expectKnownFPClass(fcAllFlags, std::nullopt, A3);
   expectKnownFPClass(fcAllFlags, std::nullopt, A4);
   expectKnownFPClass(fcAllFlags, std::nullopt, A5);
+}
+
+TEST_F(ComputeKnownFPClassTest, FMul) {
+  parseAssembly(
+      "define float @test(float nofpclass(nan inf) %nnan.ninf0, float nofpclass(nan inf) %nnan.ninf1, float nofpclass(nan) %nnan, float nofpclass(qnan) %no.qnan, float %unknown) {\n"
+      "  %A = fmul float %nnan.ninf0, %nnan.ninf1"
+      "  %A2 = fmul float %nnan.ninf0, %nnan"
+      "  %A3 = fmul float %nnan, %nnan.ninf0"
+      "  %A4 = fmul float %nnan.ninf0, %no.qnan"
+      "  %A5 = fmul float %nnan, %nnan"
+      "  ret float %A\n"
+      "}\n");
+  expectKnownFPClass(fcFinite | fcInf, std::nullopt, A);
+  expectKnownFPClass(fcAllFlags, std::nullopt, A2);
+  expectKnownFPClass(fcAllFlags, std::nullopt, A3);
+  expectKnownFPClass(fcAllFlags, std::nullopt, A4);
+  expectKnownFPClass(fcPositive | fcNan, std::nullopt, A5);
+}
+
+TEST_F(ComputeKnownFPClassTest, FMulNoZero) {
+  parseAssembly(
+      "define float @test(float nofpclass(zero) %no.zero, float nofpclass(zero nan) %no.zero.nan0, float nofpclass(zero nan) %no.zero.nan1, float nofpclass(nzero nan) %no.negzero.nan, float nofpclass(pzero nan) %no.poszero.nan, float nofpclass(inf nan) %no.inf.nan, float nofpclass(inf) %no.inf, float nofpclass(nan) %no.nan) {\n"
+      "  %A = fmul float %no.zero.nan0, %no.zero.nan1"
+      "  %A2 = fmul float %no.zero, %no.zero"
+      "  %A3 = fmul float %no.poszero.nan, %no.zero.nan0"
+      "  %A4 = fmul float %no.nan, %no.zero"
+      "  %A5 = fmul float %no.zero, %no.inf"
+      "  %A6 = fmul float %no.zero.nan0, %no.nan"
+      "  %A7 = fmul float %no.nan, %no.zero.nan0"
+      "  ret float %A\n"
+      "}\n");
+  expectKnownFPClass(fcFinite | fcInf, std::nullopt, A);
+  expectKnownFPClass(fcPositive | fcNan, std::nullopt, A2);
+  expectKnownFPClass(fcAllFlags, std::nullopt, A3);
+  expectKnownFPClass(fcAllFlags, std::nullopt, A4);
+  expectKnownFPClass(fcAllFlags, std::nullopt, A5);
+  expectKnownFPClass(fcAllFlags, std::nullopt, A6);
+  expectKnownFPClass(fcAllFlags, std::nullopt, A7);
+}
+
+TEST_F(ComputeKnownFPClassTest, CannotBeOrderedLessThanZero) {
+  parseAssembly("define float @test(float %arg) {\n"
+                "  %A = fmul float %arg, %arg"
+                "  ret float %A\n"
+                "}\n");
+
+  Type *FPTy = Type::getDoubleTy(M->getContext());
+  const DataLayout &DL = M->getDataLayout();
+
+  EXPECT_TRUE(
+      computeKnownFPClass(ConstantFP::getZero(FPTy, /*Negative=*/false), DL)
+          .cannotBeOrderedLessThanZero());
+  EXPECT_TRUE(
+      computeKnownFPClass(ConstantFP::getZero(FPTy, /*Negative=*/true), DL)
+          .cannotBeOrderedLessThanZero());
+
+  EXPECT_TRUE(computeKnownFPClass(ConstantFP::getInfinity(FPTy, false), DL)
+                  .cannotBeOrderedLessThanZero());
+  EXPECT_FALSE(computeKnownFPClass(ConstantFP::getInfinity(FPTy, true), DL)
+                   .cannotBeOrderedLessThanZero());
+
+  EXPECT_TRUE(computeKnownFPClass(ConstantFP::get(FPTy, 1.0), DL)
+                  .cannotBeOrderedLessThanZero());
+  EXPECT_FALSE(computeKnownFPClass(ConstantFP::get(FPTy, -1.0), DL)
+                   .cannotBeOrderedLessThanZero());
+
+  EXPECT_TRUE(
+      computeKnownFPClass(
+          ConstantFP::get(FPTy, APFloat::getSmallest(FPTy->getFltSemantics(),
+                                                     /*Negative=*/false)),
+          DL)
+          .cannotBeOrderedLessThanZero());
+  EXPECT_FALSE(
+      computeKnownFPClass(
+          ConstantFP::get(FPTy, APFloat::getSmallest(FPTy->getFltSemantics(),
+                                                     /*Negative=*/true)),
+          DL)
+          .cannotBeOrderedLessThanZero());
+
+  EXPECT_TRUE(
+      computeKnownFPClass(ConstantFP::getQNaN(FPTy, /*Negative=*/false), DL)
+          .cannotBeOrderedLessThanZero());
+  EXPECT_TRUE(
+      computeKnownFPClass(ConstantFP::getQNaN(FPTy, /*Negative=*/true), DL)
+          .cannotBeOrderedLessThanZero());
+  EXPECT_TRUE(
+      computeKnownFPClass(ConstantFP::getSNaN(FPTy, /*Negative=*/false), DL)
+          .cannotBeOrderedLessThanZero());
+  EXPECT_TRUE(
+      computeKnownFPClass(ConstantFP::getSNaN(FPTy, /*Negative=*/true), DL)
+          .cannotBeOrderedLessThanZero());
 }
 
 TEST_F(ValueTrackingTest, isNonZeroRecurrence) {
