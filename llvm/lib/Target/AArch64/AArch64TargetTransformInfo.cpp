@@ -2584,6 +2584,24 @@ InstructionCost AArch64TTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
         return Entry->Cost;
     }
   }
+
+  // Cost vXf16 FCmp without FP16 support as if it is scalarized.
+  // FIXME: This isn't correct, but matches previous behavior.
+  if (isa<FixedVectorType>(ValTy) && ISD == ISD::SETCC &&
+      ValTy->getScalarType()->isHalfTy() && !ST->hasFullFP16()) {
+    unsigned Num = cast<FixedVectorType>(ValTy)->getNumElements();
+    if (CondTy)
+      CondTy = CondTy->getScalarType();
+    InstructionCost Cost = getCmpSelInstrCost(
+        Opcode, ValTy->getScalarType(), CondTy, VecPred, CostKind, I);
+
+    // Return the cost of multiple scalar invocation plus the cost of
+    // inserting and extracting the values.
+    return getScalarizationOverhead(cast<FixedVectorType>(ValTy), /*Insert*/ true,
+                                    /*Extract*/ false, CostKind) +
+           Num * Cost;
+  }
+
   // The base case handles scalable vectors fine for now, since it treats the
   // cost as 1 * legalization cost.
   return BaseT::getCmpSelInstrCost(Opcode, ValTy, CondTy, VecPred, CostKind, I);
@@ -3477,7 +3495,7 @@ InstructionCost AArch64TTIImpl::getShuffleCost(TTI::ShuffleKind Kind,
 
 static bool containsDecreasingPointers(Loop *TheLoop,
                                        PredicatedScalarEvolution *PSE) {
-  const ValueToValueMap &Strides = ValueToValueMap();
+  const auto &Strides = DenseMap<Value *, const SCEV *>();
   for (BasicBlock *BB : TheLoop->blocks()) {
     // Scan the instructions in the block and look for addresses that are
     // consecutive and decreasing.

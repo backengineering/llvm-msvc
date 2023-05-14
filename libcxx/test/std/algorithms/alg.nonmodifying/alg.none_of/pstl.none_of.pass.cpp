@@ -6,13 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: with-pstl
+// UNSUPPORTED: c++03, c++11, c++14
+
+// UNSUPPORTED: libcpp-has-no-incomplete-pstl
 
 // <algorithm>
 
 // template<class ExecutionPolicy, class ForwardIterator, class Predicate>
-//   bool any_of(ExecutionPolicy&& exec, ForwardIterator first, ForwardIterator last,
-//               Predicate pred);
+//   bool none_of(ExecutionPolicy&& exec, ForwardIterator first, ForwardIterator last,
+//                Predicate pred);
 
 #include <algorithm>
 #include <cassert>

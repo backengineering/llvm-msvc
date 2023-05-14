@@ -320,12 +320,15 @@ bool RISCVTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
   if (ABI.empty())
     ABI = ISAInfo->computeDefaultABI().str();
 
+  if (ISAInfo->hasExtension("zfh"))
+    HasLegalHalfType = true;
+
   return true;
 }
 
 bool RISCVTargetInfo::isValidCPUName(StringRef Name) const {
   bool Is64Bit = getTriple().isArch64Bit();
-  return llvm::RISCV::checkCPUKind(llvm::RISCV::parseCPUKind(Name), Is64Bit);
+  return llvm::RISCV::parseCPU(Name, Is64Bit);
 }
 
 void RISCVTargetInfo::fillValidCPUList(
@@ -336,8 +339,7 @@ void RISCVTargetInfo::fillValidCPUList(
 
 bool RISCVTargetInfo::isValidTuneCPUName(StringRef Name) const {
   bool Is64Bit = getTriple().isArch64Bit();
-  return llvm::RISCV::checkTuneCPUKind(
-      llvm::RISCV::parseTuneCPUKind(Name, Is64Bit), Is64Bit);
+  return llvm::RISCV::parseTuneCPU(Name, Is64Bit);
 }
 
 void RISCVTargetInfo::fillValidTuneCPUList(

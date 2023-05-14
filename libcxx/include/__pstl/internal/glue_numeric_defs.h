@@ -10,12 +10,10 @@
 #ifndef _PSTL_GLUE_NUMERIC_DEFS_H
 #define _PSTL_GLUE_NUMERIC_DEFS_H
 
+#include <__config>
 #include <iterator>
 
 #include "execution_defs.h"
-#include "pstl_config.h"
-
-_PSTL_HIDE_FROM_ABI_PUSH
 
 namespace std {
 // [reduce]
@@ -173,7 +171,5 @@ __pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _ForwardItera
     _ExecutionPolicy&& __exec, _ForwardIterator1 __first, _ForwardIterator1 __last, _ForwardIterator2 __d_first);
 
 } // namespace std
-
-_PSTL_HIDE_FROM_ABI_POP
 
 #endif /* _PSTL_GLUE_NUMERIC_DEFS_H */

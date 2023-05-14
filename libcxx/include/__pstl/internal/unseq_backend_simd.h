@@ -10,16 +10,22 @@
 #ifndef _PSTL_UNSEQ_BACKEND_SIMD_H
 #define _PSTL_UNSEQ_BACKEND_SIMD_H
 
+#include <__config>
 #include <__functional/operations.h>
-#include <type_traits>
+#include <__iterator/iterator_traits.h>
+#include <__type_traits/is_arithmetic.h>
+#include <__type_traits/is_same.h>
+#include <__utility/move.h>
+#include <__utility/pair.h>
+#include <cstddef>
+#include <cstdint>
 
-#include "pstl_config.h"
-#include "utils.h"
+#include <__pstl/internal/utils.h>
 
 // This header defines the minimum set of vector routines required
 // to support parallel STL.
 
-_PSTL_HIDE_FROM_ABI_PUSH
+#if !defined(_LIBCPP_HAS_NO_INCOMPLETE_PSTL) && _LIBCPP_STD_VER >= 17
 
 namespace __pstl
 {
@@ -30,7 +36,7 @@ namespace __unseq_backend
 const std::size_t __lane_size = 64;
 
 template <class _Iterator, class _DifferenceType, class _Function>
-_Iterator
+_LIBCPP_HIDE_FROM_ABI _Iterator
 __simd_walk_1(_Iterator __first, _DifferenceType __n, _Function __f) noexcept
 {
     _PSTL_PRAGMA_SIMD
@@ -41,7 +47,7 @@ __simd_walk_1(_Iterator __first, _DifferenceType __n, _Function __f) noexcept
 }
 
 template <class _Iterator1, class _DifferenceType, class _Iterator2, class _Function>
-_Iterator2
+_LIBCPP_HIDE_FROM_ABI _Iterator2
 __simd_walk_2(_Iterator1 __first1, _DifferenceType __n, _Iterator2 __first2, _Function __f) noexcept
 {
     _PSTL_PRAGMA_SIMD
@@ -51,7 +57,7 @@ __simd_walk_2(_Iterator1 __first1, _DifferenceType __n, _Iterator2 __first2, _Fu
 }
 
 template <class _Iterator1, class _DifferenceType, class _Iterator2, class _Iterator3, class _Function>
-_Iterator3
+_LIBCPP_HIDE_FROM_ABI _Iterator3
 __simd_walk_3(_Iterator1 __first1, _DifferenceType __n, _Iterator2 __first2, _Iterator3 __first3,
               _Function __f) noexcept
 {
@@ -63,18 +69,9 @@ __simd_walk_3(_Iterator1 __first1, _DifferenceType __n, _Iterator2 __first2, _It
 
 // TODO: check whether __simd_first() can be used here
 template <class _Index, class _DifferenceType, class _Pred>
-bool
+_LIBCPP_HIDE_FROM_ABI bool
 __simd_or(_Index __first, _DifferenceType __n, _Pred __pred) noexcept
 {
-#if defined(_PSTL_EARLYEXIT_PRESENT)
-    _DifferenceType __i;
-    _PSTL_PRAGMA_VECTOR_UNALIGNED
-    _PSTL_PRAGMA_SIMD_EARLYEXIT
-    for (__i = 0; __i < __n; ++__i)
-        if (__pred(__first[__i]))
-            break;
-    return __i < __n;
-#else
     _DifferenceType __block_size = 4 < __n ? 4 : __n;
     const _Index __last = __first + __n;
     while (__last != __first)
@@ -99,82 +96,12 @@ __simd_or(_Index __first, _DifferenceType __n, _Pred __pred) noexcept
         }
     }
     return false;
-#endif
-}
-
-template <class _Index, class _DifferenceType, class _Compare>
-_Index
-__simd_first(_Index __first, _DifferenceType __begin, _DifferenceType __end, _Compare __comp) noexcept
-{
-#if defined(_PSTL_EARLYEXIT_PRESENT)
-    _DifferenceType __i = __begin;
-    _PSTL_PRAGMA_VECTOR_UNALIGNED // Do not generate peel loop part
-        _PSTL_PRAGMA_SIMD_EARLYEXIT for (; __i < __end; ++__i)
-    {
-        if (__comp(__first, __i))
-        {
-            break;
-        }
-    }
-    return __first + __i;
-#else
-    // Experiments show good block sizes like this
-    const _DifferenceType __block_size = 8;
-    alignas(__lane_size) _DifferenceType __lane[__block_size] = {0};
-    while (__end - __begin >= __block_size)
-    {
-        _DifferenceType __found = 0;
-        _PSTL_PRAGMA_VECTOR_UNALIGNED // Do not generate peel loop part
-            _PSTL_PRAGMA_SIMD_REDUCTION(|
-                                        : __found) for (_DifferenceType __i = __begin; __i < __begin + __block_size;
-                                                        ++__i)
-        {
-            const _DifferenceType __t = __comp(__first, __i);
-            __lane[__i - __begin] = __t;
-            __found |= __t;
-        }
-        if (__found)
-        {
-            _DifferenceType __i;
-            // This will vectorize
-            for (__i = 0; __i < __block_size; ++__i)
-            {
-                if (__lane[__i])
-                {
-                    break;
-                }
-            }
-            return __first + __begin + __i;
-        }
-        __begin += __block_size;
-    }
-
-    //Keep remainder scalar
-    while (__begin != __end)
-    {
-        if (__comp(__first, __begin))
-        {
-            return __first + __begin;
-        }
-        ++__begin;
-    }
-    return __first + __end;
-#endif //_PSTL_EARLYEXIT_PRESENT
 }
 
 template <class _Index1, class _DifferenceType, class _Index2, class _Pred>
-std::pair<_Index1, _Index2>
+_LIBCPP_HIDE_FROM_ABI std::pair<_Index1, _Index2>
 __simd_first(_Index1 __first1, _DifferenceType __n, _Index2 __first2, _Pred __pred) noexcept
 {
-#if defined(_PSTL_EARLYEXIT_PRESENT)
-    _DifferenceType __i = 0;
-    _PSTL_PRAGMA_VECTOR_UNALIGNED
-    _PSTL_PRAGMA_SIMD_EARLYEXIT
-    for (; __i < __n; ++__i)
-        if (__pred(__first1[__i], __first2[__i]))
-            break;
-    return std::make_pair(__first1 + __i, __first2 + __i);
-#else
     const _Index1 __last1 = __first1 + __n;
     const _Index2 __last2 = __first2 + __n;
     // Experiments show good block sizes like this
@@ -184,7 +111,6 @@ __simd_first(_Index1 __first1, _DifferenceType __n, _Index2 __first2, _Pred __pr
     {
         _DifferenceType __found = 0;
         _DifferenceType __i;
-        _PSTL_PRAGMA_VECTOR_UNALIGNED // Do not generate peel loop part
             _PSTL_PRAGMA_SIMD_REDUCTION(|
                                         : __found) for (__i = 0; __i < __block_size; ++__i)
         {
@@ -213,11 +139,10 @@ __simd_first(_Index1 __first1, _DifferenceType __n, _Index2 __first2, _Pred __pr
             return std::make_pair(__first1, __first2);
 
     return std::make_pair(__last1, __last2);
-#endif //_PSTL_EARLYEXIT_PRESENT
 }
 
 template <class _Index, class _DifferenceType, class _Pred>
-_DifferenceType
+_LIBCPP_HIDE_FROM_ABI _DifferenceType
 __simd_count(_Index __index, _DifferenceType __n, _Pred __pred) noexcept
 {
     _DifferenceType __count = 0;
@@ -230,7 +155,7 @@ __simd_count(_Index __index, _DifferenceType __n, _Pred __pred) noexcept
 }
 
 template <class _InputIterator, class _DifferenceType, class _OutputIterator, class _BinaryPredicate>
-_OutputIterator
+_LIBCPP_HIDE_FROM_ABI _OutputIterator
 __simd_unique_copy(_InputIterator __first, _DifferenceType __n, _OutputIterator __result,
                    _BinaryPredicate __pred) noexcept
 {
@@ -243,7 +168,6 @@ __simd_unique_copy(_InputIterator __first, _DifferenceType __n, _OutputIterator 
     _PSTL_PRAGMA_SIMD
     for (_DifferenceType __i = 1; __i < __n; ++__i)
     {
-        _PSTL_PRAGMA_SIMD_ORDERED_MONOTONIC(__cnt : 1)
         if (!__pred(__first[__i], __first[__i - 1]))
         {
             __result[__cnt] = __first[__i];
@@ -254,7 +178,7 @@ __simd_unique_copy(_InputIterator __first, _DifferenceType __n, _OutputIterator 
 }
 
 template <class _InputIterator, class _DifferenceType, class _OutputIterator, class _Assigner>
-_OutputIterator
+_LIBCPP_HIDE_FROM_ABI _OutputIterator
 __simd_assign(_InputIterator __first, _DifferenceType __n, _OutputIterator __result, _Assigner __assigner) noexcept
 {
     _PSTL_USE_NONTEMPORAL_STORES_IF_ALLOWED
@@ -265,7 +189,7 @@ __simd_assign(_InputIterator __first, _DifferenceType __n, _OutputIterator __res
 }
 
 template <class _InputIterator, class _DifferenceType, class _OutputIterator, class _UnaryPredicate>
-_OutputIterator
+_LIBCPP_HIDE_FROM_ABI _OutputIterator
 __simd_copy_if(_InputIterator __first, _DifferenceType __n, _OutputIterator __result, _UnaryPredicate __pred) noexcept
 {
     _DifferenceType __cnt = 0;
@@ -273,7 +197,6 @@ __simd_copy_if(_InputIterator __first, _DifferenceType __n, _OutputIterator __re
     _PSTL_PRAGMA_SIMD
     for (_DifferenceType __i = 0; __i < __n; ++__i)
     {
-        _PSTL_PRAGMA_SIMD_ORDERED_MONOTONIC(__cnt : 1)
         if (__pred(__first[__i]))
         {
             __result[__cnt] = __first[__i];
@@ -284,7 +207,7 @@ __simd_copy_if(_InputIterator __first, _DifferenceType __n, _OutputIterator __re
 }
 
 template <class _InputIterator, class _DifferenceType, class _BinaryPredicate>
-_DifferenceType
+_LIBCPP_HIDE_FROM_ABI _DifferenceType
 __simd_calc_mask_2(_InputIterator __first, _DifferenceType __n, bool* __mask, _BinaryPredicate __pred) noexcept
 {
     _DifferenceType __count = 0;
@@ -299,7 +222,7 @@ __simd_calc_mask_2(_InputIterator __first, _DifferenceType __n, bool* __mask, _B
 }
 
 template <class _InputIterator, class _DifferenceType, class _UnaryPredicate>
-_DifferenceType
+_LIBCPP_HIDE_FROM_ABI _DifferenceType
 __simd_calc_mask_1(_InputIterator __first, _DifferenceType __n, bool* __mask, _UnaryPredicate __pred) noexcept
 {
     _DifferenceType __count = 0;
@@ -314,7 +237,7 @@ __simd_calc_mask_1(_InputIterator __first, _DifferenceType __n, bool* __mask, _U
 }
 
 template <class _InputIterator, class _DifferenceType, class _OutputIterator, class _Assigner>
-void
+_LIBCPP_HIDE_FROM_ABI void
 __simd_copy_by_mask(_InputIterator __first, _DifferenceType __n, _OutputIterator __result, bool* __mask,
                     _Assigner __assigner) noexcept
 {
@@ -324,7 +247,6 @@ __simd_copy_by_mask(_InputIterator __first, _DifferenceType __n, _OutputIterator
     {
         if (__mask[__i])
         {
-            _PSTL_PRAGMA_SIMD_ORDERED_MONOTONIC(__cnt : 1)
             {
                 __assigner(__first + __i, __result + __cnt);
                 ++__cnt;
@@ -334,7 +256,7 @@ __simd_copy_by_mask(_InputIterator __first, _DifferenceType __n, _OutputIterator
 }
 
 template <class _InputIterator, class _DifferenceType, class _OutputIterator1, class _OutputIterator2>
-void
+_LIBCPP_HIDE_FROM_ABI void
 __simd_partition_by_mask(_InputIterator __first, _DifferenceType __n, _OutputIterator1 __out_true,
                          _OutputIterator2 __out_false, bool* __mask) noexcept
 {
@@ -342,7 +264,6 @@ __simd_partition_by_mask(_InputIterator __first, _DifferenceType __n, _OutputIte
     _PSTL_PRAGMA_SIMD
     for (_DifferenceType __i = 0; __i < __n; ++__i)
     {
-        _PSTL_PRAGMA_SIMD_ORDERED_MONOTONIC_2ARGS(__cnt_true : 1, __cnt_false : 1)
         if (__mask[__i])
         {
             __out_true[__cnt_true] = __first[__i];
@@ -356,19 +277,8 @@ __simd_partition_by_mask(_InputIterator __first, _DifferenceType __n, _OutputIte
     }
 }
 
-template <class _Index, class _DifferenceType, class _Tp>
-_Index
-__simd_fill_n(_Index __first, _DifferenceType __n, const _Tp& __value) noexcept
-{
-    _PSTL_USE_NONTEMPORAL_STORES_IF_ALLOWED
-    _PSTL_PRAGMA_SIMD
-    for (_DifferenceType __i = 0; __i < __n; ++__i)
-        __first[__i] = __value;
-    return __first + __n;
-}
-
 template <class _Index, class _DifferenceType, class _Generator>
-_Index
+_LIBCPP_HIDE_FROM_ABI _Index
 __simd_generate_n(_Index __first, _DifferenceType __size, _Generator __g) noexcept
 {
     _PSTL_USE_NONTEMPORAL_STORES_IF_ALLOWED
@@ -379,7 +289,7 @@ __simd_generate_n(_Index __first, _DifferenceType __size, _Generator __g) noexce
 }
 
 template <class _Index, class _BinaryPredicate>
-_Index
+_LIBCPP_HIDE_FROM_ABI _Index
 __simd_adjacent_find(_Index __first, _Index __last, _BinaryPredicate __pred, bool __or_semantic) noexcept
 {
     if (__last - __first < 2)
@@ -388,17 +298,6 @@ __simd_adjacent_find(_Index __first, _Index __last, _BinaryPredicate __pred, boo
     typedef typename std::iterator_traits<_Index>::difference_type _DifferenceType;
     _DifferenceType __i = 0;
 
-#if defined(_PSTL_EARLYEXIT_PRESENT)
-    //Some compiler versions fail to compile the following loop when iterators are used. Indices are used instead
-    const _DifferenceType __n = __last - __first - 1;
-    _PSTL_PRAGMA_VECTOR_UNALIGNED
-    _PSTL_PRAGMA_SIMD_EARLYEXIT
-    for (; __i < __n; ++__i)
-        if (__pred(__first[__i], __first[__i + 1]))
-            break;
-
-    return __i < __n ? __first + __i : __last;
-#else
     // Experiments show good block sizes like this
     //TODO: to consider tuning block_size for various data types
     const _DifferenceType __block_size = 8;
@@ -406,7 +305,6 @@ __simd_adjacent_find(_Index __first, _Index __last, _BinaryPredicate __pred, boo
     while (__last - __first >= __block_size)
     {
         _DifferenceType __found = 0;
-        _PSTL_PRAGMA_VECTOR_UNALIGNED // Do not generate peel loop part
             _PSTL_PRAGMA_SIMD_REDUCTION(|
                                         : __found) for (__i = 0; __i < __block_size - 1; ++__i)
         {
@@ -439,7 +337,6 @@ __simd_adjacent_find(_Index __first, _Index __last, _BinaryPredicate __pred, boo
             return __first;
 
     return __last;
-#endif
 }
 
 // It was created to reduce the code inside std::enable_if
@@ -448,7 +345,7 @@ using is_arithmetic_plus = std::integral_constant<bool, std::is_arithmetic<_Tp>:
                                                             std::is_same<_BinaryOperation, std::plus<_Tp>>::value>;
 
 template <typename _DifferenceType, typename _Tp, typename _BinaryOperation, typename _UnaryOperation>
-typename std::enable_if<is_arithmetic_plus<_Tp, _BinaryOperation>::value, _Tp>::type
+_LIBCPP_HIDE_FROM_ABI typename std::enable_if<is_arithmetic_plus<_Tp, _BinaryOperation>::value, _Tp>::type
 __simd_transform_reduce(_DifferenceType __n, _Tp __init, _BinaryOperation, _UnaryOperation __f) noexcept
 {
     _PSTL_PRAGMA_SIMD_REDUCTION(+ : __init)
@@ -458,14 +355,14 @@ __simd_transform_reduce(_DifferenceType __n, _Tp __init, _BinaryOperation, _Unar
 }
 
 template <typename _Size, typename _Tp, typename _BinaryOperation, typename _UnaryOperation>
-typename std::enable_if<!is_arithmetic_plus<_Tp, _BinaryOperation>::value, _Tp>::type
+_LIBCPP_HIDE_FROM_ABI typename std::enable_if<!is_arithmetic_plus<_Tp, _BinaryOperation>::value, _Tp>::type
 __simd_transform_reduce(_Size __n, _Tp __init, _BinaryOperation __binary_op, _UnaryOperation __f) noexcept
 {
     const _Size __block_size = __lane_size / sizeof(_Tp);
     if (__n > 2 * __block_size && __block_size > 1)
     {
-        alignas(__lane_size) char __lane_[__lane_size];
-        _Tp* __lane = reinterpret_cast<_Tp*>(__lane_);
+        alignas(__lane_size) char __lane_buffer[__lane_size];
+        _Tp* __lane = reinterpret_cast<_Tp*>(__lane_buffer);
 
         // initializer
         _PSTL_PRAGMA_SIMD
@@ -475,8 +372,8 @@ __simd_transform_reduce(_Size __n, _Tp __init, _BinaryOperation __binary_op, _Un
         }
         // main loop
         _Size __i = 2 * __block_size;
-        const _Size last_iteration = __block_size * (__n / __block_size);
-        for (; __i < last_iteration; __i += __block_size)
+        const _Size __last_iteration = __block_size * (__n / __block_size);
+        for (; __i < __last_iteration; __i += __block_size)
         {
             _PSTL_PRAGMA_SIMD
             for (_Size __j = 0; __j < __block_size; ++__j)
@@ -486,9 +383,9 @@ __simd_transform_reduce(_Size __n, _Tp __init, _BinaryOperation __binary_op, _Un
         }
         // remainder
         _PSTL_PRAGMA_SIMD
-        for (_Size __j = 0; __j < __n - last_iteration; ++__j)
+        for (_Size __j = 0; __j < __n - __last_iteration; ++__j)
         {
-            __lane[__j] = __binary_op(__lane[__j], __f(last_iteration + __j));
+            __lane[__j] = __binary_op(__lane[__j], __f(__last_iteration + __j));
         }
         // combiner
         for (_Size __j = 0; __j < __block_size; ++__j)
@@ -515,6 +412,7 @@ __simd_transform_reduce(_Size __n, _Tp __init, _BinaryOperation __binary_op, _Un
 // Exclusive scan for "+" and arithmetic types
 template <class _InputIterator, class _Size, class _OutputIterator, class _UnaryOperation, class _Tp,
           class _BinaryOperation>
+_LIBCPP_HIDE_FROM_ABI
 typename std::enable_if<is_arithmetic_plus<_Tp, _BinaryOperation>::value, std::pair<_OutputIterator, _Tp>>::type
 __simd_scan(_InputIterator __first, _Size __n, _OutputIterator __result, _UnaryOperation __unary_op, _Tp __init,
             _BinaryOperation, /*Inclusive*/ std::false_type)
@@ -533,46 +431,48 @@ __simd_scan(_InputIterator __first, _Size __n, _OutputIterator __result, _UnaryO
 template <typename _Tp, typename _BinaryOp>
 struct _Combiner
 {
-    _Tp __value;
-    _BinaryOp* __bin_op; // Here is a pointer to function because of default ctor
+    _Tp __value_;
+    _BinaryOp* __bin_op_; // Here is a pointer to function because of default ctor
 
-    _Combiner() : __value{}, __bin_op(nullptr) {}
-    _Combiner(const _Tp& value, const _BinaryOp* bin_op) : __value(value), __bin_op(const_cast<_BinaryOp*>(bin_op)) {}
-    _Combiner(const _Combiner& __obj) : __value{}, __bin_op(__obj.__bin_op) {}
+    _LIBCPP_HIDE_FROM_ABI _Combiner() : __value_{}, __bin_op_(nullptr) {}
+    _LIBCPP_HIDE_FROM_ABI
+    _Combiner(const _Tp& __value, const _BinaryOp* __bin_op)
+        : __value_(__value), __bin_op_(const_cast<_BinaryOp*>(__bin_op)) {}
+    _LIBCPP_HIDE_FROM_ABI _Combiner(const _Combiner& __obj) : __value_{}, __bin_op_(__obj.__bin_op) {}
 
-    void
+    _LIBCPP_HIDE_FROM_ABI void
     operator()(const _Combiner& __obj)
     {
-        __value = (*__bin_op)(__value, __obj.__value);
+        __value_ = (*__bin_op_)(__value_, __obj.__value_);
     }
 };
 
 // Exclusive scan for other binary operations and types
 template <class _InputIterator, class _Size, class _OutputIterator, class _UnaryOperation, class _Tp,
           class _BinaryOperation>
+_LIBCPP_HIDE_FROM_ABI
 typename std::enable_if<!is_arithmetic_plus<_Tp, _BinaryOperation>::value, std::pair<_OutputIterator, _Tp>>::type
 __simd_scan(_InputIterator __first, _Size __n, _OutputIterator __result, _UnaryOperation __unary_op, _Tp __init,
             _BinaryOperation __binary_op, /*Inclusive*/ std::false_type)
 {
     typedef _Combiner<_Tp, _BinaryOperation> _CombinerType;
-    _CombinerType __init_{__init, &__binary_op};
+    _CombinerType __combined_init{__init, &__binary_op};
 
     _PSTL_PRAGMA_DECLARE_REDUCTION(__bin_op, _CombinerType)
-
-    _PSTL_PRAGMA_SIMD_SCAN(__bin_op : __init_)
+    _PSTL_PRAGMA_SIMD_SCAN(__bin_op : __combined_init)
     for (_Size __i = 0; __i < __n; ++__i)
     {
-        __result[__i] = __init_.__value;
-        _PSTL_PRAGMA_SIMD_EXCLUSIVE_SCAN(__init_)
-        _PSTL_PRAGMA_FORCEINLINE
-        __init_.__value = __binary_op(__init_.__value, __unary_op(__first[__i]));
+        __result[__i] = __combined_init.__value_;
+        _PSTL_PRAGMA_SIMD_EXCLUSIVE_SCAN(__combined_init)
+        __combined_init.__value_ = __binary_op(__combined_init.__value_, __unary_op(__first[__i]));
     }
-    return std::make_pair(__result + __n, __init_.__value);
+    return std::make_pair(__result + __n, __combined_init.__value_);
 }
 
 // Inclusive scan for "+" and arithmetic types
 template <class _InputIterator, class _Size, class _OutputIterator, class _UnaryOperation, class _Tp,
           class _BinaryOperation>
+_LIBCPP_HIDE_FROM_ABI
 typename std::enable_if<is_arithmetic_plus<_Tp, _BinaryOperation>::value, std::pair<_OutputIterator, _Tp>>::type
 __simd_scan(_InputIterator __first, _Size __n, _OutputIterator __result, _UnaryOperation __unary_op, _Tp __init,
             _BinaryOperation, /*Inclusive*/ std::true_type)
@@ -590,30 +490,29 @@ __simd_scan(_InputIterator __first, _Size __n, _OutputIterator __result, _UnaryO
 // Inclusive scan for other binary operations and types
 template <class _InputIterator, class _Size, class _OutputIterator, class _UnaryOperation, class _Tp,
           class _BinaryOperation>
+_LIBCPP_HIDE_FROM_ABI
 typename std::enable_if<!is_arithmetic_plus<_Tp, _BinaryOperation>::value, std::pair<_OutputIterator, _Tp>>::type
 __simd_scan(_InputIterator __first, _Size __n, _OutputIterator __result, _UnaryOperation __unary_op, _Tp __init,
             _BinaryOperation __binary_op, std::true_type)
 {
     typedef _Combiner<_Tp, _BinaryOperation> _CombinerType;
-    _CombinerType __init_{__init, &__binary_op};
+    _CombinerType __combined_init{__init, &__binary_op};
 
     _PSTL_PRAGMA_DECLARE_REDUCTION(__bin_op, _CombinerType)
-
-    _PSTL_PRAGMA_SIMD_SCAN(__bin_op : __init_)
+    _PSTL_PRAGMA_SIMD_SCAN(__bin_op : __combined_init)
     for (_Size __i = 0; __i < __n; ++__i)
     {
-        _PSTL_PRAGMA_FORCEINLINE
-        __init_.__value = __binary_op(__init_.__value, __unary_op(__first[__i]));
-        _PSTL_PRAGMA_SIMD_INCLUSIVE_SCAN(__init_)
-        __result[__i] = __init_.__value;
+        __combined_init.__value_ = __binary_op(__combined_init.__value_, __unary_op(__first[__i]));
+        _PSTL_PRAGMA_SIMD_INCLUSIVE_SCAN(__combined_init)
+        __result[__i] = __combined_init.__value_;
     }
-    return std::make_pair(__result + __n, __init_.__value);
+    return std::make_pair(__result + __n, __combined_init.__value_);
 }
 
 // [restriction] - std::iterator_traits<_ForwardIterator>::value_type should be DefaultConstructible.
 // complexity [violation] - We will have at most (__n-1 + number_of_lanes) comparisons instead of at most __n-1.
 template <typename _ForwardIterator, typename _Size, typename _Compare>
-_ForwardIterator
+_LIBCPP_HIDE_FROM_ABI _ForwardIterator
 __simd_min_element(_ForwardIterator __first, _Size __n, _Compare __comp) noexcept
 {
     if (__n == 0)
@@ -624,29 +523,29 @@ __simd_min_element(_ForwardIterator __first, _Size __n, _Compare __comp) noexcep
     typedef typename std::iterator_traits<_ForwardIterator>::value_type _ValueType;
     struct _ComplexType
     {
-        _ValueType __min_val;
-        _Size __min_ind;
-        _Compare* __min_comp;
+        _ValueType __min_val_;
+        _Size __min_ind_;
+        _Compare* __min_comp_;
 
-        _ComplexType() : __min_val{}, __min_ind{}, __min_comp(nullptr) {}
-        _ComplexType(const _ValueType& val, const _Compare* comp)
-            : __min_val(val), __min_ind(0), __min_comp(const_cast<_Compare*>(comp))
+        _LIBCPP_HIDE_FROM_ABI _ComplexType() : __min_val_{}, __min_ind_{}, __min_comp_(nullptr) {}
+        _LIBCPP_HIDE_FROM_ABI _ComplexType(const _ValueType& __val, const _Compare* __comp)
+            : __min_val_(__val), __min_ind_(0), __min_comp_(const_cast<_Compare*>(__comp))
         {
         }
-        _ComplexType(const _ComplexType& __obj)
-            : __min_val(__obj.__min_val), __min_ind(__obj.__min_ind), __min_comp(__obj.__min_comp)
+        _LIBCPP_HIDE_FROM_ABI _ComplexType(const _ComplexType& __obj)
+            : __min_val_(__obj.__min_val_), __min_ind_(__obj.__min_ind_), __min_comp_(__obj.__min_comp_)
         {
         }
 
         _PSTL_PRAGMA_DECLARE_SIMD
-        void
+        _LIBCPP_HIDE_FROM_ABI void
         operator()(const _ComplexType& __obj)
         {
-            if (!(*__min_comp)(__min_val, __obj.__min_val) &&
-                ((*__min_comp)(__obj.__min_val, __min_val) || __obj.__min_ind - __min_ind < 0))
+            if (!(*__min_comp_)(__min_val_, __obj.__min_val_) &&
+                ((*__min_comp_)(__obj.__min_val_, __min_val_) || __obj.__min_ind_ - __min_ind_ < 0))
             {
-                __min_val = __obj.__min_val;
-                __min_ind = __obj.__min_ind;
+                __min_val_ = __obj.__min_val_;
+                __min_ind_ = __obj.__min_ind_;
             }
         }
     };
@@ -658,21 +557,21 @@ __simd_min_element(_ForwardIterator __first, _Size __n, _Compare __comp) noexcep
     _PSTL_PRAGMA_SIMD_REDUCTION(__min_func : __init)
     for (_Size __i = 1; __i < __n; ++__i)
     {
-        const _ValueType __min_val = __init.__min_val;
+        const _ValueType __min_val = __init.__min_val_;
         const _ValueType __current = __first[__i];
         if (__comp(__current, __min_val))
         {
-            __init.__min_val = __current;
-            __init.__min_ind = __i;
+            __init.__min_val_ = __current;
+            __init.__min_ind_ = __i;
         }
     }
-    return __first + __init.__min_ind;
+    return __first + __init.__min_ind_;
 }
 
 // [restriction] - std::iterator_traits<_ForwardIterator>::value_type should be DefaultConstructible.
 // complexity [violation] - We will have at most (2*(__n-1) + 4*number_of_lanes) comparisons instead of at most [1.5*(__n-1)].
 template <typename _ForwardIterator, typename _Size, typename _Compare>
-std::pair<_ForwardIterator, _ForwardIterator>
+_LIBCPP_HIDE_FROM_ABI std::pair<_ForwardIterator, _ForwardIterator>
 __simd_minmax_element(_ForwardIterator __first, _Size __n, _Compare __comp) noexcept
 {
     if (__n == 0)
@@ -683,49 +582,51 @@ __simd_minmax_element(_ForwardIterator __first, _Size __n, _Compare __comp) noex
 
     struct _ComplexType
     {
-        _ValueType __min_val;
-        _ValueType __max_val;
-        _Size __min_ind;
-        _Size __max_ind;
+        _ValueType __min_val_;
+        _ValueType __max_val_;
+        _Size __min_ind_;
+        _Size __max_ind_;
         _Compare* __minmax_comp;
 
-        _ComplexType() : __min_val{}, __max_val{}, __min_ind{}, __max_ind{}, __minmax_comp(nullptr) {}
-        _ComplexType(const _ValueType& min_val, const _ValueType& max_val, const _Compare* comp)
-            : __min_val(min_val), __max_val(max_val), __min_ind(0), __max_ind(0),
-              __minmax_comp(const_cast<_Compare*>(comp))
+        _LIBCPP_HIDE_FROM_ABI _ComplexType()
+            : __min_val_{}, __max_val_{}, __min_ind_{}, __max_ind_{}, __minmax_comp(nullptr) {}
+        _LIBCPP_HIDE_FROM_ABI _ComplexType(
+                const _ValueType& __min_val, const _ValueType& __max_val, const _Compare* __comp)
+            : __min_val_(__min_val), __max_val_(__max_val), __min_ind_(0), __max_ind_(0),
+              __minmax_comp(const_cast<_Compare*>(__comp))
         {
         }
-        _ComplexType(const _ComplexType& __obj)
-            : __min_val(__obj.__min_val), __max_val(__obj.__max_val), __min_ind(__obj.__min_ind),
-              __max_ind(__obj.__max_ind), __minmax_comp(__obj.__minmax_comp)
+        _LIBCPP_HIDE_FROM_ABI _ComplexType(const _ComplexType& __obj)
+            : __min_val_(__obj.__min_val_), __max_val_(__obj.__max_val_), __min_ind_(__obj.__min_ind_),
+              __max_ind_(__obj.__max_ind_), __minmax_comp(__obj.__minmax_comp)
         {
         }
 
-        void
+        _LIBCPP_HIDE_FROM_ABI void
         operator()(const _ComplexType& __obj)
         {
             // min
-            if ((*__minmax_comp)(__obj.__min_val, __min_val))
+            if ((*__minmax_comp)(__obj.__min_val_, __min_val_))
             {
-                __min_val = __obj.__min_val;
-                __min_ind = __obj.__min_ind;
+                __min_val_ = __obj.__min_val_;
+                __min_ind_ = __obj.__min_ind_;
             }
-            else if (!(*__minmax_comp)(__min_val, __obj.__min_val))
+            else if (!(*__minmax_comp)(__min_val_, __obj.__min_val_))
             {
-                __min_val = __obj.__min_val;
-                __min_ind = (__min_ind - __obj.__min_ind < 0) ? __min_ind : __obj.__min_ind;
+                __min_val_ = __obj.__min_val_;
+                __min_ind_ = (__min_ind_ - __obj.__min_ind_ < 0) ? __min_ind_ : __obj.__min_ind_;
             }
 
             // max
-            if ((*__minmax_comp)(__max_val, __obj.__max_val))
+            if ((*__minmax_comp)(__max_val_, __obj.__max_val_))
             {
-                __max_val = __obj.__max_val;
-                __max_ind = __obj.__max_ind;
+                __max_val_ = __obj.__max_val_;
+                __max_ind_ = __obj.__max_ind_;
             }
-            else if (!(*__minmax_comp)(__obj.__max_val, __max_val))
+            else if (!(*__minmax_comp)(__obj.__max_val_, __max_val_))
             {
-                __max_val = __obj.__max_val;
-                __max_ind = (__max_ind - __obj.__max_ind < 0) ? __obj.__max_ind : __max_ind;
+                __max_val_ = __obj.__max_val_;
+                __max_ind_ = (__max_ind_ - __obj.__max_ind_ < 0) ? __obj.__max_ind_ : __max_ind_;
             }
         }
     };
@@ -737,26 +638,26 @@ __simd_minmax_element(_ForwardIterator __first, _Size __n, _Compare __comp) noex
     _PSTL_PRAGMA_SIMD_REDUCTION(__min_func : __init)
     for (_Size __i = 1; __i < __n; ++__i)
     {
-        auto __min_val = __init.__min_val;
-        auto __max_val = __init.__max_val;
+        auto __min_val = __init.__min_val_;
+        auto __max_val = __init.__max_val_;
         auto __current = __first + __i;
         if (__comp(*__current, __min_val))
         {
-            __init.__min_val = *__current;
-            __init.__min_ind = __i;
+            __init.__min_val_ = *__current;
+            __init.__min_ind_ = __i;
         }
         else if (!__comp(*__current, __max_val))
         {
-            __init.__max_val = *__current;
-            __init.__max_ind = __i;
+            __init.__max_val_ = *__current;
+            __init.__max_ind_ = __i;
         }
     }
-    return std::make_pair(__first + __init.__min_ind, __first + __init.__max_ind);
+    return std::make_pair(__first + __init.__min_ind_, __first + __init.__max_ind_);
 }
 
 template <class _InputIterator, class _DifferenceType, class _OutputIterator1, class _OutputIterator2,
           class _UnaryPredicate>
-std::pair<_OutputIterator1, _OutputIterator2>
+_LIBCPP_HIDE_FROM_ABI std::pair<_OutputIterator1, _OutputIterator2>
 __simd_partition_copy(_InputIterator __first, _DifferenceType __n, _OutputIterator1 __out_true,
                       _OutputIterator2 __out_false, _UnaryPredicate __pred) noexcept
 {
@@ -765,7 +666,6 @@ __simd_partition_copy(_InputIterator __first, _DifferenceType __n, _OutputIterat
     _PSTL_PRAGMA_SIMD
     for (_DifferenceType __i = 0; __i < __n; ++__i)
     {
-        _PSTL_PRAGMA_SIMD_ORDERED_MONOTONIC_2ARGS(__cnt_true : 1, __cnt_false : 1)
         if (__pred(__first[__i]))
         {
             __out_true[__cnt_true] = __first[__i];
@@ -781,7 +681,7 @@ __simd_partition_copy(_InputIterator __first, _DifferenceType __n, _OutputIterat
 }
 
 template <class _ForwardIterator1, class _ForwardIterator2, class _BinaryPredicate>
-_ForwardIterator1
+_LIBCPP_HIDE_FROM_ABI _ForwardIterator1
 __simd_find_first_of(_ForwardIterator1 __first, _ForwardIterator1 __last, _ForwardIterator2 __s_first,
                      _ForwardIterator2 __s_last, _BinaryPredicate __pred) noexcept
 {
@@ -827,7 +727,7 @@ __simd_find_first_of(_ForwardIterator1 __first, _ForwardIterator1 __last, _Forwa
 }
 
 template <class _RandomAccessIterator, class _DifferenceType, class _UnaryPredicate>
-_RandomAccessIterator
+_LIBCPP_HIDE_FROM_ABI _RandomAccessIterator
 __simd_remove_if(_RandomAccessIterator __first, _DifferenceType __n, _UnaryPredicate __pred) noexcept
 {
     // find first element we need to remove
@@ -846,7 +746,6 @@ __simd_remove_if(_RandomAccessIterator __first, _DifferenceType __n, _UnaryPredi
     _PSTL_PRAGMA_SIMD
     for (_DifferenceType __i = 1; __i < __n; ++__i)
     {
-        _PSTL_PRAGMA_SIMD_ORDERED_MONOTONIC(__cnt : 1)
         if (!__pred(__current[__i]))
         {
             __current[__cnt] = std::move(__current[__i]);
@@ -858,6 +757,6 @@ __simd_remove_if(_RandomAccessIterator __first, _DifferenceType __n, _UnaryPredi
 } // namespace __unseq_backend
 } // namespace __pstl
 
-_PSTL_HIDE_FROM_ABI_POP
+#endif // !defined(_LIBCPP_HAS_NO_INCOMPLETE_PSTL) && _LIBCPP_STD_VER >= 17
 
 #endif /* _PSTL_UNSEQ_BACKEND_SIMD_H */

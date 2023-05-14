@@ -10,15 +10,12 @@
 #ifndef _PSTL_GLUE_NUMERIC_IMPL_H
 #define _PSTL_GLUE_NUMERIC_IMPL_H
 
+#include <__config>
 #include <functional>
-
-#include "pstl_config.h"
 
 #include "execution_impl.h"
 #include "numeric_fwd.h"
 #include "utils.h"
-
-_PSTL_HIDE_FROM_ABI_PUSH
 
 namespace std {
 
@@ -318,7 +315,5 @@ __pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _ForwardItera
 }
 
 } // namespace std
-
-_PSTL_HIDE_FROM_ABI_POP
 
 #endif /* _PSTL_GLUE_NUMERIC_IMPL_H_ */

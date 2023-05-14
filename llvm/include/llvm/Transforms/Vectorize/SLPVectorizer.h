@@ -95,11 +95,10 @@ private:
   bool tryToVectorizePair(Value *A, Value *B, slpvectorizer::BoUpSLP &R);
 
   /// Try to vectorize a list of operands.
-  /// \param LimitForRegisterSize Vectorize only using maximal allowed register
-  /// size.
+  /// \param MaxVFOnly Vectorize only using maximal allowed register size.
   /// \returns true if a value was vectorized.
   bool tryToVectorizeList(ArrayRef<Value *> VL, slpvectorizer::BoUpSLP &R,
-                          bool LimitForRegisterSize = false);
+                          bool MaxVFOnly = false);
 
   /// Try to vectorize a chain that may start at the operands of \p I.
   bool tryToVectorize(Instruction *I, slpvectorizer::BoUpSLP &R);
@@ -143,6 +142,10 @@ private:
   /// Try to vectorize trees that start at insertelement instructions.
   bool vectorizeInsertElementInst(InsertElementInst *IEI, BasicBlock *BB,
                                   slpvectorizer::BoUpSLP &R);
+
+  /// Tries to vectorize \p CmpInts. \Returns true on success.
+  bool vectorizeCmpInsts(ArrayRef<CmpInst *> CmpInsts, BasicBlock *BB,
+                         slpvectorizer::BoUpSLP &R);
 
   /// Tries to vectorize constructs started from CmpInst, InsertValueInst or
   /// InsertElementInst instructions.

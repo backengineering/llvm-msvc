@@ -270,6 +270,8 @@ mlir::Value hlfir::genVariableRawAddress(mlir::Location loc,
   if (var.isMutableBox())
     baseAddr = builder.create<fir::LoadOp>(loc, baseAddr);
   // Get raw address.
+  if (var.getType().isa<fir::BoxCharType>())
+    baseAddr = genUnboxChar(loc, builder, var.getBase()).getAddr();
   if (baseAddr.getType().isa<fir::BaseBoxType>())
     baseAddr = builder.create<fir::BoxAddrOp>(loc, baseAddr);
   return baseAddr;
@@ -310,9 +312,12 @@ hlfir::Entity hlfir::genVariableBox(mlir::Location loc,
       var.getFortranElementType().dyn_cast<fir::CharacterType>();
   if (!maybeCharType || maybeCharType.hasDynamicLen())
     hlfir::genLengthParameters(loc, builder, var, typeParams);
+  mlir::Value addr = var.getBase();
+  if (var.getType().isa<fir::BoxCharType>())
+    addr = genVariableRawAddress(loc, builder, var);
   mlir::Type boxType = fir::BoxType::get(var.getElementOrSequenceType());
   auto embox =
-      builder.create<fir::EmboxOp>(loc, boxType, var, shape,
+      builder.create<fir::EmboxOp>(loc, boxType, addr, shape,
                                    /*slice=*/mlir::Value{}, typeParams);
   return hlfir::Entity{embox.getResult()};
 }
@@ -739,6 +744,9 @@ hlfir::genElementalOp(mlir::Location loc, fir::FirOpBuilder &builder,
   return elementalOp;
 }
 
+// TODO: we do not actually need to clone the YieldElementOp,
+// because returning its getElementValue() operand should be enough
+// for all callers of this function.
 hlfir::YieldElementOp
 hlfir::inlineElementalOp(mlir::Location loc, fir::FirOpBuilder &builder,
                          hlfir::ElementalOp elemental,
@@ -791,7 +799,7 @@ translateVariableToExtendedValue(mlir::Location loc, fir::FirOpBuilder &builder,
 
   if (firBase.getType().isa<fir::BaseBoxType>()) {
     if (!variable.isSimplyContiguous() || variable.isPolymorphic() ||
-        variable.isDerivedWithLengthParameters()) {
+        variable.isDerivedWithLengthParameters() || variable.isOptional()) {
       llvm::SmallVector<mlir::Value> nonDefaultLbounds =
           getNonDefaultLowerBounds(loc, builder, variable);
       return fir::BoxValue(firBase, nonDefaultLbounds,
@@ -928,4 +936,53 @@ hlfir::convertToAddress(mlir::Location loc, fir::FirOpBuilder &builder,
   if (fir::isa_trivial(base.getType()))
     exv = placeTrivialInMemory(loc, builder, base, targetType);
   return {exv, cleanup};
+}
+
+/// Clone:
+/// ```
+/// hlfir.elemental_addr %shape : !fir.shape<1> {
+///   ^bb0(%i : index)
+///    .....
+///    %hlfir.yield %scalarAddress : fir.ref<T>
+/// }
+/// ```
+//
+/// into
+///
+/// ```
+/// %expr = hlfir.elemental %shape : (!fir.shape<1>) -> hlfir.expr<?xT> {
+///   ^bb0(%i : index)
+///    .....
+///    %value = fir.load %scalarAddress : fir.ref<T>
+///    %hlfir.yield_element %value : T
+///  }
+/// ```
+hlfir::ElementalOp
+hlfir::cloneToElementalOp(mlir::Location loc, fir::FirOpBuilder &builder,
+                          hlfir::ElementalAddrOp elementalAddrOp) {
+  hlfir::Entity scalarAddress =
+      hlfir::Entity{mlir::cast<hlfir::YieldOp>(
+                        elementalAddrOp.getBody().back().getTerminator())
+                        .getEntity()};
+  llvm::SmallVector<mlir::Value, 1> typeParams;
+  hlfir::genLengthParameters(loc, builder, scalarAddress, typeParams);
+
+  builder.setInsertionPointAfter(elementalAddrOp);
+  auto genKernel = [&](mlir::Location l, fir::FirOpBuilder &b,
+                       mlir::ValueRange oneBasedIndices) -> hlfir::Entity {
+    mlir::IRMapping mapper;
+    mapper.map(elementalAddrOp.getIndices(), oneBasedIndices);
+    mlir::Operation *newOp = nullptr;
+    for (auto &op : elementalAddrOp.getBody().back().getOperations())
+      newOp = b.clone(op, mapper);
+    auto newYielOp = mlir::dyn_cast_or_null<hlfir::YieldOp>(newOp);
+    assert(newYielOp && "hlfir.elemental_addr is ill formed");
+    hlfir::Entity newAddr{newYielOp.getEntity()};
+    newYielOp->erase();
+    return hlfir::loadTrivialScalar(l, b, newAddr);
+  };
+  mlir::Type elementType = scalarAddress.getFortranElementType();
+  return hlfir::genElementalOp(loc, builder, elementType,
+                               elementalAddrOp.getShape(), typeParams,
+                               genKernel);
 }

@@ -113,6 +113,10 @@ struct MlirOptMainConfigCLOptions : public MlirOptMainConfig {
                  "parsing"),
         cl::location(useExplicitModuleFlag), cl::init(false));
 
+    static cl::opt<bool, /*ExternalStorage=*/true> runReproducer(
+        "run-reproducer", cl::desc("Run the pipeline stored in the reproducer"),
+        cl::location(runReproducerFlag), cl::init(false));
+
     static cl::opt<bool, /*ExternalStorage=*/true> showDialects(
         "show-dialects",
         cl::desc("Print the list of registered dialects and exit"),
@@ -236,7 +240,8 @@ performActions(raw_ostream &os,
   FallbackAsmResourceMap fallbackResourceMap;
   ParserConfig parseConfig(context, /*verifyAfterParse=*/true,
                            &fallbackResourceMap);
-  reproOptions.attachResourceParser(parseConfig);
+  if (config.shouldRunReproducer())
+    reproOptions.attachResourceParser(parseConfig);
 
   // Parse the input file and reset the context threading state.
   TimingScope parserTiming = timing.nest("Parser");
@@ -253,7 +258,9 @@ performActions(raw_ostream &os,
   if (failed(applyPassManagerCLOptions(pm)))
     return failure();
   pm.enableTiming(timing);
-  if (failed(reproOptions.apply(pm)) || failed(config.setupPassPipeline(pm)))
+  if (config.shouldRunReproducer() && failed(reproOptions.apply(pm)))
+    return failure();
+  if (failed(config.setupPassPipeline(pm)))
     return failure();
 
   // Run the pipeline.
@@ -264,14 +271,9 @@ performActions(raw_ostream &os,
   TimingScope outputTiming = timing.nest("Output");
   if (config.shouldEmitBytecode()) {
     BytecodeWriterConfig writerConfig(fallbackResourceMap);
-    if (auto v = config.bytecodeVersionToEmit()) {
+    if (auto v = config.bytecodeVersionToEmit())
       writerConfig.setDesiredBytecodeVersion(*v);
-      // Returns failure if requested version couldn't be used for opt tools.
-      return success(
-          writeBytecodeToFile(op.get(), os, writerConfig).minVersion <= *v);
-    }
-    writeBytecodeToFile(op.get(), os, writerConfig);
-    return success();
+    return writeBytecodeToFile(op.get(), os, writerConfig);
   }
 
   if (config.bytecodeVersionToEmit().has_value())

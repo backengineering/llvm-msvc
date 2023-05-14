@@ -10,11 +10,12 @@
 #ifndef _PSTL_EXECUTION_POLICY_DEFS_H
 #define _PSTL_EXECUTION_POLICY_DEFS_H
 
-#include <type_traits>
+#include <__config>
+#include <__type_traits/decay.h>
+#include <__type_traits/enable_if.h>
+#include <__type_traits/integral_constant.h>
 
-#include "pstl_config.h"
-
-_PSTL_HIDE_FROM_ABI_PUSH
+#if !defined(_LIBCPP_HAS_NO_INCOMPLETE_PSTL) && _LIBCPP_STD_VER >= 17
 
 namespace __pstl {
 namespace execution {
@@ -38,7 +39,7 @@ constexpr parallel_unsequenced_policy par_unseq{};
 constexpr unsequenced_policy unseq{};
 
 // 2.3, Execution policy type trait
-template <class T>
+template <class>
 struct is_execution_policy : std::false_type {};
 
 template <>
@@ -50,19 +51,16 @@ struct is_execution_policy<__pstl::execution::parallel_unsequenced_policy> : std
 template <>
 struct is_execution_policy<__pstl::execution::unsequenced_policy> : std::true_type {};
 
-#if defined(_PSTL_CPP14_VARIABLE_TEMPLATES_PRESENT)
-template <class T>
-constexpr bool is_execution_policy_v = __pstl::execution::is_execution_policy<T>::value;
-#endif
-
+template <class _Tp>
+constexpr bool is_execution_policy_v = __pstl::execution::is_execution_policy<_Tp>::value;
 } // namespace v1
 } // namespace execution
 
 namespace __internal {
-template <class ExecPolicy, class T>
+template <class _ExecPolicy, class _Tp>
 using __enable_if_execution_policy =
-    typename std::enable_if<__pstl::execution::is_execution_policy<typename std::decay<ExecPolicy>::type>::value,
-                            T>::type;
+    typename std::enable_if<__pstl::execution::is_execution_policy<typename std::decay<_ExecPolicy>::type>::value,
+                            _Tp>::type;
 
 template <class _IsVector>
 struct __serial_tag;
@@ -73,6 +71,6 @@ struct __parallel_tag;
 
 } // namespace __pstl
 
-_PSTL_HIDE_FROM_ABI_POP
+#endif // !defined(_LIBCPP_HAS_NO_INCOMPLETE_PSTL) && _LIBCPP_STD_VER >= 17
 
 #endif /* _PSTL_EXECUTION_POLICY_DEFS_H */

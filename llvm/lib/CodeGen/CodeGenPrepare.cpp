@@ -33,6 +33,7 @@
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/BasicBlockSectionsProfileReader.h"
 #include "llvm/CodeGen/ISDOpcodes.h"
+#include "llvm/CodeGen/MachineValueType.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
@@ -82,7 +83,6 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/MachineValueType.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -6060,7 +6060,7 @@ bool CodeGenPrepare::splitLargeGEPOffsets() {
 
       // Generate a new GEP to replace the current one.
       LLVMContext &Ctx = GEP->getContext();
-      Type *IntPtrTy = DL->getIntPtrType(GEP->getType());
+      Type *PtrIdxTy = DL->getIndexType(GEP->getType());
       Type *I8PtrTy =
           Type::getInt8PtrTy(Ctx, GEP->getType()->getPointerAddressSpace());
       Type *I8Ty = Type::getInt8Ty(Ctx);
@@ -6090,7 +6090,7 @@ bool CodeGenPrepare::splitLargeGEPOffsets() {
         }
         IRBuilder<> NewBaseBuilder(NewBaseInsertBB, NewBaseInsertPt);
         // Create a new base.
-        Value *BaseIndex = ConstantInt::get(IntPtrTy, BaseOffset);
+        Value *BaseIndex = ConstantInt::get(PtrIdxTy, BaseOffset);
         NewBaseGEP = OldBase;
         if (NewBaseGEP->getType() != I8PtrTy)
           NewBaseGEP = NewBaseBuilder.CreatePointerCast(NewBaseGEP, I8PtrTy);
@@ -6106,7 +6106,7 @@ bool CodeGenPrepare::splitLargeGEPOffsets() {
           NewGEP = Builder.CreatePointerCast(NewGEP, GEP->getType());
       } else {
         // Calculate the new offset for the new GEP.
-        Value *Index = ConstantInt::get(IntPtrTy, Offset - BaseOffset);
+        Value *Index = ConstantInt::get(PtrIdxTy, Offset - BaseOffset);
         NewGEP = Builder.CreateGEP(I8Ty, NewBaseGEP, Index);
 
         if (GEP->getType() != I8PtrTy)

@@ -146,6 +146,7 @@ struct GPUInlinerInterface : public DialectInlinerInterface {
 void GPUDialect::initialize() {
   addTypes<AsyncTokenType>();
   addTypes<MMAMatrixType>();
+  addTypes<SparseHandleType>();
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/GPU/IR/GPUOps.cpp.inc"
@@ -200,6 +201,9 @@ Type GPUDialect::parseType(DialectAsmParser &parser) const {
                                      shape, elementType, operand);
   }
 
+  if (keyword == "sparse.handle")
+    return SparseHandleType::get(context);
+
   parser.emitError(parser.getNameLoc(), "unknown gpu type: " + keyword);
   return Type();
 }
@@ -207,6 +211,7 @@ Type GPUDialect::parseType(DialectAsmParser &parser) const {
 void GPUDialect::printType(Type type, DialectAsmPrinter &os) const {
   TypeSwitch<Type>(type)
       .Case<AsyncTokenType>([&](Type) { os << "async.token"; })
+      .Case<SparseHandleType>([&](Type) { os << "sparse.handle"; })
       .Case<MMAMatrixType>([&](MMAMatrixType fragTy) {
         os << "mma_matrix<";
         auto shape = fragTy.getShape();
@@ -220,7 +225,7 @@ void GPUDialect::printType(Type type, DialectAsmPrinter &os) const {
 
 LogicalResult GPUDialect::verifyOperationAttribute(Operation *op,
                                                    NamedAttribute attr) {
-  if (!attr.getValue().isa<UnitAttr>() ||
+  if (!llvm::isa<UnitAttr>(attr.getValue()) ||
       attr.getName() != getContainerModuleAttrName())
     return success();
 
@@ -368,14 +373,14 @@ static LogicalResult verifyAttributions(Operation *op,
                                         ArrayRef<BlockArgument> attributions,
                                         gpu::AddressSpace memorySpace) {
   for (Value v : attributions) {
-    auto type = v.getType().dyn_cast<MemRefType>();
+    auto type = llvm::dyn_cast<MemRefType>(v.getType());
     if (!type)
       return op->emitOpError() << "expected memref type in attribution";
 
     // We can only verify the address space if it hasn't already been lowered
     // from the AddressSpaceAttr to a target-specific numeric value.
     auto addressSpace =
-        type.getMemorySpace().dyn_cast_or_null<gpu::AddressSpaceAttr>();
+        llvm::dyn_cast_or_null<gpu::AddressSpaceAttr>(type.getMemorySpace());
     if (!addressSpace)
       continue;
     if (addressSpace.getValue() != memorySpace)
@@ -395,7 +400,7 @@ static bool verifyReduceOpAndType(gpu::AllReduceOperation opName,
   return (opName != gpu::AllReduceOperation::AND &&
           opName != gpu::AllReduceOperation::OR &&
           opName != gpu::AllReduceOperation::XOR) ||
-         resType.isa<IntegerType>();
+         llvm::isa<IntegerType>(resType);
 }
 
 LogicalResult gpu::AllReduceOp::verifyRegions() {
@@ -431,6 +436,27 @@ LogicalResult gpu::AllReduceOp::verifyRegions() {
   return success();
 }
 
+static bool canMakeGroupOpUniform(Operation *op) {
+  auto launchOp = dyn_cast<gpu::LaunchOp>(op->getParentOp());
+  if (!launchOp)
+    return false;
+
+  Region &body = launchOp.getBody();
+  assert(!body.empty() && "Invalid region");
+
+  // Only convert ops in gpu::launch entry block for now.
+  return op->getBlock() == &body.front();
+}
+
+OpFoldResult gpu::AllReduceOp::fold(FoldAdaptor /*adaptor*/) {
+  if (!getUniform() && canMakeGroupOpUniform(*this)) {
+    setUniform(true);
+    return getResult();
+  }
+
+  return nullptr;
+}
+
 // TODO: Support optional custom attributes (without dialect prefix).
 static ParseResult parseAllReduceOperation(AsmParser &parser,
                                            AllReduceOperationAttr &attr) {
@@ -462,6 +488,15 @@ LogicalResult gpu::SubgroupReduceOp::verify() {
                        << "` accumulator is only compatible with Integer type";
   }
   return success();
+}
+
+OpFoldResult gpu::SubgroupReduceOp::fold(FoldAdaptor /*adaptor*/) {
+  if (!getUniform() && canMakeGroupOpUniform(*this)) {
+    setUniform(true);
+    return getResult();
+  }
+
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1017,6 +1052,49 @@ void GPUFuncOp::build(OpBuilder &builder, OperationState &result,
   body->getBlocks().push_back(entryBlock);
 }
 
+/// Parses a GPU function memory attribution.
+///
+/// memory-attribution ::= (`workgroup` `(` ssa-id-and-type-list `)`)?
+///                        (`private` `(` ssa-id-and-type-list `)`)?
+///
+/// Note that this function parses only one of the two similar parts, with the
+/// keyword provided as argument.
+static ParseResult
+parseAttributions(OpAsmParser &parser, StringRef keyword,
+                  SmallVectorImpl<OpAsmParser::Argument> &args,
+                  Attribute &attributionAttrs) {
+  // If we could not parse the keyword, just assume empty list and succeed.
+  if (failed(parser.parseOptionalKeyword(keyword)))
+    return success();
+
+  size_t existingArgs = args.size();
+  ParseResult result =
+      parser.parseArgumentList(args, OpAsmParser::Delimiter::Paren,
+                               /*allowType=*/true, /*allowAttrs=*/true);
+  if (failed(result))
+    return result;
+
+  bool hadAttrs = llvm::any_of(ArrayRef(args).drop_front(existingArgs),
+                               [](const OpAsmParser::Argument &arg) -> bool {
+                                 return arg.attrs && !arg.attrs.empty();
+                               });
+  if (!hadAttrs) {
+    attributionAttrs = nullptr;
+    return result;
+  }
+
+  Builder &builder = parser.getBuilder();
+  SmallVector<Attribute> attributionAttrsVec;
+  for (const auto &argument : ArrayRef(args).drop_front(existingArgs)) {
+    if (!argument.attrs)
+      attributionAttrsVec.push_back(builder.getDictionaryAttr({}));
+    else
+      attributionAttrsVec.push_back(argument.attrs);
+  }
+  attributionAttrs = builder.getArrayAttr(attributionAttrsVec);
+  return result;
+}
+
 /// Parses a GPU function.
 ///
 /// <operation> ::= `gpu.func` symbol-ref-id `(` argument-list `)`
@@ -1059,9 +1137,10 @@ ParseResult GPUFuncOp::parse(OpAsmParser &parser, OperationState &result) {
       builder, result, entryArgs, resultAttrs, getArgAttrsAttrName(result.name),
       getResAttrsAttrName(result.name));
 
+  Attribute workgroupAttributionAttrs;
   // Parse workgroup memory attributions.
   if (failed(parseAttributions(parser, GPUFuncOp::getWorkgroupKeyword(),
-                               entryArgs)))
+                               entryArgs, workgroupAttributionAttrs)))
     return failure();
 
   // Store the number of operands we just parsed as the number of workgroup
@@ -1069,11 +1148,18 @@ ParseResult GPUFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   unsigned numWorkgroupAttrs = entryArgs.size() - type.getNumInputs();
   result.addAttribute(GPUFuncOp::getNumWorkgroupAttributionsAttrName(),
                       builder.getI64IntegerAttr(numWorkgroupAttrs));
+  if (workgroupAttributionAttrs)
+    result.addAttribute(GPUFuncOp::getWorkgroupAttribAttrsAttrName(result.name),
+                        workgroupAttributionAttrs);
 
+  Attribute privateAttributionAttrs;
   // Parse private memory attributions.
-  if (failed(
-          parseAttributions(parser, GPUFuncOp::getPrivateKeyword(), entryArgs)))
+  if (failed(parseAttributions(parser, GPUFuncOp::getPrivateKeyword(),
+                               entryArgs, privateAttributionAttrs)))
     return failure();
+  if (privateAttributionAttrs)
+    result.addAttribute(GPUFuncOp::getPrivateAttribAttrsAttrName(result.name),
+                        privateAttributionAttrs);
 
   // Parse the kernel attribute if present.
   if (succeeded(parser.parseOptionalKeyword(GPUFuncOp::getKernelKeyword())))
@@ -1090,6 +1176,28 @@ ParseResult GPUFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   return parser.parseRegion(*body, entryArgs);
 }
 
+static void printAttributions(OpAsmPrinter &p, StringRef keyword,
+                              ArrayRef<BlockArgument> values,
+                              ArrayAttr attributes) {
+  if (values.empty())
+    return;
+
+  p << ' ' << keyword << '(';
+  llvm::interleaveComma(
+      llvm::enumerate(values), p, [&p, attributes](auto pair) {
+        BlockArgument v = pair.value();
+        p << v << " : " << v.getType();
+
+        size_t attributionIndex = pair.index();
+        DictionaryAttr attrs;
+        if (attributes && attributionIndex < attributes.size())
+          attrs = llvm::cast<DictionaryAttr>(attributes[attributionIndex]);
+        if (attrs)
+          p.printOptionalAttrDict(attrs.getValue());
+      });
+  p << ')';
+}
+
 void GPUFuncOp::print(OpAsmPrinter &p) {
   p << ' ';
   p.printSymbolName(getName());
@@ -1099,8 +1207,10 @@ void GPUFuncOp::print(OpAsmPrinter &p) {
                                                   /*isVariadic=*/false,
                                                   type.getResults());
 
-  printAttributions(p, getWorkgroupKeyword(), getWorkgroupAttributions());
-  printAttributions(p, getPrivateKeyword(), getPrivateAttributions());
+  printAttributions(p, getWorkgroupKeyword(), getWorkgroupAttributions(),
+                    getWorkgroupAttribAttrs().value_or(nullptr));
+  printAttributions(p, getPrivateKeyword(), getPrivateAttributions(),
+                    getPrivateAttribAttrs().value_or(nullptr));
   if (isKernel())
     p << ' ' << getKernelKeyword();
 
@@ -1108,9 +1218,128 @@ void GPUFuncOp::print(OpAsmPrinter &p) {
       p, *this,
       {getNumWorkgroupAttributionsAttrName(),
        GPUDialect::getKernelFuncAttrName(), getFunctionTypeAttrName(),
-       getArgAttrsAttrName(), getResAttrsAttrName()});
+       getArgAttrsAttrName(), getResAttrsAttrName(),
+       getWorkgroupAttribAttrsAttrName(), getPrivateAttribAttrsAttrName()});
   p << ' ';
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+}
+
+static DictionaryAttr getAttributionAttrs(GPUFuncOp op, unsigned index,
+                                          StringAttr attrName) {
+  auto allAttrs = llvm::dyn_cast_or_null<ArrayAttr>(op->getAttr(attrName));
+  if (!allAttrs || index >= allAttrs.size())
+    return DictionaryAttr();
+  return llvm::cast<DictionaryAttr>(allAttrs[index]);
+}
+
+DictionaryAttr GPUFuncOp::getworkgroupAttributionAttrs(unsigned index) {
+  return getAttributionAttrs(*this, index, getWorkgroupAttribAttrsAttrName());
+}
+
+DictionaryAttr GPUFuncOp::getPrivateAttributionAttrs(unsigned index) {
+  return getAttributionAttrs(*this, index, getPrivateAttribAttrsAttrName());
+}
+
+static void setAttributionAttrs(GPUFuncOp op, unsigned index,
+                                DictionaryAttr value, StringAttr attrName) {
+  MLIRContext *ctx = op.getContext();
+  auto allAttrs = llvm::dyn_cast_or_null<ArrayAttr>(op->getAttr(attrName));
+  SmallVector<Attribute> elements;
+  if (allAttrs)
+    elements.append(allAttrs.begin(), allAttrs.end());
+  while (elements.size() <= index)
+    elements.push_back(DictionaryAttr::get(ctx));
+  if (!value)
+    elements[index] = DictionaryAttr::get(ctx);
+  else
+    elements[index] = value;
+  ArrayAttr newValue = ArrayAttr::get(ctx, elements);
+  op->setAttr(attrName, newValue);
+}
+
+void GPUFuncOp::setworkgroupAttributionAttrs(unsigned index,
+                                             DictionaryAttr value) {
+  setAttributionAttrs(*this, index, value, getWorkgroupAttribAttrsAttrName());
+}
+
+void GPUFuncOp::setPrivateAttributionAttrs(unsigned int index,
+                                           DictionaryAttr value) {
+  setAttributionAttrs(*this, index, value, getPrivateAttribAttrsAttrName());
+}
+
+static Attribute getAttributionAttr(GPUFuncOp op, unsigned index,
+                                    StringAttr name, StringAttr attrsName) {
+  DictionaryAttr dict = getAttributionAttrs(op, index, attrsName);
+  if (!dict)
+    return Attribute();
+  return dict.get(name);
+}
+
+Attribute GPUFuncOp::getWorkgroupAttributionAttr(unsigned index,
+                                                 StringAttr name) {
+  assert(index < getNumWorkgroupAttributions() &&
+         "index must map to a workgroup attribution");
+  return getAttributionAttr(*this, index, name,
+                            getWorkgroupAttribAttrsAttrName());
+}
+
+Attribute GPUFuncOp::getPrivateAttributionAttr(unsigned index,
+                                               StringAttr name) {
+  assert(index < getNumPrivateAttributions() &&
+         "index must map to a private attribution");
+  return getAttributionAttr(*this, index, name,
+                            getPrivateAttribAttrsAttrName());
+}
+
+static void setAttributionAttr(GPUFuncOp op, unsigned index, StringAttr name,
+                               Attribute value, StringAttr attrsName) {
+  MLIRContext *ctx = op.getContext();
+  SmallVector<NamedAttribute> elems;
+  DictionaryAttr oldDict = getAttributionAttrs(op, index, attrsName);
+  if (oldDict)
+    elems.append(oldDict.getValue().begin(), oldDict.getValue().end());
+
+  bool found = false;
+  bool mustSort = true;
+  for (unsigned i = 0, e = elems.size(); i < e; ++i) {
+    if (elems[i].getName() == name) {
+      found = true;
+      if (!value) {
+        std::swap(elems[i], elems[elems.size() - 1]);
+        elems.pop_back();
+      } else {
+        mustSort = false;
+        elems[i] = NamedAttribute(elems[i].getName(), value);
+      }
+      break;
+    }
+  }
+  if (!found) {
+    if (!value)
+      return;
+    elems.emplace_back(name, value);
+  }
+  if (mustSort) {
+    DictionaryAttr::sortInPlace(elems);
+  }
+  auto newDict = DictionaryAttr::getWithSorted(ctx, elems);
+  setAttributionAttrs(op, index, newDict, attrsName);
+}
+
+void GPUFuncOp::setWorkgroupAttributionAttr(unsigned index, StringAttr name,
+                                            Attribute value) {
+  assert(index < getNumWorkgroupAttributions() &&
+         "index must map to a workgroup attribution");
+  setAttributionAttr(*this, index, name, value,
+                     getWorkgroupAttribAttrsAttrName());
+}
+
+void GPUFuncOp::setPrivateAttributionAttr(unsigned index, StringAttr name,
+                                          Attribute value) {
+  assert(index < getNumPrivateAttributions() &&
+         "index must map to a private attribution");
+  setAttributionAttr(*this, index, name, value,
+                     getPrivateAttribAttrsAttrName());
 }
 
 LogicalResult GPUFuncOp::verifyType() {
@@ -1155,7 +1384,7 @@ static LogicalResult verifyKnownLaunchSizeAttr(gpu::GPUFuncOp op,
   auto maybeAttr = op->getAttr(attrName);
   if (!maybeAttr)
     return success();
-  auto array = maybeAttr.dyn_cast<DenseI32ArrayAttr>();
+  auto array = llvm::dyn_cast<DenseI32ArrayAttr>(maybeAttr);
   if (!array)
     return op.emitOpError(attrName + " must be a dense i32 array");
   if (array.size() != 3)
@@ -1312,9 +1541,9 @@ static bool isLastMemrefDimUnitStride(MemRefType type) {
 LogicalResult SubgroupMmaLoadMatrixOp::verify() {
   auto srcType = getSrcMemref().getType();
   auto resType = getRes().getType();
-  auto resMatrixType = resType.cast<gpu::MMAMatrixType>();
+  auto resMatrixType = llvm::cast<gpu::MMAMatrixType>(resType);
   auto operand = resMatrixType.getOperand();
-  auto srcMemrefType = srcType.cast<MemRefType>();
+  auto srcMemrefType = llvm::cast<MemRefType>(srcType);
 
   if (!isLastMemrefDimUnitStride(srcMemrefType))
     return emitError(
@@ -1334,8 +1563,8 @@ LogicalResult SubgroupMmaLoadMatrixOp::verify() {
 LogicalResult SubgroupMmaStoreMatrixOp::verify() {
   auto srcType = getSrc().getType();
   auto dstType = getDstMemref().getType();
-  auto srcMatrixType = srcType.cast<gpu::MMAMatrixType>();
-  auto dstMemrefType = dstType.cast<MemRefType>();
+  auto srcMatrixType = llvm::cast<gpu::MMAMatrixType>(srcType);
+  auto dstMemrefType = llvm::cast<MemRefType>(dstType);
 
   if (!isLastMemrefDimUnitStride(dstMemrefType))
     return emitError(
@@ -1355,9 +1584,9 @@ LogicalResult SubgroupMmaStoreMatrixOp::verify() {
 LogicalResult SubgroupMmaComputeOp::verify() {
   enum OperandMap { A, B, C };
   SmallVector<MMAMatrixType, 3> opTypes;
-  opTypes.push_back(getOpA().getType().cast<MMAMatrixType>());
-  opTypes.push_back(getOpB().getType().cast<MMAMatrixType>());
-  opTypes.push_back(getOpC().getType().cast<MMAMatrixType>());
+  opTypes.push_back(llvm::cast<MMAMatrixType>(getOpA().getType()));
+  opTypes.push_back(llvm::cast<MMAMatrixType>(getOpB().getType()));
+  opTypes.push_back(llvm::cast<MMAMatrixType>(getOpC().getType()));
 
   if (!opTypes[A].getOperand().equals("AOp") ||
       !opTypes[B].getOperand().equals("BOp") ||
@@ -1464,7 +1693,7 @@ void WaitOp::getCanonicalizationPatterns(RewritePatternSet &results,
 //===----------------------------------------------------------------------===//
 
 LogicalResult AllocOp::verify() {
-  auto memRefType = getMemref().getType().cast<MemRefType>();
+  auto memRefType = llvm::cast<MemRefType>(getMemref().getType());
 
   if (static_cast<int64_t>(getDynamicSizes().size()) !=
       memRefType.getNumDynamicDims())
@@ -1495,7 +1724,7 @@ struct SimplifyDimOfAllocOp : public OpRewritePattern<memref::DimOp> {
     if (!index)
       return failure();
 
-    auto memrefType = dimOp.getSource().getType().dyn_cast<MemRefType>();
+    auto memrefType = llvm::dyn_cast<MemRefType>(dimOp.getSource().getType());
     if (!memrefType || !memrefType.isDynamicDim(index.value()))
       return failure();
 

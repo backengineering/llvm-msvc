@@ -565,27 +565,16 @@ MLIR_CAPI_EXPORTED void mlirOperationPrintWithFlags(MlirOperation op,
                                                     MlirStringCallback callback,
                                                     void *userData);
 
-struct MlirBytecodeWriterResult {
-  int64_t minVersion;
-};
-typedef struct MlirBytecodeWriterResult MlirBytecodeWriterResult;
+/// Same as mlirOperationPrint but writing the bytecode format.
+MLIR_CAPI_EXPORTED void mlirOperationWriteBytecode(MlirOperation op,
+                                                   MlirStringCallback callback,
+                                                   void *userData);
 
-inline static bool
-mlirBytecodeWriterResultGetMinVersion(MlirBytecodeWriterResult res) {
-  return res.minVersion;
-}
-
-/// Same as mlirOperationPrint but writing the bytecode format and returns the
-/// minimum bytecode version the consumer needs to support.
-MLIR_CAPI_EXPORTED MlirBytecodeWriterResult mlirOperationWriteBytecode(
-    MlirOperation op, MlirStringCallback callback, void *userData);
-
-/// Same as mlirOperationWriteBytecode but with writer config.
-MLIR_CAPI_EXPORTED MlirBytecodeWriterResult
-mlirOperationWriteBytecodeWithConfig(MlirOperation op,
-                                     MlirBytecodeWriterConfig config,
-                                     MlirStringCallback callback,
-                                     void *userData);
+/// Same as mlirOperationWriteBytecode but with writer config and returns
+/// failure only if desired bytecode could not be honored.
+MLIR_CAPI_EXPORTED MlirLogicalResult mlirOperationWriteBytecodeWithConfig(
+    MlirOperation op, MlirBytecodeWriterConfig config,
+    MlirStringCallback callback, void *userData);
 
 /// Prints an operation to stderr.
 MLIR_CAPI_EXPORTED void mlirOperationDump(MlirOperation op);
@@ -786,6 +775,12 @@ MLIR_CAPI_EXPORTED void mlirValueDump(MlirValue value);
 /// several times with consecutive chunks of the string.
 MLIR_CAPI_EXPORTED void
 mlirValuePrint(MlirValue value, MlirStringCallback callback, void *userData);
+
+/// Prints a value as an operand (i.e., the ValueID).
+MLIR_CAPI_EXPORTED void mlirValuePrintAsOperand(MlirValue value,
+                                                MlirOpPrintingFlags flags,
+                                                MlirStringCallback callback,
+                                                void *userData);
 
 /// Returns an op operand representing the first use of the value, or a null op
 /// operand if there are no uses.

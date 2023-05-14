@@ -10,6 +10,7 @@
 #define TEST_SUPPORT_TEST_EXECUTION_POLICIES
 
 #include <cstdlib>
+#include <exception>
 #include <execution>
 #include <type_traits>
 #include <utility>
@@ -44,6 +45,16 @@ struct TestIteratorWithPolicies {
   template <class Iter>
   void operator()() {
     test_execution_policies(TestClass<Iter>{});
+  }
+};
+
+struct Bool {
+  bool b_;
+  Bool() = default;
+  Bool(bool b) : b_(b) {}
+
+  operator bool&() {
+    return b_;
   }
 };
 

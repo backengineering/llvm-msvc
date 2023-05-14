@@ -10,15 +10,13 @@
 #ifndef _PSTL_GLUE_MEMORY_IMPL_H
 #define _PSTL_GLUE_MEMORY_IMPL_H
 
-#include "pstl_config.h"
+#include <__config>
 
 #include "algorithm_fwd.h"
 #include "execution_defs.h"
 #include "utils.h"
 
 #include "execution_impl.h"
-
-_PSTL_HIDE_FROM_ABI_PUSH
 
 namespace std {
 
@@ -377,7 +375,5 @@ uninitialized_value_construct_n(_ExecutionPolicy&& __exec, _ForwardIterator __fi
 }
 
 } // namespace std
-
-_PSTL_HIDE_FROM_ABI_POP
 
 #endif /* _PSTL_GLUE_MEMORY_IMPL_H */

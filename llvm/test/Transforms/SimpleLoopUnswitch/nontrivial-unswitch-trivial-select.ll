@@ -88,12 +88,12 @@ define i32 @unswitch_trivial_select_cmp_outside(i32 %x) {
 ; CHECK-LABEL: @unswitch_trivial_select_cmp_outside(
 ; CHECK-NEXT:  entry:
 ; CHECK-NEXT:    [[C:%.*]] = icmp ult i32 [[X:%.*]], 100
-; CHECK-NEXT:    br i1 [[C]], label [[ENTRY_SPLIT_US:%.*]], label [[ENTRY_SPLIT:%.*]]
+; CHECK-NEXT:    [[C_FR:%.*]] = freeze i1 [[C]]
+; CHECK-NEXT:    br i1 [[C_FR]], label [[ENTRY_SPLIT_US:%.*]], label [[ENTRY_SPLIT:%.*]]
 ; CHECK:       entry.split.us:
 ; CHECK-NEXT:    br label [[LOOP_US:%.*]]
 ; CHECK:       loop.us:
 ; CHECK-NEXT:    [[P_US:%.*]] = phi i32 [ 0, [[ENTRY_SPLIT_US]] ], [ 35, [[TMP1:%.*]] ]
-; CHECK-NEXT:    [[C_FR_US:%.*]] = freeze i1 true
 ; CHECK-NEXT:    br label [[TMP0:%.*]]
 ; CHECK:       0:
 ; CHECK-NEXT:    br label [[TMP1]]
@@ -107,7 +107,6 @@ define i32 @unswitch_trivial_select_cmp_outside(i32 %x) {
 ; CHECK-NEXT:    br label [[LOOP:%.*]]
 ; CHECK:       loop:
 ; CHECK-NEXT:    [[P:%.*]] = phi i32 [ 0, [[ENTRY_SPLIT]] ], [ 35, [[TMP2:%.*]] ]
-; CHECK-NEXT:    [[C_FR:%.*]] = freeze i1 false
 ; CHECK-NEXT:    br label [[TMP2]]
 ; CHECK:       2:
 ; CHECK-NEXT:    br i1 false, label [[LOOP]], label [[EXIT_SPLIT:%.*]]

@@ -462,7 +462,7 @@ static void hoistLoopToNewParent(Loop &L, BasicBlock &Preheader,
     // Because we just hoisted a loop out of this one, we have essentially
     // created new exit paths from it. That means we need to form LCSSA PHI
     // nodes for values used in the no-longer-nested loop.
-    formLCSSA(*OldContainingL, DT, &LI, SE);
+    formLCSSA(*OldContainingL, DT, &LI);
 
     // We shouldn't need to form dedicated exits because the exit introduced
     // here is the (just split by unswitching) preheader. However, after trivial
@@ -2128,7 +2128,7 @@ static void unswitchNontrivialInvariants(
     AssumptionCache &AC,
     function_ref<void(bool, bool, ArrayRef<Loop *>)> UnswitchCB,
     ScalarEvolution *SE, MemorySSAUpdater *MSSAU,
-    function_ref<void(Loop &, StringRef)> DestroyLoopCB) {
+    function_ref<void(Loop &, StringRef)> DestroyLoopCB, bool InsertFreeze) {
   auto *ParentBB = TI.getParent();
   BranchInst *BI = dyn_cast<BranchInst>(&TI);
   SwitchInst *SI = BI ? nullptr : cast<SwitchInst>(&TI);
@@ -2232,25 +2232,6 @@ static void unswitchNontrivialInvariants(
     SE->forgetBlockAndLoopDispositions();
   }
 
-  bool InsertFreeze = false;
-  if (FreezeLoopUnswitchCond) {
-    ICFLoopSafetyInfo SafetyInfo;
-    SafetyInfo.computeLoopSafetyInfo(&L);
-    InsertFreeze = !SafetyInfo.isGuaranteedToExecute(TI, &DT, &L);
-  }
-
-  // Perform the isGuaranteedNotToBeUndefOrPoison() query before the transform,
-  // otherwise the branch instruction will have been moved outside the loop
-  // already, and may imply that a poison condition is always UB.
-  Value *FullUnswitchCond = nullptr;
-  if (FullUnswitch) {
-    FullUnswitchCond =
-        BI ? skipTrivialSelect(BI->getCondition()) : SI->getCondition();
-    if (InsertFreeze)
-      InsertFreeze = !isGuaranteedNotToBeUndefOrPoison(
-          FullUnswitchCond, &AC, L.getLoopPreheader()->getTerminator(), &DT);
-  }
-
   // If the edge from this terminator to a successor dominates that successor,
   // store a map from each block in its dominator subtree to it. This lets us
   // tell when cloning for a particular successor if a block is dominated by
@@ -2325,10 +2306,11 @@ static void unswitchNontrivialInvariants(
       BasicBlock *ClonedPH = ClonedPHs.begin()->second;
       BI->setSuccessor(ClonedSucc, ClonedPH);
       BI->setSuccessor(1 - ClonedSucc, LoopPH);
+      Value *Cond = skipTrivialSelect(BI->getCondition());
       if (InsertFreeze)
-        FullUnswitchCond = new FreezeInst(
-            FullUnswitchCond, FullUnswitchCond->getName() + ".fr", BI);
-      BI->setCondition(FullUnswitchCond);
+        Cond = new FreezeInst(
+            Cond, Cond->getName() + ".fr", BI);
+      BI->setCondition(Cond);
       DTUpdates.push_back({DominatorTree::Insert, SplitBB, ClonedPH});
     } else {
       assert(SI && "Must either be a branch or switch!");
@@ -2345,7 +2327,7 @@ static void unswitchNontrivialInvariants(
 
       if (InsertFreeze)
         SI->setCondition(new FreezeInst(
-            FullUnswitchCond, FullUnswitchCond->getName() + ".fr", SI));
+            SI->getCondition(), SI->getCondition()->getName() + ".fr", SI));
 
       // We need to use the set to populate domtree updates as even when there
       // are multiple cases pointing at the same successor we only want to
@@ -2553,7 +2535,7 @@ static void unswitchNontrivialInvariants(
     // First build LCSSA for this loop so that we can preserve it when
     // forming dedicated exits. We don't want to perturb some other loop's
     // LCSSA while doing that CFG edit.
-    formLCSSA(UpdateL, DT, &LI, SE);
+    formLCSSA(UpdateL, DT, &LI);
 
     // For loops reached by this loop's original exit blocks we may
     // introduced new, non-dedicated exits. At least try to re-form dedicated
@@ -2673,9 +2655,6 @@ static BranchInst *turnSelectIntoBranch(SelectInst *SI, DominatorTree &DT,
   LLVM_DEBUG(dbgs() << "Turning " << *SI << " into a branch.\n");
   BasicBlock *HeadBB = SI->getParent();
 
-  Value *Cond = SI->getCondition();
-  if (!isGuaranteedNotToBeUndefOrPoison(Cond, AC, SI, &DT))
-    Cond = new FreezeInst(Cond, Cond->getName() + ".fr", SI);
   DomTreeUpdater DTU =
       DomTreeUpdater(DT, DomTreeUpdater::UpdateStrategy::Eager);
   SplitBlockAndInsertIfThen(SI->getCondition(), SI, false,
@@ -2894,7 +2873,8 @@ static bool collectUnswitchCandidates(
     for (auto &I : *BB) {
       if (auto *SI = dyn_cast<SelectInst>(&I)) {
         auto *Cond = SI->getCondition();
-        if (!isa<Constant>(Cond) && L.isLoopInvariant(Cond))
+        // restrict to simple boolean selects
+        if (!isa<Constant>(Cond) && L.isLoopInvariant(Cond) && Cond->getType()->isIntegerTy(1))
           UnswitchCandidates.push_back({&I, {Cond}});
       } else if (CollectGuards && isGuard(&I)) {
         auto *Cond =
@@ -3448,6 +3428,32 @@ static NonTrivialUnswitchCandidate findBestNonTrivialUnswitchCandidate(
   return *Best;
 }
 
+// Insert a freeze on an unswitched branch if all is true:
+// 1. freeze-loop-unswitch-cond option is true
+// 2. The branch may not execute in the loop pre-transformation. If a branch may
+// not execute and could cause UB, it would always cause UB if it is hoisted outside
+// of the loop. Insert a freeze to prevent this case.
+// 3. The branch condition may be poison or undef
+static bool shouldInsertFreeze(Loop &L, Instruction &TI, DominatorTree &DT,
+                               AssumptionCache &AC) {
+  assert(isa<BranchInst>(TI) || isa<SwitchInst>(TI));
+  if (!FreezeLoopUnswitchCond)
+    return false;
+
+  ICFLoopSafetyInfo SafetyInfo;
+  SafetyInfo.computeLoopSafetyInfo(&L);
+  if (SafetyInfo.isGuaranteedToExecute(TI, &DT, &L))
+    return false;
+
+  Value *Cond;
+  if (BranchInst *BI = dyn_cast<BranchInst>(&TI))
+    Cond = skipTrivialSelect(BI->getCondition());
+  else
+    Cond = skipTrivialSelect(cast<SwitchInst>(&TI)->getCondition());
+  return !isGuaranteedNotToBeUndefOrPoison(
+      Cond, &AC, L.getLoopPreheader()->getTerminator(), &DT);
+}
+
 static bool unswitchBestCondition(
     Loop &L, DominatorTree &DT, LoopInfo &LI, AssumptionCache &AC,
     AAResults &AA, TargetTransformInfo &TTI,
@@ -3492,17 +3498,28 @@ static bool unswitchBestCondition(
   if (Best.TI != PartialIVCondBranch)
     PartialIVInfo.InstToDuplicate.clear();
 
-  // If the best candidate is a guard, turn it into a branch.
-  if (auto *SI = dyn_cast<SelectInst>(Best.TI))
+  bool InsertFreeze;
+  if (auto *SI = dyn_cast<SelectInst>(Best.TI)) {
+    // If the best candidate is a select, turn it into a branch. Select
+    // instructions with a poison conditional do not propagate poison, but
+    // branching on poison causes UB. Insert a freeze on the select
+    // conditional to prevent UB after turning the select into a branch.
+    InsertFreeze = !isGuaranteedNotToBeUndefOrPoison(
+        SI->getCondition(), &AC, L.getLoopPreheader()->getTerminator(), &DT);
     Best.TI = turnSelectIntoBranch(SI, DT, LI, MSSAU, &AC);
-  else if (isGuard(Best.TI))
-    Best.TI =
-        turnGuardIntoBranch(cast<IntrinsicInst>(Best.TI), L, DT, LI, MSSAU);
+  } else {
+    // If the best candidate is a guard, turn it into a branch.
+    if (isGuard(Best.TI))
+      Best.TI =
+          turnGuardIntoBranch(cast<IntrinsicInst>(Best.TI), L, DT, LI, MSSAU);
+    InsertFreeze = shouldInsertFreeze(L, *Best.TI, DT, AC);
+  }
 
   LLVM_DEBUG(dbgs() << "  Unswitching non-trivial (cost = " << Best.Cost
                     << ") terminator: " << *Best.TI << "\n");
   unswitchNontrivialInvariants(L, *Best.TI, Best.Invariants, PartialIVInfo, DT,
-                               LI, AC, UnswitchCB, SE, MSSAU, DestroyLoopCB);
+                               LI, AC, UnswitchCB, SE, MSSAU, DestroyLoopCB,
+                               InsertFreeze);
   return true;
 }
 

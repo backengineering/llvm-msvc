@@ -10,12 +10,10 @@
 #ifndef _PSTL_MEMORY_IMPL_H
 #define _PSTL_MEMORY_IMPL_H
 
+#include <__config>
 #include <iterator>
 
-#include "pstl_config.h"
 #include "unseq_backend_simd.h"
-
-_PSTL_HIDE_FROM_ABI_PUSH
 
 namespace __pstl {
 namespace __internal {
@@ -104,7 +102,5 @@ _OutputIterator __brick_uninitialized_copy(
 
 } // namespace __internal
 } // namespace __pstl
-
-_PSTL_HIDE_FROM_ABI_POP
 
 #endif /* _PSTL_MEMORY_IMPL_H */
