@@ -36,7 +36,7 @@
 /* Define the default attributes for the functions in this file. */
 #define __DEFAULT_FN_ATTRS __attribute__((__always_inline__, __nodebug__))
 
-#if __x86_64__
+#if defined(__x86_64__) || defined(_WIN64) || defined(_AMD64_)
 #define __LPTRINT_TYPE__ __int64
 #else
 #define __LPTRINT_TYPE__ long
@@ -72,6 +72,7 @@ unsigned long __indword(unsigned short);
 void __indwordstring(unsigned short, unsigned long *, unsigned long);
 void __int2c(void);
 void __invlpg(void *);
+void _invpcid(unsigned int, void *);
 unsigned short __inword(unsigned short);
 void __inwordstring(unsigned short, unsigned short *, unsigned long);
 void __lidt(void *);
@@ -89,12 +90,12 @@ void __outdword(unsigned short, unsigned long);
 void __outdwordstring(unsigned short, unsigned long *, unsigned long);
 void __outword(unsigned short, unsigned short);
 void __outwordstring(unsigned short, unsigned short *, unsigned long);
-unsigned long __readcr0(void);
-unsigned long __readcr2(void);
+unsigned __LPTRINT_TYPE__ __readcr0(void);
+unsigned __LPTRINT_TYPE__ __readcr2(void);
 unsigned __LPTRINT_TYPE__ __readcr3(void);
-unsigned long __readcr4(void);
-unsigned long __readcr8(void);
-unsigned int __readdr(unsigned int);
+unsigned __int64 __readcr4(void);
+unsigned __int64 __readcr8(void);
+unsigned __LPTRINT_TYPE__ __readdr(unsigned int);
 #ifdef __i386__
 unsigned char __readfsbyte(unsigned long);
 unsigned short __readfsword(unsigned long);
@@ -120,11 +121,12 @@ unsigned __int64 __ull_rshift(unsigned __int64, int);
 void __vmx_off(void);
 void __vmx_vmptrst(unsigned __int64 *);
 void __wbinvd(void);
-void __writecr0(unsigned int);
-void __writecr3(unsigned __INTPTR_TYPE__);
-void __writecr4(unsigned int);
-void __writecr8(unsigned int);
-void __writedr(unsigned int, unsigned int);
+void __writecr0(unsigned __int64);
+void __writecr2(unsigned __LPTRINT_TYPE__);
+void __writecr3(unsigned __int64);
+void __writecr4(unsigned __int64);
+void __writecr8(unsigned __int64);
+void __writedr(unsigned int, __LPTRINT_TYPE__);
 void __writefsbyte(unsigned long, unsigned char);
 void __writefsdword(unsigned long, unsigned long);
 void __writefsqword(unsigned long, unsigned __int64);
@@ -163,7 +165,7 @@ void _Store_HLERelease(long volatile *, long);
 void _Store64_HLERelease(__int64 volatile *, __int64);
 void _StorePointer_HLERelease(void *volatile *, void *);
 void _WriteBarrier(void);
-unsigned __int32 xbegin(void);
+unsigned int _xbegin(void);
 void _xend(void);
 
 /* These additional intrinsics are turned on in x64/amd64/x86_64 mode. */
@@ -446,6 +448,14 @@ unsigned char _InterlockedCompareExchange128_rel(__int64 volatile *_Destination,
 |* movs, stos
 \*----------------------------------------------------------------------------*/
 #if defined(__i386__) || defined(__x86_64__)
+static __inline__ void __DEFAULT_FN_ATTRS __stosb(unsigned char *__dst,
+                                                  unsigned char __src,
+                                                  size_t __n) {
+    __asm__ __volatile__("rep stosb"
+                         : "+D"(__dst), "+c"(__n)
+                         : "a"(__src)
+                         : "memory");
+}
 static __inline__ void __DEFAULT_FN_ATTRS __movsb(unsigned char *__dst,
                                                   unsigned char const *__src,
                                                   size_t __n) {
@@ -533,15 +543,14 @@ static __inline__ void __DEFAULT_FN_ATTRS __stosq(unsigned __int64 *__dst,
 /*----------------------------------------------------------------------------*\
 |* Misc
 \*----------------------------------------------------------------------------*/
-#if defined(__i386__) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__) || defined(_WIN64) || \
+    defined(_AMD64_) || defined(_X86_)
 static __inline__ void __DEFAULT_FN_ATTRS __halt(void) {
-  __asm__ volatile("hlt");
+    __asm__ volatile("hlt");
 }
-#endif
 
-#if defined(__i386__) || defined(__x86_64__) || defined(__aarch64__)
 static __inline__ void __DEFAULT_FN_ATTRS __nop(void) {
-  __asm__ volatile("nop");
+    __asm__ volatile("nop");
 }
 #endif
 

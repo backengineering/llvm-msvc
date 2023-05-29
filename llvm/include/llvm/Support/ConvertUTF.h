@@ -328,6 +328,13 @@ bool convertUTF32ToUTF8String(ArrayRef<UTF32> Src, std::string &Out);
 bool convertUTF8ToUTF16String(StringRef SrcUTF8,
                               SmallVectorImpl<UTF16> &DstUTF16);
 
+/**
+ * Converts a GBK string into a UTF-16 string.
+ *
+ * \returns true on success
+ */
+bool convertGBKToUTF8String(StringRef SrcGBK, std::string &Out);
+
 #if defined(_WIN32)
 namespace sys {
 namespace windows {

@@ -22,7 +22,7 @@
 
 using namespace llvm;
 
-PrintModulePass::PrintModulePass() : OS(dbgs()) {}
+PrintModulePass::PrintModulePass() : PrintModulePass(dbgs()) {}
 PrintModulePass::PrintModulePass(raw_ostream &OS, const std::string &Banner,
                                  bool ShouldPreserveUseListOrder,
                                  bool EmitSummaryIndex)

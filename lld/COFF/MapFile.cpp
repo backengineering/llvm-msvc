@@ -149,7 +149,8 @@ getSymbolStrings(const COFFLinkerContext &ctx, ArrayRef<Defined *> syms) {
     uint16_t sectionIdx = 0;
     uint64_t address = 0;
     SmallString<128> fileDescr;
-
+    bool isFunction = false;
+	
     if (auto *absSym = dyn_cast<DefinedAbsolute>(sym)) {
       address = absSym->getVA();
       fileDescr = "<absolute>";
@@ -169,8 +170,15 @@ getSymbolStrings(const COFFLinkerContext &ctx, ArrayRef<Defined *> syms) {
         file = impSym->file;
       else if (auto *thunkSym = dyn_cast<DefinedImportThunk>(sym))
         file = thunkSym->wrappedSym->file;
-      else
+      else {
         file = sym->getFile();
+        auto characteristics = chunk->getOutputCharacteristics();
+        if ((characteristics &
+             COFF::SectionCharacteristics::IMAGE_SCN_MEM_EXECUTE) &&
+            isa<DefinedRegular>(sym) && sym->getName()[0] != '$') {
+          isFunction = true;
+        }
+      }
 
       if (file) {
         if (!file->parentName.empty()) {
@@ -187,8 +195,13 @@ getSymbolStrings(const COFFLinkerContext &ctx, ArrayRef<Defined *> syms) {
     os << " ";
     os << format_hex_no_prefix((ctx.config.imageBase + sym->getRVA()), 16);
     if (!fileDescr.empty()) {
-      os << "     "; // FIXME : Handle "f" and "i" flags sometimes generated
-                     // by link.exe in those spaces
+      if (isFunction) {
+        os << " f   ";
+      } else {
+        os << "     "; // FIXME : Handle "i" flags sometimes generated
+                       // by link.exe in those spaces
+      }
+      
       os << fileDescr;
     }
   });

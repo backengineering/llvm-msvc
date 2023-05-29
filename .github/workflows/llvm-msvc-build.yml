@@ -1,0 +1,64 @@
+name: llvm-msvc-build
+
+concurrency:
+  group: build-${{ github.head_ref }}
+  cancel-in-progress: true
+
+on: [push, pull_request]
+
+jobs:
+  build:
+     # Skip building pull requests from the same repository
+    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+    env:
+      BUILD_TYPE: Release
+    steps:
+
+    - name: Install ninja-build tool
+      uses: seanmiddleditch/gha-setup-ninja@v3
+    
+    - name: Checkout Repo
+      uses: actions/checkout@v3
+      with:
+          path: llvm-msvc
+          submodules: 'recursive'
+          
+    - name: Build llvm
+      run: |
+        cmake -Bbuild -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_ZLIB=OFF -DCMAKE_BUILD_TYPE=release -DLLVM_USE_CRT_RELEASE=MT -DCPACK_GENERATOR=ZIP "-DCMAKE_INSTALL_PREFIX=$pwd\\prefix" -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" -DLLVM_ENABLE_PROJECTS="clang;lld" llvm-msvc\\llvm
+        cmake --build build --config Release
+
+    - name: Package llvm
+      run: |
+        cmake --build build --target package --config Release
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: llvm-msvc
+        path: build/*.zip
+    
+    - name: Get lowercase OS name
+      id: osname
+      uses: ASzc/change-string-case-action@v1
+      with:
+        string: ${{ runner.os }}
+        
+    - name: archive
+      run:
+        7z a ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip build/*.zip
+    
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: ${{ startsWith(github.ref, 'refs/tags/') }}
+      with:
+        prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-pre') }}
+        files: ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        

@@ -32,6 +32,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/ConvertUTF.h"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -96,6 +97,33 @@ const char *ContentCache::getInvalidBOM(StringRef BufStr) {
           .Default(nullptr);
 
   return InvalidBOM;
+}
+
+// Check buffer is UTF16
+bool ContentCache::checkBufUTF16(StringRef BufStr) {
+    const char *Result = llvm::StringSwitch<const char *>(BufStr)
+                             .StartsWith("\xFE\xFF", "UTF-16 (BE)")
+                             .StartsWith("\xFF\xFE", "UTF-16 (LE)")
+                             .Default(nullptr);
+    if (Result) {
+        return true;
+    }
+    return false;
+}
+
+// Check buffer is UTF32
+bool ContentCache::checkBufUTF32(StringRef BufStr) {
+    const char *Result =
+        llvm::StringSwitch<const char *>(BufStr)
+            .StartsWith(llvm::StringLiteral::withInnerNUL("\x00\x00\xFE\xFF"),
+                        "UTF-32 (BE)")
+            .StartsWith(llvm::StringLiteral::withInnerNUL("\xFF\xFE\x00\x00"),
+                        "UTF-32 (LE)")
+            .Default(nullptr);
+    if (Result) {
+        return true;
+    }
+    return false;
 }
 
 std::optional<llvm::MemoryBufferRef>
@@ -176,6 +204,37 @@ ContentCache::getBufferOrNone(DiagnosticsEngine &Diag, FileManager &FM,
   StringRef BufStr = Buffer->getBuffer();
   const char *InvalidBOM = getInvalidBOM(BufStr);
 
+  auto moveBuffer = [this](const std::string &StrUtf8) {
+    auto NewBuf =
+        llvm::WritableMemoryBuffer::getNewUninitMemBuffer(StrUtf8.size());
+    if (NewBuf) {
+      memcpy(NewBuf->getBufferStart(), StrUtf8.data(), StrUtf8.size());
+      Buffer = std::move(NewBuf);
+    }
+  };
+
+  // [MSVC Compatibility] Trying to convert UTF16 to UTF8.
+  std::string StrUtf8;
+  if (InvalidBOM && checkBufUTF16(BufStr)) {
+    if (llvm::convertUTF16ToUTF8String(
+            llvm::makeArrayRef(BufStr.data(), BufStr.size()), StrUtf8)) {
+      moveBuffer(StrUtf8);
+      BufStr = Buffer->getBuffer();
+	
+      // Verify it again.
+      InvalidBOM = getInvalidBOM(BufStr);
+    }
+  } else {
+    // Trying to convert GBK to UTF8.
+    if (llvm::convertGBKToUTF8String(BufStr, StrUtf8)) {
+      moveBuffer(StrUtf8);
+      BufStr = Buffer->getBuffer();
+	
+      // Verify it again.
+      InvalidBOM = getInvalidBOM(BufStr);
+    }
+  }
+ 
   if (InvalidBOM) {
     Diag.Report(Loc, diag::err_unsupported_bom)
       << InvalidBOM << ContentsEntry->getName();

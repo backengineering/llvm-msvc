@@ -376,6 +376,7 @@ static int ExecuteCC1Tool(SmallVectorImpl<const char *> &ArgV,
 }
 
 int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
+  clock_t StartTime = clock();
   noteBottomOfStack();
   llvm::InitLLVM X(Argc, Argv);
   llvm::setBugReportMsg("PLEASE submit a bug report to " BUG_REPORT_URL
@@ -402,9 +403,31 @@ int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
     return 1;
   }
 
-  // Handle -cc1 integrated tools.
-  if (Args.size() >= 2 && StringRef(Args[1]).startswith("-cc1"))
-    return ExecuteCC1Tool(Args, ToolContext);
+  StringRef FileName = StringRef(Args[Args.size() - 1]);
+  // [MSVC Compatibility]
+  bool HasPrintArgs = false;
+  for (auto Arg : Args) {
+    if (StringRef(Arg).compare("-fprint-arguments") == 0) {
+      HasPrintArgs = true;
+    }
+  }
+  
+  // [clang] Add print arguments
+  if (HasPrintArgs) {
+    llvm::outs() << "Program arguments:";
+    for (auto Arg : Args) {
+      llvm::outs() << Arg << " ";
+    }
+    llvm::outs() << "\n";
+  }
+  
+  if (Args.size() >= 2 && StringRef(Args[1]).startswith("-cc1")) {
+    int Ret = ExecuteCC1Tool(Args, ToolContext);
+    clock_t EndTime = clock();
+    auto Delta = (double)(EndTime - StartTime) / CLOCKS_PER_SEC;
+    llvm::outs() << "Clang spent " << Delta << "s in " << FileName << "\n";
+    return Ret;
+  }
 
   // Handle options that need handling before the real command line parsing in
   // Driver::BuildCompilation()
@@ -601,5 +624,8 @@ int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
 
   // If we have multiple failing commands, we return the result of the first
   // failing command.
+  clock_t EndTime = clock();
+  auto Delta = (double)(EndTime - StartTime) / CLOCKS_PER_SEC;
+  llvm::outs() << "Clang spent " << Delta << "s in " << FileName << "\n";
   return Res;
 }

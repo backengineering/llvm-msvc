@@ -163,7 +163,7 @@ def wholearchive_flag : F<"wholearchive">,
     HelpText<"Include all object files from all libraries">;
 def release : F<"release">,
     HelpText<"Set the Checksum in the header of an PE file">;
-
+	
 def force : F<"force">,
     HelpText<"Allow undefined and multiply defined symbols">;
 def force_unresolved : F<"force:unresolved">,
