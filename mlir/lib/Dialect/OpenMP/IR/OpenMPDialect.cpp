@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -71,8 +72,23 @@ void OpenMPDialect::initialize() {
   MemRefType::attachInterface<PointerLikeModel<MemRefType>>(*getContext());
   LLVM::LLVMPointerType::attachInterface<
       PointerLikeModel<LLVM::LLVMPointerType>>(*getContext());
+
+  // Attach default offload module interface to module op to access
+  // offload functionality through
   mlir::ModuleOp::attachInterface<mlir::omp::OffloadModuleDefaultModel>(
       *getContext());
+
+  // Attach default declare target interfaces to operations which can be marked
+  // as declare target (Global Operations and Functions/Subroutines in dialects
+  // that Fortran (or other languages that lower to MLIR) translates too
+  mlir::LLVM::GlobalOp::attachInterface<
+      mlir::omp::DeclareTargetDefaultModel<mlir::LLVM::GlobalOp>>(
+      *getContext());
+  mlir::LLVM::LLVMFuncOp::attachInterface<
+      mlir::omp::DeclareTargetDefaultModel<mlir::LLVM::LLVMFuncOp>>(
+      *getContext());
+  mlir::func::FuncOp::attachInterface<
+      mlir::omp::DeclareTargetDefaultModel<mlir::func::FuncOp>>(*getContext());
 }
 
 //===----------------------------------------------------------------------===//
@@ -786,10 +802,10 @@ static LogicalResult verifyMapClause(Operation *op, OperandRange map_operands,
   for (const auto &mapTypeOp : *map_types) {
     int64_t mapTypeBits = 0x00;
 
-    if (!mapTypeOp.isa<mlir::IntegerAttr>())
+    if (!llvm::isa<mlir::IntegerAttr>(mapTypeOp))
       return failure();
 
-    mapTypeBits = mapTypeOp.cast<mlir::IntegerAttr>().getInt();
+    mapTypeBits = llvm::cast<mlir::IntegerAttr>(mapTypeOp).getInt();
 
     bool to =
         bitAnd(mapTypeBits, llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_TO);

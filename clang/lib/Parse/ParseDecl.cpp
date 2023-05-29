@@ -2079,6 +2079,7 @@ void Parser::SkipMalformedDecl() {
     case tok::annot_module_begin:
     case tok::annot_module_end:
     case tok::annot_module_include:
+    case tok::annot_repl_input_end:
       return;
 
     default:
@@ -2185,13 +2186,16 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
           return Actions.ConvertDeclToDeclGroup(TheDecl);
         }
 
-        if (isDeclarationSpecifier(ImplicitTypenameContext::No)) {
-          // If there is an invalid declaration specifier right after the
-          // function prototype, then we must be in a missing semicolon case
-          // where this isn't actually a body.  Just fall through into the code
-          // that handles it as a prototype, and let the top-level code handle
-          // the erroneous declspec where it would otherwise expect a comma or
-          // semicolon.
+        if (isDeclarationSpecifier(ImplicitTypenameContext::No) ||
+            Tok.is(tok::kw_namespace)) {
+          // If there is an invalid declaration specifier or a namespace
+          // definition right after the function prototype, then we must be in a
+          // missing semicolon case where this isn't actually a body.  Just fall
+          // through into the code that handles it as a prototype, and let the
+          // top-level code handle the erroneous declspec where it would
+          // otherwise expect a comma or semicolon. Note that
+          // isDeclarationSpecifier already covers 'inline namespace', since
+          // 'inline' can be a declaration specifier.
         } else {
           Diag(Tok, diag::err_expected_fn_body);
           SkipUntil(tok::semi);
@@ -2312,10 +2316,8 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
     // Okay, there was no semicolon and one was expected.  If we see a
     // declaration specifier, just assume it was missing and continue parsing.
     // Otherwise things are very confused and we skip to recover.
-    if (!isDeclarationSpecifier(ImplicitTypenameContext::No)) {
-      SkipUntil(tok::r_brace, StopAtSemi | StopBeforeMatch);
-      TryConsumeToken(tok::semi);
-    }
+    if (!isDeclarationSpecifier(ImplicitTypenameContext::No))
+      SkipMalformedDecl();
   }
 
   return Actions.FinalizeDeclaratorGroup(getCurScope(), DS, DeclsInGroup);
@@ -2991,24 +2993,26 @@ Parser::getDeclSpecContextFromDeclaratorContext(DeclaratorContext Context) {
 
 /// ParseAlignArgument - Parse the argument to an alignment-specifier.
 ///
-/// FIXME: Simply returns an alignof() expression if the argument is a
-/// type. Ideally, the type should be propagated directly into Sema.
-///
 /// [C11]   type-id
 /// [C11]   constant-expression
 /// [C++0x] type-id ...[opt]
 /// [C++0x] assignment-expression ...[opt]
-ExprResult Parser::ParseAlignArgument(SourceLocation Start,
-                                      SourceLocation &EllipsisLoc) {
+ExprResult Parser::ParseAlignArgument(StringRef KWName, SourceLocation Start,
+                                      SourceLocation &EllipsisLoc, bool &IsType,
+                                      ParsedType &TypeResult) {
   ExprResult ER;
   if (isTypeIdInParens()) {
     SourceLocation TypeLoc = Tok.getLocation();
     ParsedType Ty = ParseTypeName().get();
     SourceRange TypeRange(Start, Tok.getLocation());
-    ER = Actions.ActOnUnaryExprOrTypeTraitExpr(TypeLoc, UETT_AlignOf, true,
-                                               Ty.getAsOpaquePtr(), TypeRange);
-  } else
+    if (Actions.ActOnAlignasTypeArgument(KWName, Ty, TypeLoc, TypeRange))
+      return ExprError();
+    TypeResult = Ty;
+    IsType = true;
+  } else {
     ER = ParseConstantExpression();
+    IsType = false;
+  }
 
   if (getLangOpts().CPlusPlus11)
     TryConsumeToken(tok::ellipsis, EllipsisLoc);
@@ -3028,17 +3032,21 @@ void Parser::ParseAlignmentSpecifier(ParsedAttributes &Attrs,
                                      SourceLocation *EndLoc) {
   assert(Tok.isOneOf(tok::kw_alignas, tok::kw__Alignas) &&
          "Not an alignment-specifier!");
-
-  IdentifierInfo *KWName = Tok.getIdentifierInfo();
-  auto Kind = Tok.getKind();
+  Token KWTok = Tok;
+  IdentifierInfo *KWName = KWTok.getIdentifierInfo();
+  auto Kind = KWTok.getKind();
   SourceLocation KWLoc = ConsumeToken();
 
   BalancedDelimiterTracker T(*this, tok::l_paren);
   if (T.expectAndConsume())
     return;
 
+  bool IsType;
+  ParsedType TypeResult;
   SourceLocation EllipsisLoc;
-  ExprResult ArgExpr = ParseAlignArgument(T.getOpenLocation(), EllipsisLoc);
+  ExprResult ArgExpr =
+      ParseAlignArgument(PP.getSpelling(KWTok), T.getOpenLocation(),
+                         EllipsisLoc, IsType, TypeResult);
   if (ArgExpr.isInvalid()) {
     T.skipToEnd();
     return;
@@ -3048,10 +3056,15 @@ void Parser::ParseAlignmentSpecifier(ParsedAttributes &Attrs,
   if (EndLoc)
     *EndLoc = T.getCloseLocation();
 
-  ArgsVector ArgExprs;
-  ArgExprs.push_back(ArgExpr.get());
-  Attrs.addNew(KWName, KWLoc, nullptr, KWLoc, ArgExprs.data(), 1, Kind,
-               EllipsisLoc);
+  if (IsType) {
+    Attrs.addNewTypeAttr(KWName, KWLoc, nullptr, KWLoc, TypeResult, Kind,
+                         EllipsisLoc);
+  } else {
+    ArgsVector ArgExprs;
+    ArgExprs.push_back(ArgExpr.get());
+    Attrs.addNew(KWName, KWLoc, nullptr, KWLoc, ArgExprs.data(), 1, Kind,
+                 EllipsisLoc);
+  }
 }
 
 ExprResult Parser::ParseExtIntegerArgument() {
@@ -5476,6 +5489,13 @@ Parser::DeclGroupPtrTy Parser::ParseTopLevelStmtDecl() {
 
   SmallVector<Decl *, 2> DeclsInGroup;
   DeclsInGroup.push_back(Actions.ActOnTopLevelStmtDecl(R.get()));
+
+  if (Tok.is(tok::annot_repl_input_end) &&
+      Tok.getAnnotationValue() != nullptr) {
+    ConsumeAnnotationToken();
+    cast<TopLevelStmtDecl>(DeclsInGroup.back())->setSemiMissing();
+  }
+
   // Currently happens for things like  -fms-extensions and use `__if_exists`.
   for (Stmt *S : Stmts)
     DeclsInGroup.push_back(Actions.ActOnTopLevelStmtDecl(S));
@@ -6514,8 +6534,9 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
     // that it's an initializer instead.
     if (D.mayOmitIdentifier() && D.mayBeFollowedByCXXDirectInit()) {
       RevertingTentativeParsingAction PA(*this);
-      if (TryParseDeclarator(true, D.mayHaveIdentifier(), true) ==
-              TPResult::False) {
+      if (TryParseDeclarator(true, D.mayHaveIdentifier(), true,
+                             D.getDeclSpec().getTypeSpecType() == TST_auto) ==
+          TPResult::False) {
         D.SetIdentifier(nullptr, Tok.getLocation());
         goto PastIdentifier;
       }

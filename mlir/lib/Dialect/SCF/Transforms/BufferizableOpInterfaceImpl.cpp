@@ -381,7 +381,7 @@ static FailureOr<BaseMemRefType> computeLoopRegionIterArgBufferType(
   // map.
   auto yieldedRanked = cast<MemRefType>(yieldedValueBufferType);
 #ifndef NDEBUG
-  auto iterRanked = initArgBufferType->cast<MemRefType>();
+  auto iterRanked = llvm::cast<MemRefType>(*initArgBufferType);
   assert(llvm::equal(yieldedRanked.getShape(), iterRanked.getShape()) &&
          "expected same shape");
   assert(yieldedRanked.getMemorySpace() == iterRanked.getMemorySpace() &&
@@ -802,7 +802,7 @@ struct WhileOpInterface
           if (!isa<TensorType>(bbArg.getType()))
             return bbArg.getType();
           // TODO: error handling
-          return bufferization::getBufferType(bbArg, options)->cast<Type>();
+          return llvm::cast<Type>(*bufferization::getBufferType(bbArg, options));
         }));
 
     // Construct a new scf.while op with memref instead of tensor values.
@@ -902,10 +902,12 @@ struct WhileOpInterface
 
     auto conditionOp = whileOp.getConditionOp();
     for (const auto &it : llvm::enumerate(conditionOp.getArgs())) {
+      Block *block = conditionOp->getBlock();
       if (!isa<TensorType>(it.value().getType()))
         continue;
-      if (!state.areEquivalentBufferizedValues(
-              it.value(), conditionOp->getBlock()->getArgument(it.index())))
+      if (it.index() >= block->getNumArguments() ||
+          !state.areEquivalentBufferizedValues(it.value(),
+                                               block->getArgument(it.index())))
         return conditionOp->emitError()
                << "Condition arg #" << it.index()
                << " is not equivalent to the corresponding iter bbArg";
@@ -913,10 +915,12 @@ struct WhileOpInterface
 
     auto yieldOp = whileOp.getYieldOp();
     for (const auto &it : llvm::enumerate(yieldOp.getResults())) {
+      Block *block = yieldOp->getBlock();
       if (!isa<TensorType>(it.value().getType()))
         continue;
-      if (!state.areEquivalentBufferizedValues(
-              it.value(), yieldOp->getBlock()->getArgument(it.index())))
+      if (it.index() >= block->getNumArguments() ||
+          !state.areEquivalentBufferizedValues(it.value(),
+                                               block->getArgument(it.index())))
         return yieldOp->emitError()
                << "Yield operand #" << it.index()
                << " is not equivalent to the corresponding iter bbArg";

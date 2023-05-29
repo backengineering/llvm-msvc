@@ -78,27 +78,18 @@ struct alignas(64) Packet {
 constexpr uint64_t DEFAULT_PORT_COUNT = 64;
 
 /// A common process used to synchronize communication between a client and a
-/// server. The process contains an inbox and an outbox used for signaling
-/// ownership of the shared buffer between both sides.
+/// server. The process contains a read-only inbox and a write-only outbox used
+/// for signaling ownership of the shared buffer between both sides. We assign
+/// ownership of the buffer to the client if the inbox and outbox bits match,
+/// otherwise it is owned by the server.
 ///
-/// No process writes to its inbox. Each toggles the bit in the outbox to pass
-/// ownership to the other process.
-/// When inbox == outbox, the current state machine owns the buffer.
-/// Initially the client is able to open any port as it will load 0 from both.
-/// The server inbox read is inverted, so it loads inbox==1, outbox==0 until
-/// the client has written to its outbox.
-///
-/// This process is designed to support mostly arbitrary combinations of 'send'
-/// and 'recv' operations on the shared buffer as long as these operations are
-/// mirrored by the other process. These operations exchange ownership of the
-/// fixed-size buffer between the users of the protocol. The assumptions when
-/// using this process are as follows:
-///   - The client will always start with a 'send' operation
-///   - The server will always start with a 'recv' operation
-///   - For every 'send' / 'recv' call on one side of the process there is a
-///     mirrored 'recv' / 'send' call.
-///
-template <bool InvertInbox> struct Process {
+/// This process is designed to allow the client and the server to exchange data
+/// using a fixed size packet in a mostly arbitrary order using the 'send' and
+/// 'recv' operations. The following restrictions to this scheme apply:
+///   - The client will always start with a 'send' operation.
+///   - The server will always start with a 'recv' operation.
+///   - Every 'send' or 'recv' call is mirrored by the other process.
+template <bool Invert> struct Process {
   LIBC_INLINE Process() = default;
   LIBC_INLINE Process(const Process &) = delete;
   LIBC_INLINE Process &operator=(const Process &) = delete;
@@ -106,6 +97,9 @@ template <bool InvertInbox> struct Process {
   LIBC_INLINE Process &operator=(Process &&) = default;
   LIBC_INLINE ~Process() = default;
 
+  template <bool T> friend struct Port;
+
+protected:
   uint64_t port_count;
   uint32_t lane_size;
   cpp::Atomic<uint32_t> *inbox;
@@ -114,59 +108,48 @@ template <bool InvertInbox> struct Process {
 
   cpp::Atomic<uint32_t> lock[DEFAULT_PORT_COUNT] = {0};
 
+public:
   /// Initialize the communication channels.
-  LIBC_INLINE void reset(uint64_t port_count, uint32_t lane_size, void *state) {
-    uint64_t p = memory_offset_primary_mailbox(port_count);
-    uint64_t s = memory_offset_secondary_mailbox(port_count);
+  LIBC_INLINE void reset(uint64_t port_count, uint32_t lane_size,
+                         void *buffer) {
     this->port_count = port_count;
     this->lane_size = lane_size;
     this->inbox = reinterpret_cast<cpp::Atomic<uint32_t> *>(
-        static_cast<char *>(state) + (InvertInbox ? s : p));
+        advance(buffer, inbox_offset(port_count)));
     this->outbox = reinterpret_cast<cpp::Atomic<uint32_t> *>(
-        static_cast<char *>(state) + (InvertInbox ? p : s));
-    this->packet = reinterpret_cast<Packet *>(static_cast<char *>(state) +
-                                              memory_offset_buffer(port_count));
+        advance(buffer, outbox_offset(port_count)));
+    this->packet =
+        reinterpret_cast<Packet *>(advance(buffer, buffer_offset(port_count)));
   }
 
-  /// Allocate a single block of memory for use by client and server
-  /// template<size_t N>, N is generally a runtime value
-  /// struct equivalent {
-  ///   atomic<uint32_t> primary[N];
-  ///   atomic<uint32_t> secondary[N];
-  ///   Packet buffer[N];
+  /// Allocate a memory buffer sufficient to store the following equivalent
+  /// representation in memory.
+  ///
+  /// struct Equivalent {
+  ///   Atomic<uint32_t> primary[port_count];
+  ///   Atomic<uint32_t> secondary[port_count];
+  ///   Packet buffer[port_count];
   /// };
   LIBC_INLINE static uint64_t allocation_size(uint64_t port_count,
                                               uint32_t lane_size) {
-    return memory_offset_buffer(port_count) +
-           memory_allocated_buffer(port_count, lane_size);
+    return buffer_offset(port_count) + buffer_bytes(port_count, lane_size);
   }
 
+protected:
   /// The length of the packet is flexible because the server needs to look up
   /// the lane size at runtime. This helper indexes at the proper offset.
   LIBC_INLINE Packet &get_packet(uint64_t index) {
-    return *reinterpret_cast<Packet *>(
-        reinterpret_cast<uint8_t *>(packet) +
-        index * align_up(sizeof(Header) + lane_size * sizeof(Buffer),
-                         alignof(Packet)));
+    return *reinterpret_cast<Packet *>(advance(
+        packet, index * align_up(sizeof(Header) + lane_size * sizeof(Buffer),
+                                 alignof(Packet))));
   }
 
-  /// Inverting the bits loaded from the inbox in exactly one of the pair of
-  /// processes means that each can use the same state transitions.
-  /// Whichever process has InvertInbox==false is the initial owner.
-  /// Inbox equal Outbox => current process owns the buffer
-  /// Inbox difer Outbox => current process does not own the buffer
-  /// At startup, memory is zero initialised and raw loads of either mailbox
-  /// would return zero. Thus both would succeed in opening a port and data
-  /// races result. If either inbox or outbox is inverted for one process, that
-  /// process interprets memory as Inbox!=Outbox and thus waits for the other.
-  /// It is simpler to invert reads from the inbox than writes to the outbox.
+  /// Retrieve the inbox state from memory shared between processes.
   LIBC_INLINE uint32_t load_inbox(uint64_t index) {
-    uint32_t i = inbox[index].load(cpp::MemoryOrder::RELAXED);
-    return InvertInbox ? !i : i;
+    return inbox[index].load(cpp::MemoryOrder::RELAXED);
   }
 
   /// Retrieve the outbox state from memory shared between processes.
-  /// Never needs to invert the associated read.
   LIBC_INLINE uint32_t load_outbox(uint64_t index) {
     return outbox[index].load(cpp::MemoryOrder::RELAXED);
   }
@@ -181,9 +164,12 @@ template <bool InvertInbox> struct Process {
     return inverted_outbox;
   }
 
-  /// Determines if this process needs to wait for ownership of the buffer.
+  /// Determines if this process needs to wait for ownership of the buffer. We
+  /// invert the condition on one of the processes to indicate that if one
+  /// process owns the buffer then the other does not.
   LIBC_INLINE static bool buffer_unavailable(uint32_t in, uint32_t out) {
-    return in != out;
+    bool cond = in != out;
+    return Invert ? !cond : cond;
   }
 
   /// Attempt to claim the lock at index. Return true on lock taken.
@@ -264,32 +250,34 @@ template <bool InvertInbox> struct Process {
     }
   }
 
-  /// Number of bytes allocated for mailbox or buffer
-  LIBC_INLINE static uint64_t memory_allocated_mailbox(uint64_t port_count) {
+  /// Number of bytes to allocate for an inbox or outbox.
+  LIBC_INLINE static uint64_t mailbox_bytes(uint64_t port_count) {
     return port_count * sizeof(cpp::Atomic<uint32_t>);
   }
 
-  LIBC_INLINE static uint64_t memory_allocated_buffer(uint64_t port_count,
-                                                      uint32_t lane_size) {
-#if defined(LIBC_TARGET_ARCH_IS_GPU)
-    (void)lane_size;
-    return port_count * sizeof(Packet);
-#else
-    return port_count * (sizeof(Packet) + sizeof(Buffer) * lane_size);
-#endif
+  /// Number of bytes to allocate for the buffer containing the packets.
+  LIBC_INLINE static uint64_t buffer_bytes(uint64_t port_count,
+                                           uint32_t lane_size) {
+    return is_process_gpu()
+               ? port_count * sizeof(Packet)
+               : port_count *
+                     align_up(sizeof(Header) + (lane_size * sizeof(Buffer)),
+                              alignof(Packet));
   }
 
-  /// Offset of mailbox/buffer in single allocation
-  LIBC_INLINE static uint64_t
-  memory_offset_primary_mailbox(uint64_t /*port_count*/) {
-    return 0;
+  /// Offset of the inbox in memory. This is the same as the outbox if inverted.
+  LIBC_INLINE static uint64_t inbox_offset(uint64_t port_count) {
+    return Invert ? mailbox_bytes(port_count) : 0;
   }
-  LIBC_INLINE static uint64_t
-  memory_offset_secondary_mailbox(uint64_t port_count) {
-    return memory_allocated_mailbox(port_count);
+
+  /// Offset of the outbox in memory. This is the same as the inbox if inverted.
+  LIBC_INLINE static uint64_t outbox_offset(uint64_t port_count) {
+    return Invert ? 0 : mailbox_bytes(port_count);
   }
-  LIBC_INLINE static uint64_t memory_offset_buffer(uint64_t port_count) {
-    return align_up(2 * memory_allocated_mailbox(port_count), alignof(Packet));
+
+  /// Offset of the buffer containing the packets after the inbox and outbox.
+  LIBC_INLINE static uint64_t buffer_offset(uint64_t port_count) {
+    return align_up(2 * mailbox_bytes(port_count), alignof(Packet));
   }
 };
 
@@ -300,7 +288,7 @@ template <bool T> struct Port {
   LIBC_INLINE Port(Process<T> &process, uint64_t lane_mask, uint64_t index,
                    uint32_t out)
       : process(process), lane_mask(lane_mask), index(index), out(out),
-        receive(false) {}
+        receive(false), owns_buffer(true) {}
   LIBC_INLINE ~Port() = default;
 
 private:
@@ -329,9 +317,9 @@ public:
   }
 
   LIBC_INLINE void close() {
-    // If the server last did a receive it needs to exchange ownership before
-    // closing the port.
-    if (receive && T)
+    // The server is passive, if it own the buffer when it closes we need to
+    // give ownership back to the client.
+    if (owns_buffer && T)
       out = process.invert_outbox(index, out);
     process.unlock(lane_mask, index);
   }
@@ -342,6 +330,7 @@ private:
   uint64_t index;
   uint32_t out;
   bool receive;
+  bool owns_buffer;
 };
 
 /// The RPC client used to make requests to the server.
@@ -370,7 +359,7 @@ struct Server : public Process<true> {
 
 /// Applies \p fill to the shared buffer and initiates a send operation.
 template <bool T> template <typename F> LIBC_INLINE void Port<T>::send(F fill) {
-  uint32_t in = process.load_inbox(index);
+  uint32_t in = owns_buffer ? out ^ T : process.load_inbox(index);
 
   // We need to wait until we own the buffer before sending.
   while (Process<T>::buffer_unavailable(in, out)) {
@@ -382,6 +371,7 @@ template <bool T> template <typename F> LIBC_INLINE void Port<T>::send(F fill) {
   process.invoke_rpc(fill, process.get_packet(index));
   atomic_thread_fence(cpp::MemoryOrder::RELEASE);
   out = process.invert_outbox(index, out);
+  owns_buffer = false;
   receive = false;
 }
 
@@ -389,10 +379,12 @@ template <bool T> template <typename F> LIBC_INLINE void Port<T>::send(F fill) {
 template <bool T> template <typename U> LIBC_INLINE void Port<T>::recv(U use) {
   // We only exchange ownership of the buffer during a receive if we are waiting
   // for a previous receive to finish.
-  if (receive)
+  if (receive) {
     out = process.invert_outbox(index, out);
+    owns_buffer = false;
+  }
 
-  uint32_t in = process.load_inbox(index);
+  uint32_t in = owns_buffer ? out ^ T : process.load_inbox(index);
 
   // We need to wait until we own the buffer before receiving.
   while (Process<T>::buffer_unavailable(in, out)) {
@@ -404,6 +396,7 @@ template <bool T> template <typename U> LIBC_INLINE void Port<T>::recv(U use) {
   // Apply the \p use function to read the memory out of the buffer.
   process.invoke_rpc(use, process.get_packet(index));
   receive = true;
+  owns_buffer = true;
 }
 
 /// Combines a send and receive into a single function.
@@ -424,33 +417,6 @@ LIBC_INLINE void Port<T>::recv_and_send(W work) {
   send([](Buffer *) { /* no-op */ });
 }
 
-/// Sends an arbitrarily sized data buffer \p src across the shared channel in
-/// multiples of the packet length.
-template <bool T>
-LIBC_INLINE void Port<T>::send_n(const void *const *src, uint64_t *size) {
-  // TODO: We could send the first bytes in this call and potentially save an
-  // extra send operation.
-  // TODO: We may need a way for the CPU to send different strings per thread.
-  uint64_t num_sends = 0;
-  send([&](Buffer *buffer, uint32_t id) {
-    reinterpret_cast<uint64_t *>(buffer->data)[0] = lane_value(size, id);
-    num_sends = is_process_gpu() ? lane_value(size, id)
-                                 : max(lane_value(size, id), num_sends);
-  });
-  for (uint64_t idx = 0; idx < num_sends; idx += sizeof(Buffer::data)) {
-    send([=](Buffer *buffer, uint32_t id) {
-      const uint64_t len = lane_value(size, id) - idx > sizeof(Buffer::data)
-                               ? sizeof(Buffer::data)
-                               : lane_value(size, id) - idx;
-      if (idx < lane_value(size, id))
-        inline_memcpy(
-            buffer->data,
-            reinterpret_cast<const uint8_t *>(lane_value(src, id)) + idx, len);
-    });
-  }
-  gpu::sync_lane(process.get_packet(index).header.mask);
-}
-
 /// Helper routine to simplify the interface when sending from the GPU using
 /// thread private pointers to the underlying value.
 template <bool T>
@@ -459,6 +425,35 @@ LIBC_INLINE void Port<T>::send_n(const void *src, uint64_t size) {
   const void **src_ptr = &src;
   uint64_t *size_ptr = &size;
   send_n(src_ptr, size_ptr);
+}
+
+/// Sends an arbitrarily sized data buffer \p src across the shared channel in
+/// multiples of the packet length.
+template <bool T>
+LIBC_INLINE void Port<T>::send_n(const void *const *src, uint64_t *size) {
+  uint64_t num_sends = 0;
+  send([&](Buffer *buffer, uint32_t id) {
+    reinterpret_cast<uint64_t *>(buffer->data)[0] = lane_value(size, id);
+    num_sends = is_process_gpu() ? lane_value(size, id)
+                                 : max(lane_value(size, id), num_sends);
+    uint64_t len =
+        lane_value(size, id) > sizeof(Buffer::data) - sizeof(uint64_t)
+            ? sizeof(Buffer::data) - sizeof(uint64_t)
+            : lane_value(size, id);
+    inline_memcpy(&buffer->data[1], lane_value(src, id), len);
+  });
+  uint64_t idx = sizeof(Buffer::data) - sizeof(uint64_t);
+  uint64_t mask = process.get_packet(index).header.mask;
+  while (gpu::ballot(mask, idx < num_sends)) {
+    send([=](Buffer *buffer, uint32_t id) {
+      uint64_t len = lane_value(size, id) - idx > sizeof(Buffer::data)
+                         ? sizeof(Buffer::data)
+                         : lane_value(size, id) - idx;
+      if (idx < lane_value(size, id))
+        inline_memcpy(buffer->data, advance(lane_value(src, id), idx), len);
+    });
+    idx += sizeof(Buffer::data);
+  }
 }
 
 /// Receives an arbitrarily sized data buffer across the shared channel in
@@ -474,18 +469,24 @@ LIBC_INLINE void Port<T>::recv_n(void **dst, uint64_t *size, A &&alloc) {
         reinterpret_cast<uint8_t *>(alloc(lane_value(size, id)));
     num_recvs = is_process_gpu() ? lane_value(size, id)
                                  : max(lane_value(size, id), num_recvs);
+    uint64_t len =
+        lane_value(size, id) > sizeof(Buffer::data) - sizeof(uint64_t)
+            ? sizeof(Buffer::data) - sizeof(uint64_t)
+            : lane_value(size, id);
+    inline_memcpy(lane_value(dst, id), &buffer->data[1], len);
   });
-  for (uint64_t idx = 0; idx < num_recvs; idx += sizeof(Buffer::data)) {
+  uint64_t idx = sizeof(Buffer::data) - sizeof(uint64_t);
+  uint64_t mask = process.get_packet(index).header.mask;
+  while (gpu::ballot(mask, idx < num_recvs)) {
     recv([=](Buffer *buffer, uint32_t id) {
       uint64_t len = lane_value(size, id) - idx > sizeof(Buffer::data)
                          ? sizeof(Buffer::data)
                          : lane_value(size, id) - idx;
       if (idx < lane_value(size, id))
-        inline_memcpy(reinterpret_cast<uint8_t *>(lane_value(dst, id)) + idx,
-                      buffer->data, len);
+        inline_memcpy(advance(lane_value(dst, id), idx), buffer->data, len);
     });
+    idx += sizeof(Buffer::data);
   }
-  return;
 }
 
 /// Attempts to open a port to use as the client. The client can only open a

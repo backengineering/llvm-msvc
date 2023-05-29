@@ -96,8 +96,8 @@ bool WordIsPoisoned(uptr addr);
 //// --------------------------------------------------------------------------
 
 // Wrappers for ThreadRegistry access.
-void LockThreadRegistry() SANITIZER_NO_THREAD_SAFETY_ANALYSIS;
-void UnlockThreadRegistry() SANITIZER_NO_THREAD_SAFETY_ANALYSIS;
+void LockThreads() SANITIZER_NO_THREAD_SAFETY_ANALYSIS;
+void UnlockThreads() SANITIZER_NO_THREAD_SAFETY_ANALYSIS;
 // If called from the main thread, updates the main thread's TID in the thread
 // registry. We need this to handle processes that fork() without a subsequent
 // exec(), which invalidates the recorded TID. To update it, we must call
@@ -160,13 +160,13 @@ IgnoreObjectResult IgnoreObject(const void *p);
 
 struct ScopedStopTheWorldLock {
   ScopedStopTheWorldLock() {
-    LockThreadRegistry();
+    LockThreads();
     LockAllocator();
   }
 
   ~ScopedStopTheWorldLock() {
     UnlockAllocator();
-    UnlockThreadRegistry();
+    UnlockThreads();
   }
 
   ScopedStopTheWorldLock &operator=(const ScopedStopTheWorldLock &) = delete;
@@ -239,9 +239,9 @@ void InitializePlatformSpecificModules();
 void ProcessGlobalRegions(Frontier *frontier);
 void ProcessPlatformSpecificAllocations(Frontier *frontier);
 
-struct RootRegion {
+struct Region {
   uptr begin;
-  uptr size;
+  uptr end;
 };
 
 // LockStuffAndStopTheWorld can start to use Scan* calls to collect into
@@ -256,9 +256,9 @@ struct CheckForLeaksParam {
   bool success = false;
 };
 
-InternalMmapVectorNoCtor<RootRegion> const *GetRootRegions();
-void ScanRootRegion(Frontier *frontier, RootRegion const &region,
-                    uptr region_begin, uptr region_end, bool is_readable);
+bool HasRootRegions();
+void ScanRootRegions(Frontier *frontier,
+                     const InternalMmapVectorNoCtor<Region> &region);
 // Run stoptheworld while holding any platform-specific locks, as well as the
 // allocator and thread registry locks.
 void LockStuffAndStopTheWorld(StopTheWorldCallback callback,

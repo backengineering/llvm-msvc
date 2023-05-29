@@ -9,6 +9,7 @@
 #ifndef LLVM_LIBC_SRC_SUPPORT_RPC_RPC_UTILS_H
 #define LLVM_LIBC_SRC_SUPPORT_RPC_RPC_UTILS_H
 
+#include "src/__support/CPP/type_traits.h"
 #include "src/__support/GPU/utils.h"
 #include "src/__support/macros/attributes.h"
 #include "src/__support/macros/properties/architectures.h"
@@ -67,6 +68,15 @@ template <typename V> LIBC_INLINE V &lane_value(V *val, uint32_t id) {
 /// Helper to get the maximum value.
 template <typename T> LIBC_INLINE const T &max(const T &x, const T &y) {
   return x < y ? y : x;
+}
+
+/// Advance the \p p by \p bytes.
+template <typename T, typename U> LIBC_INLINE T *advance(T *ptr, U bytes) {
+  if constexpr (cpp::is_const_v<T>)
+    return reinterpret_cast<T *>(reinterpret_cast<const uint8_t *>(ptr) +
+                                 bytes);
+  else
+    return reinterpret_cast<T *>(reinterpret_cast<uint8_t *>(ptr) + bytes);
 }
 
 } // namespace rpc

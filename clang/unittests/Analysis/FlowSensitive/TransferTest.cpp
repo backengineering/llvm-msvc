@@ -32,19 +32,25 @@ namespace {
 using namespace clang;
 using namespace dataflow;
 using namespace test;
+using ::testing::Eq;
 using ::testing::IsNull;
+using ::testing::Ne;
 using ::testing::NotNull;
 using ::testing::UnorderedElementsAre;
 
 using BuiltinOptions = DataflowAnalysisContext::Options;
 
 template <typename Matcher>
-void runDataflow(llvm::StringRef Code, Matcher Match,
-                 DataflowAnalysisOptions Options,
-                 LangStandard::Kind Std = LangStandard::lang_cxx17,
-                 llvm::StringRef TargetFun = "target") {
+llvm::Error
+runDataflowReturnError(llvm::StringRef Code, Matcher Match,
+                       DataflowAnalysisOptions Options,
+                       LangStandard::Kind Std = LangStandard::lang_cxx17,
+                       llvm::StringRef TargetFun = "target") {
   using ast_matchers::hasName;
   llvm::SmallVector<std::string, 3> ASTBuildArgs = {
+      // -fnodelayed-template-parsing is the default everywhere but on Windows.
+      // Set it explicitly so that tests behave the same on Windows as on other
+      // platforms.
       "-fsyntax-only", "-fno-delayed-template-parsing",
       "-std=" +
           std::string(LangStandard::getLangStandardForKind(Std).getName())};
@@ -61,13 +67,21 @@ void runDataflow(llvm::StringRef Code, Matcher Match,
   AI.ASTBuildArgs = ASTBuildArgs;
   if (Options.BuiltinOpts)
     AI.BuiltinOptions = *Options.BuiltinOpts;
+  return checkDataflow<NoopAnalysis>(
+      std::move(AI),
+      /*VerifyResults=*/
+      [&Match](
+          const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+          const AnalysisOutputs &AO) { Match(Results, AO.ASTCtx); });
+}
+
+template <typename Matcher>
+void runDataflow(llvm::StringRef Code, Matcher Match,
+                 DataflowAnalysisOptions Options,
+                 LangStandard::Kind Std = LangStandard::lang_cxx17,
+                 llvm::StringRef TargetFun = "target") {
   ASSERT_THAT_ERROR(
-      checkDataflow<NoopAnalysis>(
-          std::move(AI),
-          /*VerifyResults=*/
-          [&Match](const llvm::StringMap<DataflowAnalysisState<NoopLattice>>
-                       &Results,
-                   const AnalysisOutputs &AO) { Match(Results, AO.ASTCtx); }),
+      runDataflowReturnError(Code, Match, Options, Std, TargetFun),
       llvm::Succeeded());
 }
 
@@ -2534,31 +2548,34 @@ TEST(TransferTest, AddrOfReference) {
       });
 }
 
-TEST(TransferTest, DerefDependentPtr) {
+TEST(TransferTest, CannotAnalyzeFunctionTemplate) {
   std::string Code = R"(
     template <typename T>
-    void target(T *Foo) {
-      T &Bar = *Foo;
-      /*[[p]]*/
-    }
+    void target() {}
   )";
-  runDataflow(
-      Code,
-      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
-         ASTContext &ASTCtx) {
-        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
-        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+  ASSERT_THAT_ERROR(
+      runDataflowReturnError(
+          Code,
+          [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+             ASTContext &ASTCtx) {},
+          {BuiltinOptions()}),
+      llvm::FailedWithMessage("Cannot analyze templated declarations"));
+}
 
-        const ValueDecl *FooDecl = findValueDecl(ASTCtx, "Foo");
-        ASSERT_THAT(FooDecl, NotNull());
-
-        const ValueDecl *BarDecl = findValueDecl(ASTCtx, "Bar");
-        ASSERT_THAT(BarDecl, NotNull());
-
-        const auto *FooVal = cast<PointerValue>(Env.getValue(*FooDecl));
-        const auto *BarLoc = Env.getStorageLocation(*BarDecl);
-        EXPECT_EQ(BarLoc, &FooVal->getPointeeLoc());
-      });
+TEST(TransferTest, CannotAnalyzeMethodOfClassTemplate) {
+  std::string Code = R"(
+    template <typename T>
+    struct A {
+      void target() {}
+    };
+  )";
+  ASSERT_THAT_ERROR(
+      runDataflowReturnError(
+          Code,
+          [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+             ASTContext &ASTCtx) {},
+          {BuiltinOptions()}),
+      llvm::FailedWithMessage("Cannot analyze templated declarations"));
 }
 
 TEST(TransferTest, VarDeclInitAssignConditionalOperator) {
@@ -4224,13 +4241,33 @@ TEST(TransferTest, ContextSensitiveOptionDisabled) {
       {BuiltinOptions{/*.ContextSensitiveOpts=*/std::nullopt}});
 }
 
+TEST(TransferTest, ContextSensitiveReturnReference) {
+  std::string Code = R"(
+    class S {};
+    S& target(bool b, S &s) {
+      return s;
+      // [[p]]
+    }
+  )";
+  runDataflow(
+      Code,
+      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+         ASTContext &ASTCtx) {
+        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+
+        const ValueDecl *SDecl = findValueDecl(ASTCtx, "s");
+        ASSERT_THAT(SDecl, NotNull());
+
+        auto *SLoc = Env.getStorageLocation(*SDecl);
+        ASSERT_THAT(SLoc, NotNull());
+
+        ASSERT_THAT(Env.getReturnStorageLocation(), Eq(SLoc));
+      },
+      {BuiltinOptions{ContextSensitiveOptions{}}});
+}
+
 // This test is a regression test, based on a real crash.
-TEST(TransferTest, ContextSensitiveReturnReferenceFromNonReferenceLvalue) {
-  // This code exercises an unusual code path. If we return an lvalue directly,
-  // the code will catch that it's an l-value based on the `Value`'s kind. If we
-  // pass through a dummy function, the framework won't populate a value at
-  // all. In contrast, this code results in a (fresh) value, but it is not
-  // `ReferenceValue`. This test verifies that we catch this case as well.
+TEST(TransferTest, ContextSensitiveReturnReferenceWithConditionalOperator) {
   std::string Code = R"(
     class S {};
     S& target(bool b, S &s) {
@@ -4245,10 +4282,72 @@ TEST(TransferTest, ContextSensitiveReturnReferenceFromNonReferenceLvalue) {
         ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
         const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
 
+        const ValueDecl *SDecl = findValueDecl(ASTCtx, "s");
+        ASSERT_THAT(SDecl, NotNull());
+
+        auto *SLoc = Env.getStorageLocation(*SDecl);
+        ASSERT_THAT(SLoc, NotNull());
+        EXPECT_THAT(Env.getValue(*SLoc), NotNull());
+
         auto *Loc = Env.getReturnStorageLocation();
         ASSERT_THAT(Loc, NotNull());
+        EXPECT_THAT(Env.getValue(*Loc), NotNull());
 
-        EXPECT_THAT(Env.getValue(*Loc), IsNull());
+        // TODO: We would really like to make this stronger assertion, but that
+        // doesn't work because we don't propagate values correctly through
+        // the conditional operator yet.
+        // ASSERT_THAT(Loc, Eq(SLoc));
+      },
+      {BuiltinOptions{ContextSensitiveOptions{}}});
+}
+
+TEST(TransferTest, ContextSensitiveReturnOneOfTwoReferences) {
+  std::string Code = R"(
+    class S {};
+    S &callee(bool b, S &s1_parm, S &s2_parm) {
+      if (b)
+        return s1_parm;
+      else
+        return s2_parm;
+    }
+    void target(bool b) {
+      S s1;
+      S s2;
+      S &return_s1 = s1;
+      S &return_s2 = s2;
+      S &return_dont_know = callee(b, s1, s2);
+      // [[p]]
+    }
+  )";
+  runDataflow(
+      Code,
+      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+         ASTContext &ASTCtx) {
+        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+
+        const ValueDecl *S1 = findValueDecl(ASTCtx, "s1");
+        ASSERT_THAT(S1, NotNull());
+        const ValueDecl *S2 = findValueDecl(ASTCtx, "s2");
+        ASSERT_THAT(S2, NotNull());
+        const ValueDecl *ReturnS1 = findValueDecl(ASTCtx, "return_s1");
+        ASSERT_THAT(ReturnS1, NotNull());
+        const ValueDecl *ReturnS2 = findValueDecl(ASTCtx, "return_s2");
+        ASSERT_THAT(ReturnS2, NotNull());
+        const ValueDecl *ReturnDontKnow =
+            findValueDecl(ASTCtx, "return_dont_know");
+        ASSERT_THAT(ReturnDontKnow, NotNull());
+
+        StorageLocation *S1Loc = Env.getStorageLocation(*S1);
+        StorageLocation *S2Loc = Env.getStorageLocation(*S2);
+
+        EXPECT_THAT(Env.getStorageLocation(*ReturnS1), Eq(S1Loc));
+        EXPECT_THAT(Env.getStorageLocation(*ReturnS2), Eq(S2Loc));
+
+        // In the case where we don't have a consistent storage location for
+        // the return value, the framework creates a new storage location, which
+        // should be different from the storage locations of `s1` and `s2`.
+        EXPECT_THAT(Env.getStorageLocation(*ReturnDontKnow), Ne(S1Loc));
+        EXPECT_THAT(Env.getStorageLocation(*ReturnDontKnow), Ne(S2Loc));
       },
       {BuiltinOptions{ContextSensitiveOptions{}}});
 }
@@ -5038,6 +5137,26 @@ TEST(TransferTest, UnnamedBitfieldInitializer) {
          ASTContext &ASTCtx) {
         // This doesn't need a body because this test was crashing the framework
         // before handling correctly Unnamed bitfields in `InitListExpr`.
+      });
+}
+
+// Repro for a crash that used to occur with chained short-circuiting logical
+// operators.
+TEST(TransferTest, ChainedLogicalOps) {
+  std::string Code = R"(
+    bool target() {
+      bool b = true || false || false || false;
+      // [[p]]
+      return b;
+    }
+  )";
+  runDataflow(
+      Code,
+      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+         ASTContext &ASTCtx) {
+        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+        auto &B = getValueForDecl<BoolValue>(ASTCtx, Env, "b");
+        EXPECT_TRUE(Env.flowConditionImplies(B));
       });
 }
 

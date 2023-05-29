@@ -299,6 +299,10 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
   if (isa<tosa::TanhOp>(op) && isa<FloatType>(elementTy))
     return rewriter.create<mlir::math::TanhOp>(loc, resultTypes, args);
 
+  // tosa::ErfOp
+  if (isa<tosa::ErfOp>(op) && llvm::isa<FloatType>(elementTy))
+    return rewriter.create<mlir::math::ErfOp>(loc, resultTypes, args);
+
   // tosa::GreaterOp
   if (isa<tosa::GreaterOp>(op) && isa<FloatType>(elementTy))
     return rewriter.create<arith::CmpFOp>(loc, arith::CmpFPredicate::OGT,
@@ -1881,7 +1885,7 @@ public:
 
     auto addDynamicDimension = [&](Value source, int64_t dim) {
       auto dynamicDim = tensor::createDimValue(builder, loc, source, dim);
-      if (auto dimValue = dynamicDim.value().dyn_cast<Value>())
+      if (auto dimValue = llvm::dyn_cast_if_present<Value>(dynamicDim.value()))
         results.push_back(dimValue);
     };
 
@@ -2044,6 +2048,7 @@ void mlir::tosa::populateTosaToLinalgConversionPatterns(
       PointwiseConverter<tosa::ExpOp>,
       PointwiseConverter<tosa::AbsOp>,
       PointwiseConverter<tosa::TanhOp>,
+      PointwiseConverter<tosa::ErfOp>,
       PointwiseConverter<tosa::BitwiseAndOp>,
       PointwiseConverter<tosa::BitwiseOrOp>,
       PointwiseConverter<tosa::BitwiseNotOp>,

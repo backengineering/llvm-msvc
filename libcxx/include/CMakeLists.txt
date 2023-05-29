@@ -78,10 +78,14 @@ set(files
   __algorithm/pstl_backends/cpu_backends/find_if.h
   __algorithm/pstl_backends/cpu_backends/for_each.h
   __algorithm/pstl_backends/cpu_backends/serial.h
+  __algorithm/pstl_backends/cpu_backends/thread.h
+  __algorithm/pstl_backends/cpu_backends/transform.h
+  __algorithm/pstl_copy.h
   __algorithm/pstl_fill.h
   __algorithm/pstl_find.h
   __algorithm/pstl_for_each.h
   __algorithm/pstl_frontend_dispatch.h
+  __algorithm/pstl_transform.h
   __algorithm/push_heap.h
   __algorithm/ranges_adjacent_find.h
   __algorithm/ranges_all_of.h
@@ -164,6 +168,7 @@ set(files
   __algorithm/ranges_sort_heap.h
   __algorithm/ranges_stable_partition.h
   __algorithm/ranges_stable_sort.h
+  __algorithm/ranges_starts_with.h
   __algorithm/ranges_swap_ranges.h
   __algorithm/ranges_transform.h
   __algorithm/ranges_unique.h
@@ -459,6 +464,7 @@ set(files
   __locale_dir/locale_base_api/bsd_locale_fallbacks.h
   __locale_dir/locale_base_api/locale_guard.h
   __mbstate_t.h
+  __mdspan/extents.h
   __memory/addressof.h
   __memory/align.h
   __memory/aligned_alloc.h
@@ -624,6 +630,9 @@ set(files
   __ranges/zip_view.h
   __split_buffer
   __std_mbstate_t.h
+  __stop_token/atomic_unique_lock.h
+  __stop_token/intrusive_list_view.h
+  __stop_token/intrusive_shared_ptr.h
   __string/char_traits.h
   __string/constexpr_c_functions.h
   __string/extern_template_lists.h
@@ -683,6 +692,7 @@ set(files
   __type_traits/has_unique_object_representation.h
   __type_traits/has_virtual_destructor.h
   __type_traits/integral_constant.h
+  __type_traits/invoke.h
   __type_traits/is_abstract.h
   __type_traits/is_aggregate.h
   __type_traits/is_allocator.h
@@ -909,6 +919,7 @@ set(files
   locale.h
   map
   math.h
+  mdspan
   memory
   memory_resource
   mutex

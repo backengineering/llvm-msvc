@@ -108,18 +108,18 @@ class SiFive7GetCyclesOnePerElement<string mx, int sew> {
   // to use a different VLEN, this model will not make scheduling decisions
   // based on the user specified VLEN.
   // c = ceil(VLEN / SEW) * LMUL
-  // Note: c >= 1 since the smallest VLUpperBound is 512 / 8 = 8, and the
-  // largest division performed on VLUpperBound is in MF8 case with division
+  // Note: c >= 1 since the smallest VLEN is 512 / 8 = 8, and the
+  // largest division performed on VLEN is in MF8 case with division
   // by 8. Therefore, there is no need to ceil the result.
-  int VLUpperBound = !div(512, sew);
+  int VLEN = !div(512, sew);
   int c = !cond(
-    !eq(mx, "M1") :        VLUpperBound,
-    !eq(mx, "M2") :        !mul(VLUpperBound, 2),
-    !eq(mx, "M4") :        !mul(VLUpperBound, 4),
-    !eq(mx, "M8") :        !mul(VLUpperBound, 8),
-    !eq(mx, "MF2") :       !div(VLUpperBound, 2),
-    !eq(mx, "MF4") :       !div(VLUpperBound, 4),
-    !eq(mx, "MF8") :       !div(VLUpperBound, 8)
+    !eq(mx, "M1")  : VLEN,
+    !eq(mx, "M2")  : !mul(VLEN, 2),
+    !eq(mx, "M4")  : !mul(VLEN, 4),
+    !eq(mx, "M8")  : !mul(VLEN, 8),
+    !eq(mx, "MF2") : !div(VLEN, 2),
+    !eq(mx, "MF4") : !div(VLEN, 4),
+    !eq(mx, "MF8") : !div(VLEN, 8)
   );
 }
 
@@ -198,12 +198,12 @@ def : WriteRes<WriteIMul32, [SiFive7PipeB]>;
 
 // Integer division
 def : WriteRes<WriteIDiv, [SiFive7PipeB, SiFive7IDiv]> {
-  let Latency = 16;
-  let ResourceCycles = [1, 15];
+  let Latency = 66;
+  let ResourceCycles = [1, 65];
 }
 def : WriteRes<WriteIDiv32,  [SiFive7PipeB, SiFive7IDiv]> {
-  let Latency = 16;
-  let ResourceCycles = [1, 15];
+  let Latency = 34;
+  let ResourceCycles = [1, 33];
 }
 
 // Bitmanip
@@ -448,9 +448,6 @@ foreach mx = SchedMxList in {
     defm "" : LMULWriteResMX<"WriteVShiftV",    [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVShiftX",    [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVShiftI",    [SiFive7VA], mx, IsWorstCase>;
-    defm "" : LMULWriteResMX<"WriteVICmpV",     [SiFive7VA], mx, IsWorstCase>;
-    defm "" : LMULWriteResMX<"WriteVICmpX",     [SiFive7VA], mx, IsWorstCase>;
-    defm "" : LMULWriteResMX<"WriteVICmpI",     [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVIMulV",     [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVIMulX",     [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVIMulAddV",  [SiFive7VA], mx, IsWorstCase>;
@@ -461,6 +458,12 @@ foreach mx = SchedMxList in {
     defm "" : LMULWriteResMX<"WriteVIMovV",     [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVIMovX",     [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVIMovI",     [SiFive7VA], mx, IsWorstCase>;
+  }
+  // Mask results can't chain.
+  let Latency = !add(Cycles, 3), ResourceCycles = [Cycles] in {
+    defm "" : LMULWriteResMX<"WriteVICmpV",     [SiFive7VA], mx, IsWorstCase>;
+    defm "" : LMULWriteResMX<"WriteVICmpX",     [SiFive7VA], mx, IsWorstCase>;
+    defm "" : LMULWriteResMX<"WriteVICmpI",     [SiFive7VA], mx, IsWorstCase>;
   }
 }
 foreach mx = SchedMxList in {
@@ -547,15 +550,20 @@ foreach mx = SchedMxList in {
     defm "" : LMULWriteResMX<"WriteVFMulAddV",   [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVFMulAddF",   [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVFRecpV",     [SiFive7VA], mx, IsWorstCase>;
-    defm "" : LMULWriteResMX<"WriteVFCmpV",      [SiFive7VA], mx, IsWorstCase>;
-    defm "" : LMULWriteResMX<"WriteVFCmpF",      [SiFive7VA], mx, IsWorstCase>;
+    defm "" : LMULWriteResMX<"WriteVFCvtIToFV",  [SiFive7VA], mx, IsWorstCase>;
+    defm "" : LMULWriteResMX<"WriteVFCvtFToIV",  [SiFive7VA], mx, IsWorstCase>;
+  }
+  let Latency = 4, ResourceCycles = [Cycles] in {
     defm "" : LMULWriteResMX<"WriteVFSgnjV",     [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVFSgnjF",     [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVFClassV",    [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVFMergeV",    [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVFMovV",      [SiFive7VA], mx, IsWorstCase>;
-    defm "" : LMULWriteResMX<"WriteVFCvtIToFV",  [SiFive7VA], mx, IsWorstCase>;
-    defm "" : LMULWriteResMX<"WriteVFCvtFToIV",  [SiFive7VA], mx, IsWorstCase>;
+  }
+  // Mask results can't chain.
+  let Latency = !add(Cycles, 3), ResourceCycles = [Cycles] in {
+    defm "" : LMULWriteResMX<"WriteVFCmpV",      [SiFive7VA], mx, IsWorstCase>;
+    defm "" : LMULWriteResMX<"WriteVFCmpF",      [SiFive7VA], mx, IsWorstCase>;
   }
 }
 foreach mx = SchedMxListF in {
@@ -641,14 +649,16 @@ foreach mx = SchedMxList in {
 }
 
 // 16. Vector Permutation Instructions
+let Latency = 4, ResourceCycles = [1] in {
+  def : WriteRes<WriteVIMovVX, [SiFive7VA]>;
+  def : WriteRes<WriteVIMovXV, [SiFive7VA]>;
+  def : WriteRes<WriteVFMovVF, [SiFive7VA]>;
+  def : WriteRes<WriteVFMovFV, [SiFive7VA]>;
+}
 foreach mx = SchedMxList in {
   defvar Cycles = SiFive7GetCyclesDefault<mx>.c;
   defvar IsWorstCase = SiFive7IsWorstCaseMX<mx, SchedMxList>.c;
   let Latency = 8, ResourceCycles = [Cycles] in {
-    defm "" : LMULWriteResMX<"WriteVIMovVX",    [SiFive7VA], mx, IsWorstCase>;
-    defm "" : LMULWriteResMX<"WriteVIMovXV",    [SiFive7VA], mx, IsWorstCase>;
-    defm "" : LMULWriteResMX<"WriteVFMovVF",    [SiFive7VA], mx, IsWorstCase>;
-    defm "" : LMULWriteResMX<"WriteVFMovFV",    [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVRGatherVX",    [SiFive7VA], mx, IsWorstCase>;
     defm "" : LMULWriteResMX<"WriteVRGatherVI",    [SiFive7VA], mx, IsWorstCase>;
   }
@@ -929,12 +939,12 @@ defm "" : LMULReadAdvance<"ReadVMSFSV", 0>;
 defm "" : LMULReadAdvance<"ReadVMIotV", 0>;
 
 // 17. Vector Permutation Instructions
-defm "" : LMULReadAdvance<"ReadVIMovVX", 0>;
-defm "" : LMULReadAdvance<"ReadVIMovXV", 0>;
-defm "" : LMULReadAdvance<"ReadVIMovXX", 0>;
-defm "" : LMULReadAdvance<"ReadVFMovVF", 0>;
-defm "" : LMULReadAdvance<"ReadVFMovFV", 0>;
-defm "" : LMULReadAdvance<"ReadVFMovFX", 0>;
+def : ReadAdvance<ReadVIMovVX, 0>;
+def : ReadAdvance<ReadVIMovXV, 0>;
+def : ReadAdvance<ReadVIMovXX, 0>;
+def : ReadAdvance<ReadVFMovVF, 0>;
+def : ReadAdvance<ReadVFMovFV, 0>;
+def : ReadAdvance<ReadVFMovFX, 0>;
 defm "" : LMULReadAdvance<"ReadVISlideV", 0>;
 defm "" : LMULReadAdvance<"ReadVISlideX", 0>;
 defm "" : LMULReadAdvance<"ReadVFSlideV", 0>;

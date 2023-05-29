@@ -730,8 +730,8 @@ Attribute ModuleImport::getConstantAsAttr(llvm::Constant *constant) {
 
   // Returns the static shape of the provided type if possible.
   auto getConstantShape = [&](llvm::Type *type) {
-    return getBuiltinTypeForAttr(convertType(type))
-        .dyn_cast_or_null<ShapedType>();
+    return llvm::dyn_cast_if_present<ShapedType>(getBuiltinTypeForAttr(convertType(type))
+        );
   };
 
   // Convert one-dimensional constant arrays or vectors that store 1/2/4/8-byte
@@ -798,8 +798,8 @@ Attribute ModuleImport::getConstantAsAttr(llvm::Constant *constant) {
 
   // Convert zero aggregates.
   if (auto *constZero = dyn_cast<llvm::ConstantAggregateZero>(constant)) {
-    auto shape = getBuiltinTypeForAttr(convertType(constZero->getType()))
-                     .dyn_cast_or_null<ShapedType>();
+    auto shape = llvm::dyn_cast_if_present<ShapedType>(getBuiltinTypeForAttr(convertType(constZero->getType()))
+                     );
     if (!shape)
       return {};
     // Convert zero aggregates with a static shape to splat elements attributes.
@@ -1163,9 +1163,19 @@ IntegerAttr ModuleImport::matchIntegerAttr(llvm::Value *value) {
   FailureOr<Value> converted = convertValue(value);
   bool success = succeeded(converted) &&
                  matchPattern(*converted, m_Constant(&integerAttr));
-  assert(success && "expected a constant value");
+  assert(success && "expected a constant integer value");
   (void)success;
   return integerAttr;
+}
+
+FloatAttr ModuleImport::matchFloatAttr(llvm::Value *value) {
+  FloatAttr floatAttr;
+  FailureOr<Value> converted = convertValue(value);
+  bool success =
+      succeeded(converted) && matchPattern(*converted, m_Constant(&floatAttr));
+  assert(success && "expected a constant float value");
+  (void)success;
+  return floatAttr;
 }
 
 DILocalVariableAttr ModuleImport::matchLocalVariableAttr(llvm::Value *value) {
@@ -1532,6 +1542,12 @@ static void processPassthroughAttrs(llvm::Function *func, LLVMFuncOp funcOp) {
       attrName = llvm::Attribute::getNameFromAttrKind(attr.getKindAsEnum());
     auto keyAttr = StringAttr::get(context, attrName);
 
+    // Skip the aarch64_pstate_sm_<body|enabled> since the LLVMFuncOp has an
+    // explicit attribute.
+    if (attrName == "aarch64_pstate_sm_enabled" ||
+        attrName == "aarch64_pstate_sm_body")
+      continue;
+
     if (attr.isStringAttribute()) {
       StringRef val = attr.getValueAsString();
       if (val.empty()) {
@@ -1564,6 +1580,11 @@ void ModuleImport::processFunctionAttributes(llvm::Function *func,
                                              LLVMFuncOp funcOp) {
   processMemoryEffects(func, funcOp);
   processPassthroughAttrs(func, funcOp);
+
+  if (func->hasFnAttribute("aarch64_pstate_sm_enabled"))
+    funcOp.setArmStreaming(true);
+  else if (func->hasFnAttribute("aarch64_pstate_sm_body"))
+    funcOp.setArmLocallyStreaming(true);
 }
 
 DictionaryAttr

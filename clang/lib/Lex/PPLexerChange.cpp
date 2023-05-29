@@ -282,14 +282,14 @@ const char *Preprocessor::getCurLexerEndPos() {
 
 static void collectAllSubModulesWithUmbrellaHeader(
     const Module &Mod, SmallVectorImpl<const Module *> &SubMods) {
-  if (Mod.getUmbrellaHeader())
+  if (Mod.getUmbrellaHeaderAsWritten())
     SubMods.push_back(&Mod);
   for (auto *M : Mod.submodules())
     collectAllSubModulesWithUmbrellaHeader(*M, SubMods);
 }
 
 void Preprocessor::diagnoseMissingHeaderInUmbrellaDir(const Module &Mod) {
-  const Module::Header &UmbrellaHeader = Mod.getUmbrellaHeader();
+  Module::Header UmbrellaHeader = Mod.getUmbrellaHeaderAsWritten();
   assert(UmbrellaHeader.Entry && "Module must use umbrella header");
   const FileID &File = SourceMgr.translateFile(UmbrellaHeader.Entry);
   SourceLocation ExpectedHeadersLoc = SourceMgr.getLocForEndOfFile(File);
@@ -298,7 +298,7 @@ void Preprocessor::diagnoseMissingHeaderInUmbrellaDir(const Module &Mod) {
     return;
 
   ModuleMap &ModMap = getHeaderSearchInfo().getModuleMap();
-  const DirectoryEntry *Dir = Mod.getUmbrellaDir().Entry;
+  OptionalDirectoryEntryRef Dir = Mod.getEffectiveUmbrellaDir();
   llvm::vfs::FileSystem &FS = FileMgr.getVirtualFileSystem();
   std::error_code EC;
   for (llvm::vfs::recursive_directory_iterator Entry(FS, Dir->getName(), EC),
@@ -318,7 +318,7 @@ void Preprocessor::diagnoseMissingHeaderInUmbrellaDir(const Module &Mod) {
         if (!ModMap.isHeaderInUnavailableModule(*Header)) {
           // Find the relative path that would access this header.
           SmallString<128> RelativePath;
-          computeRelativePath(FileMgr, Dir, *Header, RelativePath);
+          computeRelativePath(FileMgr, *Dir, *Header, RelativePath);
           Diag(ExpectedHeadersLoc, diag::warn_uncovered_module_header)
               << Mod.getFullModuleName() << RelativePath;
         }
@@ -535,13 +535,19 @@ bool Preprocessor::HandleEndOfFile(Token &Result, bool isEndOfMacro) {
       return LeavingSubmodule;
     }
   }
-
   // If this is the end of the main file, form an EOF token.
   assert(CurLexer && "Got EOF but no current lexer set!");
   const char *EndPos = getCurLexerEndPos();
   Result.startToken();
   CurLexer->BufferPtr = EndPos;
-  CurLexer->FormTokenWithChars(Result, EndPos, tok::eof);
+
+  if (isIncrementalProcessingEnabled()) {
+    CurLexer->FormTokenWithChars(Result, EndPos, tok::annot_repl_input_end);
+    Result.setAnnotationEndLoc(Result.getLocation());
+    Result.setAnnotationValue(nullptr);
+  } else {
+    CurLexer->FormTokenWithChars(Result, EndPos, tok::eof);
+  }
 
   if (isCodeCompletionEnabled()) {
     // Inserting the code-completion point increases the source buffer by 1,

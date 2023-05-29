@@ -1184,16 +1184,16 @@ SDValue DAGTypeLegalizer::PromoteIntRes_SETCC(SDNode *N) {
   // Get the SETCC result using the canonical SETCC type.
   SDValue SetCC;
   if (N->isStrictFPOpcode()) {
-    EVT VTs[] = {SVT, MVT::Other};
+    SDVTList VTs = DAG.getVTList({SVT, MVT::Other});
     SDValue Opers[] = {N->getOperand(0), N->getOperand(1),
                        N->getOperand(2), N->getOperand(3)};
-    SetCC = DAG.getNode(N->getOpcode(), dl, VTs, Opers);
+    SetCC = DAG.getNode(N->getOpcode(), dl, VTs, Opers, N->getFlags());
     // Legalize the chain result - switch anything that used the old chain to
     // use the new one.
     ReplaceValueWith(SDValue(N, 1), SetCC.getValue(1));
   } else
     SetCC = DAG.getNode(N->getOpcode(), dl, SVT, N->getOperand(0),
-                        N->getOperand(1), N->getOperand(2));
+                        N->getOperand(1), N->getOperand(2), N->getFlags());
 
   // Convert to the expected type.
   return DAG.getSExtOrTrunc(SetCC, dl, NVT);
@@ -2935,6 +2935,22 @@ void DAGTypeLegalizer::ExpandIntRes_MINMAX(SDNode *N,
 
   // Hi part is always the same op
   Hi = DAG.getNode(N->getOpcode(), DL, NVT, {LHSH, RHSH});
+
+  // The Lo of smin(X, -1) is LHSL if X is negative. Otherwise it's -1.
+  if (N->getOpcode() == ISD::SMIN && isAllOnesConstant(RHS)) {
+    SDValue HiNeg =
+        DAG.getSetCC(DL, CCT, LHSH, DAG.getConstant(0, DL, NVT), ISD::SETLT);
+    Lo = DAG.getSelect(DL, NVT, HiNeg, LHSL, DAG.getConstant(-1, DL, NVT));
+    return;
+  }
+
+  // The Lo of smax(X, 0) is 0 if X is negative. Otherwise it's LHSL.
+  if (N->getOpcode() == ISD::SMAX && isNullConstant(RHS)) {
+    SDValue HiNeg =
+        DAG.getSetCC(DL, CCT, LHSH, DAG.getConstant(0, DL, NVT), ISD::SETLT);
+    Lo = DAG.getSelect(DL, NVT, HiNeg, DAG.getConstant(0, DL, NVT), LHSL);
+    return;
+  }
 
   // We need to know whether to select Lo part that corresponds to 'winning'
   // Hi part or if Hi parts are equal.

@@ -2028,6 +2028,9 @@ bool Sema::CheckTSBuiltinFunctionCall(const TargetInfo &TI, unsigned BuiltinID,
   case llvm::Triple::wasm32:
   case llvm::Triple::wasm64:
     return CheckWebAssemblyBuiltinFunctionCall(TI, BuiltinID, TheCall);
+  case llvm::Triple::nvptx:
+  case llvm::Triple::nvptx64:
+    return CheckNVPTXBuiltinFunctionCall(TI, BuiltinID, TheCall);
   }
 }
 
@@ -2876,6 +2879,9 @@ bool Sema::CheckSVEBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
 #define GET_SVE_IMMEDIATE_CHECK
 #include "clang/Basic/arm_sve_sema_rangechecks.inc"
 #undef GET_SVE_IMMEDIATE_CHECK
+#define GET_SME_IMMEDIATE_CHECK
+#include "clang/Basic/arm_sme_sema_rangechecks.inc"
+#undef GET_SME_IMMEDIATE_CHECK
   }
 
   // Perform all the immediate checks for this builtin call.
@@ -2979,6 +2985,14 @@ bool Sema::CheckSVEBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
       break;
     case SVETypeFlags::ImmCheck0_3:
       if (SemaBuiltinConstantArgRange(TheCall, ArgNum, 0, 3))
+        HasError = true;
+      break;
+    case SVETypeFlags::ImmCheck0_0:
+      if (SemaBuiltinConstantArgRange(TheCall, ArgNum, 0, 0))
+        HasError = true;
+      break;
+    case SVETypeFlags::ImmCheck0_15:
+      if (SemaBuiltinConstantArgRange(TheCall, ArgNum, 0, 15))
         HasError = true;
       break;
     }
@@ -3789,7 +3803,7 @@ bool Sema::CheckLoongArchBuiltinFunctionCall(const TargetInfo &TI,
       return Diag(TheCall->getBeginLoc(),
                   diag::err_loongarch_builtin_requires_la64)
              << TheCall->getSourceRange();
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case LoongArch::BI__builtin_loongarch_cacop_w: {
     if (BuiltinID == LoongArch::BI__builtin_loongarch_cacop_w &&
         !TI.hasFeature("32bit"))
@@ -4519,9 +4533,12 @@ bool Sema::CheckRISCVBuiltinFunctionCall(const TargetInfo &TI,
     ASTContext::BuiltinVectorTypeInfo VecInfo =
         Context.getBuiltinVectorTypeInfo(cast<BuiltinType>(
             TheCall->getArg(0)->getType().getCanonicalType().getTypePtr()));
-    unsigned MaxIndex =
-        (VecInfo.EC.getKnownMinValue() * VecInfo.NumVectors) /
-        (ResVecInfo.EC.getKnownMinValue() * ResVecInfo.NumVectors);
+    unsigned MaxIndex;
+    if (VecInfo.NumVectors != 1) // vget for tuple type
+      MaxIndex = VecInfo.NumVectors;
+    else // vget for non-tuple type
+      MaxIndex = (VecInfo.EC.getKnownMinValue() * VecInfo.NumVectors) /
+                 (ResVecInfo.EC.getKnownMinValue() * ResVecInfo.NumVectors);
     return SemaBuiltinConstantArgRange(TheCall, 1, 0, MaxIndex - 1);
   }
   case RISCVVector::BI__builtin_rvv_vset_v: {
@@ -4531,9 +4548,12 @@ bool Sema::CheckRISCVBuiltinFunctionCall(const TargetInfo &TI,
     ASTContext::BuiltinVectorTypeInfo VecInfo =
         Context.getBuiltinVectorTypeInfo(cast<BuiltinType>(
             TheCall->getArg(2)->getType().getCanonicalType().getTypePtr()));
-    unsigned MaxIndex =
-        (ResVecInfo.EC.getKnownMinValue() * ResVecInfo.NumVectors) /
-        (VecInfo.EC.getKnownMinValue() * VecInfo.NumVectors);
+    unsigned MaxIndex;
+    if (ResVecInfo.NumVectors != 1) // vset for tuple type
+      MaxIndex = ResVecInfo.NumVectors;
+    else // vset fo non-tuple type
+      MaxIndex = (ResVecInfo.EC.getKnownMinValue() * ResVecInfo.NumVectors) /
+                 (VecInfo.EC.getKnownMinValue() * VecInfo.NumVectors);
     return SemaBuiltinConstantArgRange(TheCall, 1, 0, MaxIndex - 1);
   }
   case RISCVVector::BI__builtin_rvv_sf_vc_i_se_u8mf8:
@@ -4810,6 +4830,20 @@ bool Sema::CheckWebAssemblyBuiltinFunctionCall(const TargetInfo &TI,
     return BuiltinWasmRefNullExtern(TheCall);
   case WebAssembly::BI__builtin_wasm_ref_null_func:
     return BuiltinWasmRefNullFunc(TheCall);
+  }
+
+  return false;
+}
+
+bool Sema::CheckNVPTXBuiltinFunctionCall(const TargetInfo &TI,
+                                         unsigned BuiltinID,
+                                         CallExpr *TheCall) {
+  switch (BuiltinID) {
+  case NVPTX::BI__nvvm_cp_async_ca_shared_global_4:
+  case NVPTX::BI__nvvm_cp_async_ca_shared_global_8:
+  case NVPTX::BI__nvvm_cp_async_ca_shared_global_16:
+  case NVPTX::BI__nvvm_cp_async_cg_shared_global_16:
+    return checkArgCountAtMost(*this, TheCall, 3);
   }
 
   return false;
@@ -8490,18 +8524,18 @@ bool Sema::SemaBuiltinARMSpecialReg(unsigned BuiltinID, CallExpr *TheCall,
 
     bool ValidString = true;
     if (IsARMBuiltin) {
-      ValidString &= Fields[0].startswith_insensitive("cp") ||
-                     Fields[0].startswith_insensitive("p");
+      ValidString &= Fields[0].starts_with_insensitive("cp") ||
+                     Fields[0].starts_with_insensitive("p");
       if (ValidString)
         Fields[0] = Fields[0].drop_front(
-            Fields[0].startswith_insensitive("cp") ? 2 : 1);
+            Fields[0].starts_with_insensitive("cp") ? 2 : 1);
 
-      ValidString &= Fields[2].startswith_insensitive("c");
+      ValidString &= Fields[2].starts_with_insensitive("c");
       if (ValidString)
         Fields[2] = Fields[2].drop_front(1);
 
       if (FiveFields) {
-        ValidString &= Fields[3].startswith_insensitive("c");
+        ValidString &= Fields[3].starts_with_insensitive("c");
         if (ValidString)
           Fields[3] = Fields[3].drop_front(1);
       }

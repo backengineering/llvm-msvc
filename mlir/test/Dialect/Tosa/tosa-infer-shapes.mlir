@@ -65,6 +65,9 @@ func.func @test_unary_f32(%arg0 : tensor<4xf32>) -> () {
 
   // CHECK: "tosa.cast"(%arg0) : (tensor<4xf32>) -> tensor<4xi32>
   %12 = "tosa.cast"(%arg0) : (tensor<4xf32>) -> tensor<*xi32>
+
+  // CHECK: "tosa.erf"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
+  %13 = "tosa.erf"(%arg0) : (tensor<4xf32>) -> tensor<*xf32>
   return
 }
 
@@ -1233,4 +1236,34 @@ func.func @test_unranked_equal(%arg0 : tensor<*xf32>, %arg1 : tensor<f32>) -> ()
   %0 = "tosa.equal"(%arg0, %arg1) : (tensor<*xf32>, tensor<f32>) -> tensor<*xi1>
 
   return
+}
+
+// -----
+
+// CHECK-LABEL: test_non_tosa_consumer_shape
+func.func @test_non_tosa_consumer_shape(%arg0: tensor<4x4xf32>) -> !shape.shape {
+  // CHECK: "tosa.log"(%arg0) : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  %0 = "tosa.log"(%arg0) : (tensor<4x4xf32>) -> tensor<*xf32>
+  %1 = shape.shape_of %0 : tensor<*xf32> -> !shape.shape
+  return %1 : !shape.shape
+}
+
+// -----
+
+// CHECK-LABEL: test_non_tosa_consumer_shape2
+func.func @test_non_tosa_consumer_shape2(%arg0: tensor<4x4xf32>) -> tensor<?xindex> {
+  // CHECK: "tosa.log"(%arg0) : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  %0 = "tosa.log"(%arg0) : (tensor<4x4xf32>) -> tensor<*xf32>
+  %1 = shape.shape_of %0 : tensor<*xf32> -> tensor<?xindex>
+  return %1 : tensor<?xindex>
+}
+
+// -----
+
+// CHECK-LABEL: test_non_tosa_consumer_extract
+func.func @test_non_tosa_consumer_extract(%arg0: tensor<4x4xf32>, %arg1: index) -> f32 {
+  // CHECK: "tosa.log"(%arg0) : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  %0 = "tosa.log"(%arg0) : (tensor<4x4xf32>) -> tensor<?x?xf32>
+  %1 = tensor.extract %0[%arg1, %arg1] : tensor<?x?xf32>
+  return %1 : f32
 }

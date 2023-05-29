@@ -1891,6 +1891,29 @@ std::optional<MCRegister> IRTranslator::getArgPhysReg(Argument &Arg) {
   return VRegDef->getOperand(1).getReg().asMCReg();
 }
 
+bool IRTranslator::translateIfEntryValueArgument(const DbgValueInst &DebugInst,
+                                                 MachineIRBuilder &MIRBuilder) {
+  auto *Arg = dyn_cast<Argument>(DebugInst.getValue());
+  if (!Arg)
+    return false;
+
+  const DIExpression *Expr = DebugInst.getExpression();
+  if (!Expr->isEntryValue())
+    return false;
+
+  std::optional<MCRegister> PhysReg = getArgPhysReg(*Arg);
+  if (!PhysReg) {
+    LLVM_DEBUG(dbgs() << "Dropping dbg.value: expression is entry_value but "
+                         "couldn't find a physical register\n"
+                      << DebugInst << "\n");
+    return true;
+  }
+
+  MIRBuilder.buildDirectDbgValue(*PhysReg, DebugInst.getVariable(),
+                                 DebugInst.getExpression());
+  return true;
+}
+
 bool IRTranslator::translateIfEntryValueArgument(
     const DbgDeclareInst &DebugInst) {
   auto *Arg = dyn_cast<Argument>(DebugInst.getAddress());
@@ -2026,11 +2049,14 @@ bool IRTranslator::translateKnownIntrinsic(const CallInst &CI, Intrinsic::ID ID,
       // DI cannot produce a valid DBG_VALUE, so produce an undef DBG_VALUE to
       // terminate any prior location.
       MIRBuilder.buildIndirectDbgValue(0, DI.getVariable(), DI.getExpression());
-    } else if (const auto *CI = dyn_cast<Constant>(V)) {
+      return true;
+    }
+    if (const auto *CI = dyn_cast<Constant>(V)) {
       MIRBuilder.buildConstDbgValue(*CI, DI.getVariable(), DI.getExpression());
-    } else if (auto *AI = dyn_cast<AllocaInst>(V);
-               AI && AI->isStaticAlloca() &&
-               DI.getExpression()->startsWithDeref()) {
+      return true;
+    }
+    if (auto *AI = dyn_cast<AllocaInst>(V);
+        AI && AI->isStaticAlloca() && DI.getExpression()->startsWithDeref()) {
       // If the value is an alloca and the expression starts with a
       // dereference, track a stack slot instead of a register, as registers
       // may be clobbered.
@@ -2039,14 +2065,16 @@ bool IRTranslator::translateKnownIntrinsic(const CallInst &CI, Intrinsic::ID ID,
           DIExpression::get(AI->getContext(), ExprOperands.drop_front());
       MIRBuilder.buildFIDbgValue(getOrCreateFrameIndex(*AI), DI.getVariable(),
                                  ExprDerefRemoved);
-    } else {
-      for (Register Reg : getOrCreateVRegs(*V)) {
-        // FIXME: This does not handle register-indirect values at offset 0. The
-        // direct/indirect thing shouldn't really be handled by something as
-        // implicit as reg+noreg vs reg+imm in the first place, but it seems
-        // pretty baked in right now.
-        MIRBuilder.buildDirectDbgValue(Reg, DI.getVariable(), DI.getExpression());
-      }
+      return true;
+    }
+    if (translateIfEntryValueArgument(DI, MIRBuilder))
+      return true;
+    for (Register Reg : getOrCreateVRegs(*V)) {
+      // FIXME: This does not handle register-indirect values at offset 0. The
+      // direct/indirect thing shouldn't really be handled by something as
+      // implicit as reg+noreg vs reg+imm in the first place, but it seems
+      // pretty baked in right now.
+      MIRBuilder.buildDirectDbgValue(Reg, DI.getVariable(), DI.getExpression());
     }
     return true;
   }

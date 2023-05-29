@@ -115,10 +115,6 @@ namespace clang {
                                    TemplateArgumentLoc *ArgsLocArray,
                                    unsigned NumTemplateArgs);
 
-    /// Read and initialize a ExplicitTemplateArgumentList structure.
-    void ReadExplicitTemplateArgumentList(ASTTemplateArgumentListInfo &ArgList,
-                                          unsigned NumTemplateArgs);
-
     void VisitStmt(Stmt *S);
 #define STMT(Type, Base) \
     void Visit##Type(Type *);
@@ -400,8 +396,10 @@ void ASTStmtReader::VisitGCCAsmStmt(GCCAsmStmt *S) {
     Clobbers.push_back(cast_or_null<StringLiteral>(Record.readSubStmt()));
 
   // Labels
-  for (unsigned I = 0, N = NumLabels; I != N; ++I)
+  for (unsigned I = 0, N = NumLabels; I != N; ++I) {
+    Names.push_back(Record.readIdentifier());
     Exprs.push_back(Record.readSubStmt());
+  }
 
   S->setOutputsAndInputsAndClobbers(Record.getContext(),
                                     Names.data(), Constraints.data(),

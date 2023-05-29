@@ -69,7 +69,7 @@ translateDataLayout(DataLayoutSpecInterface attribute,
   std::string llvmDataLayout;
   llvm::raw_string_ostream layoutStream(llvmDataLayout);
   for (DataLayoutEntryInterface entry : attribute.getEntries()) {
-    auto key = entry.getKey().dyn_cast<StringAttr>();
+    auto key = llvm::dyn_cast_if_present<StringAttr>(entry.getKey());
     if (!key)
       continue;
     if (key.getValue() == DLTIDialect::kDataLayoutEndiannessKey) {
@@ -108,7 +108,7 @@ translateDataLayout(DataLayoutSpecInterface attribute,
   // specified in entries. Where possible, data layout queries are used instead
   // of directly inspecting the entries.
   for (DataLayoutEntryInterface entry : attribute.getEntries()) {
-    auto type = entry.getKey().dyn_cast<Type>();
+    auto type = llvm::dyn_cast_if_present<Type>(entry.getKey());
     if (!type)
       continue;
     // Data layout for the index type is irrelevant at this point.
@@ -881,6 +881,11 @@ LogicalResult ModuleTranslation::convertOneFunction(LLVMFuncOp func) {
   if (auto gc = func.getGarbageCollector())
     llvmFunc->setGC(gc->str());
 
+  if (auto armStreaming = func.getArmStreaming())
+    llvmFunc->addFnAttr("aarch64_pstate_sm_enabled");
+  else if (auto armLocallyStreaming = func.getArmLocallyStreaming())
+    llvmFunc->addFnAttr("aarch64_pstate_sm_body");
+
   // First, create all blocks so we can jump to them.
   llvm::LLVMContext &llvmContext = llvmFunc->getContext();
   for (auto &bb : func) {
@@ -1258,25 +1263,29 @@ SmallVector<llvm::Value *> ModuleTranslation::lookupValues(ValueRange values) {
 llvm::OpenMPIRBuilder *ModuleTranslation::getOpenMPBuilder() {
   if (!ompBuilder) {
     ompBuilder = std::make_unique<llvm::OpenMPIRBuilder>(*llvmModule);
-    ompBuilder->initialize();
 
     bool isDevice = false;
+    llvm::StringRef hostIRFilePath = "";
     if (auto offloadMod =
-            dyn_cast<mlir::omp::OffloadModuleInterface>(mlirModule))
+            dyn_cast<mlir::omp::OffloadModuleInterface>(mlirModule)) {
       isDevice = offloadMod.getIsDevice();
+      hostIRFilePath = offloadMod.getHostIRFilePath();
+    }
+
+    ompBuilder->initialize(hostIRFilePath);
 
     // TODO: set the flags when available
-    llvm::OpenMPIRBuilderConfig Config(
+    llvm::OpenMPIRBuilderConfig config(
         isDevice, /* IsTargetCodegen */ false,
         /* HasRequiresUnifiedSharedMemory */ false,
         /* OpenMPOffloadMandatory */ false);
-    ompBuilder->setConfig(Config);
+    ompBuilder->setConfig(config);
   }
   return ompBuilder.get();
 }
 
-const llvm::DILocation *
-ModuleTranslation::translateLoc(Location loc, llvm::DILocalScope *scope) {
+llvm::DILocation *ModuleTranslation::translateLoc(Location loc,
+                                                  llvm::DILocalScope *scope) {
   return debugTranslation->translateLoc(loc, scope);
 }
 

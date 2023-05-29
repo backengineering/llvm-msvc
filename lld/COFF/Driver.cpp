@@ -233,7 +233,7 @@ void LinkerDriver::addBuffer(std::unique_ptr<MemoryBuffer> mb,
       ctx.symtab.addFile(make<DLLFile>(ctx, mbref));
       break;
     }
-    if (filename.endswith_insensitive(".dll")) {
+    if (filename.ends_with_insensitive(".dll")) {
       error(filename + ": bad file type. Did you specify a DLL instead of an "
                        "import library?");
       break;
@@ -558,7 +558,7 @@ std::optional<StringRef> LinkerDriver::findFile(StringRef filename) {
       return std::nullopt;
   }
 
-  if (path.endswith_insensitive(".lib"))
+  if (path.ends_with_insensitive(".lib"))
     visitedLibs.insert(std::string(sys::path::filename(path).lower()));
   return path;
 }

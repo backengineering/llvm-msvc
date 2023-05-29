@@ -1083,15 +1083,15 @@ void InnerLoopVectorizer::collectPoisonGeneratingRecipes(
 
       // This recipe contributes to the address computation of a widen
       // load/store. If the underlying instruction has poison-generating flags,
-      // either drop them directly if the recipe already models the flags or
-      // collect them in a set.
-      // TODO: Migrate all relevant recipes to hold their own flags.
-      Instruction *Instr = CurRec->getUnderlyingInstr();
-      if (Instr && Instr->hasPoisonGeneratingFlags()) {
-        if (auto *RecWithFlags = dyn_cast<VPRecipeWithIRFlags>(CurRec))
-          RecWithFlags->dropPoisonGeneratingFlags();
-        else
-          State.MayGeneratePoisonRecipes.insert(CurRec);
+      // drop them directly.
+      if (auto *RecWithFlags = dyn_cast<VPRecipeWithIRFlags>(CurRec)) {
+        RecWithFlags->dropPoisonGeneratingFlags();
+      } else {
+        Instruction *Instr = CurRec->getUnderlyingInstr();
+        (void)Instr;
+        assert((!Instr || !Instr->hasPoisonGeneratingFlags()) &&
+               "found instruction with poison generating flags not covered by "
+               "VPRecipeWithIRFlags");
       }
 
       // Add new definitions to the worklist.
@@ -2799,14 +2799,7 @@ void InnerLoopVectorizer::scalarizeInstruction(const Instruction *Instr,
   if (!IsVoidRetTy)
     Cloned->setName(Instr->getName() + ".cloned");
 
-  // If the scalarized instruction contributes to the address computation of a
-  // widen masked load/store which was in a basic block that needed predication
-  // and is not predicated after vectorization, we can't propagate
-  // poison-generating flags (nuw/nsw, exact, inbounds, etc.). The scalarized
-  // instruction could feed a poison value to the base address of the widen
-  // load/store.
-  if (State.MayGeneratePoisonRecipes.contains(RepRecipe))
-    Cloned->dropPoisonGeneratingFlags();
+  RepRecipe->setFlags(Cloned);
 
   if (Instr->getDebugLoc())
     State.setDebugLocFromInst(Instr);
@@ -7750,7 +7743,10 @@ SCEV2ValueTy LoopVectorizationPlanner::executePlan(
     LoopVectorizeHints Hints(L, true, *ORE);
     Hints.setAlreadyVectorized();
   }
-  AddRuntimeUnrollDisableMetaData(L);
+  TargetTransformInfo::UnrollingPreferences UP;
+  TTI.getUnrollingPreferences(L, *PSE.getSE(), UP, ORE);
+  if (!UP.UnrollVectorizedLoop || CanonicalIVStartValue)
+    AddRuntimeUnrollDisableMetaData(L);
 
   // 3. Fix the vectorized code: take care of header phi's, live-outs,
   //    predication, updating analyses.
@@ -8494,7 +8490,7 @@ VPRecipeBase *VPRecipeBuilder::tryToWiden(Instruction *I,
       Ops[1] = SafeRHS;
       return new VPWidenRecipe(*I, make_range(Ops.begin(), Ops.end()));
     }
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   }
   case Instruction::Add:
   case Instruction::And:
@@ -9576,9 +9572,10 @@ void VPReplicateRecipe::execute(VPTransformState &State) {
     return;
   }
 
-  // A store of a loop varying value to a loop invariant address only
-  // needs only the last copy of the store.
-  if (isa<StoreInst>(UI) && getOperand(1)->isLiveIn()) {
+  // A store of a loop varying value to a uniform address only needs the last
+  // copy of the store.
+  if (isa<StoreInst>(UI) &&
+      vputils::isUniformAfterVectorization(getOperand(1))) {
     auto Lane = VPLane::getLastLaneForVF(State.VF);
     State.ILV->scalarizeInstruction(UI, this, VPIteration(State.UF - 1, Lane),
                                     State);

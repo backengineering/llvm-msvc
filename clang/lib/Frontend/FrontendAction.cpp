@@ -364,13 +364,14 @@ static std::error_code collectModuleHeaderIncludes(
   }
   // Note that Module->PrivateHeaders will not be a TopHeader.
 
-  if (Module::Header UmbrellaHeader = Module->getUmbrellaHeader()) {
+  if (Module::Header UmbrellaHeader = Module->getUmbrellaHeaderAsWritten()) {
     Module->addTopHeader(UmbrellaHeader.Entry);
     if (Module->Parent)
       // Include the umbrella header for submodules.
       addHeaderInclude(UmbrellaHeader.PathRelativeToRootModuleDirectory,
                        Includes, LangOpts, Module->IsExternC);
-  } else if (Module::DirectoryName UmbrellaDir = Module->getUmbrellaDir()) {
+  } else if (Module::DirectoryName UmbrellaDir =
+                 Module->getUmbrellaDirAsWritten()) {
     // Add all of the headers we find in this subdirectory.
     std::error_code EC;
     SmallString<128> DirNative;
@@ -550,7 +551,7 @@ getInputBufferForModule(CompilerInstance &CI, Module *M) {
   // Collect the set of #includes we need to build the module.
   SmallString<256> HeaderContents;
   std::error_code Err = std::error_code();
-  if (Module::Header UmbrellaHeader = M->getUmbrellaHeader())
+  if (Module::Header UmbrellaHeader = M->getUmbrellaHeaderAsWritten())
     addHeaderInclude(UmbrellaHeader.PathRelativeToRootModuleDirectory,
                      HeaderContents, CI.getLangOpts(), M->IsExternC);
   Err = collectModuleHeaderIncludes(
@@ -612,7 +613,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     std::unique_ptr<ASTUnit> AST = ASTUnit::LoadFromASTFile(
         std::string(InputFile), CI.getPCHContainerReader(),
         ASTUnit::LoadPreprocessorOnly, ASTDiags, CI.getFileSystemOpts(),
-        CI.getCodeGenOpts().DebugTypeExtRefs);
+        /*HeaderSearchOptions=*/nullptr, CI.getCodeGenOpts().DebugTypeExtRefs);
     if (!AST)
       return false;
 
@@ -680,6 +681,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     std::unique_ptr<ASTUnit> AST = ASTUnit::LoadFromASTFile(
         std::string(InputFile), CI.getPCHContainerReader(),
         ASTUnit::LoadEverything, Diags, CI.getFileSystemOpts(),
+        CI.getHeaderSearchOptsPtr(),
         CI.getCodeGenOpts().DebugTypeExtRefs);
 
     if (!AST)
