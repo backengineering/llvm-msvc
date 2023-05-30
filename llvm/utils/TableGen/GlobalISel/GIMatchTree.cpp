@@ -242,7 +242,7 @@ void GIMatchTreeBuilder::runStep() {
       if (LeafI->isFullyTraversed() && LeafI->isFullyTested())
         FullyTestedLeafI = LeafI;
       else if (FullyTestedLeafI != Leaves.end()) {
-        PrintError("Leaf " + LeafI->getName() + " is unreachable");
+        PrintNote("Leaf " + LeafI->getName() + " is unreachable");
         PrintNote("Leaf " + FullyTestedLeafI->getName() +
                   " will have already matched");
       }
