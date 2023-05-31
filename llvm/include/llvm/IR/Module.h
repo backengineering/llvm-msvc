@@ -559,7 +559,7 @@ public:
   // Use global_size() to get the total number of global variables.
   // Use globals() to get the range of all global variables.
 
-private:
+public:
 /// @}
 /// @name Direct access to the globals list, functions list, and symbol table
 /// @{
@@ -569,6 +569,7 @@ private:
   /// Get the Module's list of global variables.
   GlobalListType         &getGlobalList()             { return GlobalList; }
 
+private:
   static GlobalListType Module::*getSublistAccess(GlobalVariable*) {
     return &Module::GlobalList;
   }
