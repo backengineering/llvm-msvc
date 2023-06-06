@@ -3482,6 +3482,11 @@ bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
     MBFI->view("MBP." + MF.getName(), false);
   }
 
+  // Fix the last call at the end of the block.
+  if (MF.getNumBlockIDs() >= 1) {
+    TII->fixNoReturnCall(MF.back());
+  }
+
   // We always return true as we have no way to track whether the final order
   // differs from the original order.
   return true;

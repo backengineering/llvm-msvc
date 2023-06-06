@@ -92,6 +92,18 @@ X86InstrInfo::X86InstrInfo(X86Subtarget &STI)
       Subtarget(STI), RI(STI.getTargetTriple()) {
 }
 
+// Fix the last call at the end of the block.
+void X86InstrInfo::fixNoReturnCall(MachineBasicBlock &MBB) const {
+  auto LastIt = MBB.getLastNonDebugInstr();
+  if (LastIt == MBB.end())
+    return;
+  if (LastIt->getOpcode() == X86::CALLpcrel32 ||
+      LastIt->getOpcode() == X86::CALL64pcrel32) {
+    MBB.insert(MBB.end(),
+               BuildMI(*MBB.getParent(), LastIt->getDebugLoc(), get(X86::RET)));
+  }
+}
+
 bool
 X86InstrInfo::isCoalescableExtInstr(const MachineInstr &MI,
                                     Register &SrcReg, Register &DstReg,
