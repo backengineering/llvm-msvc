@@ -1331,7 +1331,7 @@ void CodeGenFunction::EmitCXXTemporary(const CXXTemporary *Temporary,
 static void EmitSehScope(CodeGenFunction &CGF,
                          llvm::FunctionCallee &SehCppScope) {
   llvm::BasicBlock *InvokeDest = CGF.getInvokeDest();
-  assert(CGF.Builder.GetInsertBlock() && InvokeDest);
+  if (!(CGF.Builder.GetInsertBlock() && InvokeDest)) return;
   llvm::BasicBlock *Cont = CGF.createBasicBlock("invoke.cont");
   SmallVector<llvm::OperandBundleDef, 1> BundleList =
       CGF.getBundlesForFunclet(SehCppScope.getCallee());
