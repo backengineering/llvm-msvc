@@ -12,9 +12,26 @@
             "args": [
                 "-S",
                 "-emit-llvm",
-                "${workspaceFolder}/test/test-cpp-1.cpp",
+                "${workspaceFolder}/test/json.cpp",
                 "-o",
-                "${workspaceFolder}/test/test-cpp-1.ll"
+                "${workspaceFolder}/test/json.ll"
+            ],
+            "stopAtEntry": true,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "console": "externalTerminal"
+        },
+        {
+            "name": "debug clang-cl",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/bin/clang-cl.exe",
+            "args": [
+                "-S",
+                "-emit-llvm",
+                "${workspaceFolder}/test/json.cpp",
+                "-o",
+                "${workspaceFolder}/test/json.ll"
             ],
             "stopAtEntry": true,
             "cwd": "${fileDirname}",
