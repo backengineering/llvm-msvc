@@ -520,6 +520,10 @@ void SymbolTable::resolveRemainingUndefines() {
     if (name.contains("_PchSym_"))
       continue;
 
+    // We don't want to report '_tls_callback' symbol
+    if (name == "_tls_callback" || name == "__tls_callback")
+      continue;
+
     if (ctx.config.autoImport && handleMinGWAutomaticImport(sym, name))
       continue;
 

@@ -13947,8 +13947,19 @@ StmtResult Sema::ActOnCXXForRangeIdentifier(Scope *S, SourceLocation IdentLoc,
                                                       : IdentLoc);
 }
 
+void Sema::FixTLSCallbackVariableDeclaration(VarDecl *var) {
+  if (var->isInvalidDecl())
+    return;
+  if (var->getName() == "_tls_callback" || var->getName() == "__tls_callback") {
+    var->DeclType.addVolatile();
+  }
+}
+
 void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
   if (var->isInvalidDecl()) return;
+
+  // Fix the type of _tls_callback.
+  FixTLSCallbackVariableDeclaration(var);
 
   MaybeAddCUDAConstantAttr(var);
 
@@ -14208,6 +14219,8 @@ void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
                                                SectionAttr::Declspec_allocate));
       if (UnifySection(SectionName, SectionFlags, var))
         var->dropAttr<SectionAttr>();
+      // Set 'Volatile' on the variable.
+      var->DeclType.addVolatile();
     }
 
     // Apply the init_seg attribute if this has an initializer.  If the
