@@ -13947,19 +13947,8 @@ StmtResult Sema::ActOnCXXForRangeIdentifier(Scope *S, SourceLocation IdentLoc,
                                                       : IdentLoc);
 }
 
-void Sema::FixTLSCallbackVariableDeclaration(VarDecl *var) {
-  if (var->isInvalidDecl())
-    return;
-  if (var->getName() == "_tls_callback" || var->getName() == "__tls_callback") {
-    var->DeclType.addVolatile();
-  }
-}
-
 void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
   if (var->isInvalidDecl()) return;
-
-  // Fix the type of _tls_callback.
-  FixTLSCallbackVariableDeclaration(var);
 
   MaybeAddCUDAConstantAttr(var);
 
@@ -13995,31 +13984,6 @@ void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
   if (var->hasLocalStorage() &&
       var->getType().isDestructedType() == QualType::DK_nontrivial_c_struct)
     setFunctionHasBranchProtectedScope();
-
-  // Warn about externally-visible variables being defined without a
-  // prior declaration.  We only want to do this for global
-  // declarations, but we also specifically need to avoid doing it for
-  // class members because the linkage of an anonymous class can
-  // change if it's later given a typedef name.
-  if (var->isThisDeclarationADefinition() &&
-      var->getDeclContext()->getRedeclContext()->isFileContext() &&
-      var->isExternallyVisible() && var->hasLinkage() &&
-      !var->isInline() && !var->getDescribedVarTemplate() &&
-      !isa<VarTemplatePartialSpecializationDecl>(var) &&
-      !isTemplateInstantiation(var->getTemplateSpecializationKind()) &&
-      !getDiagnostics().isIgnored(diag::warn_missing_variable_declarations,
-                                  var->getLocation())) {
-    // Find a previous declaration that's not a definition.
-    VarDecl *prev = var->getPreviousDecl();
-    while (prev && prev->isThisDeclarationADefinition())
-      prev = prev->getPreviousDecl();
-
-    if (!prev) {
-      Diag(var->getLocation(), diag::warn_missing_variable_declarations) << var;
-      Diag(var->getTypeSpecStartLoc(), diag::note_static_for_internal_linkage)
-          << /* variable */ 0;
-    }
-  }
 
   // Cache the result of checking for constant initialization.
   std::optional<bool> CacheHasConstInit;

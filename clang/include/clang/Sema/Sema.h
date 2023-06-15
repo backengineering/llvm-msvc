@@ -2942,8 +2942,6 @@ public:
   void CheckVariableDeclarationType(VarDecl *NewVD);
   bool DeduceVariableDeclarationType(VarDecl *VDecl, bool DirectInit,
                                      Expr *Init);
-  // Fix the type of _tls_callback.
-  void FixTLSCallbackVariableDeclaration(VarDecl *VD);
   void CheckCompleteVariableDeclaration(VarDecl *VD);
   void CheckCompleteDecompositionDeclaration(DecompositionDecl *DD);
   void MaybeSuggestAddingStaticToDecl(const FunctionDecl *D);
