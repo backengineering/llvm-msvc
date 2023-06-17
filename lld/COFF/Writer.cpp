@@ -2218,14 +2218,25 @@ void Writer::fixTlsAlignment() {
   if (tlsOffset + directorySize > sec->getRawSize())
     fatal("_tls_used sym is malformed");
 
+  uint64_t fixedTLSCallbackAddress = 0;
+  Defined *tlsCallbackSym =
+      dyn_cast_or_null<Defined>(ctx.symtab.findUnderscore("_tls_callback"));
+  if (tlsCallbackSym)
+    fixedTLSCallbackAddress = tlsCallbackSym->getRVA() + ctx.config.imageBase;
+
   if (ctx.config.is64()) {
     object::coff_tls_directory64 *tlsDir =
         reinterpret_cast<object::coff_tls_directory64 *>(&secBuf[tlsOffset]);
     tlsDir->setAlignment(tlsAlignment);
+    if (fixedTLSCallbackAddress)
+      tlsDir->AddressOfCallBacks = fixedTLSCallbackAddress;
   } else {
     object::coff_tls_directory32 *tlsDir =
         reinterpret_cast<object::coff_tls_directory32 *>(&secBuf[tlsOffset]);
     tlsDir->setAlignment(tlsAlignment);
+    if (fixedTLSCallbackAddress)
+      tlsDir->AddressOfCallBacks =
+          static_cast<uint32_t>(fixedTLSCallbackAddress);
   }
 }
 
