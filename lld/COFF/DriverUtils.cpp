@@ -223,6 +223,12 @@ void LinkerDriver::parseSection(StringRef s) {
   if (name.empty() || attrs.empty())
     fatal("/section: invalid argument: " + s);
   ctx.config.section[name] = parseSectionAttributes(attrs);
+  // If /driver is specified, we assume that the user wants to create a driver
+  // and set the default attributes for the 'INIT' section.
+  if (ctx.config.driver && name == "INIT")
+    ctx.config.section[name] |= IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_READ |
+                                IMAGE_SCN_MEM_EXECUTE |
+                                IMAGE_SCN_MEM_DISCARDABLE;
 }
 
 // Parses /aligncomm option argument.
