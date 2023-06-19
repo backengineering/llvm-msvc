@@ -910,9 +910,16 @@ void Writer::createSections() {
   const uint32_t r = IMAGE_SCN_MEM_READ;
   const uint32_t w = IMAGE_SCN_MEM_WRITE;
   const uint32_t x = IMAGE_SCN_MEM_EXECUTE;
+  const uint32_t nonpaged = IMAGE_SCN_MEM_NOT_PAGED;
 
   SmallDenseMap<std::pair<StringRef, uint32_t>, OutputSection *> sections;
   auto createSection = [&](StringRef name, uint32_t outChars) {
+    // If the user specified /driver, then we need to set the nonpaged attribute
+    // for the specific sections.
+    if (ctx.config.driver &&
+        (name == ".text" || name == ".data" || name == ".rdata" ||
+         name == ".pdata" || name == ".00cfg"))
+      outChars |= nonpaged;
     OutputSection *&sec = sections[{name, outChars}];
     if (!sec) {
       sec = make<OutputSection>(name, outChars);
