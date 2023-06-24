@@ -1094,8 +1094,9 @@ static Value *simplifyDivRem(Instruction::BinaryOps Opcode, Value *Op0,
   // X / 0 -> poison
   // X % 0 -> poison
   // We don't need to preserve faults!
-  if (match(Op1, m_Zero()))
-    return PoisonValue::get(Ty);
+  // We need :)
+  //if (match(Op1, m_Zero()))
+  //  return PoisonValue::get(Ty);
 
   // If any element of a constant divisor fixed width vector is zero or undef
   // the behavior is undefined and we can fold the whole op to poison.
@@ -1137,8 +1138,9 @@ static Value *simplifyDivRem(Instruction::BinaryOps Opcode, Value *Op0,
   // If the divisor is known to be zero, just return poison. This can happen in
   // some cases where its provable indirectly the denominator is zero but it's
   // not trivially simplifiable (i.e known zero through a phi node).
-  if (Known.isZero())
-    return PoisonValue::get(Ty);
+  // We need to preserve faults! :)
+  //if (Known.isZero())
+  //  return PoisonValue::get(Ty);
 
   // X / 1 -> X
   // X % 1 -> 0
