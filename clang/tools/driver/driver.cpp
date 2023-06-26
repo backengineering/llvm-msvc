@@ -10,7 +10,7 @@
 // for functionality in the Driver clang library.
 //
 //===----------------------------------------------------------------------===//
-
+#include "version.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Basic/DiagnosticOptions.h"
 #include "clang/Basic/HeaderInclude.h"
@@ -425,7 +425,8 @@ int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
     int Ret = ExecuteCC1Tool(Args, ToolContext);
     clock_t EndTime = clock();
     auto Delta = (double)(EndTime - StartTime) / CLOCKS_PER_SEC;
-    llvm::outs() << "Clang spent " << Delta << "s in " << FileName << "\n";
+    llvm::outs() << "llvm-msvc(" << CLANG_LLVM_MSVC_VERSION << ") spent "
+                 << Delta << "s in " << FileName << "\n";
     return Ret;
   }
 
@@ -626,6 +627,7 @@ int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
   // failing command.
   clock_t EndTime = clock();
   auto Delta = (double)(EndTime - StartTime) / CLOCKS_PER_SEC;
-  llvm::outs() << "Clang spent " << Delta << "s in " << FileName << "\n";
+  llvm::outs() << "llvm-msvc(" << CLANG_LLVM_MSVC_VERSION << ") spent " << Delta
+               << "s in " << FileName << "\n";
   return Res;
 }
