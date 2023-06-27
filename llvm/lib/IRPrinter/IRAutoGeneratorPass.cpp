@@ -15,17 +15,10 @@
 
 using namespace llvm;
 
-// Return the path separator based on the operating system
-inline const char *
-separators(sys::path::Style style = sys::path::Style::native) {
-  if (is_style_windows(style))
-    return "\\/";
-  return "/";
-}
-
 // Generate an ir file from the LLVM IR module M and save it to the
 // specified FolderName directory
 void autoGenerateIR(Module &M, StringRef FolderName) {
+
   // Get the current working directory
   SmallVector<char, 300> CurrentProjectDir;
   if (auto Error = sys::fs::current_path(CurrentProjectDir)) {
@@ -36,48 +29,33 @@ void autoGenerateIR(Module &M, StringRef FolderName) {
   // Append the target directory
   sys::path::append(CurrentProjectDir, FolderName);
 
-  // Create the target directory if it does not exist
-  if (auto Error = sys::fs::create_directory(CurrentProjectDir, true)) {
-    report_fatal_error(Error.message().c_str());
-    return;
-  }
-
   // Append the target triple directory
   sys::path::append(CurrentProjectDir, M.getTargetTriple());
 
-  // Create the target triple directory if it does not exist
-  if (auto Error = sys::fs::create_directory(CurrentProjectDir, true)) {
-    report_fatal_error(Error.message().c_str());
-    return;
-  }
-
   // Get the name of the source file and change its extension from .c/.cpp to
   // .ll
-  auto SourceFileName = M.getSourceFileName();
-  if (auto Idx = SourceFileName.rfind(separators()); Idx != std::string::npos)
-    SourceFileName = SourceFileName.substr(Idx + 1);
+  auto SourceFileName = sys::path::relative_path(M.getSourceFileName());
   auto IRFileName = SourceFileName.substr(0, SourceFileName.rfind(".")) + ".ll";
 
-  // Create and open the output file
+  // Create the target directory if it does not exist
   auto CurrentProjectPath(CurrentProjectDir);
   sys::path::append(CurrentProjectPath, IRFileName);
-
-  // sys::path::native(CurrentProjectPath);
+  sys::path::native(CurrentProjectPath);
   std::string IROutputFile(CurrentProjectPath.begin(),
                            CurrentProjectPath.end());
+  if (auto Error = sys::fs::create_directories(
+          sys::path::parent_path(IROutputFile), true))
+    report_fatal_error(Error.message().c_str());
 
+  // Write the LLVM IR file to the output file
   std::error_code EC;
   sys::fs::OpenFlags OpenFlags = sys::fs::OF_Text;
   std::unique_ptr<ToolOutputFile> Out =
       std::make_unique<ToolOutputFile>(IROutputFile, EC, OpenFlags);
   if (EC)
     return;
-
-  // Write the LLVM IR file to the output file
-  if (!M.empty()) {
+  if (!M.empty())
     M.print(Out->os(), nullptr);
-  }
-
   Out->keep();
 }
 
@@ -86,10 +64,10 @@ void autoGenerateIR(Module &M, StringRef FolderName) {
 PreservedAnalyses IRAutoGeneratorPrePass::run(Module &M,
                                               ModuleAnalysisManager &AM) {
   if (Enable)
-    autoGenerateIR(M, "IRAutoGeneratorPre");
+    autoGenerateIR(M, FolderName);
 
-  return PreservedAnalyses::all();
   // Return a PreservedAnalyses object that preserves all analysis results
+  return PreservedAnalyses::all();
 }
 
 // Implementation of the run() function for the IRAutoGeneratorPostPass
@@ -98,8 +76,8 @@ PreservedAnalyses IRAutoGeneratorPostPass::run(Module &M,
                                                ModuleAnalysisManager &AM) {
 
   if (Enable)
-    autoGenerateIR(M, "IRAutoGeneratorPost");
+    autoGenerateIR(M, FolderName);
 
-  return PreservedAnalyses::all();
   // Return a PreservedAnalyses object that preserves all analysis results
+  return PreservedAnalyses::all();
 }

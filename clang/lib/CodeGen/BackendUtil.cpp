@@ -1060,20 +1060,23 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   // Pre pass
   {
     // IR auto generator pass(Pre)
-    MPM.addPassToFront(IRAutoGeneratorPrePass(CodeGenOpts.AutoGenerateIR));
-	
+    MPM.addPassToFront(IRAutoGeneratorPrePass(CodeGenOpts.AutoGenerateIR,
+                                                "IRAutoGeneratorPre"));
+
     // Bitcode auto generator pass(Pre)
-    MPM.addPassToFront(
-        BitcodeAutoGeneratorPrePass(CodeGenOpts.AutoGenerateBitcode));
+    MPM.addPassToFront(BitcodeAutoGeneratorPrePass(
+          CodeGenOpts.AutoGenerateBitcode, "BitcodeAutoGeneratorPre"));
   }
 
   // Post pass
   {
     // IR auto generator pass(Post)
-    MPM.addPass(IRAutoGeneratorPostPass(CodeGenOpts.AutoGenerateIR));
-	
+    MPM.addPass(IRAutoGeneratorPostPass(CodeGenOpts.AutoGenerateIR,
+                                          "IRAutoGeneratorPost"));
+    
     // Bitcode auto generator pass(Post)
-    MPM.addPass(BitcodeAutoGeneratorPostPass(CodeGenOpts.AutoGenerateBitcode));
+    MPM.addPass(BitcodeAutoGeneratorPostPass(CodeGenOpts.AutoGenerateBitcode,
+                                              "BitcodeAutoGeneratorPost"));
   }
 
   // Now that we have all of the passes ready, run them.

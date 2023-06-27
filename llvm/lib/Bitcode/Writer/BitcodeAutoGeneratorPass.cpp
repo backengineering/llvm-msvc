@@ -11,14 +11,6 @@
 
 using namespace llvm;
 
-// Return the path separator based on the operating system
-inline const char *
-separators(sys::path::Style style = sys::path::Style::native) {
-  if (is_style_windows(style))
-    return "\\/";
-  return "/";
-}
-
 // Generate a bitcode file from the LLVM IR module M and save it to the
 // specified FolderName directory
 void autoGenerateBitCode(Module &M, StringRef FolderName) {
@@ -33,44 +25,31 @@ void autoGenerateBitCode(Module &M, StringRef FolderName) {
   // Append the target directory
   sys::path::append(CurrentProjectDir, FolderName);
 
-  // Create the target directory if it does not exist
-  if (auto Error = sys::fs::create_directory(CurrentProjectDir, true)) {
-    report_fatal_error(Error.message().c_str());
-    return;
-  }
-
   // Append the target triple directory
   sys::path::append(CurrentProjectDir, M.getTargetTriple());
 
-  // Create the target triple directory if it does not exist
-  if (auto Error = sys::fs::create_directory(CurrentProjectDir, true)) {
-    report_fatal_error(Error.message().c_str());
-    return;
-  }
-
   // Get the name of the source file and change its extension from .c/.cpp to
   // .bc
-  auto SourceFileName = M.getSourceFileName();
-  if (auto Idx = SourceFileName.rfind(separators()); Idx != std::string::npos)
-    SourceFileName = SourceFileName.substr(Idx + 1);
+  auto SourceFileName = sys::path::relative_path(M.getSourceFileName());
   auto BCFileName = SourceFileName.substr(0, SourceFileName.rfind(".")) + ".bc";
 
-  // Create and open the output file
+  // Create the target directory if it does not exist
   auto CurrentProjectPath(CurrentProjectDir);
   sys::path::append(CurrentProjectPath, BCFileName);
-
   sys::path::native(CurrentProjectPath);
   std::string BCOutputFile(CurrentProjectPath.begin(),
                            CurrentProjectPath.end());
+  if (auto Error = sys::fs::create_directories(
+          sys::path::parent_path(BCOutputFile), true))
+    report_fatal_error(Error.message().c_str());
 
+  // Write the LLVM bitcode file to the output file
   std::error_code EC;
   sys::fs::OpenFlags OpenFlags = sys::fs::OF_None;
   std::unique_ptr<ToolOutputFile> Out =
       std::make_unique<ToolOutputFile>(BCOutputFile, EC, OpenFlags);
   if (EC)
     return;
-
-  // Write the LLVM bitcode file to the output file
   raw_pwrite_stream *OS = &Out->os();
   WriteBitcodeToFile(M, *OS);
   Out->keep();
@@ -81,10 +60,10 @@ void autoGenerateBitCode(Module &M, StringRef FolderName) {
 PreservedAnalyses BitcodeAutoGeneratorPrePass::run(Module &M,
                                                    ModuleAnalysisManager &AM) {
   if (Enable)
-    autoGenerateBitCode(M, "BitcodeAutoGeneratorPre");
+    autoGenerateBitCode(M, FolderName);
 
-  return PreservedAnalyses::all();
   // Return a PreservedAnalyses object that preserves all analysis results
+  return PreservedAnalyses::all();
 }
 
 // Implementation of the run() function for the BitcodeAutoGeneratorPostPass
@@ -92,8 +71,8 @@ PreservedAnalyses BitcodeAutoGeneratorPrePass::run(Module &M,
 PreservedAnalyses BitcodeAutoGeneratorPostPass::run(Module &M,
                                                     ModuleAnalysisManager &AM) {
   if (Enable)
-    autoGenerateBitCode(M, "BitcodeAutoGeneratorPost");
+    autoGenerateBitCode(M, FolderName);
 
-  return PreservedAnalyses::all();
   // Return a PreservedAnalyses object that preserves all analysis results
+  return PreservedAnalyses::all();
 }

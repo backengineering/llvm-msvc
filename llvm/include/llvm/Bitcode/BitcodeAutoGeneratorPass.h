@@ -11,9 +11,11 @@ namespace llvm {
 class BitcodeAutoGeneratorPrePass
     : public PassInfoMixin<BitcodeAutoGeneratorPrePass> {
   bool Enable;
+  StringRef FolderName;
 
 public:
-  explicit BitcodeAutoGeneratorPrePass(bool Enable) : Enable(Enable) {}
+  explicit BitcodeAutoGeneratorPrePass(bool Enable, StringRef FolderName)
+      : Enable(Enable), FolderName(FolderName) {}
 
   // Run the pass and generate bitcode files
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &);
@@ -25,9 +27,11 @@ public:
 class BitcodeAutoGeneratorPostPass
     : public PassInfoMixin<BitcodeAutoGeneratorPostPass> {
   bool Enable;
+  StringRef FolderName;
 
 public:
-  explicit BitcodeAutoGeneratorPostPass(bool Enable) : Enable(Enable) {}
+  explicit BitcodeAutoGeneratorPostPass(bool Enable, StringRef FolderName)
+      : Enable(Enable), FolderName(FolderName) {}
 
   // Run the pass and generate bitcode files
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &);

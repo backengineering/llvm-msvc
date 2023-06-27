@@ -17,9 +17,11 @@ class Pass;
 // the input.
 class IRAutoGeneratorPrePass : public PassInfoMixin<IRAutoGeneratorPrePass> {
   bool Enable;
+  StringRef FolderName;
 
 public:
-  IRAutoGeneratorPrePass(bool Enable) : Enable(Enable) {}
+  explicit IRAutoGeneratorPrePass(bool Enable, StringRef FolderName)
+      : Enable(Enable), FolderName(FolderName) {}
 
   // Run the pass on the given module, and return the results as a set of
   // preserved analyses.
@@ -34,9 +36,11 @@ public:
 // the input.
 class IRAutoGeneratorPostPass : public PassInfoMixin<IRAutoGeneratorPostPass> {
   bool Enable;
+  StringRef FolderName;
 
 public:
-  IRAutoGeneratorPostPass(bool Enable) : Enable(Enable) {}
+  explicit IRAutoGeneratorPostPass(bool Enable, StringRef FolderName)
+      : Enable(Enable), FolderName(FolderName) {}
 
   // Run the pass on the given module, and return the results as a set of
   // preserved analyses.
