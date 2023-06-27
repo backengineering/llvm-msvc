@@ -1497,7 +1497,14 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   // Parse command line options.
   ArgParser parser(ctx);
   opt::InputArgList args = parser.parse(argsArr);
-
+  
+  // Print linker arguments
+  llvm::outs() << "llvm-msvc linker arguments: ";
+  for (auto arg : args) {
+    llvm::outs() << arg->getAsString(args) << " ";
+  }
+  llvm::outs() << "\n";
+          
   // Parse and evaluate -mllvm options.
   std::vector<const char *> v;
   v.push_back("lld-link (LLVM option parsing)");
