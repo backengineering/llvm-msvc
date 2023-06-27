@@ -414,7 +414,7 @@ int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
   
   // [clang] Add print arguments
   if (HasPrintArgs) {
-    llvm::outs() << "Program arguments:";
+    llvm::outs() << "llvm-msvc compiler arguments: ";
     for (auto Arg : Args) {
       llvm::outs() << Arg << " ";
     }
