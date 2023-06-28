@@ -1905,6 +1905,8 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   parseMerge(".edata=.rdata");
   parseMerge(".xdata=.rdata");
   parseMerge(".00cfg=.rdata");
+  parseMerge(".retplne=.rdata");
+  parseMerge(".voltbl=.rdata");
   parseMerge(".bss=.data");
 
   if (config->mingw) {
