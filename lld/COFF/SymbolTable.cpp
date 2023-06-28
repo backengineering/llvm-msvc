@@ -59,6 +59,7 @@ void SymbolTable::addFile(InputFile *file) {
   } else {
     file->parse();
     if (auto *f = dyn_cast<ObjFile>(file)) {
+      message("llvm-msvc linker reading object " + toString(file));
       ctx.objFileInstances.push_back(f);
     } else if (auto *f = dyn_cast<BitcodeFile>(file)) {
       ctx.bitcodeFileInstances.push_back(f);
