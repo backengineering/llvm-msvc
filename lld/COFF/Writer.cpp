@@ -916,9 +916,8 @@ void Writer::createSections() {
   auto createSection = [&](StringRef name, uint32_t outChars) {
     // If the user specified /driver, then we need to set the nonpaged attribute
     // for the specific sections.
-    if (ctx.config.driver &&
-        (name == ".text" || name == ".data" || name == ".rdata" ||
-         name == ".pdata" || name == ".00cfg"))
+    if (ctx.config.driver && (name == ".text" || name == ".data" ||
+                              name == ".rdata" || name == ".pdata"))
       outChars |= nonpaged;
     OutputSection *&sec = sections[{name, outChars}];
     if (!sec) {
