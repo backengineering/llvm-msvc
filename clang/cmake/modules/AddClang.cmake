@@ -38,7 +38,7 @@ macro(set_clang_windows_version_resource_properties name)
       VERSION_MINOR ${CLANG_VERSION_MINOR}
       VERSION_PATCHLEVEL ${CLANG_VERSION_PATCHLEVEL}
       VERSION_STRING "${CLANG_VERSION}"
-      PRODUCT_NAME "clang")
+      PRODUCT_NAME "llvm-msvc")
   endif()
 endmacro()
 

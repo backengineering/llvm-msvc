@@ -424,7 +424,7 @@ function(set_windows_version_resource_properties name resource_file)
   endif()
 
   if (NOT DEFINED ARG_PRODUCT_NAME)
-    set(ARG_PRODUCT_NAME "LLVM")
+    set(ARG_PRODUCT_NAME "llvm-msvc")
   endif()
 
   set_property(SOURCE ${resource_file}
