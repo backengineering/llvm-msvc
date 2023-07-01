@@ -418,7 +418,7 @@ GlobalVariable::GlobalVariable(Type *Ty, bool constant, LinkageTypes Link,
     : GlobalObject(Ty, Value::GlobalVariableVal,
                    OperandTraits<GlobalVariable>::op_begin(this),
                    InitVal != nullptr, Link, Name, AddressSpace),
-      isConstantGlobal(constant),
+      isConstantGlobal(constant), isVolatileGlobal(false),
       isExternallyInitializedConstant(isExternallyInitialized) {
   assert(!Ty->isFunctionTy() && PointerType::isValidElementType(Ty) &&
          "invalid type for global variable");

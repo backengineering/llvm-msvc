@@ -45,7 +45,8 @@ class GlobalVariable : public GlobalObject, public ilist_node<GlobalVariable> {
                                                // can change from its initial
                                                // value before global
                                                // initializers are run?
-
+  bool isVolatileGlobal : 1;                   // Is this a volatile global?
+  
 public:
   /// GlobalVariable ctor - If a parent module is specified, the global is
   /// automatically inserted into the end of the specified modules global list.
@@ -151,6 +152,10 @@ public:
   ///
   bool isConstant() const { return isConstantGlobal; }
   void setConstant(bool Val) { isConstantGlobal = Val; }
+
+  /// If the value is a volatile global, we will preserve it.
+  bool isVolatile() const { return isVolatileGlobal; }
+  void setVolatile(bool Val) { isVolatileGlobal = Val; }
 
   bool isExternallyInitialized() const {
     return isExternallyInitializedConstant;
