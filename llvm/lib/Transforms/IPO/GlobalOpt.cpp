@@ -1950,6 +1950,10 @@ OptimizeFunctions(Module &M,
     if (!F.hasName() && !F.isDeclaration() && !F.hasLocalLinkage())
       F.setLinkage(GlobalValue::InternalLinkage);
 
+    // Skip Functions with 'volatile'
+    if (F.isVolatile())
+      continue;
+
     if (deleteIfDead(F, NotDiscardableComdats, DeleteFnCallback)) {
       Changed = true;
       continue;
@@ -2060,6 +2064,10 @@ OptimizeGlobalVars(Module &M,
         if (New != C)
           GV.setInitializer(New);
       }
+
+    // Skip Global variables with 'volatile'
+    if (GV.isVolatile())
+      continue;
 
     if (deleteIfDead(GV, NotDiscardableComdats)) {
       Changed = true;

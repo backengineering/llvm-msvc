@@ -324,7 +324,7 @@ PreservedAnalyses GlobalDCEPass::run(Module &M, ModuleAnalysisManager &MAM) {
   // The first pass is to drop initializers of global variables which are dead.
   std::vector<GlobalVariable *> DeadGlobalVars; // Keep track of dead globals
   for (GlobalVariable &GV : M.globals())
-    if (!AliveGlobals.count(&GV)) {
+    if (!AliveGlobals.count(&GV) && !GV.isVolatile()) {
       DeadGlobalVars.push_back(&GV);         // Keep track of dead globals
       if (GV.hasInitializer()) {
         Constant *Init = GV.getInitializer();
@@ -337,7 +337,7 @@ PreservedAnalyses GlobalDCEPass::run(Module &M, ModuleAnalysisManager &MAM) {
   // The second pass drops the bodies of functions which are dead...
   std::vector<Function *> DeadFunctions;
   for (Function &F : M)
-    if (!AliveGlobals.count(&F)) {
+    if (!AliveGlobals.count(&F) && !F.isVolatile()) {
       DeadFunctions.push_back(&F);         // Keep track of dead globals
       if (!F.isDeclaration())
         F.deleteBody();
