@@ -1954,7 +1954,8 @@ OptimizeFunctions(Module &M,
     // create a new global variable named F.getName() +
     // "RefGV_volatile" with type i32/64*
     if (F.isVolatile()) {
-      StringRef RefGVName = F.getName().str() + "RefGV_volatile";
+      StringRef RefGVName =
+          F.getName().str() + "RefGV_volatile_202CB962AC59075B964B07152D234B70";
       if (!M.getGlobalVariable(RefGVName)) {
         auto RefGV = new GlobalVariable(
             Type::getIntNTy(M.getContext(),
