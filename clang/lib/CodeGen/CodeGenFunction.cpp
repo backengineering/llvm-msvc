@@ -398,6 +398,12 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
   if (CGDebugInfo *DI = getDebugInfo())
     DI->EmitFunctionEnd(Builder, CurFn);
 
+  // Check if the current code declaration (CurCodeDecl) exists and has the
+  // VolatileAttr attribute. If the condition is true, set the volatile
+  // attribute for the current function (CurFn).
+  if (CurCodeDecl && CurCodeDecl->hasAttr<VolatileAttr>())
+    CurFn->setVolatile();
+
   // Reset the debug location to that of the simple 'return' expression, if any
   // rather than that of the end of the function's scope '}'.
   ApplyDebugLocation AL(*this, Loc);

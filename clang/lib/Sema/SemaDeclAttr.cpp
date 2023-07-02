@@ -2173,6 +2173,10 @@ static void handleNakedAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   D->addAttr(::new (S.Context) NakedAttr(S.Context, AL));
 }
 
+static void handleVolatileAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+  D->addAttr(::new (S.Context) VolatileAttr(S.Context, AL));
+}
+
 static void handleNoReturnAttr(Sema &S, Decl *D, const ParsedAttr &Attrs) {
   if (hasDeclarator(D)) return;
 
@@ -8976,6 +8980,9 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
     break;
   case ParsedAttr::AT_Naked:
     handleNakedAttr(S, D, AL);
+    break;
+  case ParsedAttr::AT_Volatile:
+    handleVolatileAttr(S, D, AL);
     break;
   case ParsedAttr::AT_NoReturn:
     handleNoReturnAttr(S, D, AL);

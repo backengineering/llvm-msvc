@@ -798,6 +798,8 @@ void Parser::ParseMicrosoftDeclSpecs(ParsedAttributes &Attrs) {
           T.skipToEnd();
           return;
         }
+        if (Str.front() == '"' && Str.back() == '"')
+          Str = Str.drop_front(1).drop_back(1);
         AttrName = PP.getIdentifierInfo(Str);
         AttrNameLoc = ConsumeStringToken();
       } else {
