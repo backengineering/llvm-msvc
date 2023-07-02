@@ -5,6 +5,9 @@
 [![Github All Releases](https://img.shields.io/github/downloads/NewWorldComingSoon/llvm-msvc/total.svg)](https://github.com/NewWorldComingSoon/llvm-msvc/releases) 
 [![GitHub release](https://img.shields.io/github/release/NewWorldComingSoon/llvm-msvc.svg)](https://github.com/NewWorldComingSoon/llvm-msvc/releases) 
 
+llvm-msvc is a compiler based LLVM that is not restricted by MSVC. The goal is to have the same experience as MSVC on Windows.
+You can use naked functions anywhere, as well as add custom support such as obfuscation.
+
 ## Why do we make this project?
 Because there are more hacky operations, a lot of code can not be submitted directly to the official. So there is this branch.
 
