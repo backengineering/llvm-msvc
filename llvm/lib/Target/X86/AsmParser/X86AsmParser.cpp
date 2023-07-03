@@ -151,6 +151,7 @@ private:
     IC_RPAREN,
     IC_LPAREN,
     IC_IMM,
+    IC_DOLLAR,
     IC_REGISTER,
     IC_EQ,
     IC_NE,
@@ -420,6 +421,7 @@ private:
     IES_REGISTER,
     IES_INTEGER,
     IES_IDENTIFIER,
+    IES_DOLLOR,
     IES_ERROR
   };
 
@@ -670,6 +672,7 @@ private:
       case IES_RPAREN:
       case IES_REGISTER:
       case IES_OFFSET:
+      case IES_DOLLOR:
         State = IES_PLUS;
         IC.pushOperator(IC_PLUS);
         if (CurrState == IES_REGISTER && PrevState != IES_MULTIPLY) {
@@ -905,6 +908,19 @@ private:
       case IES_RPAREN:
         State = IES_MULTIPLY;
         IC.pushOperator(IC_MULTIPLY);
+        break;
+      }
+    }
+    void onDollor() {
+      PrevState = State;
+      switch (State) {
+      default:
+        State = IES_ERROR;
+        break;
+      case IES_INIT:
+        State = IES_REGISTER;
+        TmpReg = X86::EIP;
+        IC.pushOperand(IC_REGISTER);
         break;
       }
     }
@@ -1915,9 +1931,9 @@ bool X86AsmParser::ParseIntelExpression(IntelExprStateMachine &SM, SMLoc &End) {
       if (!Parser.isParsingMasm()) {
         if ((Done = SM.isValidEndState()))
           break;
-        return Error(Tok.getLoc(), "unknown token in expression");
+        SM.onDollor();
       }
-      [[fallthrough]];
+      break;
     case AsmToken::String: {
       if (Parser.isParsingMasm()) {
         // MASM parsers handle strings in expressions as constants.
@@ -2529,20 +2545,28 @@ bool X86AsmParser::parseIntelOperand(OperandVector &Operands, StringRef Name) {
   if (Tok.is(AsmToken::Identifier) && !parseRegister(RegNo, Start, End)) {
     if (RegNo == X86::RIP)
       return Error(Start, "rip can only be used as a base register");
-    // A Register followed by ':' is considered a segment override
-    if (Tok.isNot(AsmToken::Colon)) {
-      if (PtrInOperand)
-        return Error(Start, "expected memory operand after 'ptr', "
-                            "found register operand instead");
-      Operands.push_back(X86Operand::CreateReg(RegNo, Start, End));
-      return false;
+    if (RegNo == X86::EIP && Tok.is(AsmToken::Plus)) {
+      Operands.push_back(X86Operand::CreateReg(X86::EIP, Start, End));
+      Start = Lex().getLoc();
+    } else {
+      // A Register followed by ':' is considered a segment override
+      if (Tok.isNot(AsmToken::Colon)) {
+        if (PtrInOperand)
+          return Error(Start, "expected memory operand after 'ptr', "
+                              "found register operand instead");
+        Operands.push_back(X86Operand::CreateReg(RegNo, Start, End));
+        return false;
+      }
+      // An alleged segment override. check if we have a valid segment register
+      if (!X86MCRegisterClasses[X86::SEGMENT_REGRegClassID].contains(RegNo))
+        return Error(Start, "invalid segment register");
+      // Eat ':' and update Start location
+      Start = Lex().getLoc();
     }
-    // An alleged segment override. check if we have a valid segment register
-    if (!X86MCRegisterClasses[X86::SEGMENT_REGRegClassID].contains(RegNo))
-      return Error(Start, "invalid segment register");
-    // Eat ':' and update Start location
-    Start = Lex().getLoc();
   }
+
+  if (Tok.is(AsmToken::Dollar))
+    Operands.push_back(X86Operand::CreateReg(X86::EIP, Start, End));
 
   // Immediates and Memory
   IntelExprStateMachine SM;
