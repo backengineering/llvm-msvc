@@ -451,8 +451,8 @@ StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
         if (isAsm) {
           // If this is a new __asm {} block we want to process it separately
           // from the single-line __asm statements
-          if (PP.LookAhead(0).is(tok::l_brace))
-            break;
+          //if (PP.LookAhead(0).is(tok::l_brace))
+          //  break;
           LineNo = SrcMgr.getLineNumber(ExpLoc.first, ExpLoc.second);
           SkippedStartOfLine = Tok.isAtStartOfLine();
         } else if (Tok.is(tok::semi)) {

@@ -123,12 +123,15 @@ bool MCAsmParser::addErrorSuffix(const Twine &Suffix) {
   return true;
 }
 
-bool MCAsmParser::parseMany(function_ref<bool()> parseOne, bool hasComma) {
+bool MCAsmParser::parseMany(function_ref<bool()> parseOne, bool hasComma,
+                            AsmToken::TokenKind targetKind) {
   if (parseOptionalToken(AsmToken::EndOfStatement))
     return false;
   while (true) {
     if (parseOne())
       return true;
+    if (targetKind != AsmToken::Error && getTok().getKind() == targetKind)
+      return false;      
     if (parseOptionalToken(AsmToken::EndOfStatement))
       return false;
     if (hasComma && parseToken(AsmToken::Comma))
