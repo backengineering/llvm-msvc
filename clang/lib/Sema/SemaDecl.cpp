@@ -17311,7 +17311,8 @@ Sema::ActOnTag(Scope *S, unsigned TagSpec, TagUseKind TUK, SourceLocation KWLoc,
       // found the wrong kind of type on the first
       // (non-redeclaration) lookup.
       if ((TUK == TUK_Reference || TUK == TUK_Friend) &&
-          !Previous.isForRedeclaration()) {
+          !Previous.isForRedeclaration() &&
+          (!dyn_cast<TypedefDecl>(PrevDecl) || !isClassCompatTagKind(Kind))) {
         NonTagKind NTK = getNonTagTypeDeclKind(PrevDecl, Kind);
         Diag(NameLoc, diag::err_tag_reference_non_tag) << PrevDecl << NTK
                                                        << Kind;
