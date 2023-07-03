@@ -415,7 +415,7 @@ def GRH16 : RegisterClass<"X86", [i16], 16,
                                R15WH)>;
 
 def GR32 : RegisterClass<"X86", [i32], 32,
-                         (add EAX, ECX, EDX, ESI, EDI, EBX, EBP, ESP,
+                         (add EAX, ECX, EDX, ESI, EDI, EBX, EBP, ESP, EIP,
                               R8D, R9D, R10D, R11D, R14D, R15D, R12D, R13D)>;
 
 // GR64 - 64-bit GPRs. This oddly includes RIP, which isn't accurate, since
@@ -493,7 +493,7 @@ def GR64_NOREX : RegisterClass<"X86", [i64], 64,
                             (add RAX, RCX, RDX, RSI, RDI, RBX, RBP, RSP, RIP)>;
 
 // GR32_NOSP - GR32 registers except ESP.
-def GR32_NOSP : RegisterClass<"X86", [i32], 32, (sub GR32, ESP)>;
+def GR32_NOSP : RegisterClass<"X86", [i32], 32, (sub GR32, ESP, EIP)>;
 
 // GR64_NOSP - GR64 registers except RSP (and RIP).
 def GR64_NOSP : RegisterClass<"X86", [i64], 64, (sub GR64, RSP, RIP)>;

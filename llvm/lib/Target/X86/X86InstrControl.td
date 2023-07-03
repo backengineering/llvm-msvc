@@ -208,6 +208,10 @@ let isCall = 1 in
                            (outs), (ins i32imm_brtarget:$dst),
                            "call{l}\t$dst", []>, OpSize32,
                       Requires<[Not64BitMode]>, Sched<[WriteJump]>;
+    def CALLEiprel32 : Ii32EipRel<0xE8, RawFrm,
+                           (outs), (ins GR32:$src1, i32mem:$src2),
+                          "call{l}\t$src1, $src2", []>, OpSize32,
+                          Requires<[Not64BitMode]>, Sched<[WriteJump]>;   
     let hasSideEffects = 0 in
       def CALLpcrel16 : Ii16PCRel<0xE8, RawFrm,
                              (outs), (ins i16imm_brtarget:$dst),
