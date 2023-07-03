@@ -391,6 +391,25 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
   const Function &Fn = mf.getFunction();
   MF = &mf;
 
+  if (OptLevel == CodeGenOpt::None) {
+    bool HasInline = false;
+    for (auto &BB : MF->getFunction())
+      for (auto &I : BB) {
+        if (I.getOpcode() == Instruction::Call) {
+          CallInst *callInst = dyn_cast<CallInst>(&I);
+          if (callInst->isInlineAsm())
+            HasInline = true;
+        } else if (I.getOpcode() == Instruction::Invoke) {
+          InvokeInst *invokeInst = dyn_cast<InvokeInst>(&I);
+          if (invokeInst->isInlineAsm())
+            HasInline = true;
+        }
+      }
+
+    if (HasInline)
+      TM.Options.EnableFastISel = false;
+  }
+
   // Decide what flavour of variable location debug-info will be used, before
   // we change the optimisation level.
   bool InstrRef = mf.shouldUseDebugInstrRef();
