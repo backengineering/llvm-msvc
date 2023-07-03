@@ -688,8 +688,8 @@ void JumpScopeChecker::VerifyJumps() {
         Loc = DS->getBeginLoc();
       else
         Loc = SC->getBeginLoc();
-      CheckJump(SS, SC, Loc, diag::err_switch_into_protected_scope, 0,
-                diag::warn_cxx98_compat_switch_into_protected_scope);
+      /*CheckJump(SS, SC, Loc, diag::err_switch_into_protected_scope, 0,
+                diag::warn_cxx98_compat_switch_into_protected_scope);*/
     }
   }
 }
