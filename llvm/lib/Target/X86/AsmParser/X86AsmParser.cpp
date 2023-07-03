@@ -2214,8 +2214,13 @@ void X86AsmParser::RewriteIntelExpression(IntelExprStateMachine &SM,
     BaseRegStr = X86IntelInstPrinter::getRegisterName(SM.getBaseReg());
   if (SM.getIndexReg())
     IndexRegStr = X86IntelInstPrinter::getRegisterName(SM.getIndexReg());
-  if (SM.isOffsetOperator())
+  if (SM.isOffsetOperator()) {
     OffsetNameStr = SM.getSymName();
+    MCSymbolRefExpr *MCSym = (MCSymbolRefExpr *)(SM.getSym());
+    if (MCSym && MCSym->getKind() == MCSymbolRefExpr::VK_INLINEASM_MOV_LABEL)
+      return;
+  }
+    
   // Emit it
   IntelExpr Expr(BaseRegStr, IndexRegStr, SM.getScale(), OffsetNameStr,
                  SM.getImm(), SM.isMemExpr());
@@ -2251,25 +2256,32 @@ bool X86AsmParser::ParseIntelInlineAsmIdentifier(
           Info.isKind(InlineAsmIdentifierInfo::IK_Invalid)) &&
           "frontend claimed part of a token?");
 
+  bool InlineAsmMovLabel = false;
   // If the identifier lookup was unsuccessful, assume that we are dealing with
   // a label.
   if (Info.isKind(InlineAsmIdentifierInfo::IK_Invalid)) {
     StringRef InternalName =
       SemaCallback->LookupInlineAsmLabel(Identifier, getSourceManager(),
                                          Loc, false);
-    assert(InternalName.size() && "We should have an internal name here.");
-    // Push a rewrite for replacing the identifier name with the internal name,
-    // unless we are parsing the operand of an offset operator
-    if (!IsParsingOffsetOperator)
-      InstInfo->AsmRewrites->emplace_back(AOK_Label, Loc, Identifier.size(),
-                                          InternalName);
-    else
-      Identifier = InternalName;
+    //assert(InternalName.size() && "We should have an internal name here.");
+    //// Push a rewrite for replacing the identifier name with the internal name,
+    //// unless we are parsing the operand of an offset operator
+    //if (!IsParsingOffsetOperator)
+    //  InstInfo->AsmRewrites->emplace_back(AOK_Label, Loc, Identifier.size(),
+    //                                      InternalName);
+    //else
+    //  Identifier = InternalName;
+    if (IsParsingOffsetOperator)
+      InlineAsmMovLabel = true;
+    InstInfo->AsmRewrites->emplace_back(AOK_Label, Loc, Identifier.size(),
+                                        InternalName);
   } else if (Info.isKind(InlineAsmIdentifierInfo::IK_EnumVal))
     return false;
   // Create the symbol reference.
   MCSymbol *Sym = getContext().getOrCreateSymbol(Identifier);
   MCSymbolRefExpr::VariantKind Variant = MCSymbolRefExpr::VK_None;
+  if (InlineAsmMovLabel)
+    Variant = MCSymbolRefExpr::VK_INLINEASM_MOV_LABEL;
   Val = MCSymbolRefExpr::create(Sym, Variant, getParser().getContext());
   return false;
 }
@@ -2597,6 +2609,20 @@ bool X86AsmParser::parseIntelOperand(OperandVector &Operands, StringRef Name) {
                                                  Info.Var.IsGlobalLV));
         return false;
       }
+      const MCSymbolRefExpr *MCSym = (MCSymbolRefExpr *)SM.getSym();
+      if (MCSym &&
+          MCSym->getKind() != MCSymbolRefExpr::VK_INLINEASM_MOV_LABEL) {
+        Operands.push_back(X86Operand::CreateImm(Disp, Start, End,
+                                                 SM.getSymName(), Info.Var.Decl,
+                                                 Info.Var.IsGlobalLV));
+        return false;
+      }
+      unsigned BaseReg = SM.getBaseReg();
+      unsigned IndexReg = SM.getIndexReg();
+      unsigned Scale = SM.getScale();
+      return CreateMemForMSInlineAsm(RegNo, Disp, BaseReg, IndexReg, Scale,
+                                     Start, End, Size, SM.getSymName(),
+                                     SM.getIdentifierInfo(), Operands);
     }
 
     Operands.push_back(X86Operand::CreateImm(Disp, Start, End));
@@ -2688,6 +2714,16 @@ bool X86AsmParser::parseIntelOperand(OperandVector &Operands, StringRef Name) {
     if (PtrInOperand || SM.isBracketUsed())
       MaybeDirectBranchDest = false;
   }
+  
+  if (isParsingMSInlineAsm())
+    if (SM.getSym() && SM.getSym()->getKind() == MCExpr::ExprKind::SymbolRef)
+      if (Operands.size() >= 1) {
+        X86Operand *Op = (X86Operand *)Operands[Operands.size() - 1].get();
+        if (Op && Op->Kind != X86Operand::Token) {
+          Operands.push_back(X86Operand::CreateImm(Disp, Start, End));
+          return false;
+        }
+      }
 
   if ((BaseReg || IndexReg || RegNo || DefaultBaseReg != X86::NoRegister))
     Operands.push_back(X86Operand::CreateMem(
