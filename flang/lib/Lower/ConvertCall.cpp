@@ -583,7 +583,11 @@ struct CallContext {
 
   fir::FirOpBuilder &getBuilder() { return converter.getFirOpBuilder(); }
 
-  std::string getProcedureName() const { return procRef.proc().GetName(); }
+  std::string getProcedureName() const {
+    if (const Fortran::semantics::Symbol *sym = procRef.proc().GetSymbol())
+      return sym->GetUltimate().name().ToString();
+    return procRef.proc().GetName();
+  }
 
   /// Is this a call to an elemental procedure with at least one array argument?
   bool isElementalProcWithArrayArgs() const {
@@ -1364,13 +1368,18 @@ genHLFIRIntrinsicRefCore(PreparedActualArguments &loweredActuals,
       hlfir::Entity actual = arg->getOriginalActual();
       mlir::Value valArg;
 
-      fir::ArgLoweringRule argRules =
-          fir::lowerIntrinsicArgumentAs(*argLowering, i);
-      if (!argRules.handleDynamicOptional &&
-          argRules.lowerAs != fir::LowerIntrinsicArgAs::Inquired)
-        valArg = hlfir::derefPointersAndAllocatables(loc, builder, actual);
-      else
-        valArg = actual.getBase();
+      // if intrinsic handler has no lowering rules
+      if (!argLowering) {
+        valArg = hlfir::loadTrivialScalar(loc, builder, actual);
+      } else {
+        fir::ArgLoweringRule argRules =
+            fir::lowerIntrinsicArgumentAs(*argLowering, i);
+        if (!argRules.handleDynamicOptional &&
+            argRules.lowerAs != fir::LowerIntrinsicArgAs::Inquired)
+          valArg = hlfir::derefPointersAndAllocatables(loc, builder, actual);
+        else
+          valArg = actual.getBase();
+      }
 
       operands.emplace_back(valArg);
     }
@@ -1488,6 +1497,42 @@ genHLFIRIntrinsicRefCore(PreparedActualArguments &loweredActuals,
     return buildReductionIntrinsic(loweredActuals, loc, builder, callContext,
                                    buildAllOperation, false);
   }
+  if (intrinsicName == "dot_product") {
+    llvm::SmallVector<mlir::Value> operands = getOperandVector(loweredActuals);
+    mlir::Type resultTy =
+        computeResultType(operands[0], *callContext.resultType);
+    hlfir::DotProductOp dotProductOp = builder.create<hlfir::DotProductOp>(
+        loc, resultTy, operands[0], operands[1]);
+
+    return {hlfir::EntityWithAttributes{dotProductOp.getResult()}};
+  }
+  if (intrinsicName == "count") {
+    llvm::SmallVector<mlir::Value> operands = getOperandVector(loweredActuals);
+    mlir::Value array = operands[0];
+    mlir::Value dim = operands[1];
+    if (dim)
+      dim = hlfir::loadTrivialScalar(loc, builder, hlfir::Entity{dim});
+    mlir::Value kind = operands[2];
+    mlir::Type resultTy = computeResultType(array, *callContext.resultType);
+    hlfir::CountOp countOp =
+        builder.create<hlfir::CountOp>(loc, resultTy, array, dim, kind);
+    return {hlfir::EntityWithAttributes{countOp.getResult()}};
+  }
+
+  if ((intrinsicName == "min" || intrinsicName == "max") &&
+      hlfir::getFortranElementType(callContext.resultType.value())
+          .isa<fir::CharacterType>()) {
+    llvm::SmallVector<mlir::Value> operands = getOperandVector(loweredActuals);
+    assert(operands.size() >= 2);
+
+    hlfir::CharExtremumPredicate pred = (intrinsicName == "min")
+                                            ? hlfir::CharExtremumPredicate::min
+                                            : hlfir::CharExtremumPredicate::max;
+    hlfir::CharExtremumOp charExtremumOp =
+        builder.create<hlfir::CharExtremumOp>(loc, pred,
+                                              mlir::ValueRange{operands});
+    return {hlfir::EntityWithAttributes{charExtremumOp.getResult()}};
+  }
 
   // TODO add hlfir operations for other transformational intrinsics here
 
@@ -1552,13 +1597,36 @@ public:
     }
     assert(shape &&
            "elemental array calls must have at least one array arguments");
-    if (mustBeOrdered)
-      TODO(loc, "ordered elemental calls in HLFIR");
+
+    // Evaluate the actual argument array expressions before the elemental
+    // call of an impure subprogram or a subprogram with intent(out) or
+    // intent(inout) arguments. Note that the scalar arguments are handled
+    // above.
+    if (mustBeOrdered) {
+      for (unsigned i = 0; i < numArgs; ++i) {
+        auto &preparedActual = loweredActuals[i];
+        if (preparedActual) {
+          hlfir::Entity actual = preparedActual->getOriginalActual();
+          if (!actual.isVariable() && actual.isArray()) {
+            mlir::Type storageType = actual.getType();
+            hlfir::AssociateOp associate = hlfir::genAssociateExpr(
+                loc, builder, actual, storageType, "adapt.impure_arg_eval");
+            preparedActual->setOriginalActual(hlfir::Entity{associate});
+
+            fir::FirOpBuilder *bldr = &builder;
+            callContext.stmtCtx.attachCleanup(
+                [=]() { bldr->create<hlfir::EndAssociateOp>(loc, associate); });
+          }
+        }
+      }
+    }
+
     // Push a new local scope so that any temps made inside the elemental
     // iterations are cleaned up inside the iterations.
     if (!callContext.resultType) {
       // Subroutine case. Generate call inside loop nest.
-      hlfir::LoopNest loopNest = hlfir::genLoopNest(loc, builder, shape);
+      hlfir::LoopNest loopNest =
+          hlfir::genLoopNest(loc, builder, shape, !mustBeOrdered);
       mlir::ValueRange oneBasedIndices = loopNest.oneBasedIndices;
       auto insPt = builder.saveInsertionPoint();
       builder.setInsertionPointToStart(loopNest.innerLoop.getBody());
@@ -1603,8 +1671,9 @@ public:
       // use.
       return res;
     };
-    mlir::Value elemental = hlfir::genElementalOp(loc, builder, elementType,
-                                                  shape, typeParams, genKernel);
+    mlir::Value elemental =
+        hlfir::genElementalOp(loc, builder, elementType, shape, typeParams,
+                              genKernel, !mustBeOrdered);
     fir::FirOpBuilder *bldr = &builder;
     callContext.stmtCtx.attachCleanup(
         [=]() { bldr->create<hlfir::DestroyOp>(loc, elemental); });
@@ -1897,4 +1966,20 @@ std::optional<hlfir::EntityWithAttributes> Fortran::lower::convertCallToHLFIR(
     Fortran::lower::SymMap &symMap, Fortran::lower::StatementContext &stmtCtx) {
   CallContext callContext(procRef, resultType, loc, converter, symMap, stmtCtx);
   return genProcedureRef(callContext);
+}
+
+void Fortran::lower::convertUserDefinedAssignmentToHLFIR(
+    mlir::Location loc, Fortran::lower::AbstractConverter &converter,
+    const evaluate::ProcedureRef &procRef, hlfir::Entity lhs, hlfir::Entity rhs,
+    Fortran::lower::SymMap &symMap) {
+  Fortran::lower::StatementContext definedAssignmentContext;
+  CallContext callContext(procRef, /*resultType=*/std::nullopt, loc, converter,
+                          symMap, definedAssignmentContext);
+  Fortran::lower::CallerInterface caller(procRef, converter);
+  mlir::FunctionType callSiteType = caller.genFunctionType();
+  PreparedActualArgument preparedLhs{lhs, /*isPresent=*/std::nullopt};
+  PreparedActualArgument preparedRhs{rhs, /*isPresent=*/std::nullopt};
+  PreparedActualArguments loweredActuals{preparedLhs, preparedRhs};
+  genUserCall(loweredActuals, caller, callSiteType, callContext);
+  return;
 }

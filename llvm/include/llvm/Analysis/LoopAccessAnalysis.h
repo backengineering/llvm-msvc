@@ -588,8 +588,8 @@ public:
   static bool blockNeedsPredication(BasicBlock *BB, Loop *TheLoop,
                                     DominatorTree *DT);
 
-  /// Returns true if the value V is uniform within the loop.
-  bool isUniform(Value *V) const;
+  /// Returns true if value \p V is loop invariant.
+  bool isInvariant(Value *V) const;
 
   uint64_t getMaxSafeDepDistBytes() const { return MaxSafeDepDistBytes; }
   unsigned getNumStores() const { return NumStores; }
@@ -787,38 +787,6 @@ public:
 
   bool invalidate(Function &F, const PreservedAnalyses &PA,
                   FunctionAnalysisManager::Invalidator &Inv);
-};
-
-/// This analysis provides dependence information for the memory accesses
-/// of a loop.
-///
-/// It runs the analysis for a loop on demand.  This can be initiated by
-/// querying the loop access info via LAA::getInfo.  getInfo return a
-/// LoopAccessInfo object.  See this class for the specifics of what information
-/// is provided.
-class LoopAccessLegacyAnalysis : public FunctionPass {
-public:
-  static char ID;
-
-  LoopAccessLegacyAnalysis();
-
-  bool runOnFunction(Function &F) override;
-
-  void getAnalysisUsage(AnalysisUsage &AU) const override;
-
-  /// Return the proxy object for retrieving LoopAccessInfo for individual
-  /// loops.
-  ///
-  /// If there is no cached result available run the analysis.
-  LoopAccessInfoManager &getLAIs() { return *LAIs; }
-
-  void releaseMemory() override {
-    // Invalidate the cache when the pass is freed.
-    LAIs->clear();
-  }
-
-private:
-  std::unique_ptr<LoopAccessInfoManager> LAIs;
 };
 
 /// This analysis provides dependence information for the memory

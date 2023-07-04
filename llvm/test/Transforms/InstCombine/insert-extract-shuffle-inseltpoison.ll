@@ -236,11 +236,11 @@ end:
 ; https://llvm.org/bugs/show_bug.cgi?id=30923
 ; Delete the widening shuffle if we're not going to reduce the extract/insert to a shuffle.
 
-define <4 x float> @PR30923(<2 x float> %x) {
+define <4 x float> @PR30923(<2 x float> %x, ptr %p) {
 ; CHECK-LABEL: @PR30923(
 ; CHECK-NEXT:  bb1:
 ; CHECK-NEXT:    [[EXT1:%.*]] = extractelement <2 x float> [[X:%.*]], i64 1
-; CHECK-NEXT:    store float [[EXT1]], ptr undef, align 4
+; CHECK-NEXT:    store float [[EXT1]], ptr [[P:%.*]], align 4
 ; CHECK-NEXT:    br label [[BB2:%.*]]
 ; CHECK:       bb2:
 ; CHECK-NEXT:    [[EXT2:%.*]] = extractelement <2 x float> [[X]], i64 0
@@ -250,7 +250,7 @@ define <4 x float> @PR30923(<2 x float> %x) {
 ;
 bb1:
   %ext1 = extractelement <2 x float> %x, i32 1
-  store float %ext1, ptr undef, align 4
+  store float %ext1, ptr %p, align 4
   br label %bb2
 
 bb2:
@@ -267,7 +267,7 @@ define <4 x i32> @extractelt_insertion(<2 x i32> %x, i32 %y) {
 ; CHECK-LABEL: @extractelt_insertion(
 ; CHECK-NEXT:  entry:
 ; CHECK-NEXT:    [[TMP0:%.*]] = shufflevector <2 x i32> [[X:%.*]], <2 x i32> poison, <4 x i32> <i32 0, i32 1, i32 poison, i32 poison>
-; CHECK-NEXT:    [[B:%.*]] = shufflevector <4 x i32> <i32 0, i32 0, i32 0, i32 poison>, <4 x i32> [[TMP0]], <4 x i32> <i32 0, i32 1, i32 2, i32 5>
+; CHECK-NEXT:    [[B:%.*]] = shufflevector <4 x i32> <i32 0, i32 poison, i32 poison, i32 poison>, <4 x i32> [[TMP0]], <4 x i32> <i32 0, i32 0, i32 0, i32 5>
 ; CHECK-NEXT:    [[C:%.*]] = add i32 [[Y:%.*]], 3
 ; CHECK-NEXT:    [[D:%.*]] = extractelement <4 x i32> [[TMP0]], i32 [[C]]
 ; CHECK-NEXT:    [[E:%.*]] = icmp eq i32 [[D]], 0

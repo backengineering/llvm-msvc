@@ -2290,7 +2290,7 @@ void LoopAccessInfo::analyzeLoop(AAResults *AA, LoopInfo *LI,
   for (StoreInst *ST : Stores) {
     Value *Ptr = ST->getPointerOperand();
 
-    if (isUniform(Ptr)) {
+    if (isInvariant(Ptr)) {
       // Record store instructions to loop invariant addresses
       StoresToInvariantAddresses.push_back(ST);
       HasDependenceInvolvingLoopInvariantAddress |=
@@ -2532,15 +2532,14 @@ OptimizationRemarkAnalysis &LoopAccessInfo::recordAnalysis(StringRef RemarkName,
   return *Report;
 }
 
-bool LoopAccessInfo::isUniform(Value *V) const {
+bool LoopAccessInfo::isInvariant(Value *V) const {
   auto *SE = PSE->getSE();
-  // Since we rely on SCEV for uniformity, if the type is not SCEVable, it is
-  // never considered uniform.
   // TODO: Is this really what we want? Even without FP SCEV, we may want some
-  // trivially loop-invariant FP values to be considered uniform.
+  // trivially loop-invariant FP values to be considered invariant.
   if (!SE->isSCEVable(V->getType()))
     return false;
-  return (SE->isLoopInvariant(SE->getSCEV(V), TheLoop));
+  const SCEV *S = SE->getSCEV(V);
+  return SE->isLoopInvariant(S, TheLoop);
 }
 
 /// Find the operand of the GEP that should be checked for consecutive
@@ -2818,30 +2817,6 @@ const LoopAccessInfo &LoopAccessInfoManager::getInfo(Loop &L) {
   return *I.first->second;
 }
 
-LoopAccessLegacyAnalysis::LoopAccessLegacyAnalysis() : FunctionPass(ID) {
-  initializeLoopAccessLegacyAnalysisPass(*PassRegistry::getPassRegistry());
-}
-
-bool LoopAccessLegacyAnalysis::runOnFunction(Function &F) {
-  auto &SE = getAnalysis<ScalarEvolutionWrapperPass>().getSE();
-  auto *TLIP = getAnalysisIfAvailable<TargetLibraryInfoWrapperPass>();
-  auto *TLI = TLIP ? &TLIP->getTLI(F) : nullptr;
-  auto &AA = getAnalysis<AAResultsWrapperPass>().getAAResults();
-  auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-  auto &LI = getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
-  LAIs = std::make_unique<LoopAccessInfoManager>(SE, AA, DT, LI, TLI);
-  return false;
-}
-
-void LoopAccessLegacyAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
-  AU.addRequiredTransitive<ScalarEvolutionWrapperPass>();
-  AU.addRequiredTransitive<AAResultsWrapperPass>();
-  AU.addRequiredTransitive<DominatorTreeWrapperPass>();
-  AU.addRequiredTransitive<LoopInfoWrapperPass>();
-
-  AU.setPreservesAll();
-}
-
 bool LoopAccessInfoManager::invalidate(
     Function &F, const PreservedAnalyses &PA,
     FunctionAnalysisManager::Invalidator &Inv) {
@@ -2870,23 +2845,4 @@ LoopAccessInfoManager LoopAccessAnalysis::run(Function &F,
   return LoopAccessInfoManager(SE, AA, DT, LI, &TLI);
 }
 
-char LoopAccessLegacyAnalysis::ID = 0;
-static const char laa_name[] = "Loop Access Analysis";
-#define LAA_NAME "loop-accesses"
-
-INITIALIZE_PASS_BEGIN(LoopAccessLegacyAnalysis, LAA_NAME, laa_name, false, true)
-INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
-INITIALIZE_PASS_END(LoopAccessLegacyAnalysis, LAA_NAME, laa_name, false, true)
-
 AnalysisKey LoopAccessAnalysis::Key;
-
-namespace llvm {
-
-  Pass *createLAAPass() {
-    return new LoopAccessLegacyAnalysis();
-  }
-
-} // end namespace llvm

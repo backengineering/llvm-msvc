@@ -50,7 +50,6 @@ class DominatorTree;
 class InnerLoopVectorizer;
 class IRBuilderBase;
 class LoopInfo;
-class PredicateScalarEvolution;
 class raw_ostream;
 class RecurrenceDescriptor;
 class SCEV;
@@ -2643,10 +2642,7 @@ public:
   }
 
   VPValue *getSCEVExpansion(const SCEV *S) const {
-    auto I = SCEVToExpansion.find(S);
-    if (I == SCEVToExpansion.end())
-      return nullptr;
-    return I->second;
+    return SCEVToExpansion.lookup(S);
   }
 
   void addSCEVExpansion(const SCEV *S, VPValue *V) {

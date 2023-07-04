@@ -276,6 +276,8 @@ CXXNewExpr *CXXNewExpr::CreateEmpty(const ASTContext &Ctx, bool IsArray,
 }
 
 bool CXXNewExpr::shouldNullCheckAllocation() const {
+  if (getOperatorNew()->getLangOpts().CheckNew)
+    return true;
   return !getOperatorNew()->hasAttr<ReturnsNonNullAttr>() &&
          getOperatorNew()
              ->getType()
@@ -1136,6 +1138,7 @@ CXXConstructExpr::CXXConstructExpr(
   CXXConstructExprBits.StdInitListInitialization = StdInitListInitialization;
   CXXConstructExprBits.ZeroInitialization = ZeroInitialization;
   CXXConstructExprBits.ConstructionKind = ConstructKind;
+  CXXConstructExprBits.IsImmediateEscalating = false;
   CXXConstructExprBits.Loc = Loc;
 
   Stmt **TrailingArgs = getTrailingArgs();

@@ -19,6 +19,7 @@
 #include "PPCSubtarget.h"
 #include "PPCTargetMachine.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -738,6 +739,14 @@ bool PPCDAGToDAGISel::tryTLSXFormStore(StoreSDNode *ST) {
       Opcode = PPC::STDXTLS;
       break;
     }
+    case MVT::f32: {
+      Opcode = PPC::STFSXTLS;
+      break;
+    }
+    case MVT::f64: {
+      Opcode = PPC::STFDXTLS;
+      break;
+    }
   }
   SDValue Chain = ST->getChain();
   SDVTList VTs = ST->getVTList();
@@ -762,6 +771,7 @@ bool PPCDAGToDAGISel::tryTLSXFormLoad(LoadSDNode *LD) {
   SDLoc dl(LD);
   EVT MemVT = LD->getMemoryVT();
   EVT RegVT = LD->getValueType(0);
+  bool isSExt = LD->getExtensionType() == ISD::SEXTLOAD;
   unsigned Opcode;
   switch (MemVT.getSimpleVT().SimpleTy) {
     default:
@@ -771,15 +781,29 @@ bool PPCDAGToDAGISel::tryTLSXFormLoad(LoadSDNode *LD) {
       break;
     }
     case MVT::i16: {
-      Opcode = (RegVT == MVT::i32) ? PPC::LHZXTLS_32 : PPC::LHZXTLS;
+      if (RegVT == MVT::i32)
+        Opcode = isSExt ? PPC::LHAXTLS_32 : PPC::LHZXTLS_32;
+      else
+        Opcode = isSExt ? PPC::LHAXTLS : PPC::LHZXTLS;
       break;
     }
     case MVT::i32: {
-      Opcode = (RegVT == MVT::i32) ? PPC::LWZXTLS_32 : PPC::LWZXTLS;
+      if (RegVT == MVT::i32)
+        Opcode = isSExt ? PPC::LWAXTLS_32 : PPC::LWZXTLS_32;
+      else
+        Opcode = isSExt ? PPC::LWAXTLS : PPC::LWZXTLS;
       break;
     }
     case MVT::i64: {
       Opcode = PPC::LDXTLS;
+      break;
+    }
+    case MVT::f32: {
+      Opcode = PPC::LFSXTLS;
+      break;
+    }
+    case MVT::f64: {
+      Opcode = PPC::LFDXTLS;
       break;
     }
   }

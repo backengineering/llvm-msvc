@@ -760,7 +760,7 @@ void Writer::fixPartialSectionChars(StringRef name, uint32_t chars) {
     PartialSection *pSec = it.second;
     StringRef curName = pSec->name;
     if (!curName.consume_front(name) ||
-        (!curName.empty() && !curName.startswith("$")))
+        (!curName.empty() && !curName.starts_with("$")))
       continue;
     if (pSec->characteristics == chars)
       continue;
@@ -793,7 +793,7 @@ bool Writer::fixGnuImportChunks() {
   // with alphabetical ordering of the object files within a library.
   for (auto it : partialSections) {
     PartialSection *pSec = it.second;
-    if (!pSec->name.startswith(".idata"))
+    if (!pSec->name.starts_with(".idata"))
       continue;
 
     if (!pSec->chunks.empty())
@@ -881,9 +881,9 @@ static bool shouldStripSectionSuffix(SectionChunk *sc, StringRef name,
     return false;
   if (!sc || !sc->isCOMDAT())
     return false;
-  return name.startswith(".text$") || name.startswith(".data$") ||
-         name.startswith(".rdata$") || name.startswith(".pdata$") ||
-         name.startswith(".xdata$") || name.startswith(".eh_frame$");
+  return name.starts_with(".text$") || name.starts_with(".data$") ||
+         name.starts_with(".rdata$") || name.starts_with(".pdata$") ||
+         name.starts_with(".xdata$") || name.starts_with(".eh_frame$");
 }
 
 void Writer::sortSections() {
@@ -954,7 +954,7 @@ void Writer::createSections() {
     if (shouldStripSectionSuffix(sc, name, ctx.config.mingw))
       name = name.split('$').first;
 
-    if (name.startswith(".tls"))
+    if (name.starts_with(".tls"))
       tlsAlignment = std::max(tlsAlignment, c->getAlignment());
 
     PartialSection *pSec = createPartialSection(name,
@@ -1015,7 +1015,7 @@ void Writer::createSections() {
       // Move discardable sections named .debug_ to the end, after other
       // discardable sections. Stripping only removes the sections named
       // .debug_* - thus try to avoid leaving holes after stripping.
-      if (s->name.startswith(".debug_"))
+      if (s->name.starts_with(".debug_"))
         return 3;
       return 2;
     }
@@ -1173,7 +1173,7 @@ void Writer::createExportTable() {
   }
   // Warn on exported deleting destructor.
   for (auto e : ctx.config.exports)
-    if (e.sym && e.sym->getName().startswith("??_G"))
+    if (e.sym && e.sym->getName().starts_with("??_G"))
       warn("export of deleting dtor: " + toString(ctx, *e.sym));
 }
 

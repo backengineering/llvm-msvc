@@ -15,6 +15,10 @@ def note_constexpr_invalid_cast : Note<
   " performs the conversions of a reinterpret_cast}1|cast from %1}0"
   " is not allowed in a constant expression"
   "%select{| in C++ standards before C++20||}0">;
+def note_constexpr_invalid_void_star_cast : Note<
+  "cast from %0 is not allowed in a constant expression "
+  "%select{in C++ standards before C++2c|because the pointed object "
+  "type %2 is not similar to the target type %3}1">;
 def note_constexpr_invalid_downcast : Note<
   "cannot cast object of dynamic type %0 to type %1">;
 def note_constexpr_overflow : Note<
@@ -395,8 +399,8 @@ def warn_fixedpoint_constant_overflow : Warning<
   "overflow in expression; result is %0 with type %1">,
   InGroup<DiagGroup<"fixed-point-overflow">>;
 def warn_constexpr_unscoped_enum_out_of_range : Warning<
-  "integer value %0 is outside the valid range of values [%1, %2] for this "
-  "enumeration type">, DefaultError, InGroup<DiagGroup<"enum-constexpr-conversion">>;
+  "integer value %0 is outside the valid range of values [%1, %2] for the "
+  "enumeration type %3">, DefaultError, InGroup<DiagGroup<"enum-constexpr-conversion">>;
 
 // This is a temporary diagnostic, and shall be removed once our
 // implementation is complete, and like the preceding constexpr notes belongs

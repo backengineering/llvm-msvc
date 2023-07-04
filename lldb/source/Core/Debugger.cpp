@@ -236,8 +236,10 @@ Status Debugger::SetPropertyValue(const ExecutionContext *exe_ctx,
       // use-color changed. Ping the prompt so it can reset the ansi terminal
       // codes.
       SetPrompt(GetPrompt());
-    } else if (property_path == g_debugger_properties[ePropertyUseSourceCache].name) {
-      // use-source-cache changed. Wipe out the cache contents if it was disabled.
+    } else if (property_path ==
+               g_debugger_properties[ePropertyUseSourceCache].name) {
+      // use-source-cache changed. Wipe out the cache contents if it was
+      // disabled.
       if (!GetUseSourceCache()) {
         m_source_file_cache.Clear();
       }
@@ -813,17 +815,17 @@ Debugger::Debugger(lldb::LogOutputCallback log_callback, void *baton)
   // LLDB will start querying them during construction.
   m_collection_sp->Initialize(g_debugger_properties);
   m_collection_sp->AppendProperty(
-      ConstString("target"), "Settings specify to debugging targets.", true,
+      "target", "Settings specify to debugging targets.", true,
       Target::GetGlobalProperties().GetValueProperties());
   m_collection_sp->AppendProperty(
-      ConstString("platform"), "Platform settings.", true,
+      "platform", "Platform settings.", true,
       Platform::GetGlobalPlatformProperties().GetValueProperties());
   m_collection_sp->AppendProperty(
-      ConstString("symbols"), "Symbol lookup and cache settings.", true,
+      "symbols", "Symbol lookup and cache settings.", true,
       ModuleList::GetGlobalModuleListProperties().GetValueProperties());
   if (m_command_interpreter_up) {
     m_collection_sp->AppendProperty(
-        ConstString("interpreter"),
+        "interpreter",
         "Settings specify to the debugger's command interpreter.", true,
         m_command_interpreter_up->GetValueProperties());
   }
@@ -1127,7 +1129,7 @@ void Debugger::PrintAsync(const char *s, size_t len, bool is_stdout) {
   }
 }
 
-ConstString Debugger::GetTopIOHandlerControlSequence(char ch) {
+llvm::StringRef Debugger::GetTopIOHandlerControlSequence(char ch) {
   return m_io_handler_stack.GetTopIOHandlerControlSequence(ch);
 }
 
@@ -1350,6 +1352,13 @@ bool Debugger::FormatDisassemblerAddress(const FormatEntity::Entry *format,
   }
   return FormatEntity::Format(*format, s, sc, exe_ctx, addr, nullptr,
                               function_changed, initial_function);
+}
+
+void Debugger::AssertCallback(llvm::StringRef message,
+                              llvm::StringRef backtrace,
+                              llvm::StringRef prompt) {
+  Debugger::ReportError(
+      llvm::formatv("{0}\n{1}{2}", message, backtrace, prompt).str());
 }
 
 void Debugger::SetLoggingCallback(lldb::LogOutputCallback log_callback,
@@ -1700,7 +1709,7 @@ void Debugger::HandleProcessEvent(const EventSP &event_sp) {
 
     // Display running state changes first before any STDIO
     if (got_state_changed && !state_is_stopped) {
-      // This is a public stop which we are going to announce to the user, so 
+      // This is a public stop which we are going to announce to the user, so
       // we should force the most relevant frame selection here.
       Process::HandleProcessStateChangedEvent(event_sp, output_stream_sp.get(),
                                               SelectMostRelevantFrame,

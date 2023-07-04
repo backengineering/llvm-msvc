@@ -72,7 +72,7 @@ public:
                                         SMLoc &EndLoc) override;
   bool ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
                         SMLoc NameLoc, OperandVector &Operands) override;
-  bool ParseDirective(AsmToken DirectiveID) override;
+  ParseStatus parseDirective(AsmToken DirectiveID) override;
   bool MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                OperandVector &Operands, MCStreamer &Out,
                                uint64_t &ErrorInfo,
@@ -901,8 +901,7 @@ M68kAsmParser::parseRegOrMoveMask(OperandVector &Operands) {
     }
 
     MCRegister LastRegister = FirstRegister;
-    if (getLexer().is(AsmToken::Minus)) {
-      getLexer().Lex();
+    if (parseOptionalToken(AsmToken::Minus)) {
       Result = parseRegister(LastRegister);
       if (Result != llvm::MatchOperand_Success) {
         Error(getLexer().getLoc(), "expected end register");
@@ -949,11 +948,8 @@ M68kAsmParser::parseRegOrMoveMask(OperandVector &Operands) {
       MemOp.RegMask |= NewMaskBits;
     }
 
-    if (getLexer().isNot(AsmToken::Slash)) {
+    if (!parseOptionalToken(AsmToken::Slash))
       break;
-    }
-
-    getLexer().Lex();
   }
 
   Operands.push_back(
@@ -996,7 +992,9 @@ bool M68kAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
   return false;
 }
 
-bool M68kAsmParser::ParseDirective(AsmToken DirectiveID) { return true; }
+ParseStatus M68kAsmParser::parseDirective(AsmToken DirectiveID) {
+  return ParseStatus::NoMatch;
+}
 
 bool M68kAsmParser::invalidOperand(SMLoc const &Loc,
                                    OperandVector const &Operands,

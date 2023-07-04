@@ -23,6 +23,7 @@
 #include "X86ShuffleDecodeConstantPool.h"
 #include "X86Subtarget.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -1523,7 +1524,8 @@ static void printConstant(const APFloat &Flt, raw_ostream &CS) {
   CS << Str;
 }
 
-static void printConstant(const Constant *COp, raw_ostream &CS) {
+static void printConstant(const Constant *COp, unsigned BitWidth,
+                          raw_ostream &CS) {
   if (isa<UndefValue>(COp)) {
     CS << "u";
   } else if (auto *CI = dyn_cast<ConstantInt>(COp)) {
@@ -1534,7 +1536,10 @@ static void printConstant(const Constant *COp, raw_ostream &CS) {
     Type *EltTy = CDS->getElementType();
     bool IsInteger = EltTy->isIntegerTy();
     bool IsFP = EltTy->isHalfTy() || EltTy->isFloatTy() || EltTy->isDoubleTy();
-    for (unsigned I = 0, E = CDS->getNumElements(); I != E; ++I) {
+    unsigned EltBits = EltTy->getPrimitiveSizeInBits();
+    unsigned E = std::min(BitWidth / EltBits, CDS->getNumElements());
+    assert((BitWidth % EltBits) == 0 && "Broadcast element size mismatch");
+    for (unsigned I = 0; I != E; ++I) {
       if (I != 0)
         CS << ",";
       if (IsInteger)
@@ -1551,7 +1556,8 @@ static void printConstant(const Constant *COp, raw_ostream &CS) {
 
 void X86AsmPrinter::EmitSEHInstruction(const MachineInstr *MI) {
   assert(MF->hasWinCFI() && "SEH_ instruction in function without WinCFI?");
-  assert(getSubtarget().isOSWindows() && "SEH_ instruction Windows only");
+  assert((getSubtarget().isOSWindows() || TM.getTargetTriple().isUEFI()) &&
+         "SEH_ instruction Windows and UEFI only");
 
   // Use the .cv_fpo directives if we're emitting CodeView on 32-bit x86.
   if (EmitFPOData) {
@@ -1914,7 +1920,8 @@ static void addConstantComments(const MachineInstr *MI,
                ++i) {
             if (i != 0 || l != 0)
               CS << ",";
-            printConstant(CV->getOperand(i), CS);
+            printConstant(CV->getOperand(i),
+                          CV->getType()->getPrimitiveSizeInBits(), CS);
           }
         }
         CS << ">";
@@ -1957,40 +1964,40 @@ static void addConstantComments(const MachineInstr *MI,
     assert(MI->getNumOperands() >= (1 + X86::AddrNumOperands) &&
            "Unexpected number of operands!");
     if (auto *C = getConstantFromPool(*MI, MI->getOperand(1 + X86::AddrDisp))) {
-      int NumElts;
+      int NumElts, EltBits;
       switch (MI->getOpcode()) {
       default: llvm_unreachable("Invalid opcode");
-      case X86::MOVDDUPrm:          NumElts = 2;  break;
-      case X86::VMOVDDUPrm:         NumElts = 2;  break;
-      case X86::VMOVDDUPZ128rm:     NumElts = 2;  break;
-      case X86::VBROADCASTSSrm:     NumElts = 4;  break;
-      case X86::VBROADCASTSSYrm:    NumElts = 8;  break;
-      case X86::VBROADCASTSSZ128rm: NumElts = 4;  break;
-      case X86::VBROADCASTSSZ256rm: NumElts = 8;  break;
-      case X86::VBROADCASTSSZrm:    NumElts = 16; break;
-      case X86::VBROADCASTSDYrm:    NumElts = 4;  break;
-      case X86::VBROADCASTSDZ256rm: NumElts = 4;  break;
-      case X86::VBROADCASTSDZrm:    NumElts = 8;  break;
-      case X86::VPBROADCASTBrm:     NumElts = 16; break;
-      case X86::VPBROADCASTBYrm:    NumElts = 32; break;
-      case X86::VPBROADCASTBZ128rm: NumElts = 16; break;
-      case X86::VPBROADCASTBZ256rm: NumElts = 32; break;
-      case X86::VPBROADCASTBZrm:    NumElts = 64; break;
-      case X86::VPBROADCASTDrm:     NumElts = 4;  break;
-      case X86::VPBROADCASTDYrm:    NumElts = 8;  break;
-      case X86::VPBROADCASTDZ128rm: NumElts = 4;  break;
-      case X86::VPBROADCASTDZ256rm: NumElts = 8;  break;
-      case X86::VPBROADCASTDZrm:    NumElts = 16; break;
-      case X86::VPBROADCASTQrm:     NumElts = 2;  break;
-      case X86::VPBROADCASTQYrm:    NumElts = 4;  break;
-      case X86::VPBROADCASTQZ128rm: NumElts = 2;  break;
-      case X86::VPBROADCASTQZ256rm: NumElts = 4;  break;
-      case X86::VPBROADCASTQZrm:    NumElts = 8;  break;
-      case X86::VPBROADCASTWrm:     NumElts = 8;  break;
-      case X86::VPBROADCASTWYrm:    NumElts = 16; break;
-      case X86::VPBROADCASTWZ128rm: NumElts = 8;  break;
-      case X86::VPBROADCASTWZ256rm: NumElts = 16; break;
-      case X86::VPBROADCASTWZrm:    NumElts = 32; break;
+      case X86::MOVDDUPrm:          NumElts = 2;  EltBits = 64; break;
+      case X86::VMOVDDUPrm:         NumElts = 2;  EltBits = 64; break;
+      case X86::VMOVDDUPZ128rm:     NumElts = 2;  EltBits = 64; break;
+      case X86::VBROADCASTSSrm:     NumElts = 4;  EltBits = 32; break;
+      case X86::VBROADCASTSSYrm:    NumElts = 8;  EltBits = 32; break;
+      case X86::VBROADCASTSSZ128rm: NumElts = 4;  EltBits = 32; break;
+      case X86::VBROADCASTSSZ256rm: NumElts = 8;  EltBits = 32; break;
+      case X86::VBROADCASTSSZrm:    NumElts = 16; EltBits = 32; break;
+      case X86::VBROADCASTSDYrm:    NumElts = 4;  EltBits = 64; break;
+      case X86::VBROADCASTSDZ256rm: NumElts = 4;  EltBits = 64; break;
+      case X86::VBROADCASTSDZrm:    NumElts = 8;  EltBits = 64; break;
+      case X86::VPBROADCASTBrm:     NumElts = 16; EltBits = 8; break;
+      case X86::VPBROADCASTBYrm:    NumElts = 32; EltBits = 8; break;
+      case X86::VPBROADCASTBZ128rm: NumElts = 16; EltBits = 8; break;
+      case X86::VPBROADCASTBZ256rm: NumElts = 32; EltBits = 8; break;
+      case X86::VPBROADCASTBZrm:    NumElts = 64; EltBits = 8; break;
+      case X86::VPBROADCASTDrm:     NumElts = 4;  EltBits = 32; break;
+      case X86::VPBROADCASTDYrm:    NumElts = 8;  EltBits = 32; break;
+      case X86::VPBROADCASTDZ128rm: NumElts = 4;  EltBits = 32; break;
+      case X86::VPBROADCASTDZ256rm: NumElts = 8;  EltBits = 32; break;
+      case X86::VPBROADCASTDZrm:    NumElts = 16; EltBits = 32; break;
+      case X86::VPBROADCASTQrm:     NumElts = 2;  EltBits = 64; break;
+      case X86::VPBROADCASTQYrm:    NumElts = 4;  EltBits = 64; break;
+      case X86::VPBROADCASTQZ128rm: NumElts = 2;  EltBits = 64; break;
+      case X86::VPBROADCASTQZ256rm: NumElts = 4;  EltBits = 64; break;
+      case X86::VPBROADCASTQZrm:    NumElts = 8;  EltBits = 64; break;
+      case X86::VPBROADCASTWrm:     NumElts = 8;  EltBits = 16; break;
+      case X86::VPBROADCASTWYrm:    NumElts = 16; EltBits = 16; break;
+      case X86::VPBROADCASTWZ128rm: NumElts = 8;  EltBits = 16; break;
+      case X86::VPBROADCASTWZ256rm: NumElts = 16; EltBits = 16; break;
+      case X86::VPBROADCASTWZrm:    NumElts = 32; EltBits = 16; break;
       }
 
       std::string Comment;
@@ -2001,7 +2008,7 @@ static void addConstantComments(const MachineInstr *MI,
       for (int i = 0; i != NumElts; ++i) {
         if (i != 0)
           CS << ",";
-        printConstant(C, CS);
+        printConstant(C, EltBits, CS);
       }
       CS << "]";
       OutStreamer.AddComment(CS.str());

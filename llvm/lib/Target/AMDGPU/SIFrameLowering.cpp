@@ -1437,12 +1437,26 @@ void SIFrameLowering::processFunctionBeforeFrameIndicesReplaced(
         TRI->findUnusedRegister(MRI, &AMDGPU::VGPR_32RegClass, MF);
     if (UnusedLowVGPR && (TRI->getHWRegIndex(UnusedLowVGPR) <
                           TRI->getHWRegIndex(VGPRForAGPRCopy))) {
-      // Call to setVGPRForAGPRCopy() should happen first before calling
-      // freezeReservedRegs() so that getReservedRegs() can reserve this newly
-      // identified VGPR (for AGPR copy).
+      // Reserve this newly identified VGPR (for AGPR copy)
+      // reserved registers should already be frozen at this point
+      // so we can avoid calling MRI.freezeReservedRegs and just use
+      // MRI.reserveReg
       FuncInfo->setVGPRForAGPRCopy(UnusedLowVGPR);
-      MRI.freezeReservedRegs(MF);
+      MRI.reserveReg(UnusedLowVGPR, TRI);
     }
+  }
+  // We initally reserved the highest available SGPR pair for long branches
+  // now, after RA, we shift down to a lower unused one if one exists
+  Register LongBranchReservedReg = FuncInfo->getLongBranchReservedReg();
+  Register UnusedLowSGPR =
+      TRI->findUnusedRegister(MRI, &AMDGPU::SGPR_64RegClass, MF);
+  // If LongBranchReservedReg is null then we didn't find a long branch
+  // and never reserved a register to begin with so there is nothing to
+  // shift down. Then if UnusedLowSGPR is null, there isn't available lower
+  // register to use so just keep the original one we set.
+  if (LongBranchReservedReg && UnusedLowSGPR) {
+    FuncInfo->setLongBranchReservedReg(UnusedLowSGPR);
+    MRI.reserveReg(UnusedLowSGPR, TRI);
   }
 }
 
@@ -1501,6 +1515,7 @@ void SIFrameLowering::determineCalleeSaves(MachineFunction &MF,
   const GCNSubtarget &ST = MF.getSubtarget<GCNSubtarget>();
   const SIRegisterInfo *TRI = ST.getRegisterInfo();
 
+  MachineInstr *ReturnMI = nullptr;
   for (MachineBasicBlock &MBB : MF) {
     for (MachineInstr &MI : MBB) {
       // WRITELANE instructions used for SGPR spills can overwrite the inactive
@@ -1517,6 +1532,23 @@ void SIFrameLowering::determineCalleeSaves(MachineFunction &MF,
         MFI->allocateWWMSpill(MF, MI.getOperand(0).getReg());
       else if (MI.getOpcode() == AMDGPU::V_READLANE_B32)
         MFI->allocateWWMSpill(MF, MI.getOperand(1).getReg());
+      else if (MI.getOpcode() == AMDGPU::SI_RETURN ||
+               MI.getOpcode() == AMDGPU::SI_RETURN_TO_EPILOG) {
+        // We expect all return to be the same size.
+        assert(!ReturnMI ||
+               (count_if(MI.operands(), [](auto Op) { return Op.isReg(); }) ==
+                count_if(ReturnMI->operands(), [](auto Op) { return Op.isReg(); })));
+        ReturnMI = &MI;
+      }
+    }
+  }
+
+  // Remove any VGPRs used in the return value because these do not need to be saved.
+  // This prevents CSR restore from clobbering return VGPRs.
+  if (ReturnMI) {
+    for (auto &Op : ReturnMI->operands()) {
+      if (Op.isReg())
+        SavedVGPRs.reset(Op.getReg());
     }
   }
 

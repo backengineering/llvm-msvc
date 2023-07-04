@@ -2093,7 +2093,8 @@ TEST(CompletionTest, Render) {
   Opts.EnableSnippets = false;
 
   auto R = C.render(Opts);
-  EXPECT_EQ(R.label, "Foo::x(bool) const");
+  EXPECT_EQ(R.label, "Foo::x");
+  EXPECT_EQ(R.labelDetails->detail, "(bool) const");
   EXPECT_EQ(R.insertText, "Foo::x");
   EXPECT_EQ(R.insertTextFormat, InsertTextFormat::PlainText);
   EXPECT_EQ(R.filterText, "x");
@@ -2121,12 +2122,14 @@ TEST(CompletionTest, Render) {
 
   Include.Insertion.emplace();
   R = C.render(Opts);
-  EXPECT_EQ(R.label, "^Foo::x(bool) const");
+  EXPECT_EQ(R.label, "^Foo::x");
+  EXPECT_EQ(R.labelDetails->detail, "(bool) const");
   EXPECT_THAT(R.additionalTextEdits, Not(IsEmpty()));
 
   Opts.ShowOrigins = true;
   R = C.render(Opts);
-  EXPECT_EQ(R.label, "^[AS]Foo::x(bool) const");
+  EXPECT_EQ(R.label, "^[AS]Foo::x");
+  EXPECT_EQ(R.labelDetails->detail, "(bool) const");
 
   C.BundleSize = 2;
   R = C.render(Opts);
@@ -3429,6 +3432,20 @@ TEST(CompletionTest, ObjectiveCCategoryFromIndexIgnored) {
                              {FoodCategory},
                              /*Opts=*/{}, "Foo.m");
   EXPECT_THAT(Results.Completions, IsEmpty());
+}
+
+TEST(CompletionTest, ObjectiveCForwardDeclFromIndex) {
+  Symbol FoodClass = objcClass("FoodClass");
+  FoodClass.IncludeHeaders.emplace_back("\"Foo.h\"", 2, Symbol::Import);
+  Symbol SymFood = objcProtocol("Food");
+  auto Results = completions("@class Foo^", {SymFood, FoodClass},
+                             /*Opts=*/{}, "Foo.m");
+
+  // Should only give class names without any include insertion.
+  EXPECT_THAT(Results.Completions,
+              UnorderedElementsAre(AllOf(named("FoodClass"),
+                                         kind(CompletionItemKind::Class),
+                                         Not(insertInclude()))));
 }
 
 TEST(CompletionTest, CursorInSnippets) {

@@ -26,7 +26,7 @@ class Bufferization_Op<string mnemonic, list<Trait> traits = []>
 def Bufferization_AllocTensorOp : Bufferization_Op<"alloc_tensor",
     [AttrSizedOperandSegments, BufferizableOpInterface,
      DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>]> {
-  let summary = "buffer allocation in tensor land";
+  let summary = "allocate buffer for a tensor";
 
   let description = [{
     `bufferization.alloc_tensor` materializes an uninitialized tensor with a
@@ -76,6 +76,9 @@ def Bufferization_AllocTensorOp : Bufferization_Op<"alloc_tensor",
     %c = bufferization.alloc_tensor(%d1, %d2) size_hint = %noe
       : tensor<?x?xf32, #SparseMatrix>
     ```
+
+    Note: An `alloc_tensor` with a `copy` should also be expressed as an
+    `alloc_tensor` without `copy`, followed by a `copy_tensor`.
   }];
 
   let arguments = (ins Variadic<Index>:$dynamic_sizes,
@@ -172,6 +175,7 @@ def Bufferization_CloneOp : Bufferization_Op<"clone", [
       return build($_builder, $_state, value.getType(), value);
     }]>];
 
+  let summary = "clone a memref";
   let description = [{
     Clones the data in the input view into an implicitly defined output view.
 
@@ -202,12 +206,52 @@ def Bufferization_CloneOp : Bufferization_Op<"clone", [
 }
 
 //===----------------------------------------------------------------------===//
+// CopyTensorOp
+//===----------------------------------------------------------------------===//
+
+def Bufferization_CopyTensorOp : Bufferization_Op<"copy_tensor",
+    [BufferizableOpInterface, SameOperandsAndResultType,
+     DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>]> {
+  let summary = "copy a tensor";
+
+  let description = [{
+    Copy the contents of the source tensor into the destination tensor. This
+    operation is guaranteed to bufferize to a memory copy.
+  }];
+
+  let arguments = (ins AnyTensor:$source,
+                       AnyTensor:$dest);
+
+  let results = (outs AnyTensor:$result);
+
+  let extraClassDeclaration = [{
+    LogicalResult bufferize(RewriterBase &rewriter,
+                            const BufferizationOptions &options);
+
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+                                const AnalysisState &state);
+
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+                                 const AnalysisState &state);
+
+    AliasingOpResultList getAliasingOpResults(
+        OpOperand &opOperand, const AnalysisState &state);
+
+    RankedTensorType getType() {
+      return ::llvm::cast<RankedTensorType>(getResult().getType());
+    }
+  }];
+
+  let assemblyFormat = "$source `,` $dest attr-dict `:` type($source)";
+}
+
+//===----------------------------------------------------------------------===//
 // DeallocTensorOp
 //===----------------------------------------------------------------------===//
 
 def Bufferization_DeallocTensorOp : Bufferization_Op<"dealloc_tensor",
     [BufferizableOpInterface]> {
-  string summary = "Releases underlying sparse storage format of given tensor";
+  string summary = "release underlying storage format of given tensor";
   string description = [{
     `bufferization.dealloc_tensor` is a buffer deallocation in tensor land. This
     op can be used for manual buffer deallocation. Some bufferizations (such as
@@ -270,7 +314,7 @@ def Bufferization_ToTensorOp : Bufferization_Op<"to_tensor", [
                    "memref", "result",
                    "memref::getTensorTypeFromMemRefType($_self)">
   ]> {
-  let summary = "memref to tensor operation";
+  let summary = "create a tensor from a `memref`";
   let description = [{
     An operation that creates a tensor from a `memref`. The result value is a
     tensor whose shape and element type match the memref operand.
@@ -369,7 +413,7 @@ def Bufferization_ToMemrefOp : Bufferization_Op<"to_memref", [
                    "memref", "tensor",
                    "memref::getTensorTypeFromMemRefType($_self)">
   ]> {
-  let summary = "tensor to memref cast operation";
+  let summary = "cast a tensor to memref";
   let description = [{
     An operation that returns the future buffer of a `tensor`.
 
@@ -409,12 +453,6 @@ def Bufferization_ToMemrefOp : Bufferization_Op<"to_memref", [
     bool bufferizesToMemoryWrite(OpOperand &opOperand,
                                  const AnalysisState &state) const {
       // It is unknown whether the resulting MemRef will be written or not.
-      return true;
-    }
-
-    bool mustBufferizeInPlace(OpOperand &opOperand,
-                              const AnalysisState &state) const {
-      // ToMemrefOps always bufferize inplace.
       return true;
     }
 

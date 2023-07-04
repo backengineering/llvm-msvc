@@ -796,7 +796,11 @@ inline const char *ModuleArchToString(ModuleArch arch) {
   return "";
 }
 
+#if SANITIZER_APPLE
+const uptr kModuleUUIDSize = 16;
+#else
 const uptr kModuleUUIDSize = 32;
+#endif
 const uptr kMaxSegName = 16;
 
 // Represents a binary loaded into virtual memory (e.g. this can be an
@@ -1078,20 +1082,6 @@ inline u32 GetNumberOfCPUsCached() {
     NumberOfCPUsCached = GetNumberOfCPUs();
   return NumberOfCPUsCached;
 }
-
-template <typename T>
-class ArrayRef {
- public:
-  ArrayRef() {}
-  ArrayRef(T *begin, T *end) : begin_(begin), end_(end) {}
-
-  T *begin() { return begin_; }
-  T *end() { return end_; }
-
- private:
-  T *begin_ = nullptr;
-  T *end_ = nullptr;
-};
 
 }  // namespace __sanitizer
 

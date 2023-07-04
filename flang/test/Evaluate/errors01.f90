@@ -45,6 +45,7 @@ module m
     integer :: x(3)
     !CHECK: error: Invalid 'vector=' argument in PACK: the 'mask=' argument has 3 true elements, but the vector has only 2 elements
     x = pack(array, mask, [0,0])
+    x = pack(spread(array, x(1), x(2)), .true.) ! regression check, once crashed
   end subroutine
   subroutine s5
     logical, parameter :: mask(2,3) = reshape([.false., .true., .true., .false., .false., .true.], shape(mask))
@@ -151,6 +152,17 @@ module m
     !CHECK: error: NCOPIES= argument to REPEAT() should be nonnegative, but is -666
     print *, repeat(' ', -666)
   end subroutine
+  subroutine s14(n)
+    integer, intent(in) :: n
+    !CHECK: error: bit position for IBITS(POS=-1) is negative
+    print *, ibits(0, -1, n)
+    !CHECK: error: bit length for IBITS(LEN=-1) is negative
+    print *, ibits(0, n, -1)
+    !CHECK: error: IBITS() must have POS+LEN (>=33) no greater than 32
+    print *, ibits(0, n, 33)
+    !CHECK: error: IBITS() must have POS+LEN (>=33) no greater than 32
+    print *, ibits(0, 33, n)
+  end
   subroutine warnings
     real, parameter :: ok1 = scale(0.0, 99999) ! 0.0
     real, parameter :: ok2 = scale(1.0, -99999) ! 0.0
@@ -162,7 +174,23 @@ module m
     real, parameter :: bad3 = dim(huge(1.),-.5*huge(1.))
     !CHECK: warning: DIM intrinsic folding overflow
     integer, parameter :: bad4 = dim(huge(1),-1)
+    !CHECK: warning: HYPOT intrinsic folding overflow
+    real, parameter :: bad5 = hypot(huge(0.), huge(0.))
+    !CHECK: warning: SUM() of INTEGER(4) data overflowed
+    integer, parameter :: bad6 = sum([huge(1),huge(1)])
+    !CHECK: warning: SUM() of REAL(4) data overflowed
+    real, parameter :: bad7 = sum([huge(1.),huge(1.)])
+    !CHECK: warning: SUM() of COMPLEX(4) data overflowed
+    complex, parameter :: bad8 = sum([(huge(1.),0.),(huge(1.),0.)])
+    !CHECK: warning: PRODUCT() of INTEGER(4) data overflowed
+    integer, parameter :: bad9 = product([huge(1),huge(1)])
+    !CHECK: warning: PRODUCT() of REAL(4) data overflowed
+    real, parameter :: bad10 = product([huge(1.),huge(1.)])
+    !CHECK: warning: PRODUCT() of COMPLEX(4) data overflowed
+    complex, parameter :: bad11 = product([(huge(1.),0.),(huge(1.),0.)])
     !CHECK: warning: overflow on REAL(8) to REAL(4) conversion
     x = 1.D40
+    !CHECK-NOT: warning: invalid argument
+    if (.not. isnan(real(z'ffffffffffffffff',8))) stop
   end subroutine
 end module

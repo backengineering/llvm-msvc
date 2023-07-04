@@ -19,6 +19,8 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def LLVM_i8Ptr_global : LLVM_IntPtrBase<8, 1>;
 def LLVM_i8Ptr_shared : LLVM_IntPtrBase<8, 3>;
+def LLVM_i64ptr_any : LLVM_IntPtrBase<64>;
+def LLVM_i64ptr_shared : LLVM_IntPtrBase<64, 3>;
 
 //===----------------------------------------------------------------------===//
 // NVVM dialect definitions
@@ -173,6 +175,97 @@ def NVVM_ReduxOp :
    }];   
 }
 
+//===----------------------------------------------------------------------===//
+// NVVM Split arrive/wait barrier
+//===----------------------------------------------------------------------===//
+
+/// mbarrier.init instruction with generic pointer type
+def NVVM_MBarrierInitOp : NVVM_Op<"mbarrier.init">,
+  Arguments<(ins LLVM_i64ptr_any:$addr, I32:$count)> {
+  string llvmBuilder = [{
+      createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_init, {$addr, $count});
+  }];
+  let assemblyFormat = "$addr `,` $count attr-dict `:` type(operands)";
+}
+
+/// mbarrier.init instruction with shared pointer type
+def NVVM_MBarrierInitSharedOp : NVVM_Op<"mbarrier.init.shared">,
+  Arguments<(ins LLVM_i64ptr_shared:$addr, I32:$count)> {
+  string llvmBuilder = [{
+      createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_init_shared, {$addr, $count});
+  }];
+  let assemblyFormat = "$addr `,` $count attr-dict `:` type(operands)";
+}
+
+def NVVM_MBarrierInvalOp : NVVM_Op<"mbarrier.inval">,
+  Arguments<(ins LLVM_i64ptr_any:$addr)> {
+  string llvmBuilder = [{
+      createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_inval, {$addr});
+  }];
+  let assemblyFormat = "$addr attr-dict `:` type(operands)";
+}
+
+def NVVM_MBarrierInvalSharedOp : NVVM_Op<"mbarrier.inval.shared">,
+  Arguments<(ins LLVM_i64ptr_shared:$addr)> {
+  string llvmBuilder = [{
+      createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_inval_shared, {$addr});
+  }];
+  let assemblyFormat = "$addr attr-dict `:` type(operands)";
+}
+
+def NVVM_MBarrierArriveOp : NVVM_Op<"mbarrier.arrive">,
+  Results<(outs LLVM_Type:$res)>,
+  Arguments<(ins LLVM_i64ptr_any:$addr)> {
+  string llvmBuilder = [{
+      $res = createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_arrive, {$addr});
+  }];
+  let assemblyFormat = "$addr attr-dict `:` type($addr) `->` type($res)";
+}
+
+def NVVM_MBarrierArriveSharedOp : NVVM_Op<"mbarrier.arrive.shared">,
+  Results<(outs LLVM_Type:$res)>,
+  Arguments<(ins LLVM_i64ptr_shared:$addr)> {
+  string llvmBuilder = [{
+      $res = createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_arrive_shared, {$addr});
+  }];
+  let assemblyFormat = "$addr attr-dict `:` type($addr) `->` type($res)";
+}
+
+def NVVM_MBarrierArriveNocompleteOp : NVVM_Op<"mbarrier.arrive.nocomplete">,
+  Results<(outs LLVM_Type:$res)>,
+  Arguments<(ins LLVM_i64ptr_any:$addr, I32:$count)> {
+  string llvmBuilder = [{
+      $res = createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_arrive_noComplete, {$addr, $count});
+  }];
+  let assemblyFormat = "$addr `,` $count attr-dict `:` type(operands) `->` type($res)";
+}
+
+def NVVM_MBarrierArriveNocompleteSharedOp : NVVM_Op<"mbarrier.arrive.nocomplete.shared">,
+  Results<(outs LLVM_Type:$res)>,
+  Arguments<(ins LLVM_i64ptr_shared:$addr, I32:$count)> {
+  string llvmBuilder = [{
+      $res = createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_arrive_noComplete_shared, {$addr, $count});
+  }];
+  let assemblyFormat = "$addr `,` $count attr-dict `:` type(operands) `->` type($res)";
+}
+
+def NVVM_MBarrierTestWaitOp : NVVM_Op<"mbarrier.test.wait">,
+  Results<(outs LLVM_Type:$res)>,
+  Arguments<(ins LLVM_i64ptr_any:$addr, LLVM_Type:$token)> {
+  string llvmBuilder = [{
+      $res = createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_test_wait, {$addr, $token});
+  }];
+  let assemblyFormat = "$addr `,` $token attr-dict `:` type(operands) `->` type($res)";
+}
+
+def NVVM_MBarrierTestWaitSharedOp : NVVM_Op<"mbarrier.test.wait.shared">,
+  Results<(outs LLVM_Type:$res)>,
+  Arguments<(ins LLVM_i64ptr_shared:$addr, LLVM_Type:$token)> {
+  string llvmBuilder = [{
+      $res = createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_test_wait_shared, {$addr, $token});
+  }];
+  let assemblyFormat = "$addr `,` $token attr-dict `:` type(operands) `->` type($res)";
+}
 //===----------------------------------------------------------------------===//
 // NVVM synchronization op definitions
 //===----------------------------------------------------------------------===//

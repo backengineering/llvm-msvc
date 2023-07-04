@@ -534,7 +534,7 @@ PlatformDarwinKernel::GetKernelsAndKextsInDirectoryHelper(
         if (!search_here_too.empty()) {
           const bool find_directories = true;
           const bool find_files = false;
-          const bool find_other = false;
+          const bool find_other = true;
           FileSystem::Instance().EnumerateDirectory(
               search_here_too.c_str(), find_directories, find_files, find_other,
               recurse ? GetKernelsAndKextsInDirectoryWithRecursion
@@ -952,13 +952,13 @@ bool PlatformDarwinKernel::LoadPlatformBinaryAndSetup(Process *process,
 
   addr_t actual_address = find_kernel_in_macho_fileset(process, input_addr);
 
+  if (actual_address == LLDB_INVALID_ADDRESS)
+    return false;
+
   LLDB_LOGF(log,
             "PlatformDarwinKernel::%s check address 0x%" PRIx64 " for "
             "a macho fileset, got back kernel address 0x%" PRIx64,
             __FUNCTION__, input_addr, actual_address);
-
-  if (actual_address == LLDB_INVALID_ADDRESS)
-    return false;
 
   // We have a xnu kernel binary, this is a kernel debug session.
   // Set the Target's Platform to be PlatformDarwinKernel, and the

@@ -13,6 +13,7 @@
 #include "Symbols.h"
 #include "Writer.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/BinaryFormat/COFF.h"
 #include "llvm/Object/COFF.h"
@@ -703,7 +704,7 @@ ArrayRef<uint8_t> SectionChunk::consumeDebugMagic(ArrayRef<uint8_t> data,
   if (data.size() < 4)
     fatal("the section is too short: " + sectionName);
 
-  if (!sectionName.startswith(".debug$"))
+  if (!sectionName.starts_with(".debug$"))
     fatal("invalid section: " + sectionName);
 
   uint32_t magic = support::endian::read32le(data.data());

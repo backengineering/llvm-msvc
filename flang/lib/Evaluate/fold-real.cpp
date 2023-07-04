@@ -166,8 +166,13 @@ Expr<Type<TypeCategory::Real, KIND>> FoldIntrinsicFunction(
     CHECK(args.size() == 2);
     return FoldElementalIntrinsic<T, T, T>(context, std::move(funcRef),
         ScalarFunc<T, T, T>(
-            [](const Scalar<T> &x, const Scalar<T> &y) -> Scalar<T> {
-              return x.HYPOT(y).value;
+            [&](const Scalar<T> &x, const Scalar<T> &y) -> Scalar<T> {
+              ValueWithRealFlags<Scalar<T>> result{x.HYPOT(y)};
+              if (result.flags.test(RealFlag::Overflow)) {
+                context.messages().Say(
+                    "HYPOT intrinsic folding overflow"_warn_en_US);
+              }
+              return result.value;
             }));
   } else if (name == "max") {
     return FoldMINorMAX(context, std::move(funcRef), Ordering::Greater);
@@ -294,6 +299,8 @@ Expr<Type<TypeCategory::Real, KIND>> FoldIntrinsicFunction(
     return FoldSum<T>(context, std::move(funcRef));
   } else if (name == "tiny") {
     return Expr<T>{Scalar<T>::TINY()};
+  } else if (name == "__builtin_fma") {
+    CHECK(args.size() == 3);
   } else if (name == "__builtin_ieee_next_after") {
     if (const auto *yExpr{UnwrapExpr<Expr<SomeReal>>(args[1])}) {
       return common::visit(

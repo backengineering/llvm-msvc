@@ -355,39 +355,28 @@ static offset_t GetOpcodeDataSize(const DataExtractor &data,
 }
 
 lldb::addr_t DWARFExpression::GetLocation_DW_OP_addr(const DWARFUnit *dwarf_cu,
-                                                     uint32_t op_addr_idx,
                                                      bool &error) const {
   error = false;
   lldb::offset_t offset = 0;
-  uint32_t curr_op_addr_idx = 0;
   while (m_data.ValidOffset(offset)) {
     const uint8_t op = m_data.GetU8(&offset);
 
-    if (op == DW_OP_addr) {
-      const lldb::addr_t op_file_addr = m_data.GetAddress(&offset);
-      if (curr_op_addr_idx == op_addr_idx)
-        return op_file_addr;
-      ++curr_op_addr_idx;
-    } else if (op == DW_OP_GNU_addr_index || op == DW_OP_addrx) {
+    if (op == DW_OP_addr)
+      return m_data.GetAddress(&offset);
+    if (op == DW_OP_GNU_addr_index || op == DW_OP_addrx) {
       uint64_t index = m_data.GetULEB128(&offset);
-      if (curr_op_addr_idx == op_addr_idx) {
-        if (!dwarf_cu) {
-          error = true;
-          break;
-        }
-
+      if (dwarf_cu)
         return dwarf_cu->ReadAddressFromDebugAddrSection(index);
-      }
-      ++curr_op_addr_idx;
-    } else {
-      const offset_t op_arg_size =
-          GetOpcodeDataSize(m_data, offset, op, dwarf_cu);
-      if (op_arg_size == LLDB_INVALID_OFFSET) {
-        error = true;
-        break;
-      }
-      offset += op_arg_size;
+      error = true;
+      break;
     }
+    const offset_t op_arg_size =
+        GetOpcodeDataSize(m_data, offset, op, dwarf_cu);
+    if (op_arg_size == LLDB_INVALID_OFFSET) {
+      error = true;
+      break;
+    }
+    offset += op_arg_size;
   }
   return LLDB_INVALID_ADDRESS;
 }
@@ -1138,15 +1127,16 @@ bool DWARFExpression::Evaluate(
 
         if (load_addr == LLDB_INVALID_ADDRESS && so_addr.IsSectionOffset()) {
           uint8_t addr_bytes[8];
+          size_t buf_size = sizeof(addr_bytes);
           Status error;
 
           if (target &&
-              target->ReadMemory(so_addr, &addr_bytes, size, error,
-                                 /*force_live_memory=*/false) == size) {
+              target->ReadMemory(so_addr, &addr_bytes, buf_size, error,
+                                 /*force_live_memory=*/false) == buf_size) {
             ObjectFile *objfile = module_sp->GetObjectFile();
 
             stack.back().GetScalar() = DerefSizeExtractDataHelper(
-                addr_bytes, size, objfile->GetByteOrder(), size);
+                addr_bytes, size, objfile->GetByteOrder(), buf_size);
             stack.back().ClearContext();
             break;
           } else {
@@ -1170,13 +1160,13 @@ bool DWARFExpression::Evaluate(
             lldb::addr_t pointer_addr =
                 stack.back().GetScalar().ULongLong(LLDB_INVALID_ADDRESS);
             uint8_t addr_bytes[sizeof(lldb::addr_t)];
+            size_t buf_size = sizeof(addr_bytes);
             Status error;
-            if (process->ReadMemory(pointer_addr, &addr_bytes, size, error) ==
-                size) {
-
+            if (process->ReadMemory(pointer_addr, &addr_bytes, buf_size, error)
+                == buf_size) {
               stack.back().GetScalar() =
                   DerefSizeExtractDataHelper(addr_bytes, sizeof(addr_bytes),
-                                             process->GetByteOrder(), size);
+                                             process->GetByteOrder(), buf_size);
               stack.back().ClearContext();
             } else {
               if (error_ptr)

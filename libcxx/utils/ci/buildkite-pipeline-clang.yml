@@ -17,13 +17,28 @@ env:
     # LLVM RELEASE bump version
     LLVM_HEAD_VERSION: "17"
 steps:
+  - label: "Format"
+    commands:
+      - "! grep -rnI '[[:blank:]]$' clang/lib clang/include clang/docs || false"
+
+    agents:
+      queue: "libcxx-builders"
+      os: "linux"
+    retry:
+      automatic:
+        - exit_status: -1  # Agent was lost
+          limit: 2
+    timeout_in_minutes: 120
+
+  - wait
+
   - label: "Building clang"
     commands:
       - "mkdir install"
       # We use Release here to avoid including debug information. Otherwise, the clang binary is very large, which
       # is problematic because we need to upload the artifacts for other jobs to use. This may seem like nothing,
       # but with the number of jobs we run daily, this can result in thousands of GB of network I/O.
-      - "cmake -S llvm -B build -G Ninja -DCMAKE_CXX_COMPILER_LAUNCHER="ccache" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install -DLLVM_ENABLE_PROJECTS=\"clang;compiler-rt\""
+      - "cmake -S llvm -B build -G Ninja -DCMAKE_CXX_COMPILER_LAUNCHER=\"ccache\" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install -DLLVM_ENABLE_PROJECTS=\"clang;compiler-rt\""
       - "ninja -C build install-clang install-clang-resource-headers"
       - "ccache -s"
       - "tar -cJvf install.tar.xz install/"

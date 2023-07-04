@@ -346,7 +346,8 @@ LogicalResult MultiDimReductionOp::verify() {
 Type MultiDimReductionOp::getExpectedMaskType() {
   auto vecType = getSourceVectorType();
   return VectorType::get(vecType.getShape(),
-                         IntegerType::get(vecType.getContext(), /*width=*/1));
+                         IntegerType::get(vecType.getContext(), /*width=*/1),
+                         vecType.getScalableDims());
 }
 
 namespace {
@@ -483,8 +484,9 @@ void ReductionOp::print(OpAsmPrinter &p) {
 /// Returns the mask type expected by this operation.
 Type ReductionOp::getExpectedMaskType() {
   auto vecType = getSourceVectorType();
-  return vecType.cloneWith(std::nullopt,
-                           IntegerType::get(vecType.getContext(), /*width=*/1));
+  return VectorType::get(vecType.getShape(),
+                         IntegerType::get(vecType.getContext(), /*width=*/1),
+                         vecType.getScalableDims());
 }
 
 Value mlir::vector::getVectorReductionOp(arith::AtomicRMWKind op,
@@ -926,6 +928,9 @@ Type ContractionOp::getExpectedMaskType() {
 
   assert(!ShapedType::isDynamicShape(maskShape) &&
          "Mask shape couldn't be computed");
+  // TODO: Extend the scalable vector type representation with a bit map.
+  assert(!lhsType.isScalable() && !rhsType.isScalable() &&
+         "Scalable vectors are not supported yet");
 
   return VectorType::get(maskShape,
                          IntegerType::get(lhsType.getContext(), /*width=*/1));
@@ -1441,11 +1446,28 @@ Value ExtractFromInsertTransposeChainState::fold() {
   return tryToFoldExtractOpInPlace(valueToExtractFrom);
 }
 
+/// Returns true if the operation has a 0-D vector type operand or result.
+static bool hasZeroDimVectors(Operation *op) {
+  auto hasZeroDimVectorType = [](Type type) -> bool {
+    auto vecType = dyn_cast<VectorType>(type);
+    return vecType && vecType.getRank() == 0;
+  };
+
+  return llvm::any_of(op->getOperandTypes(), hasZeroDimVectorType) ||
+         llvm::any_of(op->getResultTypes(), hasZeroDimVectorType);
+}
+
 /// Fold extractOp with scalar result coming from BroadcastOp or SplatOp.
 static Value foldExtractFromBroadcast(ExtractOp extractOp) {
   Operation *defOp = extractOp.getVector().getDefiningOp();
   if (!defOp || !isa<vector::BroadcastOp, SplatOp>(defOp))
     return Value();
+
+  // 0-D vectors not supported.
+  assert(!hasZeroDimVectors(extractOp) && "0-D vectors not supported");
+  if (hasZeroDimVectors(defOp))
+    return Value();
+
   Value source = defOp->getOperand(0);
   if (extractOp.getType() == source.getType())
     return source;
@@ -1497,6 +1519,12 @@ static Value foldExtractFromShapeCast(ExtractOp extractOp) {
   auto shapeCastOp = extractOp.getVector().getDefiningOp<vector::ShapeCastOp>();
   if (!shapeCastOp)
     return Value();
+
+  // 0-D vectors not supported.
+  assert(!hasZeroDimVectors(extractOp) && "0-D vectors not supported");
+  if (hasZeroDimVectors(shapeCastOp))
+    return Value();
+
   // Get the nth dimension size starting from lowest dimension.
   auto getDimReverse = [](VectorType type, int64_t n) {
     return type.getShape().take_back(n + 1).front();
@@ -1559,6 +1587,12 @@ static Value foldExtractFromExtractStrided(ExtractOp extractOp) {
       extractOp.getVector().getDefiningOp<vector::ExtractStridedSliceOp>();
   if (!extractStridedSliceOp)
     return Value();
+
+  // 0-D vectors not supported.
+  assert(!hasZeroDimVectors(extractOp) && "0-D vectors not supported");
+  if (hasZeroDimVectors(extractStridedSliceOp))
+    return Value();
+
   // Return if 'extractStridedSliceOp' has non-unit strides.
   if (extractStridedSliceOp.hasNonUnitStrides())
     return Value();
@@ -1595,18 +1629,27 @@ static Value foldExtractFromExtractStrided(ExtractOp extractOp) {
 }
 
 /// Fold extract_op fed from a chain of insertStridedSlice ops.
-static Value foldExtractStridedOpFromInsertChain(ExtractOp op) {
-  int64_t destinationRank = llvm::isa<VectorType>(op.getType())
-                                ? llvm::cast<VectorType>(op.getType()).getRank()
-                                : 0;
-  auto insertOp = op.getVector().getDefiningOp<InsertStridedSliceOp>();
+static Value foldExtractStridedOpFromInsertChain(ExtractOp extractOp) {
+  int64_t destinationRank =
+      llvm::isa<VectorType>(extractOp.getType())
+          ? llvm::cast<VectorType>(extractOp.getType()).getRank()
+          : 0;
+  auto insertOp = extractOp.getVector().getDefiningOp<InsertStridedSliceOp>();
+  if (!insertOp)
+    return Value();
+
+  // 0-D vectors not supported.
+  assert(!hasZeroDimVectors(extractOp) && "0-D vectors not supported");
+  if (hasZeroDimVectors(insertOp))
+    return Value();
+
   while (insertOp) {
     int64_t insertRankDiff = insertOp.getDestVectorType().getRank() -
                              insertOp.getSourceVectorType().getRank();
     if (destinationRank > insertOp.getSourceVectorType().getRank())
       return Value();
     auto insertOffsets = extractVector<int64_t>(insertOp.getOffsets());
-    auto extractOffsets = extractVector<int64_t>(op.getPosition());
+    auto extractOffsets = extractVector<int64_t>(extractOp.getPosition());
 
     if (llvm::any_of(insertOp.getStrides(), [](Attribute attr) {
           return llvm::cast<IntegerAttr>(attr).getInt() != 1;
@@ -1643,12 +1686,12 @@ static Value foldExtractStridedOpFromInsertChain(ExtractOp op) {
                                                     insertRankDiff))
           return Value();
       }
-      op.getVectorMutable().assign(insertOp.getSource());
+      extractOp.getVectorMutable().assign(insertOp.getSource());
       // OpBuilder is only used as a helper to build an I64ArrayAttr.
-      OpBuilder b(op.getContext());
-      op->setAttr(ExtractOp::getPositionAttrStrName(),
-                  b.getI64ArrayAttr(offsetDiffs));
-      return op.getResult();
+      OpBuilder b(extractOp.getContext());
+      extractOp->setAttr(ExtractOp::getPositionAttrStrName(),
+                         b.getI64ArrayAttr(offsetDiffs));
+      return extractOp.getResult();
     }
     // If the chunk extracted is disjoint from the chunk inserted, keep
     // looking in the insert chain.
@@ -2744,16 +2787,17 @@ ParseResult OuterProductOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(parser.getNameLoc(),
                             "expected vector type for operand #1");
 
-  unsigned numScalableDims = vLHS.getNumScalableDims();
   VectorType resType;
   if (vRHS) {
-    numScalableDims += vRHS.getNumScalableDims();
+    SmallVector<bool> scalableDimsRes{vLHS.getScalableDims()[0],
+                                      vRHS.getScalableDims()[0]};
     resType = VectorType::get({vLHS.getDimSize(0), vRHS.getDimSize(0)},
-                              vLHS.getElementType(), numScalableDims);
+                              vLHS.getElementType(), scalableDimsRes);
   } else {
     // Scalar RHS operand
+    SmallVector<bool> scalableDimsRes{vLHS.getScalableDims()[0]};
     resType = VectorType::get({vLHS.getDimSize(0)}, vLHS.getElementType(),
-                              numScalableDims);
+                              scalableDimsRes);
   }
 
   if (!result.attributes.get(OuterProductOp::getKindAttrStrName())) {
@@ -2818,7 +2862,8 @@ LogicalResult OuterProductOp::verify() {
 Type OuterProductOp::getExpectedMaskType() {
   auto vecType = this->getResultVectorType();
   return VectorType::get(vecType.getShape(),
-                         IntegerType::get(vecType.getContext(), /*width=*/1));
+                         IntegerType::get(vecType.getContext(), /*width=*/1),
+                         vecType.getScalableDims());
 }
 
 //===----------------------------------------------------------------------===//
@@ -3473,7 +3518,11 @@ static VectorType inferTransferOpMaskType(VectorType vecType,
   AffineMap invPermMap = inversePermutation(compressUnusedDims(permMap));
   assert(invPermMap && "Inversed permutation map couldn't be computed");
   SmallVector<int64_t, 8> maskShape = invPermMap.compose(vecType.getShape());
-  return VectorType::get(maskShape, i1Type);
+
+  SmallVector<bool> scalableDims =
+      applyPermutationMap(invPermMap, vecType.getScalableDims());
+
+  return VectorType::get(maskShape, i1Type, scalableDims);
 }
 
 ParseResult TransferReadOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -4432,7 +4481,8 @@ LogicalResult GatherOp::verify() {
 Type GatherOp::getExpectedMaskType() {
   auto vecType = this->getIndexVectorType();
   return VectorType::get(vecType.getShape(),
-                         IntegerType::get(vecType.getContext(), /*width=*/1));
+                         IntegerType::get(vecType.getContext(), /*width=*/1),
+                         vecType.getScalableDims());
 }
 
 std::optional<SmallVector<int64_t, 4>> GatherOp::getShapeForUnroll() {

@@ -108,7 +108,7 @@ def Tosa_Conv2DOp : Tosa_Op<"conv2d", [
 
   let arguments = (ins
     Tosa_Tensor4D:$input,
-    Tosa_Tensor4D:$weight,
+    4DTensorOf<[Tosa_Weight]>:$weight,
     Tosa_Tensor1D:$bias,
 
     Tosa_IntArrayAttr4:$pad,
@@ -140,7 +140,7 @@ def Tosa_Conv3DOp : Tosa_Op<"conv3d", [
 
   let arguments = (ins
     Tosa_Tensor5D:$input,
-    Tosa_Tensor5D:$weight,
+    TensorRankOf<[Tosa_Weight], [5]>:$weight,
     Tosa_Tensor1D:$bias,
 
     Tosa_IntArrayAttr6:$pad,
@@ -173,7 +173,7 @@ def Tosa_DepthwiseConv2DOp : Tosa_Op<"depthwise_conv2d", [
 
   let arguments = (ins
     Tosa_Tensor4D:$input,
-    Tosa_Tensor4D:$weight,
+    4DTensorOf<[Tosa_Weight]>:$weight,
     Tosa_Tensor1D:$bias,
 
     Tosa_IntArrayAttr4:$pad,
@@ -235,7 +235,7 @@ def Tosa_FullyConnectedOp : Tosa_Op<"fully_connected", [
 
   let arguments = (ins
     Tosa_Tensor2D:$input,
-    Tosa_Tensor2D:$weight,
+    2DTensorOf<[Tosa_Weight]>:$weight,
     Tosa_Tensor1D:$bias,
     OptionalAttr<Tosa_ConvOpQuantizationAttr>:$quantization_info
   );
@@ -351,7 +351,7 @@ def Tosa_TransposeConv2DOp : Tosa_Op<"transpose_conv2d", [
 
   let arguments = (ins
     Tosa_Tensor4D:$input,
-    Tosa_Tensor4D:$filter,
+    4DTensorOf<[Tosa_Weight]>:$filter,
     Tosa_Tensor1D:$bias,
 
     Tosa_IntArrayAttr4:$out_pad,
@@ -1717,26 +1717,27 @@ def Tosa_CastOp: Tosa_Op<"cast", [Pure,
 
   let description = [{
     Performs a set of permissible cast operations
-        Mode                    Input   Output
-        ---------------------------------------
-        signed 8 to bool        int8    Boolean
-        signed 16 to bool       int16   Boolean
-        signed 32 to bool       int32   Boolean
-        bool to 8               Boolean int8
-        bool to 16              Boolean int16
-        bool to 32              Boolean int32
-        signed 8 to signed 16   int8    int16
-        signed 8 to signed 32   int8    int32
-        signed 16 to signed 8   int16   int8
-        signed 16 to signed 32  int16   int32
-        signed 32 to signed 8   int32   int8
-        signed 32 to signed 16  int32   int16
-        float to signed 8       float   int8
-        float to signed 16      float   int16
-        signed 8 to float       int8    float
-        signed 16 to float      int16   float
-        float 32 to float 64    float32 float64
-        float 64 to float 32    float64 float32
+
+    | Mode                     | Input   | Output  |
+    |--------------------------|---------|---------|
+    | signed 8 to bool         | int8    | Boolean | 
+    | signed 16 to bool        | int16   | Boolean | 
+    | signed 32 to bool        | int32   | Boolean | 
+    | bool to 8                | Boolean | int8    |
+    | bool to 16               | Boolean | int16   |
+    | bool to 32               | Boolean | int32   |
+    | signed 8 to signed 16    | int8    | int16   |
+    | signed 8 to signed 32    | int8    | int32   |
+    | signed 16 to signed 8    | int16   | int8    |
+    | signed 16 to signed 32   | int16   | int32   |
+    | signed 32 to signed 8    | int32   | int8    |
+    | signed 32 to signed 16   | int32   | int16   |
+    | float to signed 8        | float   | int8    |
+    | float to signed 16       | float   | int16   |
+    | signed 8 to float        | int8    | float   |
+    | signed 16 to float       | int16   | float   |
+    | float 32 to float 64     | float32 | float64 | 
+    | float 64 to float 32     | float64 | float32 | 
   }];
 
   let arguments = (ins
@@ -1816,7 +1817,7 @@ def Tosa_ConstOp : Tosa_Op<"const", [ConstantLike, Pure,
   );
 
   let results = (outs
-    Tosa_Tensor_Plus_F64:$output
+    TensorOf<[AnyTypeOf<[Tosa_AnyNumber_Plus_F64, Tosa_Int4]>]>:$output
   );
   let hasFolder = 1;
 }

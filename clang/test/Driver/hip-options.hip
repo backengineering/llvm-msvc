@@ -21,6 +21,22 @@
 // PTH: "-cc1"{{.*}} "-E" {{.*}}"-fgpu-default-stream=per-thread"
 // PTH: "-cc1"{{.*}} "-fgpu-default-stream=per-thread" {{.*}}"-x" "hip-cpp-output"
 
+// Check -mprintf-kind=hostcall
+// RUN: %clang -### --target=x86_64-unknown-linux-gnu -mprintf-kind=hostcall  %s -save-temps 2>&1 | FileCheck -check-prefix=HOSTC %s
+// HOSTC: "-cc1" "-triple" "amdgcn-amd-amdhsa"{{.*}}"-mprintf-kind=hostcall" "-Werror=format-invalid-specifier"{{.*}}"-E" {{.*}}
+// HOSTC: "-cc1" "-triple" "amdgcn-amd-amdhsa"{{.*}} "-mprintf-kind=hostcall" "-Werror=format-invalid-specifier" {{.*}}"-x" "hip-cpp-output"
+// HOSTC: "-cc1" "-triple" "amdgcn-amd-amdhsa"{{.*}} "-mprintf-kind=hostcall" "-Werror=format-invalid-specifier" {{.*}}"-x" "ir"
+// HOSTC: "-cc1" "-triple" "x86_64-unknown-linux-gnu"{{.*}} "-E" {{.*}}
+// HOSTC: "-cc1" "-triple" "x86_64-unknown-linux-gnu"{{.*}}"-x" "ir"
+
+// Check -mprintf-kind=buffered
+// RUN: %clang -### --target=x86_64-unknown-linux-gnu -mprintf-kind=buffered  %s -save-temps 2>&1 | FileCheck -check-prefix=BUFF %s
+// BUFF: "-cc1" "-triple" "amdgcn-amd-amdhsa"{{.*}}"-mprintf-kind=buffered" "-Werror=format-invalid-specifier"{{.*}}"-E" {{.*}}
+// BUFF: "-cc1" "-triple" "amdgcn-amd-amdhsa"{{.*}} "-mprintf-kind=buffered" "-Werror=format-invalid-specifier" {{.*}}"-x" "hip-cpp-output"
+// BUFF: "-cc1" "-triple" "amdgcn-amd-amdhsa"{{.*}} "-mprintf-kind=buffered" "-Werror=format-invalid-specifier" {{.*}}"-x" "ir"
+// BUFF: "-cc1" "-triple" "x86_64-unknown-linux-gnu"{{.*}} "-E" {{.*}}
+// BUFF: "-cc1" "-triple" "x86_64-unknown-linux-gnu"{{.*}}"-x" "ir"
+
 // RUN: %clang -### -x hip --target=x86_64-pc-windows-msvc -fms-extensions \
 // RUN:   -mllvm -amdgpu-early-inline-all=true  %s 2>&1 | \
 // RUN:   FileCheck -check-prefix=MLLVM %s
@@ -138,3 +154,18 @@
 // RUN: %clang -### -nogpuinc -nogpulib -mamdgpu-ieee -mno-amdgpu-ieee -ffast-math \
 // RUN:   --cuda-gpu-arch=gfx906  %s 2>&1 | FileCheck -check-prefixes=IEEE-OFF-NEG %s
 // IEEE-OFF-NEG-NOT: clang{{.*}} "-triple" "amdgcn-amd-amdhsa" {{.*}} "-mamdgpu-ieee"
+
+// Check -fno-hip-fp32-correctly-rounded-divide-sqrt is passed to -cc1 but
+// (default) -fhip-fp32-correctly-rounded-divide-sqrt is not.
+
+// RUN: %clang -### -nogpuinc -nogpulib -fno-hip-fp32-correctly-rounded-divide-sqrt \
+// RUN:   --cuda-gpu-arch=gfx906  %s 2>&1 | FileCheck -check-prefixes=NOCRDS %s
+// NOCRDS: clang{{.*}} "-triple" "amdgcn-amd-amdhsa" {{.*}} "-fno-hip-fp32-correctly-rounded-divide-sqrt"
+
+// RUN: %clang -### -nogpuinc -nogpulib \
+// RUN:   --cuda-gpu-arch=gfx906  %s 2>&1 | FileCheck -check-prefixes=CRDS %s
+// CRDS-NOT: "-f{{(no-)?}}hip-fp32-correctly-rounded-divide-sqrt"
+
+// RUN: %clang -### -nogpuinc -nogpulib -fhip-fp32-correctly-rounded-divide-sqrt \
+// RUN:   --cuda-gpu-arch=gfx906  %s 2>&1 | FileCheck -check-prefixes=CRDS %s
+// CRDS-NOT: "-f{{(no-)?}}hip-fp32-correctly-rounded-divide-sqrt"

@@ -16,9 +16,10 @@
 #define LLVM_LIB_TARGET_AMDGPU_DISASSEMBLER_AMDGPUDISASSEMBLER_H
 
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
-#include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCInstrInfo.h"
 #include "llvm/Support/DataExtractor.h"
 #include <memory>
 
@@ -164,6 +165,13 @@ public:
   /// \param KdStream       - Stream to write the disassembled directives to.
   // NOLINTNEXTLINE(readability-identifier-naming)
   DecodeStatus decodeCOMPUTE_PGM_RSRC2(uint32_t FourByteBuffer,
+                                       raw_string_ostream &KdStream) const;
+
+  /// Decode as directives that handle COMPUTE_PGM_RSRC3.
+  /// \param FourByteBuffer - Bytes holding contents of COMPUTE_PGM_RSRC3.
+  /// \param KdStream       - Stream to write the disassembled directives to.
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  DecodeStatus decodeCOMPUTE_PGM_RSRC3(uint32_t FourByteBuffer,
                                        raw_string_ostream &KdStream) const;
 
   DecodeStatus convertEXPInst(MCInst &MI) const;

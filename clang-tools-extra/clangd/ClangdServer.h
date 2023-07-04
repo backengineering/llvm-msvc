@@ -30,6 +30,7 @@
 #include "support/Path.h"
 #include "support/ThreadsafeFS.h"
 #include "clang/Tooling/Core/Replacement.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/FunctionExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include <functional>
@@ -67,7 +68,7 @@ public:
     /// file, they do not interfere with "pull-based" ClangdServer::diagnostics.
     /// May be called concurrently for separate files, not for a single file.
     virtual void onDiagnosticsReady(PathRef File, llvm::StringRef Version,
-                                    std::vector<Diag> Diagnostics) {}
+                                    llvm::ArrayRef<Diag> Diagnostics) {}
     /// Called whenever the file status is updated.
     /// May be called concurrently for separate files, not for a single file.
     virtual void onFileUpdated(PathRef File, const TUStatus &Status) {}
@@ -184,6 +185,10 @@ public:
     /// Whether to collect and publish information about inactive preprocessor
     /// regions in the document.
     bool PublishInactiveRegions = false;
+
+    /// Whether to run preamble indexing asynchronously in an independent
+    /// thread.
+    bool AsyncPreambleIndexing = false;
 
     explicit operator TUScheduler::Options() const;
   };

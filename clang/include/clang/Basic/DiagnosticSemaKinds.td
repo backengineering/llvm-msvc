@@ -2656,10 +2656,23 @@ def warn_cxx14_compat_constexpr_not_const : Warning<
   "in C++14; add 'const' to avoid a change in behavior">,
   InGroup<DiagGroup<"constexpr-not-const">>;
 def err_invalid_consteval_take_address : Error<
-  "cannot take address of consteval %select{function|call operator of}1 %0 outside"
+  "cannot take address of %select{immediate|consteval}2 "
+  "%select{function|call operator of}1 %0 outside"
   " of an immediate invocation">;
 def err_invalid_consteval_call : Error<
-  "call to consteval function %q0 is not a constant expression">;
+  "call to %select{immediate|consteval}1 function "
+  "%q0 is not a constant expression">;
+
+def err_immediate_function_used_before_definition : Error<
+  "immediate function %0 used before it is defined">;
+
+def note_immediate_function_reason : Note<
+  "%0 is an immediate function because its body "
+  "%select{evaluates the address of %select{an immediate|a consteval}2 "
+  "function %1|contains a call to %select{an immediate|a consteval}2 "
+  "%select{function|constructor}4 %1 and that call is not a constant "
+  "expression}3">;
+
 def note_invalid_consteval_initializer : Note<
   "in the default initalizer of %0">;
 def note_invalid_consteval_initializer_here : Note<
@@ -2968,6 +2981,10 @@ def warn_attribute_ignored_no_calls_in_stmt: Warning<
   "statement">,
   InGroup<IgnoredAttributes>;
 
+def warn_attribute_ignored_non_function_pointer: Warning<
+  "%0 attribute is ignored because %1 is not a function pointer">,
+  InGroup<IgnoredAttributes>;
+
 def warn_function_attribute_ignored_in_stmt : Warning<
   "attribute is ignored on this statement as it only applies to functions; "
   "use '%0' on statements">,
@@ -3022,7 +3039,7 @@ def err_musttail_no_variadic : Error<
 def err_nsobject_attribute : Error<
   "'NSObject' attribute is for pointer types only">;
 def err_attributes_are_not_compatible : Error<
-  "%0 and %1 attributes are not compatible">;
+  "%0 and %1%select{ attributes|}2 are not compatible">;
 def err_attribute_invalid_argument : Error<
   "%select{a reference type|an array type|a non-vector or "
   "non-vectorizable scalar type}0 is an invalid argument to attribute %1">;
@@ -3065,8 +3082,8 @@ def err_attribute_riscv_rvv_bits_unsupported : Error<
   "%0 is only supported when '-mrvv-vector-bits=<bits>' is specified with a "
   "value of \"zvl\" or a power 2 in the range [64,65536]">;
 def err_attribute_bad_rvv_vector_size : Error<
-  "invalid RVV vector size '%0', must match value set by "
-  "'-mrvv-vector-bits' ('%1')">;
+  "invalid RVV vector size '%0', expected size is '%1' based on LMUL of type "
+  "and '-mrvv-vector-bits'">;
 def err_attribute_invalid_rvv_type : Error<
   "%0 attribute applied to non-RVV type %1">;
 def err_attribute_requires_positive_integer : Error<
@@ -3430,9 +3447,9 @@ def warn_attribute_has_no_effect_on_compile_time_if : Warning<
 def note_attribute_has_no_effect_on_compile_time_if_here : Note<
   "annotating the 'if %select{constexpr|consteval}0' statement here">;
 def err_decl_attribute_invalid_on_stmt : Error<
-  "%0 attribute cannot be applied to a statement">;
+  "%0%select{ attribute|}1 cannot be applied to a statement">;
 def err_attribute_invalid_on_decl : Error<
-  "%0 attribute cannot be applied to a declaration">;
+  "%0%select{ attribute|}1 cannot be applied to a declaration">;
 def warn_type_attribute_deprecated_on_decl : Warning<
   "applying attribute %0 to a declaration is deprecated; apply it to the type instead">,
   InGroup<DeprecatedAttributes>;
@@ -3440,6 +3457,10 @@ def warn_declspec_attribute_ignored : Warning<
   "attribute %0 is ignored, place it after "
   "\"%select{class|struct|interface|union|enum|enum class|enum struct}1\" to apply attribute to "
   "type declaration">, InGroup<IgnoredAttributes>;
+def err_declspec_keyword_has_no_effect : Error<
+  "%0 cannot appear here, place it after "
+  "\"%select{class|struct|interface|union|enum}1\" to apply it to the "
+  "type declaration">;
 def warn_attribute_precede_definition : Warning<
   "attribute declaration must precede definition">,
   InGroup<IgnoredAttributes>;
@@ -3538,11 +3559,11 @@ def err_attribute_weakref_without_alias : Error<
 def err_alias_not_supported_on_darwin : Error <
   "aliases are not supported on darwin">;
 def warn_attribute_wrong_decl_type_str : Warning<
-  "%0 attribute only applies to %1">, InGroup<IgnoredAttributes>;
+  "%0%select{ attribute|}1 only applies to %2">, InGroup<IgnoredAttributes>;
 def err_attribute_wrong_decl_type_str : Error<
   warn_attribute_wrong_decl_type_str.Summary>;
 def warn_attribute_wrong_decl_type : Warning<
-  "%0 attribute only applies to %select{"
+  "%0%select{ attribute|}1 only applies to %select{"
   "functions"
   "|unions"
   "|variables and functions"
@@ -3555,13 +3576,15 @@ def warn_attribute_wrong_decl_type : Warning<
   "|types and namespaces"
   "|variables, functions and classes"
   "|kernel functions"
-  "|non-K&R-style functions}1">,
+  "|non-K&R-style functions}2">,
   InGroup<IgnoredAttributes>;
 def err_attribute_wrong_decl_type : Error<warn_attribute_wrong_decl_type.Summary>;
 def warn_type_attribute_wrong_type : Warning<
   "'%0' only applies to %select{function|pointer|"
   "Objective-C object or block pointer}1 types; type here is %2">,
   InGroup<IgnoredAttributes>;
+def err_type_attribute_wrong_type : Error<
+  warn_type_attribute_wrong_type.Summary>;
 def warn_incomplete_encoded_type : Warning<
   "encoding of %0 type is incomplete because %1 component has unknown encoding">,
   InGroup<DiagGroup<"encode-type">>;
@@ -3612,7 +3635,7 @@ def err_invalid_pcs : Error<"invalid PCS type">;
 def warn_attribute_not_on_decl : Warning<
   "%0 attribute ignored when parsing type">, InGroup<IgnoredAttributes>;
 def err_base_specifier_attribute : Error<
-  "%0 attribute cannot be applied to a base specifier">;
+  "%0%select{ attribute|}1 cannot be applied to a base specifier">;
 def warn_declspec_allocator_nonpointer : Warning<
   "ignoring __declspec(allocator) because the function return type %0 is not "
   "a pointer or reference type">, InGroup<IgnoredAttributes>;
@@ -4677,9 +4700,6 @@ def note_ovl_candidate_bad_cvr : Note<
     "%select{const|restrict|const and restrict|volatile|const and volatile|"
     "volatile and restrict|const, volatile, and restrict}4 qualifier"
     "%select{||s||s|s|s}4">;
-def note_ovl_candidate_bad_unaligned : Note<
-    "candidate %sub{select_ovl_candidate_kind}0,1,2 not viable: "
-    "%ordinal5 argument (%3) would lose __unaligned qualifier">;
 def note_ovl_candidate_bad_base_to_derived_conv : Note<
     "candidate %sub{select_ovl_candidate_kind}0,1,2 not viable: "
     "cannot %select{convert from|convert from|bind}3 "
@@ -7655,7 +7675,7 @@ def warn_increment_bool : Warning<
   "incompatible with C++17">, InGroup<DeprecatedIncrementBool>;
 def ext_increment_bool : ExtWarn<
   "ISO C++17 does not allow incrementing expression of type bool">,
-  DefaultError, InGroup<IncrementBool>;
+  DefaultError, SFINAEFailure, InGroup<IncrementBool>;
 def err_increment_decrement_enum : Error<
   "cannot %select{decrement|increment}0 expression of enum type %1">;
 
@@ -8523,6 +8543,9 @@ def err_atomic_op_needs_atomic_int_ptr_or_fp : Error<
 def err_atomic_op_needs_atomic_int_or_ptr : Error<
   "address argument to atomic operation must be a pointer to %select{|atomic }0"
   "integer or pointer (%1 invalid)">;
+def err_atomic_op_needs_atomic_int_or_fp : Error<
+  "address argument to atomic operation must be a pointer to %select{|atomic }0"
+  "integer or supported floating point type (%1 invalid)">;
 def err_atomic_op_needs_atomic_int : Error<
   "address argument to atomic operation must be a pointer to "
   "%select{|atomic }0integer (%1 invalid)">;
@@ -9453,6 +9476,10 @@ def note_defaulted_comparison_not_constexpr_here : Note<
 def note_in_declaration_of_implicit_equality_comparison : Note<
   "while declaring the corresponding implicit 'operator==' "
   "for this defaulted 'operator<=>'">;
+def err_volatile_comparison_operator : Error<
+  "defaulted comparison function must not be volatile">;
+def err_ref_qualifier_comparison_operator : Error<
+  "ref-qualifier '&&' is not allowed on a defaulted comparison operator">;
 
 def ext_implicit_exception_spec_mismatch : ExtWarn<
   "function previously declared with an %select{explicit|implicit}0 exception "
@@ -10841,7 +10868,7 @@ def note_omp_previous_named_if_clause : Note<
 def err_omp_ordered_directive_with_param : Error<
   "'ordered' directive %select{without any clauses|with 'threads' clause}0 cannot be closely nested inside ordered region with specified parameter">;
 def err_omp_ordered_directive_without_param : Error<
-  "'ordered' directive with 'depend' clause cannot be closely nested inside ordered region without specified parameter">;
+  "'ordered' directive with '%0' clause cannot be closely nested inside ordered region without specified parameter">;
 def note_omp_ordered_param : Note<
   "'ordered' clause%select{| with specified parameter}0">;
 def err_omp_expected_base_var_name : Error<
@@ -10873,7 +10900,7 @@ def note_omp_critical_hint_here : Note<
 def note_omp_critical_no_hint : Note<
   "%select{|previous }0directive with no 'hint' clause specified">;
 def err_omp_depend_clause_thread_simd : Error<
-  "'depend' clauses cannot be mixed with '%0' clause">;
+  "'%0' clauses cannot be mixed with '%1' clause">;
 def err_omp_depend_sink_expected_loop_iteration : Error<
   "expected%select{| %1}0 loop iteration variable">;
 def err_omp_depend_sink_unexpected_expr : Error<
@@ -10882,8 +10909,8 @@ def err_omp_depend_sink_expected_plus_minus : Error<
   "expected '+' or '-' operation">;
 def err_omp_taskwait_depend_mutexinoutset_not_allowed : Error<
   "'mutexinoutset' modifier not allowed in 'depend' clause on 'taskwait' directive">;
-def err_omp_depend_sink_source_not_allowed : Error<
-  "'depend(%select{source|sink:vec}0)' clause%select{|s}0 cannot be mixed with 'depend(%select{sink:vec|source}0)' clause%select{s|}0">;
+def err_omp_sink_and_source_not_allowed : Error<
+  "'%0(%select{source|sink:vec}1)' clause%select{|s}1 cannot be mixed with '%0(%select{sink:vec|source}1)' clause%select{s|}1">;
 def err_omp_depend_zero_length_array_section_not_allowed : Error<
   "zero-length array section is not allowed in 'depend' clause">;
 def err_omp_depend_sink_source_with_modifier : Error<
@@ -11236,22 +11263,11 @@ def note_global_module_introducer_missing : Note<
 def err_export_within_anonymous_namespace : Error<
   "export declaration appears within anonymous namespace">;
 def note_anonymous_namespace : Note<"anonymous namespace begins here">;
-def ext_export_no_name_block : ExtWarn<
-  "ISO C++20 does not permit %select{an empty|a static_assert}0 declaration "
-  "to appear in an export block">, InGroup<ExportUnnamed>;
-def ext_export_no_names : ExtWarn<
-  "ISO C++20 does not permit a declaration that does not introduce any names "
-  "to be exported">, InGroup<ExportUnnamed>;
-def introduces_no_names : Error<
-  "declaration does not introduce any names to be exported">;
 def note_export : Note<"export block begins here">;
-def err_export_no_name : Error<
-  "%select{empty|static_assert|asm}0 declaration cannot be exported">;
-def ext_export_using_directive : ExtWarn<
-  "ISO C++20 does not permit using directive to be exported">,
-  InGroup<DiagGroup<"export-using-directive">>;
 def err_export_within_export : Error<
   "export declaration appears within another export declaration">;
+def err_export_anon_ns_internal : Error<
+  "anonymous namespaces cannot be exported">;
 def err_export_internal : Error<
   "declaration of %0 with internal linkage cannot be exported">;
 def err_export_using_internal : Error<
@@ -11531,6 +11547,10 @@ def err_objc_type_args_specialized_class : Error<
 def err_objc_type_args_wrong_arity : Error<
   "too %select{many|few}0 type arguments for class %1 (have %2, expected %3)">;
 }
+
+def err_type_available_only_in_default_eval_method : Error<
+  "cannot use type '%0' within '#pragma clang fp eval_method'; type is set "
+  "according to the default eval method for the translation unit">;
 
 def err_objc_type_arg_not_id_compatible : Error<
   "type argument %0 is neither an Objective-C object nor a block type">;
@@ -11838,4 +11858,34 @@ def err_wasm_ca_reference : Error<
   "cannot %select{capture|take address of}0 WebAssembly reference">;
 def err_wasm_funcref_not_wasm : Error<
   "invalid use of '__funcref' keyword outside the WebAssembly triple">;
+def err_wasm_table_pr : Error<
+  "cannot form a %select{pointer|reference}0 to a WebAssembly table">;
+def err_typecheck_wasm_table_must_have_zero_length : Error<
+  "only zero-length WebAssembly tables are currently supported">;
+def err_wasm_table_in_function : Error<
+  "WebAssembly table cannot be declared within a function">;
+def err_wasm_table_as_function_parameter : Error<
+  "cannot use WebAssembly table as a function parameter">;
+def err_wasm_table_invalid_uett_operand : Error<
+  "invalid application of '%0' to WebAssembly table">;
+def err_wasm_cast_table : Error<
+  "cannot cast %select{to|from}0 a WebAssembly table">;
+def err_wasm_table_conditional_expression : Error<
+  "cannot use a WebAssembly table within a branch of a conditional expression">;
+def err_wasm_table_art : Error<
+  "cannot %select{assign|return|throw|subscript}0 a WebAssembly table">;
+def err_wasm_reftype_tc : Error<
+  "cannot %select{throw|catch}0 a WebAssembly reference type">;
+def err_wasm_reftype_exception_spec : Error<
+  "WebAssembly reference type not allowed in exception specification">;
+def err_wasm_table_must_be_static : Error<
+  "WebAssembly table must be static">;
+def err_wasm_reftype_multidimensional_array : Error<
+  "multi-dimensional arrays of WebAssembly references are not allowed">;
+def err_wasm_builtin_arg_must_be_table_type : Error <
+  "%ordinal0 argument must be a WebAssembly table">;
+def err_wasm_builtin_arg_must_match_table_element_type : Error <
+  "%ordinal0 argument must match the element type of the WebAssembly table in the %ordinal1 argument">;
+def err_wasm_builtin_arg_must_be_integer_type : Error <
+  "%ordinal0 argument must be an integer">;
 } // end of sema component.

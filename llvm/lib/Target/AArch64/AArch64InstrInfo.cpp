@@ -3256,6 +3256,20 @@ static const TargetRegisterClass *getRegClass(const MachineInstr &MI,
   return MF ? MF->getRegInfo().getRegClassOrNull(Reg) : nullptr;
 }
 
+bool AArch64InstrInfo::isHForm(const MachineInstr &MI) {
+  auto IsHFPR = [&](const MachineOperand &Op) {
+    if (!Op.isReg())
+      return false;
+    auto Reg = Op.getReg();
+    if (Reg.isPhysical())
+      return AArch64::FPR16RegClass.contains(Reg);
+    const TargetRegisterClass *TRC = ::getRegClass(MI, Reg);
+    return TRC == &AArch64::FPR16RegClass ||
+           TRC == &AArch64::FPR16_loRegClass;
+  };
+  return llvm::any_of(MI.operands(), IsHFPR);
+}
+
 bool AArch64InstrInfo::isQForm(const MachineInstr &MI) {
   auto IsQFPR = [&](const MachineOperand &Op) {
     if (!Op.isReg())
@@ -4241,7 +4255,7 @@ static MCCFIInstruction createDefCFAExpression(const TargetRegisterInfo &TRI,
   uint8_t buffer[16];
   DefCfaExpr.append(buffer, buffer + encodeULEB128(Expr.size(), buffer));
   DefCfaExpr.append(Expr.str());
-  return MCCFIInstruction::createEscape(nullptr, DefCfaExpr.str(),
+  return MCCFIInstruction::createEscape(nullptr, DefCfaExpr.str(), SMLoc(),
                                         Comment.str());
 }
 
@@ -4289,7 +4303,8 @@ MCCFIInstruction llvm::createCFAOffset(const TargetRegisterInfo &TRI,
   CfaExpr.append(buffer, buffer + encodeULEB128(OffsetExpr.size(), buffer));
   CfaExpr.append(OffsetExpr.str());
 
-  return MCCFIInstruction::createEscape(nullptr, CfaExpr.str(), Comment.str());
+  return MCCFIInstruction::createEscape(nullptr, CfaExpr.str(), SMLoc(),
+                                        Comment.str());
 }
 
 // Helper function to emit a frame offset adjustment from a given
@@ -6889,7 +6904,7 @@ void AArch64InstrInfo::genAlternativeCodeSequence(
 
   // Set the flags on the inserted instructions to be the merged flags of the
   // instructions that we have combined.
-  uint16_t Flags = Root.getFlags();
+  uint32_t Flags = Root.getFlags();
   if (MUL)
     Flags = Root.mergeFlagsWith(*MUL);
   for (auto *MI : InsInstrs)

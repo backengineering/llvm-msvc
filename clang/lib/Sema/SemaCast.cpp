@@ -25,6 +25,7 @@
 #include "clang/Sema/Initialization.h"
 #include "clang/Sema/SemaInternal.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include <set>
 using namespace clang;
 
@@ -2746,6 +2747,15 @@ void CastOperation::CheckCXXCStyleCast(bool FunctionalStyle,
     }
   }
 
+  // WebAssembly tables cannot be cast.
+  QualType SrcType = SrcExpr.get()->getType();
+  if (SrcType->isWebAssemblyTableType()) {
+    Self.Diag(OpRange.getBegin(), diag::err_wasm_cast_table)
+        << 1 << SrcExpr.get()->getSourceRange();
+    SrcExpr = ExprError();
+    return;
+  }
+
   // C++ [expr.cast]p5: The conversions performed by
   //   - a const_cast,
   //   - a static_cast,
@@ -2920,6 +2930,13 @@ void CastOperation::CheckCStyleCast() {
   if (SrcExpr.isInvalid())
     return;
   QualType SrcType = SrcExpr.get()->getType();
+
+  if (SrcType->isWebAssemblyTableType()) {
+    Self.Diag(OpRange.getBegin(), diag::err_wasm_cast_table)
+        << 1 << SrcExpr.get()->getSourceRange();
+    SrcExpr = ExprError();
+    return;
+  }
 
   assert(!SrcType->isPlaceholderType());
 

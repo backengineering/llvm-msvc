@@ -1719,3 +1719,70 @@ transform.sequence failures(propagate) {
   %1 = get_closest_isolated_parent %0 : (!transform.any_op) -> !transform.any_op
   %2 = transform.structured.vectorize %1  { vectorize_padding } : (!transform.any_op) -> !transform.any_op
 }
+
+// -----
+
+func.func @zero_dim_tensor(%input: tensor<f32>, %output: tensor<f32>) -> tensor<f32>
+{
+  %0 = linalg.generic { indexing_maps = [ affine_map<() -> ()>, affine_map<() -> ()> ],
+                        iterator_types = [] }
+                        ins(%input : tensor<f32>)
+                        outs(%output : tensor<f32>) {
+    ^bb0(%arg0: f32, %arg1: f32):
+      %2 = arith.addf %arg0, %arg1 : f32
+      linalg.yield %2 : f32
+    } -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+transform.sequence failures(propagate) {
+^bb1(%arg1: !transform.any_op):
+  %3 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+  %4 = get_closest_isolated_parent %3 : (!transform.any_op) -> !transform.any_op
+  %5 = transform.structured.vectorize %4 : (!transform.any_op) -> !transform.any_op
+}
+
+// CHECK-LABEL: func @zero_dim_tensor
+//       CHECK:     vector.transfer_read {{.*}} : tensor<f32>, vector<f32>
+//       CHECK:     vector.extractelement
+//       CHECK:     vector.transfer_read {{.*}} : tensor<f32>, vector<f32>
+//       CHECK:     vector.extractelement
+//       CHECK:     arith.addf {{.*}} : f32
+//       CHECK:     vector.broadcast %{{.*}} : f32 to vector<f32>
+//       CHECK:     vector.transfer_write {{.*}} : vector<f32>, tensor<f32>
+
+// -----
+
+// Make sure we generate the right transfer writes for multi-output generic ops
+// with different permutation maps.
+
+func.func @multi_output_generic_different_perm_maps(%in0: tensor<4x1xf32>,
+                                                    %out0: tensor<4x1xf32>,
+                                                    %out1: tensor<1x4xf32>) -> (tensor<4x1xf32>, tensor<1x4xf32>) {
+  %13:2 = linalg.generic {indexing_maps = [ affine_map<(d0, d1) -> (d1, d0)>,
+                                            affine_map<(d0, d1) -> (d1, d0)>,
+                                            affine_map<(d0, d1) -> (d0, d1)> ],
+                          iterator_types = ["parallel", "parallel"]}
+                          ins(%in0 : tensor<4x1xf32>)
+                          outs(%out0, %out1 : tensor<4x1xf32>, tensor<1x4xf32>) {
+  ^bb0(%in: f32, %out: f32, %out_2: f32):
+    %16 = arith.addf %in, %in : f32
+    linalg.yield %16, %16 : f32, f32
+  } -> (tensor<4x1xf32>, tensor<1x4xf32>)
+  return %13#0, %13#1 : tensor<4x1xf32>, tensor<1x4xf32>
+}
+
+transform.sequence failures(propagate) {
+^bb1(%arg1: !transform.any_op):
+  %3 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+  %4 = get_closest_isolated_parent %3 : (!transform.any_op) -> !transform.any_op
+  %5 = transform.structured.vectorize %4 : (!transform.any_op) -> !transform.any_op
+}
+
+// CHECK-LABEL: func @multi_output_generic_different_perm_maps
+//       CHECK:     %[[VAL_5:.*]] = vector.transfer_read %{{.*}} {in_bounds = [true, true]} : tensor<4x1xf32>, vector<4x1xf32>
+//       CHECK:     %[[VAL_6:.*]] = arith.addf %[[VAL_5]], %[[VAL_5]] : vector<4x1xf32>
+//       CHECK:     %[[VAL_7:.*]] = vector.transpose %[[VAL_6]], [1, 0] : vector<4x1xf32> to vector<1x4xf32>
+//       CHECK:     %[[VAL_8:.*]] = vector.transpose %[[VAL_7]], [1, 0] : vector<1x4xf32> to vector<4x1xf32>
+//       CHECK:     vector.transfer_write %[[VAL_8]], %{{.*}} {in_bounds = [true, true]} : vector<4x1xf32>, tensor<4x1xf32>
+//       CHECK:     vector.transfer_write %[[VAL_7]], %{{.*}} {in_bounds = [true, true]} : vector<1x4xf32>, tensor<1x4xf32>

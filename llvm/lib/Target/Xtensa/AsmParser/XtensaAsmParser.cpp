@@ -36,7 +36,7 @@ class XtensaAsmParser : public MCTargetAsmParser {
   SMLoc getLoc() const { return getParser().getTok().getLoc(); }
 
   // Override MCTargetAsmParser.
-  bool ParseDirective(AsmToken DirectiveID) override;
+  ParseStatus parseDirective(AsmToken DirectiveID) override;
   bool parseRegister(MCRegister &RegNo,
                      SMLoc &StartLoc, SMLoc &EndLoc) override;
   bool ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
@@ -642,13 +642,11 @@ bool XtensaAsmParser::ParseInstructionWithSR(ParseInstructionInfo &Info,
     if (parseOperand(Operands, Name))
       return true;
 
-    if (!getLexer().is(AsmToken::Comma)) {
+    if (!parseOptionalToken(AsmToken::Comma)) {
       SMLoc Loc = getLexer().getLoc();
       getParser().eatToEndOfStatement();
       return Error(Loc, "unexpected token");
     }
-
-    getLexer().Lex();
 
     // Parse second operand
     if (parseOperand(Operands, Name, true))
@@ -685,14 +683,9 @@ bool XtensaAsmParser::ParseInstruction(ParseInstructionInfo &Info,
     return true;
 
   // Parse until end of statement, consuming commas between operands
-  while (getLexer().is(AsmToken::Comma)) {
-    // Consume comma token
-    getLexer().Lex();
-
-    // Parse next operand
+  while (parseOptionalToken(AsmToken::Comma))
     if (parseOperand(Operands, Name))
       return true;
-  }
 
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
     SMLoc Loc = getLexer().getLoc();
@@ -704,7 +697,9 @@ bool XtensaAsmParser::ParseInstruction(ParseInstructionInfo &Info,
   return false;
 }
 
-bool XtensaAsmParser::ParseDirective(AsmToken DirectiveID) { return true; }
+ParseStatus XtensaAsmParser::parseDirective(AsmToken DirectiveID) {
+  return ParseStatus::NoMatch;
+}
 
 // Force static initialization.
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeXtensaAsmParser() {

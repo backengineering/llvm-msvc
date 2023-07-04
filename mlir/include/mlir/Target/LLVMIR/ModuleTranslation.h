@@ -46,6 +46,7 @@ class LoopAnnotationTranslation;
 
 class DINodeAttr;
 class LLVMFuncOp;
+class ComdatSelectorOp;
 
 /// Implementation class for module translation. Holds a reference to the module
 /// being translated, and the mappings between the original and the translated
@@ -274,6 +275,7 @@ private:
   LogicalResult convertOperation(Operation &op, llvm::IRBuilderBase &builder);
   LogicalResult convertFunctionSignatures();
   LogicalResult convertFunctions();
+  LogicalResult convertComdats();
   LogicalResult convertGlobals();
   LogicalResult convertOneFunction(LLVMFuncOp func);
 
@@ -339,6 +341,10 @@ private:
   /// This map is populated on module entry.
   DenseMap<const Operation *, llvm::MDNode *> tbaaMetadataMapping;
 
+  /// Mapping from a comdat selector operation to its LLVM comdat struct.
+  /// This map is populated on module entry.
+  DenseMap<ComdatSelectorOp, llvm::Comdat *> comdatMapping;
+
   /// Stack of user-specified state elements, useful when translating operations
   /// with regions.
   SmallVector<std::unique_ptr<StackFrame>> stack;
@@ -366,10 +372,10 @@ llvm::Constant *getLLVMConstant(llvm::Type *llvmType, Attribute attr,
                                 const ModuleTranslation &moduleTranslation);
 
 /// Creates a call to an LLVM IR intrinsic function with the given arguments.
-llvm::Value *createIntrinsicCall(llvm::IRBuilderBase &builder,
-                                 llvm::Intrinsic::ID intrinsic,
-                                 ArrayRef<llvm::Value *> args = {},
-                                 ArrayRef<llvm::Type *> tys = {});
+llvm::CallInst *createIntrinsicCall(llvm::IRBuilderBase &builder,
+                                    llvm::Intrinsic::ID intrinsic,
+                                    ArrayRef<llvm::Value *> args = {},
+                                    ArrayRef<llvm::Type *> tys = {});
 } // namespace detail
 
 } // namespace LLVM
