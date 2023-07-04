@@ -3,69 +3,114 @@
 
 declare void @dummy()
 
-define void @br_true(i1 %x) {
-; CHECK-LABEL: define void @br_true
+define i32 @br_true(i1 %x) {
+; CHECK-LABEL: define i32 @br_true
 ; CHECK-SAME: (i1 [[X:%.*]]) {
 ; CHECK-NEXT:    br i1 true, label [[IF:%.*]], label [[ELSE:%.*]]
 ; CHECK:       if:
 ; CHECK-NEXT:    call void @dummy()
-; CHECK-NEXT:    ret void
+; CHECK-NEXT:    br label [[JOIN:%.*]]
 ; CHECK:       else:
-; CHECK-NEXT:    ret void
+; CHECK-NEXT:    br label [[JOIN]]
+; CHECK:       join:
+; CHECK-NEXT:    ret i32 1
 ;
   %c = or i1 %x, true
   br i1 %c, label %if, label %else
 
 if:
   call void @dummy()
-  ret void
+  br label %join
 
 else:
   call void @dummy()
-  ret void
+  br label %join
+
+join:
+  %phi = phi i32 [ 1, %if ], [ 2, %else ]
+  ret i32 %phi
 }
 
-define void @br_false(i1 %x) {
-; CHECK-LABEL: define void @br_false
+define i32 @br_false(i1 %x) {
+; CHECK-LABEL: define i32 @br_false
 ; CHECK-SAME: (i1 [[X:%.*]]) {
 ; CHECK-NEXT:    br i1 false, label [[IF:%.*]], label [[ELSE:%.*]]
 ; CHECK:       if:
-; CHECK-NEXT:    ret void
+; CHECK-NEXT:    br label [[JOIN:%.*]]
 ; CHECK:       else:
 ; CHECK-NEXT:    call void @dummy()
-; CHECK-NEXT:    ret void
+; CHECK-NEXT:    br label [[JOIN]]
+; CHECK:       join:
+; CHECK-NEXT:    ret i32 2
 ;
   %c = and i1 %x, false
   br i1 %c, label %if, label %else
 
 if:
   call void @dummy()
-  ret void
+  br label %join
 
 else:
   call void @dummy()
-  ret void
+  br label %join
+
+join:
+  %phi = phi i32 [ 1, %if ], [ 2, %else ]
+  ret i32 %phi
 }
 
-define void @br_undef(i1 %x) {
-; CHECK-LABEL: define void @br_undef
+define i32 @br_undef(i1 %x) {
+; CHECK-LABEL: define i32 @br_undef
 ; CHECK-SAME: (i1 [[X:%.*]]) {
 ; CHECK-NEXT:    br i1 undef, label [[IF:%.*]], label [[ELSE:%.*]]
 ; CHECK:       if:
-; CHECK-NEXT:    ret void
+; CHECK-NEXT:    br label [[JOIN:%.*]]
 ; CHECK:       else:
-; CHECK-NEXT:    ret void
+; CHECK-NEXT:    br label [[JOIN]]
+; CHECK:       join:
+; CHECK-NEXT:    ret i32 undef
 ;
   %c = xor i1 %x, undef
   br i1 %c, label %if, label %else
 
 if:
   call void @dummy()
-  ret void
+  br label %join
 
 else:
   call void @dummy()
-  ret void
+  br label %join
+
+join:
+  %phi = phi i32 [ 1, %if ], [ 2, %else ]
+  ret i32 %phi
+}
+
+define i32 @br_true_phi_with_repeated_preds(i1 %x) {
+; CHECK-LABEL: define i32 @br_true_phi_with_repeated_preds
+; CHECK-SAME: (i1 [[X:%.*]]) {
+; CHECK-NEXT:    br i1 true, label [[IF:%.*]], label [[ELSE:%.*]]
+; CHECK:       if:
+; CHECK-NEXT:    call void @dummy()
+; CHECK-NEXT:    br label [[JOIN:%.*]]
+; CHECK:       else:
+; CHECK-NEXT:    br i1 false, label [[JOIN]], label [[JOIN]]
+; CHECK:       join:
+; CHECK-NEXT:    ret i32 1
+;
+  %c = or i1 %x, true
+  br i1 %c, label %if, label %else
+
+if:
+  call void @dummy()
+  br label %join
+
+else:
+  br i1 false, label %join, label %join
+
+join:
+  %phi = phi i32 [ 1, %if ], [ 2, %else ], [ 2, %else ]
+  ret i32 %phi
 }
 
 define void @switch_case(i32 %x) {
@@ -143,4 +188,41 @@ case0:
 default:
   call void @dummy()
   ret void
+}
+
+define void @non_term_unreachable() {
+; CHECK-LABEL: define void @non_term_unreachable() {
+; CHECK-NEXT:    call void @dummy()
+; CHECK-NEXT:    store i1 true, ptr poison, align 1
+; CHECK-NEXT:    ret void
+;
+  call void @dummy()
+  call void @dummy() nounwind willreturn
+  store i1 true, ptr poison
+  call void @dummy()
+  ret void
+}
+
+define i32 @non_term_unreachable_phi(i1 %c) {
+; CHECK-LABEL: define i32 @non_term_unreachable_phi
+; CHECK-SAME: (i1 [[C:%.*]]) {
+; CHECK-NEXT:  entry:
+; CHECK-NEXT:    br i1 [[C]], label [[IF:%.*]], label [[JOIN:%.*]]
+; CHECK:       if:
+; CHECK-NEXT:    store i1 true, ptr poison, align 1
+; CHECK-NEXT:    br label [[JOIN]]
+; CHECK:       join:
+; CHECK-NEXT:    ret i32 2
+;
+entry:
+  br i1 %c, label %if, label %join
+
+if:
+  store i1 true, ptr poison
+  call void @dummy()
+  br label %join
+
+join:
+  %phi = phi i32 [ 1, %if], [ 2, %entry ]
+  ret i32 %phi
 }

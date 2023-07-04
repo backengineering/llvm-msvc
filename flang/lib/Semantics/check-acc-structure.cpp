@@ -307,8 +307,6 @@ void AccStructureChecker::Leave(const parser::OpenACCCacheConstruct &x) {
 }
 
 // Clause checkers
-CHECK_REQ_SCALAR_INT_CONSTANT_CLAUSE(Collapse, ACCC_collapse)
-
 CHECK_SIMPLE_CLAUSE(Auto, ACCC_auto)
 CHECK_SIMPLE_CLAUSE(Async, ACCC_async)
 CHECK_SIMPLE_CLAUSE(Attach, ACCC_attach)
@@ -326,7 +324,6 @@ CHECK_SIMPLE_CLAUSE(DeviceResident, ACCC_device_resident)
 CHECK_SIMPLE_CLAUSE(DeviceType, ACCC_device_type)
 CHECK_SIMPLE_CLAUSE(Finalize, ACCC_finalize)
 CHECK_SIMPLE_CLAUSE(Firstprivate, ACCC_firstprivate)
-CHECK_SIMPLE_CLAUSE(Gang, ACCC_gang)
 CHECK_SIMPLE_CLAUSE(Host, ACCC_host)
 CHECK_SIMPLE_CLAUSE(If, ACCC_if)
 CHECK_SIMPLE_CLAUSE(IfPresent, ACCC_if_present)
@@ -334,7 +331,6 @@ CHECK_SIMPLE_CLAUSE(Independent, ACCC_independent)
 CHECK_SIMPLE_CLAUSE(Link, ACCC_link)
 CHECK_SIMPLE_CLAUSE(NoCreate, ACCC_no_create)
 CHECK_SIMPLE_CLAUSE(Nohost, ACCC_nohost)
-CHECK_SIMPLE_CLAUSE(NumGangs, ACCC_num_gangs)
 CHECK_SIMPLE_CLAUSE(NumWorkers, ACCC_num_workers)
 CHECK_SIMPLE_CLAUSE(Present, ACCC_present)
 CHECK_SIMPLE_CLAUSE(Private, ACCC_private)
@@ -407,6 +403,34 @@ void AccStructureChecker::Enter(const parser::AccClause::Copyout &c) {
   }
 }
 
+void AccStructureChecker::Enter(const parser::AccClause::Gang &g) {
+  CheckAllowed(llvm::acc::Clause::ACCC_gang);
+
+  if (g.v) {
+    bool hasNum = false;
+    bool hasDim = false;
+    const Fortran::parser::AccGangArgList &x = *g.v;
+    for (const Fortran::parser::AccGangArg &gangArg : x.v) {
+      if (std::get_if<Fortran::parser::AccGangArg::Num>(&gangArg.u))
+        hasNum = true;
+      else if (std::get_if<Fortran::parser::AccGangArg::Dim>(&gangArg.u))
+        hasDim = true;
+    }
+
+    if (hasDim && hasNum)
+      context_.Say(GetContext().clauseSource,
+          "The num argument is not allowed when dim is specified"_err_en_US);
+  }
+}
+
+void AccStructureChecker::Enter(const parser::AccClause::NumGangs &n) {
+  CheckAllowed(llvm::acc::Clause::ACCC_num_gangs);
+
+  if (n.v.size() > 3)
+    context_.Say(GetContext().clauseSource,
+        "NUM_GANGS clause accepts a maximum of 3 arguments"_err_en_US);
+}
+
 void AccStructureChecker::Enter(const parser::AccClause::Self &x) {
   CheckAllowed(llvm::acc::Clause::ACCC_self);
   const std::optional<parser::AccSelfClause> &accSelfClause = x.v;
@@ -430,6 +454,15 @@ void AccStructureChecker::Enter(const parser::AccClause::Self &x) {
           ContextDirectiveAsFortran());
     }
   }
+}
+
+void AccStructureChecker::Enter(const parser::AccClause::Collapse &x) {
+  CheckAllowed(llvm::acc::Clause::ACCC_collapse);
+  const parser::AccCollapseArg &accCollapseArg = x.v;
+  const auto &collapseValue{
+      std::get<parser::ScalarIntConstantExpr>(accCollapseArg.t)};
+  RequiresConstantPositiveParameter(
+      llvm::acc::Clause::ACCC_collapse, collapseValue);
 }
 
 llvm::StringRef AccStructureChecker::getClauseName(llvm::acc::Clause clause) {

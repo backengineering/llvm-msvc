@@ -227,8 +227,12 @@ void Environment::initFieldsGlobalsAndFuncs(const FunctionDecl *FuncDecl) {
   // constructor-initializers.
   if (const auto *CtorDecl = dyn_cast<CXXConstructorDecl>(FuncDecl)) {
     for (const auto *Init : CtorDecl->inits()) {
-      if (const auto *M = Init->getAnyMember())
-          Fields.insert(M);
+      if (Init->isMemberInitializer()) {
+        Fields.insert(Init->getMember());
+      } else if (Init->isIndirectMemberInitializer()) {
+        for (const auto *I : Init->getIndirectMember()->chain())
+          Fields.insert(cast<FieldDecl>(I));
+      }
       const Expr *E = Init->getInit();
       assert(E != nullptr);
       getFieldsGlobalsAndFuncs(*E, Fields, Vars, Funcs);
@@ -265,19 +269,10 @@ Environment::Environment(DataflowAnalysisContext &DACtx)
     : DACtx(&DACtx),
       FlowConditionToken(&DACtx.arena().makeFlowConditionToken()) {}
 
-Environment::Environment(const Environment &Other)
-    : DACtx(Other.DACtx), CallStack(Other.CallStack),
-      ReturnVal(Other.ReturnVal), ReturnLoc(Other.ReturnLoc),
-      ThisPointeeLoc(Other.ThisPointeeLoc), DeclToLoc(Other.DeclToLoc),
-      ExprToLoc(Other.ExprToLoc), LocToVal(Other.LocToVal),
-      MemberLocToStruct(Other.MemberLocToStruct),
-      FlowConditionToken(&DACtx->forkFlowCondition(*Other.FlowConditionToken)) {
-}
-
-Environment &Environment::operator=(const Environment &Other) {
-  Environment Copy(Other);
-  *this = std::move(Copy);
-  return *this;
+Environment Environment::fork() const {
+  Environment Copy(*this);
+  Copy.FlowConditionToken = &DACtx->forkFlowCondition(*FlowConditionToken);
+  return Copy;
 }
 
 Environment::Environment(DataflowAnalysisContext &DACtx,
@@ -314,7 +309,8 @@ Environment::Environment(DataflowAnalysisContext &DACtx,
     // FIXME: Initialize the ThisPointeeLoc of lambdas too.
     if (MethodDecl && !MethodDecl->isStatic()) {
       QualType ThisPointeeType = MethodDecl->getThisObjectType();
-      ThisPointeeLoc = &createStorageLocation(ThisPointeeType);
+      ThisPointeeLoc = &cast<AggregateStorageLocation>(
+          createStorageLocation(ThisPointeeType));
       if (Value *ThisPointeeVal = createValue(ThisPointeeType))
         setValue(*ThisPointeeLoc, *ThisPointeeVal);
     }
@@ -332,7 +328,8 @@ Environment Environment::pushCall(const CallExpr *Call) const {
   if (const auto *MethodCall = dyn_cast<CXXMemberCallExpr>(Call)) {
     if (const Expr *Arg = MethodCall->getImplicitObjectArgument()) {
       if (!isa<CXXThisExpr>(Arg))
-        Env.ThisPointeeLoc = getStorageLocation(*Arg, SkipPast::Reference);
+        Env.ThisPointeeLoc = cast<AggregateStorageLocation>(
+            getStorageLocation(*Arg, SkipPast::Reference));
       // Otherwise (when the argument is `this`), retain the current
       // environment's `ThisPointeeLoc`.
     }
@@ -347,7 +344,8 @@ Environment Environment::pushCall(const CallExpr *Call) const {
 Environment Environment::pushCall(const CXXConstructExpr *Call) const {
   Environment Env(*this);
 
-  Env.ThisPointeeLoc = &Env.createStorageLocation(Call->getType());
+  Env.ThisPointeeLoc = &cast<AggregateStorageLocation>(
+      Env.createStorageLocation(Call->getType()));
   if (Value *Val = Env.createValue(Call->getType()))
     Env.setValue(*Env.ThisPointeeLoc, *Val);
 
@@ -535,20 +533,18 @@ LatticeJoinEffect Environment::widen(const Environment &PrevEnv,
   return Effect;
 }
 
-LatticeJoinEffect Environment::join(const Environment &Other,
-                                    Environment::ValueModel &Model) {
-  assert(DACtx == Other.DACtx);
-  assert(ThisPointeeLoc == Other.ThisPointeeLoc);
-  assert(CallStack == Other.CallStack);
+Environment Environment::join(const Environment &EnvA, const Environment &EnvB,
+                              Environment::ValueModel &Model) {
+  assert(EnvA.DACtx == EnvB.DACtx);
+  assert(EnvA.ThisPointeeLoc == EnvB.ThisPointeeLoc);
+  assert(EnvA.CallStack == EnvB.CallStack);
 
-  auto Effect = LatticeJoinEffect::Unchanged;
+  Environment JoinedEnv(*EnvA.DACtx);
 
-  Environment JoinedEnv(*DACtx);
+  JoinedEnv.CallStack = EnvA.CallStack;
+  JoinedEnv.ThisPointeeLoc = EnvA.ThisPointeeLoc;
 
-  JoinedEnv.CallStack = CallStack;
-  JoinedEnv.ThisPointeeLoc = ThisPointeeLoc;
-
-  if (ReturnVal == nullptr || Other.ReturnVal == nullptr) {
+  if (EnvA.ReturnVal == nullptr || EnvB.ReturnVal == nullptr) {
     // `ReturnVal` might not always get set -- for example if we have a return
     // statement of the form `return some_other_func()` and we decide not to
     // analyze `some_other_func()`.
@@ -557,24 +553,22 @@ LatticeJoinEffect Environment::join(const Environment &Other,
     // it might not be the correct one.
     // This occurs for example in the test `ContextSensitiveMutualRecursion`.
     JoinedEnv.ReturnVal = nullptr;
-  } else if (areEquivalentValues(*ReturnVal, *Other.ReturnVal)) {
-    JoinedEnv.ReturnVal = ReturnVal;
+  } else if (areEquivalentValues(*EnvA.ReturnVal, *EnvB.ReturnVal)) {
+    JoinedEnv.ReturnVal = EnvA.ReturnVal;
   } else {
-    assert(!CallStack.empty());
+    assert(!EnvA.CallStack.empty());
     // FIXME: Make `CallStack` a vector of `FunctionDecl` so we don't need this
     // cast.
-    auto *Func = dyn_cast<FunctionDecl>(CallStack.back());
+    auto *Func = dyn_cast<FunctionDecl>(EnvA.CallStack.back());
     assert(Func != nullptr);
     if (Value *MergedVal =
-            mergeDistinctValues(Func->getReturnType(), *ReturnVal, *this,
-                                *Other.ReturnVal, Other, JoinedEnv, Model)) {
+            mergeDistinctValues(Func->getReturnType(), *EnvA.ReturnVal, EnvA,
+                                *EnvB.ReturnVal, EnvB, JoinedEnv, Model))
       JoinedEnv.ReturnVal = MergedVal;
-      Effect = LatticeJoinEffect::Changed;
-    }
   }
 
-  if (ReturnLoc == Other.ReturnLoc)
-    JoinedEnv.ReturnLoc = ReturnLoc;
+  if (EnvA.ReturnLoc == EnvB.ReturnLoc)
+    JoinedEnv.ReturnLoc = EnvA.ReturnLoc;
   else
     JoinedEnv.ReturnLoc = nullptr;
 
@@ -582,34 +576,27 @@ LatticeJoinEffect Environment::join(const Environment &Other,
   // lifetime ends, add an assertion that there aren't any entries in
   // `DeclToLoc` and `Other.DeclToLoc` that map the same declaration to
   // different storage locations.
-  JoinedEnv.DeclToLoc = intersectDenseMaps(DeclToLoc, Other.DeclToLoc);
-  if (DeclToLoc.size() != JoinedEnv.DeclToLoc.size())
-    Effect = LatticeJoinEffect::Changed;
+  JoinedEnv.DeclToLoc = intersectDenseMaps(EnvA.DeclToLoc, EnvB.DeclToLoc);
 
-  JoinedEnv.ExprToLoc = intersectDenseMaps(ExprToLoc, Other.ExprToLoc);
-  if (ExprToLoc.size() != JoinedEnv.ExprToLoc.size())
-    Effect = LatticeJoinEffect::Changed;
+  JoinedEnv.ExprToLoc = intersectDenseMaps(EnvA.ExprToLoc, EnvB.ExprToLoc);
 
   JoinedEnv.MemberLocToStruct =
-      intersectDenseMaps(MemberLocToStruct, Other.MemberLocToStruct);
-  if (MemberLocToStruct.size() != JoinedEnv.MemberLocToStruct.size())
-    Effect = LatticeJoinEffect::Changed;
+      intersectDenseMaps(EnvA.MemberLocToStruct, EnvB.MemberLocToStruct);
 
-  // FIXME: set `Effect` as needed.
   // FIXME: update join to detect backedges and simplify the flow condition
   // accordingly.
-  JoinedEnv.FlowConditionToken = &DACtx->joinFlowConditions(
-      *FlowConditionToken, *Other.FlowConditionToken);
+  JoinedEnv.FlowConditionToken = &EnvA.DACtx->joinFlowConditions(
+      *EnvA.FlowConditionToken, *EnvB.FlowConditionToken);
 
-  for (auto &Entry : LocToVal) {
+  for (auto &Entry : EnvA.LocToVal) {
     const StorageLocation *Loc = Entry.first;
     assert(Loc != nullptr);
 
     Value *Val = Entry.second;
     assert(Val != nullptr);
 
-    auto It = Other.LocToVal.find(Loc);
-    if (It == Other.LocToVal.end())
+    auto It = EnvB.LocToVal.find(Loc);
+    if (It == EnvB.LocToVal.end())
       continue;
     assert(It->second != nullptr);
 
@@ -618,19 +605,13 @@ LatticeJoinEffect Environment::join(const Environment &Other,
       continue;
     }
 
-    if (Value *MergedVal =
-            mergeDistinctValues(Loc->getType(), *Val, *this, *It->second, Other,
-                                JoinedEnv, Model)) {
+    if (Value *MergedVal = mergeDistinctValues(
+            Loc->getType(), *Val, EnvA, *It->second, EnvB, JoinedEnv, Model)) {
       JoinedEnv.LocToVal.insert({Loc, MergedVal});
-      Effect = LatticeJoinEffect::Changed;
     }
   }
-  if (LocToVal.size() != JoinedEnv.LocToVal.size())
-    Effect = LatticeJoinEffect::Changed;
 
-  *this = std::move(JoinedEnv);
-
-  return Effect;
+  return JoinedEnv;
 }
 
 StorageLocation &Environment::createStorageLocation(QualType Type) {
@@ -707,7 +688,7 @@ StorageLocation *Environment::getStorageLocationStrict(const Expr &E) const {
   return Loc;
 }
 
-StorageLocation *Environment::getThisPointeeStorageLocation() const {
+AggregateStorageLocation *Environment::getThisPointeeStorageLocation() const {
   return ThisPointeeLoc;
 }
 
@@ -748,6 +729,23 @@ void Environment::setValue(const StorageLocation &Loc, Value &Val) {
   }
 }
 
+void Environment::clearValue(const StorageLocation &Loc) {
+  LocToVal.erase(&Loc);
+
+  if (auto It = MemberLocToStruct.find(&Loc); It != MemberLocToStruct.end()) {
+    // `Loc` is the location of a struct member so we need to also clear the
+    // member in the corresponding `StructValue`.
+
+    assert(It->second.first != nullptr);
+    StructValue &StructVal = *It->second.first;
+
+    assert(It->second.second != nullptr);
+    const ValueDecl &Member = *It->second.second;
+
+    StructVal.clearChild(Member);
+  }
+}
+
 void Environment::setValueStrict(const Expr &E, Value &Val) {
   assert(E.isPRValue());
   assert(!isa<ReferenceValue>(Val));
@@ -761,8 +759,7 @@ void Environment::setValueStrict(const Expr &E, Value &Val) {
 }
 
 Value *Environment::getValue(const StorageLocation &Loc) const {
-  auto It = LocToVal.find(&Loc);
-  return It == LocToVal.end() ? nullptr : It->second;
+  return LocToVal.lookup(&Loc);
 }
 
 Value *Environment::getValue(const ValueDecl &D) const {

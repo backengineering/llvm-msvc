@@ -1601,19 +1601,20 @@ module attributes { transform.with_named_sequence } {
 // -----
 
 // CHECK-LABEL: func @test_tracked_rewrite() {
-//  CHECK-NEXT:   "test.update_mapping"() {original_op = "test.replace_me"}
-//  CHECK-NEXT:   "test.drop_mapping"() {original_op = "test.replace_me"}
-//  CHECK-NEXT:   "test.update_mapping"() {original_op = "test.replace_me"}
+//  CHECK-NEXT:   transform.test_dummy_payload_op  {new_op} : () -> i1
+//  CHECK-NEXT:   transform.test_dummy_payload_op  {new_op} : () -> i1
+//  CHECK-NEXT:   return
 //  CHECK-NEXT: }
 func.func @test_tracked_rewrite() {
-  %0 = "test.replace_me"() {replacement = "test.update_mapping"} : () -> (i1)
-  %1 = "test.replace_me"() {replacement = "test.drop_mapping"} : () -> (i1)
-  %2 = "test.replace_me"() {replacement = "test.update_mapping"} : () -> (i1)
+  %0 = transform.test_dummy_payload_op {replace_me} : () -> (i1)
+  %1 = transform.test_dummy_payload_op {erase_me} : () -> (i1)
+  %2 = transform.test_dummy_payload_op {replace_me} : () -> (i1)
+  func.return
 }
 
 transform.sequence failures(propagate) {
 ^bb1(%arg1: !transform.any_op):
-  %0 = transform.structured.match ops{["test.replace_me"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+  %0 = transform.structured.match ops{["transform.test_dummy_payload_op"]} in %arg1 : (!transform.any_op) -> !transform.any_op
   // expected-remark @below {{2 iterations}}
   transform.test_tracked_rewrite %0 : (!transform.any_op) -> ()
   // One replacement op (test.drop_mapping) is dropped from the mapping.
@@ -1621,7 +1622,62 @@ transform.sequence failures(propagate) {
   test_print_number_of_associated_payload_ir_ops %0 : !transform.any_op
 }
 
+// -----
 
+// Parameter deduplication happens by value
+
+module {
+
+  transform.sequence failures(propagate) {
+  ^bb0(%0: !transform.any_op):
+    %1 = transform.param.constant 1 -> !transform.param<i64>
+    %2 = transform.param.constant 1 -> !transform.param<i64>
+    %3 = transform.param.constant 2 -> !transform.param<i64>
+    %4 = transform.merge_handles %1, %2 { deduplicate } : !transform.param<i64>
+    // expected-remark @below {{1}}
+    test_print_number_of_associated_payload_ir_params %4 : !transform.param<i64>
+
+    %5 = transform.merge_handles %1, %1 { deduplicate } : !transform.param<i64>
+    // expected-remark @below {{1}}
+    test_print_number_of_associated_payload_ir_params %5 : !transform.param<i64>
+
+    %6 = transform.merge_handles %1, %3 { deduplicate } : !transform.param<i64>
+    // expected-remark @below {{2}}
+    test_print_number_of_associated_payload_ir_params %6 : !transform.param<i64>
+
+    %7 = transform.merge_handles %1, %1, %2, %3 : !transform.param<i64>
+    // expected-remark @below {{4}}
+    test_print_number_of_associated_payload_ir_params %7 : !transform.param<i64>
+  }
+}
+
+// -----
+
+%0:3 = "test.get_two_results"() : () -> (i32, i32, f32)
+
+transform.sequence failures(propagate) {
+^bb1(%arg0: !transform.any_op):
+  %1 = transform.structured.match ops{["test.get_two_results"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+  %2 = test_produce_value_handle_to_result %1, 0 : (!transform.any_op) -> !transform.any_value
+  %3 = test_produce_value_handle_to_result %1, 1 : (!transform.any_op) -> !transform.any_value
+
+  %4 = transform.merge_handles %2, %2 { deduplicate } : !transform.any_value
+  // expected-remark @below {{1}}
+  test_print_number_of_associated_payload_ir_values %4 : !transform.any_value
+
+  %5 = transform.merge_handles %2, %3 { deduplicate } : !transform.any_value
+  // expected-remark @below {{2}}
+  test_print_number_of_associated_payload_ir_values %5 : !transform.any_value
+
+  %6 = test_produce_value_handle_to_result %1, 0 : (!transform.any_op) -> !transform.any_value
+  %7 = transform.merge_handles %2, %6 { deduplicate } : !transform.any_value
+  // expected-remark @below {{1}}
+  test_print_number_of_associated_payload_ir_values %6 : !transform.any_value
+
+  %8 = transform.merge_handles %2, %2, %3, %4 : !transform.any_value
+  // expected-remark @below {{4}}
+  test_print_number_of_associated_payload_ir_values %8 : !transform.any_value
+}
 // -----
 
 // CHECK-LABEL: func @test_annotation()
@@ -1653,4 +1709,120 @@ transform.sequence failures(propagate) {
   %2 = transform.param.constant 2 -> !transform.param<i64>
   transform.annotate %0 "broadcast_attr" = %2 : !transform.any_op, !transform.param<i64>
   transform.annotate %0 "unit_attr" : !transform.any_op
+}
+
+// -----
+
+func.func @notify_payload_op_replaced(%arg0: index, %arg1: index) {
+  %0 = arith.muli %arg0, %arg1 {original} : index
+  // expected-remark @below{{updated handle}}
+  %1 = arith.muli %arg0, %arg1 {replacement} : index
+  return
+}
+
+transform.sequence failures(propagate) {
+^bb1(%arg1: !transform.any_op):
+  %0 = transform.structured.match attributes{original} in %arg1 : (!transform.any_op) -> !transform.any_op
+  %1 = transform.structured.match attributes{replacement} in %arg1 : (!transform.any_op) -> !transform.any_op
+  test_notify_payload_op_replaced %0, %1 : (!transform.any_op, !transform.any_op) -> ()
+  test_print_remark_at_operand %0, "updated handle" : !transform.any_op
+}
+
+// -----
+
+// CHECK-LABEL: func @test_apply_cse()
+//       CHECK:   %[[const:.*]] = arith.constant 0 : index
+//       CHECK:   %[[ex1:.*]] = scf.execute_region -> index {
+//       CHECK:     scf.yield %[[const]]
+//       CHECK:   }
+//       CHECK:   %[[ex2:.*]] = scf.execute_region -> index {
+//       CHECK:     scf.yield %[[const]]
+//       CHECK:   }
+//       CHECK:   return %[[const]], %[[ex1]], %[[ex2]]
+func.func @test_apply_cse() -> (index, index, index) {
+  // expected-remark @below{{eliminated 1}}
+  // expected-remark @below{{eliminated 2}}
+  %0 = arith.constant 0 : index
+  %1 = scf.execute_region -> index {
+    %2 = arith.constant 0 : index
+    scf.yield %2 : index
+  } {first}
+  %3 = scf.execute_region -> index {
+    %4 = arith.constant 0 : index
+    scf.yield %4 : index
+  } {second}
+  return %0, %1, %3 : index, index, index
+}
+
+transform.sequence failures(propagate) {
+^bb1(%arg1: !transform.any_op):
+  %0 = transform.structured.match ops{["func.func"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+  %first = transform.structured.match attributes{first} in %0 : (!transform.any_op) -> !transform.any_op
+  %elim_first = transform.structured.match ops{["arith.constant"]} in %first : (!transform.any_op) -> !transform.any_op
+  %second = transform.structured.match attributes{first} in %0 : (!transform.any_op) -> !transform.any_op
+  %elim_second = transform.structured.match ops{["arith.constant"]} in %first : (!transform.any_op) -> !transform.any_op
+
+  // There are 3 arith.constant ops.
+  %all = transform.structured.match ops{["arith.constant"]} in %0 : (!transform.any_op) -> !transform.any_op
+  // expected-remark @below{{3}}
+  test_print_number_of_associated_payload_ir_ops %all : !transform.any_op
+  // "deduplicate" has no effect because these are 3 different ops.
+  %merged_before = transform.merge_handles deduplicate %all : !transform.any_op
+  // expected-remark @below{{3}}
+  test_print_number_of_associated_payload_ir_ops %merged_before : !transform.any_op
+
+  // Apply CSE.
+  transform.apply_cse to %0 : !transform.any_op
+
+  // The handle is still mapped to 3 arith.constant ops.
+  // expected-remark @below{{3}}
+  test_print_number_of_associated_payload_ir_ops %all : !transform.any_op
+  // But they are all the same op.
+  %merged_after = transform.merge_handles deduplicate %all : !transform.any_op
+  // expected-remark @below{{1}}
+  test_print_number_of_associated_payload_ir_ops %merged_after : !transform.any_op
+
+  // The other handles were also updated.
+  test_print_remark_at_operand %elim_first, "eliminated 1" : !transform.any_op
+  // expected-remark @below{{1}}
+  test_print_number_of_associated_payload_ir_ops %elim_first : !transform.any_op
+  test_print_remark_at_operand %elim_second, "eliminated 2" : !transform.any_op
+  // expected-remark @below{{1}}
+  test_print_number_of_associated_payload_ir_ops %elim_second : !transform.any_op
+}
+
+// -----
+
+// CHECK-LABEL: func @test_licm(
+//       CHECK:   arith.muli
+//       CHECK:   scf.for {{.*}} {
+//       CHECK:     vector.print
+//       CHECK:   }
+func.func @test_licm(%arg0: index, %arg1: index, %arg2: index) {
+  scf.for %iv = %arg0 to %arg1 step %arg2 {
+    %0 = arith.muli %arg0, %arg1 : index
+    vector.print %0 : index
+  }
+  return
+}
+
+transform.sequence failures(propagate) {
+^bb1(%arg1: !transform.any_op):
+  %0 = transform.structured.match ops{["scf.for"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+  transform.apply_licm to %0 : !transform.any_op
+}
+
+// -----
+
+// expected-note @below{{when applied to this op}}
+module {
+  func.func @test_licm_invalid() {
+    return
+  }
+
+  transform.sequence failures(propagate) {
+  ^bb1(%arg1: !transform.any_op):
+    // expected-error @below{{transform applied to the wrong op kind}}
+    transform.apply_licm to %arg1 : !transform.any_op
+  }
 }

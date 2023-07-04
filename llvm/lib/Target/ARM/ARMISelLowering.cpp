@@ -2660,13 +2660,9 @@ ARMTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     // those, the target's already in a register, so we don't need to do
     // anything extra.
     if (isa<GlobalAddressSDNode>(Callee)) {
-      // When generating execute-only code we use movw movt pair.
-      // Currently execute-only is only available for architectures that
-      // support movw movt, so we are safe to assume that.
       if (Subtarget->genExecuteOnly()) {
-        assert(Subtarget->useMovt() &&
-               "long-calls with execute-only requires movt and movw!");
-        ++NumMovwMovt;
+        if (Subtarget->useMovt())
+          ++NumMovwMovt;
         Callee = DAG.getNode(ARMISD::Wrapper, dl, PtrVt,
                              DAG.getTargetGlobalAddress(GVal, dl, PtrVt));
       } else {
@@ -2685,13 +2681,9 @@ ARMTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     } else if (ExternalSymbolSDNode *S=dyn_cast<ExternalSymbolSDNode>(Callee)) {
       const char *Sym = S->getSymbol();
 
-      // When generating execute-only code we use movw movt pair.
-      // Currently execute-only is only available for architectures that
-      // support movw movt, so we are safe to assume that.
       if (Subtarget->genExecuteOnly()) {
-        assert(Subtarget->useMovt() &&
-               "long-calls with execute-only requires movt and movw!");
-        ++NumMovwMovt;
+        if (Subtarget->useMovt())
+          ++NumMovwMovt;
         Callee = DAG.getNode(ARMISD::Wrapper, dl, PtrVt,
                              DAG.getTargetGlobalAddress(GVal, dl, PtrVt));
       } else {
@@ -3492,6 +3484,11 @@ SDValue ARMTargetLowering::LowerConstantPool(SDValue Op,
 }
 
 unsigned ARMTargetLowering::getJumpTableEncoding() const {
+  // If we don't have a 32-bit pc-relative branch instruction then the jump
+  // table consists of block addresses. Usually this is inline, but for
+  // execute-only it must be placed out-of-line.
+  if (Subtarget->genExecuteOnly() && !Subtarget->hasV8MBaselineOps())
+    return MachineJumpTableInfo::EK_BlockAddress;
   return MachineJumpTableInfo::EK_Inline;
 }
 
@@ -3956,9 +3953,12 @@ SDValue ARMTargetLowering::LowerGlobalAddressELF(SDValue Op,
   }
 
   // If we have T2 ops, we can materialize the address directly via movt/movw
-  // pair. This is always cheaper.
-  if (Subtarget->useMovt()) {
-    ++NumMovwMovt;
+  // pair. This is always cheaper. If need to generate Execute Only code, and we
+  // only have Thumb1 available, we can't use a constant pool and are forced to
+  // use immediate relocations.
+  if (Subtarget->useMovt() || Subtarget->genExecuteOnly()) {
+    if (Subtarget->useMovt())
+      ++NumMovwMovt;
     // FIXME: Once remat is capable of dealing with instructions with register
     // operands, expand this into two nodes.
     return DAG.getNode(ARMISD::Wrapper, dl, PtrVT,
@@ -10080,7 +10080,8 @@ void ARMTargetLowering::LowerLOAD(SDNode *N, SmallVectorImpl<SDValue> &Results,
   assert(LD->isUnindexed() && "Loads should be unindexed at this point.");
 
   if (MemVT == MVT::i64 && Subtarget->hasV5TEOps() &&
-      !Subtarget->isThumb1Only() && LD->isVolatile()) {
+      !Subtarget->isThumb1Only() && LD->isVolatile() &&
+      LD->getAlign() >= Subtarget->getDualLoadStoreAlignment()) {
     SDLoc dl(N);
     SDValue Result = DAG.getMemIntrinsicNode(
         ARMISD::LDRD, dl, DAG.getVTList({MVT::i32, MVT::i32, MVT::Other}),
@@ -10137,7 +10138,8 @@ static SDValue LowerSTORE(SDValue Op, SelectionDAG &DAG,
   assert(ST->isUnindexed() && "Stores should be unindexed at this point.");
 
   if (MemVT == MVT::i64 && Subtarget->hasV5TEOps() &&
-      !Subtarget->isThumb1Only() && ST->isVolatile()) {
+      !Subtarget->isThumb1Only() && ST->isVolatile() &&
+      ST->getAlign() >= Subtarget->getDualLoadStoreAlignment()) {
     SDNode *N = Op.getNode();
     SDLoc dl(N);
 

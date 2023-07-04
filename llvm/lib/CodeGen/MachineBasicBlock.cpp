@@ -12,6 +12,7 @@
 
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/LiveIntervals.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/LiveVariables.h"
@@ -1130,9 +1131,8 @@ MachineBasicBlock *MachineBasicBlock::SplitCriticalEdge(
   if (LV)
     for (MachineInstr &MI :
          llvm::make_range(getFirstInstrTerminator(), instr_end())) {
-      for (MachineOperand &MO : MI.operands()) {
-        if (!MO.isReg() || MO.getReg() == 0 || !MO.isUse() || !MO.isKill() ||
-            MO.isUndef())
+      for (MachineOperand &MO : MI.all_uses()) {
+        if (MO.getReg() == 0 || !MO.isKill() || MO.isUndef())
           continue;
         Register Reg = MO.getReg();
         if (Reg.isPhysical() || LV->getVarInfo(Reg).removeKill(MI)) {

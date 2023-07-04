@@ -114,6 +114,11 @@ using namespace llvm::PatternMatch;
 
 STATISTIC(NumWorklistIterations,
           "Number of instruction combining iterations performed");
+STATISTIC(NumOneIteration, "Number of functions with one iteration");
+STATISTIC(NumTwoIterations, "Number of functions with two iterations");
+STATISTIC(NumThreeIterations, "Number of functions with three iterations");
+STATISTIC(NumFourOrMoreIterations,
+          "Number of functions with four or more iterations");
 
 STATISTIC(NumCombined , "Number of insts combined");
 STATISTIC(NumConstProp, "Number of constant folds");
@@ -723,6 +728,142 @@ static Value *tryFactorization(BinaryOperator &I, const SimplifyQuery &SQ,
     }
   }
   return RetVal;
+}
+
+// (Binop1 (Binop2 (logic_shift X, C), C1), (logic_shift Y, C))
+//   IFF
+//    1) the logic_shifts match
+//    2) either both binops are binops and one is `and` or
+//       BinOp1 is `and`
+//       (logic_shift (inv_logic_shift C1, C), C) == C1 or
+//
+//    -> (logic_shift (Binop1 (Binop2 X, inv_logic_shift(C1, C)), Y), C)
+//
+// (Binop1 (Binop2 (logic_shift X, Amt), Mask), (logic_shift Y, Amt))
+//   IFF
+//    1) the logic_shifts match
+//    2) BinOp1 == BinOp2 (if BinOp ==  `add`, then also requires `shl`).
+//
+//    -> (BinOp (logic_shift (BinOp X, Y)), Mask)
+Instruction *InstCombinerImpl::foldBinOpShiftWithShift(BinaryOperator &I) {
+  auto IsValidBinOpc = [](unsigned Opc) {
+    switch (Opc) {
+    default:
+      return false;
+    case Instruction::And:
+    case Instruction::Or:
+    case Instruction::Xor:
+    case Instruction::Add:
+      // Skip Sub as we only match constant masks which will canonicalize to use
+      // add.
+      return true;
+    }
+  };
+
+  // Check if we can distribute binop arbitrarily. `add` + `lshr` has extra
+  // constraints.
+  auto IsCompletelyDistributable = [](unsigned BinOpc1, unsigned BinOpc2,
+                                      unsigned ShOpc) {
+    return (BinOpc1 != Instruction::Add && BinOpc2 != Instruction::Add) ||
+           ShOpc == Instruction::Shl;
+  };
+
+  auto GetInvShift = [](unsigned ShOpc) {
+    return ShOpc == Instruction::LShr ? Instruction::Shl : Instruction::LShr;
+  };
+
+  auto CanDistributeBinops = [&](unsigned BinOpc1, unsigned BinOpc2,
+                                 unsigned ShOpc, Constant *CMask,
+                                 Constant *CShift) {
+    // If the BinOp1 is `and` we don't need to check the mask.
+    if (BinOpc1 == Instruction::And)
+      return true;
+
+    // For all other possible transfers we need complete distributable
+    // binop/shift (anything but `add` + `lshr`).
+    if (!IsCompletelyDistributable(BinOpc1, BinOpc2, ShOpc))
+      return false;
+
+    // If BinOp2 is `and`, any mask works (this only really helps for non-splat
+    // vecs, otherwise the mask will be simplified and the following check will
+    // handle it).
+    if (BinOpc2 == Instruction::And)
+      return true;
+
+    // Otherwise, need mask that meets the below requirement.
+    // (logic_shift (inv_logic_shift Mask, ShAmt), ShAmt) == Mask
+    return ConstantExpr::get(
+               ShOpc, ConstantExpr::get(GetInvShift(ShOpc), CMask, CShift),
+               CShift) == CMask;
+  };
+
+  auto MatchBinOp = [&](unsigned ShOpnum) -> Instruction * {
+    Constant *CMask, *CShift;
+    Value *X, *Y, *ShiftedX, *Mask, *Shift;
+    if (!match(I.getOperand(ShOpnum),
+               m_OneUse(m_LogicalShift(m_Value(Y), m_Value(Shift)))))
+      return nullptr;
+    if (!match(I.getOperand(1 - ShOpnum),
+               m_BinOp(m_Value(ShiftedX), m_Value(Mask))))
+      return nullptr;
+
+    if (!match(ShiftedX,
+               m_OneUse(m_LogicalShift(m_Value(X), m_Specific(Shift)))))
+      return nullptr;
+
+    // Make sure we are matching instruction shifts and not ConstantExpr
+    auto *IY = dyn_cast<Instruction>(I.getOperand(ShOpnum));
+    auto *IX = dyn_cast<Instruction>(ShiftedX);
+    if (!IY || !IX)
+      return nullptr;
+
+    // LHS and RHS need same shift opcode
+    unsigned ShOpc = IY->getOpcode();
+    if (ShOpc != IX->getOpcode())
+      return nullptr;
+
+    // Make sure binop is real instruction and not ConstantExpr
+    auto *BO2 = dyn_cast<Instruction>(I.getOperand(1 - ShOpnum));
+    if (!BO2)
+      return nullptr;
+
+    unsigned BinOpc = BO2->getOpcode();
+    // Make sure we have valid binops.
+    if (!IsValidBinOpc(I.getOpcode()) || !IsValidBinOpc(BinOpc))
+      return nullptr;
+
+    // If BinOp1 == BinOp2 and it's bitwise or shl with add, then just
+    // distribute to drop the shift irrelevant of constants.
+    if (BinOpc == I.getOpcode() &&
+        IsCompletelyDistributable(I.getOpcode(), BinOpc, ShOpc)) {
+      Value *NewBinOp2 = Builder.CreateBinOp(I.getOpcode(), X, Y);
+      Value *NewBinOp1 = Builder.CreateBinOp(
+          static_cast<Instruction::BinaryOps>(ShOpc), NewBinOp2, Shift);
+      return BinaryOperator::Create(I.getOpcode(), NewBinOp1, Mask);
+    }
+
+    // Otherwise we can only distribute by constant shifting the mask, so
+    // ensure we have constants.
+    if (!match(Shift, m_ImmConstant(CShift)))
+      return nullptr;
+    if (!match(Mask, m_ImmConstant(CMask)))
+      return nullptr;
+
+    // Check if we can distribute the binops.
+    if (!CanDistributeBinops(I.getOpcode(), BinOpc, ShOpc, CMask, CShift))
+      return nullptr;
+
+    Constant *NewCMask = ConstantExpr::get(GetInvShift(ShOpc), CMask, CShift);
+    Value *NewBinOp2 = Builder.CreateBinOp(
+        static_cast<Instruction::BinaryOps>(BinOpc), X, NewCMask);
+    Value *NewBinOp1 = Builder.CreateBinOp(I.getOpcode(), Y, NewBinOp2);
+    return BinaryOperator::Create(static_cast<Instruction::BinaryOps>(ShOpc),
+                                  NewBinOp1, CShift);
+  };
+
+  if (Instruction *R = MatchBinOp(0))
+    return R;
+  return MatchBinOp(1);
 }
 
 Value *InstCombinerImpl::tryFactorizationFolds(BinaryOperator &I) {
@@ -2065,12 +2206,13 @@ Instruction *InstCombinerImpl::visitGetElementPtrInst(GetElementPtrInst &GEP) {
     Value *UnderlyingPtrOp =
             PtrOp->stripAndAccumulateInBoundsConstantOffsets(DL,
                                                              BasePtrOffset);
-    if (auto *AI = dyn_cast<AllocaInst>(UnderlyingPtrOp)) {
+    bool CanBeNull, CanBeFreed;
+    uint64_t DerefBytes = UnderlyingPtrOp->getPointerDereferenceableBytes(
+        DL, CanBeNull, CanBeFreed);
+    if (!CanBeNull && !CanBeFreed && DerefBytes != 0) {
       if (GEP.accumulateConstantOffset(DL, BasePtrOffset) &&
           BasePtrOffset.isNonNegative()) {
-        APInt AllocSize(
-            IdxWidth,
-            DL.getTypeAllocSize(AI->getAllocatedType()).getKnownMinValue());
+        APInt AllocSize(IdxWidth, DerefBytes);
         if (BasePtrOffset.ule(AllocSize)) {
           return GetElementPtrInst::CreateInBounds(
               GEP.getSourceElementType(), PtrOp, Indices, GEP.getName());
@@ -2256,8 +2398,11 @@ Instruction *InstCombinerImpl::visitAllocSite(Instruction &MI) {
 
       if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(I)) {
         if (II->getIntrinsicID() == Intrinsic::objectsize) {
-          Value *Result =
-              lowerObjectSizeCall(II, DL, &TLI, AA, /*MustSucceed=*/true);
+          SmallVector<Instruction *> InsertedInstructions;
+          Value *Result = lowerObjectSizeCall(
+              II, DL, &TLI, AA, /*MustSucceed=*/true, &InsertedInstructions);
+          for (Instruction *Inserted : InsertedInstructions)
+            Worklist.add(Inserted);
           replaceInstUsesWith(*I, Result);
           eraseInstFromFunction(*I);
           Users[i] = nullptr; // Skip examining in the next loop.
@@ -2470,20 +2615,21 @@ Instruction *InstCombinerImpl::visitReturnInst(ReturnInst &RI) {
 }
 
 // WARNING: keep in sync with SimplifyCFGOpt::simplifyUnreachable()!
-Instruction *InstCombinerImpl::visitUnreachableInst(UnreachableInst &I) {
+bool InstCombinerImpl::removeInstructionsBeforeUnreachable(Instruction &I) {
   // Try to remove the previous instruction if it must lead to unreachable.
   // This includes instructions like stores and "llvm.assume" that may not get
   // removed by simple dead code elimination.
+  bool Changed = false;
   while (Instruction *Prev = I.getPrevNonDebugInstruction()) {
     // While we theoretically can erase EH, that would result in a block that
     // used to start with an EH no longer starting with EH, which is invalid.
     // To make it valid, we'd need to fixup predecessors to no longer refer to
     // this block, but that changes CFG, which is not allowed in InstCombine.
     if (Prev->isEHPad())
-      return nullptr; // Can not drop any more instructions. We're done here.
+      break; // Can not drop any more instructions. We're done here.
 
     if (!isGuaranteedToTransferExecutionToSuccessor(Prev))
-      return nullptr; // Can not drop any more instructions. We're done here.
+      break; // Can not drop any more instructions. We're done here.
     // Otherwise, this instruction can be freely erased,
     // even if it is not side-effect free.
 
@@ -2491,9 +2637,13 @@ Instruction *InstCombinerImpl::visitUnreachableInst(UnreachableInst &I) {
     // another unreachable block), so convert those to poison.
     replaceInstUsesWith(*Prev, PoisonValue::get(Prev->getType()));
     eraseInstFromFunction(*Prev);
+    Changed = true;
   }
-  assert(I.getParent()->sizeWithoutDebug() == 1 && "The block is now empty.");
-  // FIXME: recurse into unconditional predecessors?
+  return Changed;
+}
+
+Instruction *InstCombinerImpl::visitUnreachableInst(UnreachableInst &I) {
+  removeInstructionsBeforeUnreachable(I);
   return nullptr;
 }
 
@@ -2526,38 +2676,44 @@ Instruction *InstCombinerImpl::visitUnconditionalBranchInst(BranchInst &BI) {
   return nullptr;
 }
 
-/// If a block is dead due to a known branch condition, remove instructions
-/// in it.
-static bool handlePotentiallyDeadBlock(BasicBlock *BB, InstCombiner &IC) {
-  // We only know one edge to this block is dead, but there may be others.
-  // TODO: We could track dead edges globally.
-  if (!BB->getSinglePredecessor())
-    return false;
-
+// Under the assumption that I is unreachable, remove it and following
+// instructions.
+bool InstCombinerImpl::handleUnreachableFrom(Instruction *I) {
   bool Changed = false;
-  for (Instruction &Inst : make_early_inc_range(make_range(
-           std::next(BB->getTerminator()->getReverseIterator()), BB->rend()))) {
+  BasicBlock *BB = I->getParent();
+  for (Instruction &Inst : make_early_inc_range(
+           make_range(std::next(BB->getTerminator()->getReverseIterator()),
+                      std::next(I->getReverseIterator())))) {
     if (!Inst.use_empty() && !Inst.getType()->isTokenTy()) {
-      IC.replaceInstUsesWith(Inst, PoisonValue::get(Inst.getType()));
+      replaceInstUsesWith(Inst, PoisonValue::get(Inst.getType()));
       Changed = true;
     }
     if (Inst.isEHPad() || Inst.getType()->isTokenTy())
       continue;
-    IC.eraseInstFromFunction(Inst);
+    eraseInstFromFunction(Inst);
     Changed = true;
   }
+
+  // Replace phi node operands in successor blocks with poison.
+  for (BasicBlock *Succ : successors(BB))
+    for (PHINode &PN : Succ->phis())
+      for (Use &U : PN.incoming_values())
+        if (PN.getIncomingBlock(U) == BB && !isa<PoisonValue>(U)) {
+          replaceUse(U, PoisonValue::get(PN.getType()));
+          addToWorklist(&PN);
+          Changed = true;
+        }
 
   // TODO: Successor blocks may also be dead.
   return Changed;
 }
 
-static bool handlePotentiallyDeadSuccessors(BasicBlock *BB,
-                                            BasicBlock *LiveSucc,
-                                            InstCombiner &IC) {
+bool InstCombinerImpl::handlePotentiallyDeadSuccessors(BasicBlock *BB,
+                                                       BasicBlock *LiveSucc) {
   bool Changed = false;
   for (BasicBlock *Succ : successors(BB))
-    if (Succ != LiveSucc)
-      Changed |= handlePotentiallyDeadBlock(Succ, IC);
+    if (Succ != LiveSucc && Succ->getSinglePredecessor())
+      Changed |= handleUnreachableFrom(&Succ->front());
   return Changed;
 }
 
@@ -2604,12 +2760,12 @@ Instruction *InstCombinerImpl::visitBranchInst(BranchInst &BI) {
     return &BI;
   }
 
-  if (isa<UndefValue>(Cond) && handlePotentiallyDeadSuccessors(
-                                   BI.getParent(), /*LiveSucc*/ nullptr, *this))
+  if (isa<UndefValue>(Cond) &&
+      handlePotentiallyDeadSuccessors(BI.getParent(), /*LiveSucc*/ nullptr))
     return &BI;
   if (auto *CI = dyn_cast<ConstantInt>(Cond))
-    if (handlePotentiallyDeadSuccessors(
-            BI.getParent(), BI.getSuccessor(!CI->getZExtValue()), *this))
+    if (handlePotentiallyDeadSuccessors(BI.getParent(),
+                                        BI.getSuccessor(!CI->getZExtValue())))
       return &BI;
 
   return nullptr;
@@ -2630,12 +2786,12 @@ Instruction *InstCombinerImpl::visitSwitchInst(SwitchInst &SI) {
     return replaceOperand(SI, 0, Op0);
   }
 
-  if (isa<UndefValue>(Cond) && handlePotentiallyDeadSuccessors(
-                                   SI.getParent(), /*LiveSucc*/ nullptr, *this))
+  if (isa<UndefValue>(Cond) &&
+      handlePotentiallyDeadSuccessors(SI.getParent(), /*LiveSucc*/ nullptr))
     return &SI;
   if (auto *CI = dyn_cast<ConstantInt>(Cond))
     if (handlePotentiallyDeadSuccessors(
-            SI.getParent(), SI.findCaseValue(CI)->getCaseSuccessor(), *this))
+            SI.getParent(), SI.findCaseValue(CI)->getCaseSuccessor()))
       return &SI;
 
   KnownBits Known = computeKnownBits(Cond, 0, &SI);
@@ -4051,6 +4207,15 @@ static bool combineInstructionsOverFunction(
     MadeIRChange = true;
   }
 
+  if (Iteration == 1)
+    ++NumOneIteration;
+  else if (Iteration == 2)
+    ++NumTwoIterations;
+  else if (Iteration == 3)
+    ++NumThreeIterations;
+  else
+    ++NumFourOrMoreIterations;
+
   return MadeIRChange;
 }
 
@@ -4137,18 +4302,13 @@ bool InstructionCombiningPass::runOnFunction(Function &F) {
       nullptr;
 
   return combineInstructionsOverFunction(F, Worklist, AA, AC, TLI, TTI, DT, ORE,
-                                         BFI, PSI, MaxIterations, LI);
+                                         BFI, PSI,
+                                         InstCombineDefaultMaxIterations, LI);
 }
 
 char InstructionCombiningPass::ID = 0;
 
-InstructionCombiningPass::InstructionCombiningPass()
-    : FunctionPass(ID), MaxIterations(InstCombineDefaultMaxIterations) {
-  initializeInstructionCombiningPassPass(*PassRegistry::getPassRegistry());
-}
-
-InstructionCombiningPass::InstructionCombiningPass(unsigned MaxIterations)
-    : FunctionPass(ID), MaxIterations(MaxIterations) {
+InstructionCombiningPass::InstructionCombiningPass() : FunctionPass(ID) {
   initializeInstructionCombiningPassPass(*PassRegistry::getPassRegistry());
 }
 
@@ -4173,8 +4333,4 @@ void llvm::initializeInstCombine(PassRegistry &Registry) {
 
 FunctionPass *llvm::createInstructionCombiningPass() {
   return new InstructionCombiningPass();
-}
-
-FunctionPass *llvm::createInstructionCombiningPass(unsigned MaxIterations) {
-  return new InstructionCombiningPass(MaxIterations);
 }

@@ -149,7 +149,7 @@ struct GpuWarpIdBuilder : public GpuIdBuilder {
       // Reverse back to be in [x, y, z] order.
       for (AffineExpr e : llvm::reverse(delinearizingExprs))
         ids.push_back(
-            affine::makeComposedAffineApply(rewriter, loc, e, warpId));
+            affine::makeComposedAffineApply(rewriter, loc, e, {warpId}));
 
       // clang-format off
       LDBG("----linearId: " << linearId);
@@ -205,7 +205,7 @@ struct GpuLinearIdBuilder : public GpuIdBuilder {
       // Reverse back to be in [x, y, z] order.
       for (AffineExpr e : llvm::reverse(delinearizingExprs))
         ids.push_back(
-            affine::makeComposedAffineApply(rewriter, loc, e, linearId));
+            affine::makeComposedAffineApply(rewriter, loc, e, {linearId}));
 
       // clang-format off
       LLVM_DEBUG(llvm::interleaveComma(reverseBasisSizes,
@@ -398,7 +398,7 @@ createGpuLaunch(RewriterBase &rewriter, Location loc,
 
 /// Alter kernel configuration of the given kernel.
 static DiagnosedSilenceableFailure
-alterGpuLaunch(IRRewriter &rewriter, LaunchOp gpuLaunch,
+alterGpuLaunch(RewriterBase &rewriter, LaunchOp gpuLaunch,
                TransformOpInterface transformOp,
                std::optional<int64_t> gridDimX = std::nullopt,
                std::optional<int64_t> gridDimY = std::nullopt,
@@ -661,12 +661,10 @@ mlir::transform::gpu::findTopLevelForallOp(Operation *target,
   return DiagnosedSilenceableFailure::success();
 }
 
-DiagnosedSilenceableFailure
-transform::MapForallToBlocks::applyToOne(Operation *target,
-                                         ApplyToEachResultList &results,
-                                         transform::TransformState &state) {
+DiagnosedSilenceableFailure transform::MapForallToBlocks::applyToOne(
+    transform::TransformRewriter &rewriter, Operation *target,
+    ApplyToEachResultList &results, transform::TransformState &state) {
   LaunchOp gpuLaunch = dyn_cast<LaunchOp>(target);
-  IRRewriter rewriter(getContext());
   auto transformOp = cast<TransformOpInterface>(getOperation());
 
   if (!getGenerateGpuLaunch() && !gpuLaunch) {
@@ -856,7 +854,8 @@ DiagnosedSilenceableFailure mlir::transform::gpu::mapNestedForallToThreadsImpl(
 }
 
 DiagnosedSilenceableFailure transform::MapNestedForallToThreads::applyToOne(
-    Operation *target, ApplyToEachResultList &results, TransformState &state) {
+    transform::TransformRewriter &rewriter, Operation *target,
+    ApplyToEachResultList &results, TransformState &state) {
   LaunchOp gpuLaunch = dyn_cast<LaunchOp>(target);
   auto transformOp = cast<TransformOpInterface>(getOperation());
 
@@ -877,7 +876,6 @@ DiagnosedSilenceableFailure transform::MapNestedForallToThreads::applyToOne(
 
   // Set the GPU launch configuration for the block dims early, this is not
   // subject to IR inspection.
-  IRRewriter rewriter(getContext());
   diag = alterGpuLaunch(rewriter, gpuLaunch, transformOp, std::nullopt,
                         std::nullopt, std::nullopt, blockDims[0], blockDims[1],
                         blockDims[2]);

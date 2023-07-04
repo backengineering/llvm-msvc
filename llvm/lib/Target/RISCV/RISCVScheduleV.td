@@ -20,8 +20,8 @@ defvar SchedMxListF = !listremove(SchedMxList, ["MF8"]);
 // Used for widening floating-point Reduction as it doesn't contain MF8.
 defvar SchedMxListFWRed = SchedMxListF;
 
-// For widening instructions, SEW will not be 64.
-class SchedSEWSet<string mx, bit isWidening = 0> {
+class SchedSEWSet<string mx, bit isF = 0, bit isWidening = 0> {
+  assert !or(!not(isF), !ne(mx, "MF8")), "LMUL shouldn't be MF8 for floating-point";
   defvar t = !cond(!eq(mx, "M1"):  [8, 16, 32, 64],
                    !eq(mx, "M2"):  [8, 16, 32, 64],
                    !eq(mx, "M4"):  [8, 16, 32, 64],
@@ -29,18 +29,11 @@ class SchedSEWSet<string mx, bit isWidening = 0> {
                    !eq(mx, "MF2"): [8, 16, 32],
                    !eq(mx, "MF4"): [8, 16],
                    !eq(mx, "MF8"): [8]);
-  list<int> val = !if(isWidening, !listremove(t, [64]), t);
-}
-
-// For floating-point instructions, SEW won't be 8.
-class SchedSEWSetF<string mx, bit isWidening = 0> {
-  defvar t = !cond(!eq(mx, "M1"):  [16, 32, 64],
-                   !eq(mx, "M2"):  [16, 32, 64],
-                   !eq(mx, "M4"):  [16, 32, 64],
-                   !eq(mx, "M8"):  [16, 32, 64],
-                   !eq(mx, "MF2"): [16, 32],
-                   !eq(mx, "MF4"): [16]);
-  list<int> val = !if(isWidening, !listremove(t, [64]), t);
+  // For floating-point instructions, SEW won't be 8.
+  defvar remove8 = !if(isF, !listremove(t, [8]), t);
+  // For widening instructions, SEW will not be 64.
+  defvar remove64 = !if(isWidening, !listremove(remove8, [64]), remove8);
+  list<int> val = remove64;
 }
 
 // Helper function to get the largest LMUL from MxList
@@ -52,7 +45,7 @@ class LargestLMUL<list<string> MxList> {
 // Helper function to get the smallest SEW that can be used with LMUL mx
 // Precondition: MxList is sorted in ascending LMUL order and SchedSEWSet<mx>
 class SmallestSEW<string mx, bit isF = 0> {
-  int r = !head(!if(isF, SchedSEWSetF<mx>.val, SchedSEWSet<mx>.val));
+  int r = !head(SchedSEWSet<mx, isF>.val);
 }
 
 // Creates WriteRes for (name, mx, resources) tuple
@@ -111,8 +104,7 @@ multiclass LMULSEWSchedWritesImpl<string name, list<string> MxList, bit isF = 0,
                                   bit isWidening = 0> {
   def name # "_WorstCase" : SchedWrite;
   foreach mx = MxList in {
-    foreach sew = !if(isF, SchedSEWSetF<mx, isWidening>.val,
-                      SchedSEWSet<mx, isWidening>.val) in
+    foreach sew = SchedSEWSet<mx, isF, isWidening>.val in
       def name # "_" # mx # "_E" # sew : SchedWrite;
   }
 }
@@ -120,8 +112,7 @@ multiclass LMULSEWSchedReadsImpl<string name, list<string> MxList, bit isF = 0,
                                  bit isWidening = 0> {
   def name # "_WorstCase" : SchedRead;
   foreach mx = MxList in {
-    foreach sew = !if(isF,SchedSEWSetF<mx, isWidening>.val,
-                      SchedSEWSet<mx, isWidening>.val) in
+    foreach sew = SchedSEWSet<mx, isF, isWidening>.val in
       def name # "_" # mx # "_E" # sew : SchedRead;
   }
 }
@@ -131,8 +122,7 @@ multiclass LMULSEWWriteResImpl<string name, list<ProcResourceKind> resources,
   if !exists<SchedWrite>(name # "_WorstCase") then
     def : WriteRes<!cast<SchedWrite>(name # "_WorstCase"), resources>;
   foreach mx = MxList in {
-    foreach sew = !if(isF,SchedSEWSetF<mx, isWidening>.val,
-                      SchedSEWSet<mx, isWidening>.val) in
+    foreach sew = SchedSEWSet<mx, isF, isWidening>.val in
       if !exists<SchedWrite>(name # "_" # mx # "_E" # sew) then
         def : WriteRes<!cast<SchedWrite>(name # "_" # mx # "_E" # sew), resources>;
   }
@@ -143,8 +133,7 @@ multiclass LMULSEWReadAdvanceImpl<string name, int val, list<SchedWrite> writes 
   if !exists<SchedRead>(name # "_WorstCase") then
     def : ReadAdvance<!cast<SchedRead>(name # "_WorstCase"), val, writes>;
   foreach mx = MxList in {
-    foreach sew = !if(isF,SchedSEWSetF<mx, isWidening>.val,
-                      SchedSEWSet<mx, isWidening>.val) in
+    foreach sew = SchedSEWSet<mx, isF, isWidening>.val in
       if !exists<SchedRead>(name # "_" # mx # "_E" # sew) then
         def : ReadAdvance<!cast<SchedRead>(name # "_" # mx # "_E" # sew), val, writes>;
   }
@@ -305,10 +294,12 @@ defm "" : LMULSchedWritesW<"WriteVNShiftV">;
 defm "" : LMULSchedWritesW<"WriteVNShiftX">;
 defm "" : LMULSchedWritesW<"WriteVNShiftI">;
 // 11.8. Vector Integer Comparison Instructions
-// 11.9. Vector Integer Min/Max Instructions
 defm "" : LMULSchedWrites<"WriteVICmpV">;
 defm "" : LMULSchedWrites<"WriteVICmpX">;
 defm "" : LMULSchedWrites<"WriteVICmpI">;
+// 11.9. Vector Integer Min/Max Instructions
+defm "" : LMULSchedWrites<"WriteVIMinMaxV">;
+defm "" : LMULSchedWrites<"WriteVIMinMaxX">;
 // 11.10. Vector Single-Width Integer Multiply Instructions
 defm "" : LMULSchedWrites<"WriteVIMulV">;
 defm "" : LMULSchedWrites<"WriteVIMulX">;
@@ -380,12 +371,14 @@ defm "" : LMULSEWSchedWritesF<"WriteVFSqrtV">;
 // 13.10. Vector Floating-Point Reciprocal Estimate Instruction
 defm "" : LMULSchedWrites<"WriteVFRecpV">;
 // 13.11. Vector Floating-Point MIN/MAX Instructions
-// 13.13. Vector Floating-Point Compare Instructions
-defm "" : LMULSchedWrites<"WriteVFCmpV">;
-defm "" : LMULSchedWrites<"WriteVFCmpF">;
+defm "" : LMULSchedWrites<"WriteVFMinMaxV">;
+defm "" : LMULSchedWrites<"WriteVFMinMaxF">;
 // 13.12. Vector Floating-Point Sign-Injection Instructions
 defm "" : LMULSchedWrites<"WriteVFSgnjV">;
 defm "" : LMULSchedWrites<"WriteVFSgnjF">;
+// 13.13. Vector Floating-Point Compare Instructions
+defm "" : LMULSchedWrites<"WriteVFCmpV">;
+defm "" : LMULSchedWrites<"WriteVFCmpF">;
 // 13.14. Vector Floating-Point Classify Instruction
 defm "" : LMULSchedWrites<"WriteVFClassV">;
 // 13.15. Vector Floating-Point Merge Instruction
@@ -416,6 +409,7 @@ defm "" : LMULSEWSchedWritesWRed<"WriteVIWRedV_From">;
 // 14.3. Vector Single-Width Floating-Point Reduction Instructions
 defm "" : LMULSEWSchedWritesF<"WriteVFRedV_From">;
 defm "" : LMULSEWSchedWritesF<"WriteVFRedOV_From">;
+defm "" : LMULSEWSchedWritesF<"WriteVFRedMinMaxV_From">;
 // 14.4. Vector Widening Floating-Point Reduction Instructions
 defm "" : LMULSEWSchedWritesFWRed<"WriteVFWRedV_From">;
 defm "" : LMULSEWSchedWritesFWRed<"WriteVFWRedOV_From">;
@@ -530,9 +524,11 @@ defm "" : LMULSchedReads<"ReadVShiftX">;
 defm "" : LMULSchedReadsW<"ReadVNShiftV">;
 defm "" : LMULSchedReadsW<"ReadVNShiftX">;
 // 11.8. Vector Integer Comparison Instructions
-// 11.9. Vector Integer Min/Max Instructions
 defm "" : LMULSchedReads<"ReadVICmpV">;
 defm "" : LMULSchedReads<"ReadVICmpX">;
+// 11.9. Vector Integer Min/Max Instructions
+defm "" : LMULSchedReads<"ReadVIMinMaxV">;
+defm "" : LMULSchedReads<"ReadVIMinMaxX">;
 // 11.10. Vector Single-Width Integer Multiply Instructions
 defm "" : LMULSchedReads<"ReadVIMulV">;
 defm "" : LMULSchedReads<"ReadVIMulX">;
@@ -599,12 +595,14 @@ defm "" : LMULSEWSchedReadsF<"ReadVFSqrtV">;
 // 13.10. Vector Floating-Point Reciprocal Estimate Instruction
 defm "" : LMULSchedReads<"ReadVFRecpV">;
 // 13.11. Vector Floating-Point MIN/MAX Instructions
-// 13.13. Vector Floating-Point Compare Instructions
-defm "" : LMULSchedReads<"ReadVFCmpV">;
-defm "" : LMULSchedReads<"ReadVFCmpF">;
+defm "" : LMULSchedReads<"ReadVFMinMaxV">;
+defm "" : LMULSchedReads<"ReadVFMinMaxF">;
 // 13.12. Vector Floating-Point Sign-Injection Instructions
 defm "" : LMULSchedReads<"ReadVFSgnjV">;
 defm "" : LMULSchedReads<"ReadVFSgnjF">;
+// 13.13. Vector Floating-Point Compare Instructions
+defm "" : LMULSchedReads<"ReadVFCmpV">;
+defm "" : LMULSchedReads<"ReadVFCmpF">;
 // 13.14. Vector Floating-Point Classify Instruction
 defm "" : LMULSchedReads<"ReadVFClassV">;
 // 13.15. Vector Floating-Point Merge Instruction
@@ -636,6 +634,7 @@ def ReadVFRedV        : SchedRead;
 def ReadVFRedV0       : SchedRead;
 def ReadVFRedOV       : SchedRead;
 def ReadVFRedOV0      : SchedRead;
+def ReadVFRedMinMaxV  : SchedRead;
 // 14.4. Vector Widening Floating-Point Reduction Instructions
 def ReadVFWRedV       : SchedRead;
 def ReadVFWRedV0      : SchedRead;
@@ -776,6 +775,8 @@ defm "" : LMULWriteResW<"WriteVNShiftI", []>;
 defm "" : LMULWriteRes<"WriteVICmpV", []>;
 defm "" : LMULWriteRes<"WriteVICmpX", []>;
 defm "" : LMULWriteRes<"WriteVICmpI", []>;
+defm "" : LMULWriteRes<"WriteVIMinMaxV", []>;
+defm "" : LMULWriteRes<"WriteVIMinMaxX", []>;
 defm "" : LMULWriteRes<"WriteVIMulV", []>;
 defm "" : LMULWriteRes<"WriteVIMulX", []>;
 defm "" : LMULSEWWriteRes<"WriteVIDivV", []>;
@@ -825,10 +826,12 @@ defm "" : LMULWriteResFW<"WriteVFWMulAddV", []>;
 defm "" : LMULWriteResFW<"WriteVFWMulAddF", []>;
 defm "" : LMULSEWWriteResF<"WriteVFSqrtV", []>;
 defm "" : LMULWriteRes<"WriteVFRecpV", []>;
-defm "" : LMULWriteRes<"WriteVFCmpV", []>;
-defm "" : LMULWriteRes<"WriteVFCmpF", []>;
+defm "" : LMULWriteRes<"WriteVFMinMaxV", []>;
+defm "" : LMULWriteRes<"WriteVFMinMaxF", []>;
 defm "" : LMULWriteRes<"WriteVFSgnjV", []>;
 defm "" : LMULWriteRes<"WriteVFSgnjF", []>;
+defm "" : LMULWriteRes<"WriteVFCmpV", []>;
+defm "" : LMULWriteRes<"WriteVFCmpF", []>;
 defm "" : LMULWriteRes<"WriteVFClassV", []>;
 defm "" : LMULWriteRes<"WriteVFMergeV", []>;
 defm "" : LMULWriteRes<"WriteVFMovV", []>;
@@ -846,6 +849,7 @@ defm "" : LMULSEWWriteRes<"WriteVIRedV_From", []>;
 defm "" : LMULSEWWriteResWRed<"WriteVIWRedV_From", []>;
 defm "" : LMULSEWWriteResF<"WriteVFRedV_From", []>;
 defm "" : LMULSEWWriteResF<"WriteVFRedOV_From", []>;
+defm "" : LMULSEWWriteResF<"WriteVFRedMinMaxV_From", []>;
 defm "" : LMULSEWWriteResFWRed<"WriteVFWRedV_From", []>;
 defm "" : LMULSEWWriteResFWRed<"WriteVFWRedOV_From", []>;
 
@@ -931,6 +935,8 @@ defm "" : LMULReadAdvanceW<"ReadVNShiftV", 0>;
 defm "" : LMULReadAdvanceW<"ReadVNShiftX", 0>;
 defm "" : LMULReadAdvance<"ReadVICmpV", 0>;
 defm "" : LMULReadAdvance<"ReadVICmpX", 0>;
+defm "" : LMULReadAdvance<"ReadVIMinMaxV", 0>;
+defm "" : LMULReadAdvance<"ReadVIMinMaxX", 0>;
 defm "" : LMULReadAdvance<"ReadVIMulV", 0>;
 defm "" : LMULReadAdvance<"ReadVIMulX", 0>;
 defm "" : LMULSEWReadAdvance<"ReadVIDivV", 0>;
@@ -975,10 +981,12 @@ defm "" : LMULReadAdvanceFW<"ReadVFWMulAddV", 0>;
 defm "" : LMULReadAdvanceFW<"ReadVFWMulAddF", 0>;
 defm "" : LMULSEWReadAdvanceF<"ReadVFSqrtV", 0>;
 defm "" : LMULReadAdvance<"ReadVFRecpV", 0>;
-defm "" : LMULReadAdvance<"ReadVFCmpV", 0>;
-defm "" : LMULReadAdvance<"ReadVFCmpF", 0>;
+defm "" : LMULReadAdvance<"ReadVFMinMaxV", 0>;
+defm "" : LMULReadAdvance<"ReadVFMinMaxF", 0>;
 defm "" : LMULReadAdvance<"ReadVFSgnjV", 0>;
 defm "" : LMULReadAdvance<"ReadVFSgnjF", 0>;
+defm "" : LMULReadAdvance<"ReadVFCmpV", 0>;
+defm "" : LMULReadAdvance<"ReadVFCmpF", 0>;
 defm "" : LMULReadAdvance<"ReadVFClassV", 0>;
 defm "" : LMULReadAdvance<"ReadVFMergeV", 0>;
 defm "" : LMULReadAdvance<"ReadVFMergeF", 0>;
@@ -1001,6 +1009,7 @@ def : ReadAdvance<ReadVFRedV, 0>;
 def : ReadAdvance<ReadVFRedV0, 0>;
 def : ReadAdvance<ReadVFRedOV, 0>;
 def : ReadAdvance<ReadVFRedOV0, 0>;
+def : ReadAdvance<ReadVFRedMinMaxV, 0>;
 def : ReadAdvance<ReadVFWRedV, 0>;
 def : ReadAdvance<ReadVFWRedV0, 0>;
 def : ReadAdvance<ReadVFWRedOV, 0>;

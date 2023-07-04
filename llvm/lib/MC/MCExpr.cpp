@@ -327,6 +327,8 @@ StringRef MCSymbolRefExpr::getVariantKindName(VariantKind Kind) {
     return "gd";
   case VK_PPC_AIX_TLSGDM:
     return "m";
+  case VK_PPC_AIX_TLSLE:
+    return "le";
   case VK_PPC_GOT_TLSLD: return "got@tlsld";
   case VK_PPC_GOT_TLSLD_LO: return "got@tlsld@l";
   case VK_PPC_GOT_TLSLD_HI: return "got@tlsld@h";
@@ -619,21 +621,18 @@ static void AttemptToFoldSymbolOffsetDifference(
 
   const MCFragment *FA = SA.getFragment();
   const MCFragment *FB = SB.getFragment();
-  // If both symbols are in the same fragment, return the difference of their
-  // offsets
-  if (FA == FB && !SA.isVariable() && !SA.isUnset() && !SB.isVariable() &&
-      !SB.isUnset()) {
-    Addend += SA.getOffset() - SB.getOffset();
-    return FinalizeFolding();
-  }
-
   const MCSection &SecA = *FA->getParent();
   const MCSection &SecB = *FB->getParent();
-
   if ((&SecA != &SecB) && !Addrs)
     return;
 
   if (Layout) {
+    // If both symbols are in the same fragment, return the difference of their
+    // offsets. canGetFragmentOffset(FA) may be false.
+    if (FA == FB && !SA.isVariable() && !SB.isVariable()) {
+      Addend += SA.getOffset() - SB.getOffset();
+      return FinalizeFolding();
+    }
     // One of the symbol involved is part of a fragment being laid out. Quit now
     // to avoid a self loop.
     if (!Layout->canGetFragmentOffset(FA) || !Layout->canGetFragmentOffset(FB))
@@ -654,24 +653,65 @@ static void AttemptToFoldSymbolOffsetDifference(
     // this is important when the Subtarget is changed and a new MCDataFragment
     // is created in the case of foo: instr; .arch_extension ext; instr .if . -
     // foo.
-    if (SA.isVariable() || SA.isUnset() || SB.isVariable() || SB.isUnset() ||
-        FA->getKind() != MCFragment::FT_Data ||
-        FB->getKind() != MCFragment::FT_Data ||
+    if (SA.isVariable() || SB.isVariable() ||
         FA->getSubsectionNumber() != FB->getSubsectionNumber())
       return;
+
     // Try to find a constant displacement from FA to FB, add the displacement
     // between the offset in FA of SA and the offset in FB of SB.
+    bool Reverse = false;
+    if (FA == FB) {
+      Reverse = SA.getOffset() < SB.getOffset();
+    } else if (!isa<MCDummyFragment>(FA)) {
+      Reverse = std::find_if(std::next(FA->getIterator()), SecA.end(),
+                             [&](auto &I) { return &I == FB; }) != SecA.end();
+    }
+
+    uint64_t SAOffset = SA.getOffset(), SBOffset = SB.getOffset();
     int64_t Displacement = SA.getOffset() - SB.getOffset();
+    if (Reverse) {
+      std::swap(FA, FB);
+      std::swap(SAOffset, SBOffset);
+      Displacement *= -1;
+    }
+
+    [[maybe_unused]] bool Found = false;
+    // Track whether B is before a relaxable instruction and whether A is after
+    // a relaxable instruction. If SA and SB are separated by a linker-relaxable
+    // instruction, the difference cannot be resolved as it may be changed by
+    // the linker.
+    bool BBeforeRelax = false, AAfterRelax = false;
     for (auto FI = FB->getIterator(), FE = SecA.end(); FI != FE; ++FI) {
+      auto DF = dyn_cast<MCDataFragment>(FI);
+      if (DF && DF->isLinkerRelaxable()) {
+        if (&*FI != FB || SBOffset != DF->getContents().size())
+          BBeforeRelax = true;
+        if (&*FI != FA || SAOffset == DF->getContents().size())
+          AAfterRelax = true;
+        if (BBeforeRelax && AAfterRelax)
+          return;
+      }
       if (&*FI == FA) {
-        Addend += Displacement;
-        return FinalizeFolding();
+        Found = true;
+        break;
       }
 
-      if (FI->getKind() != MCFragment::FT_Data)
+      int64_t Num;
+      if (DF) {
+        Displacement += DF->getContents().size();
+      } else if (auto *FF = dyn_cast<MCFillFragment>(FI);
+                 FF && FF->getNumValues().evaluateAsAbsolute(Num)) {
+        Displacement += Num * FF->getValueSize();
+      } else {
         return;
-      Displacement += cast<MCDataFragment>(FI)->getContents().size();
+      }
     }
+    // If the previous loop does not find FA, FA must be a dummy fragment not in
+    // the fragment list (which means SA is a pending label (see
+    // flushPendingLabels)). In either case, we can resolve the difference.
+    assert(Found || isa<MCDummyFragment>(FA));
+    Addend += Reverse ? -Displacement : Displacement;
+    FinalizeFolding();
   }
 }
 
@@ -761,6 +801,9 @@ bool MCExpr::evaluateAsValue(MCValue &Res, const MCAsmLayout &Layout) const {
 }
 
 static bool canExpand(const MCSymbol &Sym, bool InSet) {
+  if (Sym.isWeakExternal())
+    return false;
+
   const MCExpr *Expr = Sym.getVariableValue();
   const auto *Inner = dyn_cast<MCSymbolRefExpr>(Expr);
   if (Inner) {

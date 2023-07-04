@@ -290,12 +290,8 @@ public:
     assert(!RD->isExternallyVisible() && "RD must not be visible!");
     assert(RD->getLambdaManglingNumber() == 0 &&
            "RD must not have a mangling number!");
-    llvm::DenseMap<const CXXRecordDecl *, unsigned>::iterator Result =
-        LambdaIds.find(RD);
     // The lambda should exist, but return 0 in case it doesn't.
-    if (Result == LambdaIds.end())
-      return 0;
-    return Result->second;
+    return LambdaIds.lookup(RD);
   }
 
   /// Return a character sequence that is (somewhat) unique to the TU suitable
@@ -906,6 +902,7 @@ void MicrosoftCXXNameMangler::mangleFloat(llvm::APFloat Number) {
   case APFloat::S_Float8E5M2FNUZ:
   case APFloat::S_Float8E4M3FNUZ:
   case APFloat::S_Float8E4M3B11FNUZ:
+  case APFloat::S_FloatTF32:
     llvm_unreachable("Tried to mangle unexpected APFloat semantics");
   }
 
@@ -2697,7 +2694,7 @@ void MicrosoftCXXNameMangler::mangleFunctionType(const FunctionType *T,
         // Copy constructor closure always takes an unqualified reference.
         mangleFunctionArgumentType(getASTContext().getLValueReferenceType(
                                        Proto->getParamType(0)
-                                           ->getAs<LValueReferenceType>()
+                                           ->castAs<LValueReferenceType>()
                                            ->getPointeeType(),
                                        /*SpelledAsLValue=*/true),
                                    Range);

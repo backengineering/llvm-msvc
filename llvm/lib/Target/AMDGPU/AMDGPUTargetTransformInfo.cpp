@@ -267,6 +267,10 @@ void AMDGPUTTIImpl::getPeelingPreferences(Loop *L, ScalarEvolution &SE,
   BaseT::getPeelingPreferences(L, SE, PP);
 }
 
+int64_t AMDGPUTTIImpl::getMaxInlineSizeThreshold() const {
+  return 1024;
+}
+
 const FeatureBitset GCNTTIImpl::InlineFeatureIgnoreList = {
     // Codegen control options which don't matter.
     AMDGPU::FeatureEnableLoadStoreOpt, AMDGPU::FeatureEnableSIScheduler,
@@ -295,6 +299,10 @@ GCNTTIImpl::GCNTTIImpl(const AMDGPUTargetMachine *TM, const Function &F)
   SIModeRegisterDefaults Mode(F);
   HasFP32Denormals = Mode.allFP32Denormals();
   HasFP64FP16Denormals = Mode.allFP64FP16Denormals();
+}
+
+bool GCNTTIImpl::hasBranchDivergence(const Function *F) const {
+  return !F || !ST->isSingleLaneExecution(*F);
 }
 
 unsigned GCNTTIImpl::getNumberOfRegisters(unsigned RCID) const {
@@ -395,6 +403,10 @@ bool GCNTTIImpl::isLegalToVectorizeStoreChain(unsigned ChainSizeInBytes,
   return isLegalToVectorizeMemChain(ChainSizeInBytes, Alignment, AddrSpace);
 }
 
+int64_t GCNTTIImpl::getMaxInlineSizeThreshold() const {
+  return 1024;
+}
+
 // FIXME: Really we would like to issue multiple 128-bit loads and stores per
 // iteration. Should we report a larger size and let it legalize?
 //
@@ -486,8 +498,6 @@ unsigned GCNTTIImpl::getMaxInterleaveFactor(ElementCount VF) {
 bool GCNTTIImpl::getTgtMemIntrinsic(IntrinsicInst *Inst,
                                        MemIntrinsicInfo &Info) const {
   switch (Inst->getIntrinsicID()) {
-  case Intrinsic::amdgcn_atomic_inc:
-  case Intrinsic::amdgcn_atomic_dec:
   case Intrinsic::amdgcn_ds_ordered_add:
   case Intrinsic::amdgcn_ds_ordered_swap:
   case Intrinsic::amdgcn_ds_fadd:
@@ -998,8 +1008,6 @@ bool GCNTTIImpl::isAlwaysUniform(const Value *V) const {
 bool GCNTTIImpl::collectFlatAddressOperands(SmallVectorImpl<int> &OpIndexes,
                                             Intrinsic::ID IID) const {
   switch (IID) {
-  case Intrinsic::amdgcn_atomic_inc:
-  case Intrinsic::amdgcn_atomic_dec:
   case Intrinsic::amdgcn_ds_fadd:
   case Intrinsic::amdgcn_ds_fmin:
   case Intrinsic::amdgcn_ds_fmax:
@@ -1020,8 +1028,6 @@ Value *GCNTTIImpl::rewriteIntrinsicWithAddressSpace(IntrinsicInst *II,
                                                     Value *NewV) const {
   auto IntrID = II->getIntrinsicID();
   switch (IntrID) {
-  case Intrinsic::amdgcn_atomic_inc:
-  case Intrinsic::amdgcn_atomic_dec:
   case Intrinsic::amdgcn_ds_fadd:
   case Intrinsic::amdgcn_ds_fmin:
   case Intrinsic::amdgcn_ds_fmax: {
@@ -1213,36 +1219,83 @@ static unsigned adjustInliningThresholdUsingCallee(const CallBase *CB,
   return adjustThreshold;
 }
 
-unsigned GCNTTIImpl::adjustInliningThreshold(const CallBase *CB) const {
-  // If we have a pointer to private array passed into a function
+static unsigned getCallArgsTotalAllocaSize(const CallBase *CB,
+                                           const DataLayout &DL) {
+  // If we have a pointer to a private array passed into a function
   // it will not be optimized out, leaving scratch usage.
-  // Increase the inline threshold to allow inlining in this case.
-  unsigned adjustThreshold = 0;
-  uint64_t AllocaSize = 0;
+  // This function calculates the total size in bytes of the memory that would
+  // end in scratch if the call was not inlined.
+  unsigned AllocaSize = 0;
   SmallPtrSet<const AllocaInst *, 8> AIVisited;
   for (Value *PtrArg : CB->args()) {
     PointerType *Ty = dyn_cast<PointerType>(PtrArg->getType());
-    if (!Ty || (Ty->getAddressSpace() != AMDGPUAS::PRIVATE_ADDRESS &&
-                Ty->getAddressSpace() != AMDGPUAS::FLAT_ADDRESS))
+    if (!Ty)
       continue;
 
-    PtrArg = getUnderlyingObject(PtrArg);
-    if (const AllocaInst *AI = dyn_cast<AllocaInst>(PtrArg)) {
-      if (!AI->isStaticAlloca() || !AIVisited.insert(AI).second)
-        continue;
-      AllocaSize += DL.getTypeAllocSize(AI->getAllocatedType());
-      // If the amount of stack memory is excessive we will not be able
-      // to get rid of the scratch anyway, bail out.
-      if (AllocaSize > ArgAllocaCutoff) {
-        AllocaSize = 0;
-        break;
-      }
-    }
+    unsigned AddrSpace = Ty->getAddressSpace();
+    if (AddrSpace != AMDGPUAS::FLAT_ADDRESS &&
+        AddrSpace != AMDGPUAS::PRIVATE_ADDRESS)
+      continue;
+
+    const AllocaInst *AI = dyn_cast<AllocaInst>(getUnderlyingObject(PtrArg));
+    if (!AI || !AI->isStaticAlloca() || !AIVisited.insert(AI).second)
+      continue;
+
+    AllocaSize += DL.getTypeAllocSize(AI->getAllocatedType());
   }
-  adjustThreshold +=
-      adjustInliningThresholdUsingCallee(CB, TLI, this);
-  adjustThreshold += AllocaSize ? ArgAllocaCost : AllocaSize;
-  return adjustThreshold;
+  return AllocaSize;
+}
+
+unsigned GCNTTIImpl::adjustInliningThreshold(const CallBase *CB) const {
+  unsigned Threshold = adjustInliningThresholdUsingCallee(CB, TLI, this);
+
+  // Private object passed as arguments may end up in scratch usage if the call
+  // is not inlined. Increase the inline threshold to promote inlining.
+  unsigned AllocaSize = getCallArgsTotalAllocaSize(CB, DL);
+  if (AllocaSize > 0)
+    Threshold += ArgAllocaCost;
+  return Threshold;
+}
+
+unsigned GCNTTIImpl::getCallerAllocaCost(const CallBase *CB,
+                                         const AllocaInst *AI) const {
+
+  // Below the cutoff, assume that the private memory objects would be
+  // optimized
+  auto AllocaSize = getCallArgsTotalAllocaSize(CB, DL);
+  if (AllocaSize <= ArgAllocaCutoff)
+    return 0;
+
+  // Above the cutoff, we give a cost to each private memory object
+  // depending its size. If the array can be optimized by SROA this cost is not
+  // added to the total-cost in the inliner cost analysis.
+  //
+  // We choose the total cost of the alloca such that their sum cancels the
+  // bonus given in the threshold (ArgAllocaCost).
+  //
+  //   Cost_Alloca_0 + ... + Cost_Alloca_N == ArgAllocaCost
+  //
+  // Awkwardly, the ArgAllocaCost bonus is multiplied by threshold-multiplier,
+  // the single-bb bonus and the vector-bonus.
+  //
+  // We compensate the first two multipliers, by repeating logic from the
+  // inliner-cost in here. The vector-bonus is 0 on AMDGPU.
+  static_assert(InlinerVectorBonusPercent == 0, "vector bonus assumed to be 0");
+  unsigned Threshold = ArgAllocaCost * getInliningThresholdMultiplier();
+
+  bool SingleBB = none_of(*CB->getCalledFunction(), [](const BasicBlock &BB) {
+    return BB.getTerminator()->getNumSuccessors() > 1;
+  });
+  if (SingleBB) {
+    Threshold += Threshold / 2;
+  }
+
+  auto ArgAllocaSize = DL.getTypeAllocSize(AI->getAllocatedType());
+
+  // Attribute the bonus proportionally to the alloca size
+  unsigned AllocaThresholdBonus = (Threshold * ArgAllocaSize) / AllocaSize;
+
+  return AllocaThresholdBonus;
 }
 
 void GCNTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,

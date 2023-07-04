@@ -107,6 +107,9 @@ public:
   std::pair<unsigned, unsigned>
   getWavesPerEU(const Function &F,
                 std::pair<unsigned, unsigned> FlatWorkGroupSizes) const;
+  std::pair<unsigned, unsigned> getEffectiveWavesPerEU(
+      std::pair<unsigned, unsigned> WavesPerEU,
+      std::pair<unsigned, unsigned> FlatWorkGroupSizes) const;
 
   /// Return the amount of LDS that can be used that will not restrict the
   /// occupancy lower than WaveCount.
@@ -226,7 +229,7 @@ public:
 
   /// Returns the offset in bytes from the start of the input buffer
   ///        of the first explicit kernel argument.
-  unsigned getExplicitKernelArgOffset(const Function &F) const {
+  unsigned getExplicitKernelArgOffset() const {
     switch (TargetTriple.getOS()) {
     case Triple::AMDHSA:
     case Triple::AMDPAL:
@@ -268,6 +271,9 @@ public:
   /// Return the maximum workitem ID value in the function, for the given (0, 1,
   /// 2) dimension.
   unsigned getMaxWorkitemID(const Function &Kernel, unsigned Dimension) const;
+
+  /// Return true if only a single workitem can be active in a wave.
+  bool isSingleLaneExecution(const Function &Kernel) const;
 
   /// Creates value range metadata on an workitemid.* intrinsic call or load.
   bool makeLIDRangeMetadata(Instruction *I) const;

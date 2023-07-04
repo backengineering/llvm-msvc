@@ -82,8 +82,14 @@ static void DumpTargetInfo(uint32_t target_idx, Target *target,
   if (!exe_valid)
     ::strcpy(exe_path, "<none>");
 
-  strm.Printf("%starget #%u: %s", prefix_cstr ? prefix_cstr : "", target_idx,
-              exe_path);
+  std::string formatted_label = "";
+  const std::string &label = target->GetLabel();
+  if (!label.empty()) {
+    formatted_label = " (" + label + ")";
+  }
+
+  strm.Printf("%starget #%u%s: %s", prefix_cstr ? prefix_cstr : "", target_idx,
+              formatted_label.data(), exe_path);
 
   uint32_t properties = 0;
   if (target_arch.IsValid()) {
@@ -209,6 +215,8 @@ public:
         m_platform_options(true), // Include the --platform option.
         m_core_file(LLDB_OPT_SET_1, false, "core", 'c', 0, eArgTypeFilename,
                     "Fullpath to a core file to use for this target."),
+        m_label(LLDB_OPT_SET_1, false, "label", 'l', 0, eArgTypeName,
+                "Optional name for this target.", nullptr),
         m_symbol_file(LLDB_OPT_SET_1, false, "symfile", 's', 0,
                       eArgTypeFilename,
                       "Fullpath to a stand alone debug "
@@ -234,6 +242,7 @@ public:
     m_option_group.Append(&m_arch_option, LLDB_OPT_SET_ALL, LLDB_OPT_SET_1);
     m_option_group.Append(&m_platform_options, LLDB_OPT_SET_ALL, 1);
     m_option_group.Append(&m_core_file, LLDB_OPT_SET_ALL, LLDB_OPT_SET_1);
+    m_option_group.Append(&m_label, LLDB_OPT_SET_ALL, LLDB_OPT_SET_1);
     m_option_group.Append(&m_symbol_file, LLDB_OPT_SET_ALL, LLDB_OPT_SET_1);
     m_option_group.Append(&m_remote_file, LLDB_OPT_SET_ALL, LLDB_OPT_SET_1);
     m_option_group.Append(&m_add_dependents, LLDB_OPT_SET_ALL, LLDB_OPT_SET_1);
@@ -247,9 +256,8 @@ public:
   void
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eDiskFileCompletion,
-        request, nullptr);
+    lldb_private::CommandCompletions::InvokeCommonCompletionCallbacks(
+        GetCommandInterpreter(), lldb::eDiskFileCompletion, request, nullptr);
   }
 
 protected:
@@ -300,6 +308,14 @@ protected:
 
       if (!target_sp) {
         result.AppendError(error.AsCString());
+        return false;
+      }
+
+      const llvm::StringRef label =
+          m_label.GetOptionValue().GetCurrentValueAsRef();
+      if (!label.empty()) {
+        if (auto E = target_sp->SetLabel(label))
+          result.SetError(std::move(E));
         return false;
       }
 
@@ -455,6 +471,7 @@ private:
   OptionGroupArchitecture m_arch_option;
   OptionGroupPlatform m_platform_options;
   OptionGroupFile m_core_file;
+  OptionGroupString m_label;
   OptionGroupFile m_symbol_file;
   OptionGroupFile m_remote_file;
   OptionGroupDependents m_add_dependents;
@@ -503,11 +520,11 @@ public:
 protected:
   bool DoExecute(Args &args, CommandReturnObject &result) override {
     if (args.GetArgumentCount() == 1) {
-      const char *target_idx_arg = args.GetArgumentAtIndex(0);
-      uint32_t target_idx;
-      if (llvm::to_integer(target_idx_arg, target_idx)) {
-        TargetList &target_list = GetDebugger().GetTargetList();
-        const uint32_t num_targets = target_list.GetNumTargets();
+      const char *target_identifier = args.GetArgumentAtIndex(0);
+      uint32_t target_idx = LLDB_INVALID_INDEX32;
+      TargetList &target_list = GetDebugger().GetTargetList();
+      const uint32_t num_targets = target_list.GetNumTargets();
+      if (llvm::to_integer(target_identifier, target_idx)) {
         if (target_idx < num_targets) {
           target_list.SetSelectedTarget(target_idx);
           Stream &strm = result.GetOutputStream();
@@ -526,8 +543,26 @@ protected:
           }
         }
       } else {
-        result.AppendErrorWithFormat("invalid index string value '%s'\n",
-                                     target_idx_arg);
+        for (size_t i = 0; i < num_targets; i++) {
+          if (TargetSP target_sp = target_list.GetTargetAtIndex(i)) {
+            const std::string &label = target_sp->GetLabel();
+            if (!label.empty() && label == target_identifier) {
+              target_idx = i;
+              break;
+            }
+          }
+        }
+
+        if (target_idx != LLDB_INVALID_INDEX32) {
+          target_list.SetSelectedTarget(target_idx);
+          Stream &strm = result.GetOutputStream();
+          bool show_stopped_process_status = false;
+          DumpTargetList(target_list, show_stopped_process_status, strm);
+          result.SetStatus(eReturnStatusSuccessFinishResult);
+        } else {
+          result.AppendErrorWithFormat("invalid index string value '%s'\n",
+                                       target_identifier);
+        }
       }
     } else {
       result.AppendError(
@@ -576,7 +611,7 @@ protected:
     TargetSP target_sp;
 
     if (m_all_option.GetOptionValue()) {
-      for (int i = 0; i < target_list.GetNumTargets(); ++i)
+      for (size_t i = 0; i < target_list.GetNumTargets(); ++i)
         delete_target_list.push_back(target_list.GetTargetAtIndex(i));
     } else if (argc > 0) {
       const uint32_t num_targets = target_list.GetNumTargets();
@@ -1283,7 +1318,7 @@ static void DumpModuleArchitecture(Stream &strm, Module *module,
 
 static void DumpModuleUUID(Stream &strm, Module *module) {
   if (module && module->GetUUID().IsValid())
-    module->GetUUID().Dump(&strm);
+    module->GetUUID().Dump(strm);
   else
     strm.PutCString("                                    ");
 }
@@ -1472,28 +1507,6 @@ static bool LookupAddressInModule(CommandInterpreter &interpreter, Stream &strm,
     ExecutionContextScope *exe_scope =
         interpreter.GetExecutionContext().GetBestExecutionContextScope();
     DumpAddress(exe_scope, so_addr, verbose, all_ranges, strm);
-    //        strm.IndentMore();
-    //        strm.Indent ("    Address: ");
-    //        so_addr.Dump (&strm, exe_scope,
-    //        Address::DumpStyleModuleWithFileAddress);
-    //        strm.PutCString (" (");
-    //        so_addr.Dump (&strm, exe_scope,
-    //        Address::DumpStyleSectionNameOffset);
-    //        strm.PutCString (")\n");
-    //        strm.Indent ("    Summary: ");
-    //        const uint32_t save_indent = strm.GetIndentLevel ();
-    //        strm.SetIndentLevel (save_indent + 13);
-    //        so_addr.Dump (&strm, exe_scope,
-    //        Address::DumpStyleResolvedDescription);
-    //        strm.SetIndentLevel (save_indent);
-    //        // Print out detailed address information when verbose is enabled
-    //        if (verbose)
-    //        {
-    //            strm.EOL();
-    //            so_addr.Dump (&strm, exe_scope,
-    //            Address::DumpStyleDetailedSymbolContext);
-    //        }
-    //        strm.IndentLess();
     return true;
   }
 
@@ -1810,9 +1823,8 @@ public:
   void
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eModuleCompletion, request,
-        nullptr);
+    lldb_private::CommandCompletions::InvokeCommonCompletionCallbacks(
+        GetCommandInterpreter(), lldb::eModuleCompletion, request, nullptr);
   }
 };
 
@@ -1848,9 +1860,8 @@ public:
   void
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eSourceFileCompletion,
-        request, nullptr);
+    lldb_private::CommandCompletions::InvokeCommonCompletionCallbacks(
+        GetCommandInterpreter(), lldb::eSourceFileCompletion, request, nullptr);
   }
 };
 
@@ -2495,9 +2506,8 @@ public:
   void
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eDiskFileCompletion,
-        request, nullptr);
+    lldb_private::CommandCompletions::InvokeCommonCompletionCallbacks(
+        GetCommandInterpreter(), lldb::eDiskFileCompletion, request, nullptr);
   }
 
 protected:
@@ -2528,7 +2538,7 @@ protected:
             return true;
           } else {
             StreamString strm;
-            module_spec.GetUUID().Dump(&strm);
+            module_spec.GetUUID().Dump(strm);
             if (module_spec.GetFileSpec()) {
               if (module_spec.GetSymbolFileSpec()) {
                 result.AppendErrorWithFormat(
@@ -2552,7 +2562,7 @@ protected:
           }
         } else {
           StreamString strm;
-          module_spec.GetUUID().Dump(&strm);
+          module_spec.GetUUID().Dump(strm);
           result.AppendErrorWithFormat(
               "Unable to locate the executable or symbol file with UUID %s",
               strm.GetData());
@@ -4026,8 +4036,8 @@ public:
             "target symbols add <cmd-options> [<symfile>]",
             eCommandRequiresTarget),
         m_file_option(
-            LLDB_OPT_SET_1, false, "shlib", 's',
-            CommandCompletions::eModuleCompletion, eArgTypeShlibName,
+            LLDB_OPT_SET_1, false, "shlib", 's', lldb::eModuleCompletion,
+            eArgTypeShlibName,
             "Locate the debug symbols for the shared library specified by "
             "name."),
         m_current_frame_option(
@@ -4057,9 +4067,8 @@ public:
   void
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eDiskFileCompletion,
-        request, nullptr);
+    lldb_private::CommandCompletions::InvokeCommonCompletionCallbacks(
+        GetCommandInterpreter(), lldb::eDiskFileCompletion, request, nullptr);
   }
 
   Options *GetOptions() override { return &m_option_group; }
@@ -4209,7 +4218,7 @@ protected:
     StreamString ss_symfile_uuid;
     if (module_spec.GetUUID().IsValid()) {
       ss_symfile_uuid << " (";
-      module_spec.GetUUID().Dump(&ss_symfile_uuid);
+      module_spec.GetUUID().Dump(ss_symfile_uuid);
       ss_symfile_uuid << ')';
     }
     result.AppendErrorWithFormat(
@@ -4244,7 +4253,7 @@ protected:
     if (!DownloadObjectAndSymbolFile(module_spec, result, flush)) {
       StreamString error_strm;
       error_strm.PutCString("unable to find debug symbols for UUID ");
-      module_spec.GetUUID().Dump(&error_strm);
+      module_spec.GetUUID().Dump(error_strm);
       result.AppendError(error_strm.GetString());
       return false;
     }
@@ -4908,9 +4917,8 @@ public:
   void
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eStopHookIDCompletion,
-        request, nullptr);
+    lldb_private::CommandCompletions::InvokeCommonCompletionCallbacks(
+        GetCommandInterpreter(), lldb::eStopHookIDCompletion, request, nullptr);
   }
 
 protected:
@@ -4966,9 +4974,8 @@ public:
                            OptionElementVector &opt_element_vector) override {
     if (request.GetCursorIndex())
       return;
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eStopHookIDCompletion,
-        request, nullptr);
+    lldb_private::CommandCompletions::InvokeCommonCompletionCallbacks(
+        GetCommandInterpreter(), lldb::eStopHookIDCompletion, request, nullptr);
   }
 
 protected:
@@ -5028,7 +5035,7 @@ protected:
         Target::StopHookSP this_hook = target.GetStopHookAtIndex(i);
         if (i > 0)
           result.GetOutputStream().PutCString("\n");
-        this_hook->GetDescription(&(result.GetOutputStream()),
+        this_hook->GetDescription(result.GetOutputStream(),
                                   eDescriptionLevelFull);
       }
     }
@@ -5076,8 +5083,8 @@ public:
   CommandObjectTargetDumpTypesystem(CommandInterpreter &interpreter)
       : CommandObjectParsed(
             interpreter, "target dump typesystem",
-            "Dump the state of the target's internal type system.\n"
-            "Intended to be used for debugging LLDB itself.",
+            "Dump the state of the target's internal type system. Intended to "
+            "be used for debugging LLDB itself.",
             nullptr, eCommandRequiresTarget) {}
 
   ~CommandObjectTargetDumpTypesystem() override = default;
@@ -5094,6 +5101,29 @@ protected:
   }
 };
 
+#pragma mark CommandObjectTargetDumpSectionLoadList
+
+/// Dumps the SectionLoadList of the selected Target.
+class CommandObjectTargetDumpSectionLoadList : public CommandObjectParsed {
+public:
+  CommandObjectTargetDumpSectionLoadList(CommandInterpreter &interpreter)
+      : CommandObjectParsed(
+            interpreter, "target dump section-load-list",
+            "Dump the state of the target's internal section load list. "
+            "Intended to be used for debugging LLDB itself.",
+            nullptr, eCommandRequiresTarget) {}
+
+  ~CommandObjectTargetDumpSectionLoadList() override = default;
+
+protected:
+  bool DoExecute(Args &command, CommandReturnObject &result) override {
+    Target &target = GetSelectedTarget();
+    target.GetSectionLoadList().Dump(result.GetOutputStream(), &target);
+    result.SetStatus(eReturnStatusSuccessFinishResult);
+    return result.Succeeded();
+  }
+};
+
 #pragma mark CommandObjectTargetDump
 
 /// Multi-word command for 'target dump'.
@@ -5104,10 +5134,13 @@ public:
       : CommandObjectMultiword(
             interpreter, "target dump",
             "Commands for dumping information about the target.",
-            "target dump [typesystem]") {
+            "target dump [typesystem|section-load-list]") {
     LoadSubCommand(
         "typesystem",
         CommandObjectSP(new CommandObjectTargetDumpTypesystem(interpreter)));
+    LoadSubCommand("section-load-list",
+                   CommandObjectSP(new CommandObjectTargetDumpSectionLoadList(
+                       interpreter)));
   }
 
   ~CommandObjectTargetDump() override = default;

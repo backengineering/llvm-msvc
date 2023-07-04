@@ -253,8 +253,8 @@ class Property<string storageTypeParam = "", string desc = ""> {
   // - `$_storage` is the storage type value.
   // - `$_reader` is a `DialectBytecodeReader`.
   code readFromMlirBytecode = [{
-    if (failed(readFromMlirBytecode($_reader, $_storage)))
-      return failure();
+    if (::mlir::failed(readFromMlirBytecode($_reader, $_storage)))
+      return ::mlir::failure();
   }];
 
   // Default value for the property.
@@ -2398,6 +2398,15 @@ class Res<Constraint constraint, string desc = "",
           list<OpVariableDecorator> decorators = []>
   : OpVariable<constraint, desc, decorators>;
 
+// Marker to group ops together for documentation purposes.
+class OpDocGroup {
+  // Single line summary of the group of ops.
+  string summary;
+
+  // Longer description of documentation group.
+  string description;
+}
+
 // Base class for all ops.
 class Op<Dialect dialect, string mnemonic, list<Trait> props = []> {
   // The dialect of the op.
@@ -2414,6 +2423,9 @@ class Op<Dialect dialect, string mnemonic, list<Trait> props = []> {
 
   // Additional, longer human-readable description of what the op does.
   string description = "";
+
+  // Optional. The group of ops this op is part of.
+  OpDocGroup opDocGroup = ?;
 
   // Dag containing the arguments of the op. Default to 0 arguments.
   dag arguments = (ins);
@@ -2548,6 +2560,12 @@ class ElementCount<string name> :
 
 class ElementType<string name> : StrFunc<"getElementTypeOrSelf($" # name # ")">;
 
+class AnyPred<list<string> values> :
+  CPred<!if(!lt(!size(values), 1),
+            "false",
+            !foldl("(" # !head(values) # ")", !tail(values), acc, v,
+                   acc # " || (" # v # ")"))>;
+
 class AllMatchPred<list<string> values> :
   CPred<!if(!lt(!size(values), 2),
             "true",
@@ -2567,6 +2585,17 @@ class AllMatchSameOperatorTrait<list<string> names, string operator,
     PredOpTrait<
         "all of {" # !interleave(names, ", ") # "} have same " # summary,
         AllMatchSameOperatorPred<names, operator>> {
+  list<string> values = names;
+}
+
+class AnyMatchOperatorPred<list<string> names, string operator> :
+    AnyPred<!foreach(n, names, !subst("$_self", "$" # n, operator))>;
+
+class AnyMatchOperatorTrait<list<string> names, string operator,
+                            string summary> :
+    PredOpTrait<
+        "any of {" # !interleave(names, ", ") # "} has " # summary,
+        AnyMatchOperatorPred<names, operator>> {
   list<string> values = names;
 }
 
@@ -2694,5 +2723,17 @@ class TCopVTEtAreSameAt<list<int> indices> : CPred<
       "::mlir::ArrayRef<unsigned>({" # !interleave(indices, ", ") # "}), "
       "[this](unsigned i) { return getElementTypeOrSelf(this->getOperand(i)); "
       "}))">;
+
+class AnyScalarTypeMatch<list<string> names> :
+    AnyMatchOperatorTrait<names, "$_self.getType().isSignlessInteger(1)",
+                          "scalar type">;
+
+class ScalarConditionOrMatchingShape<list<string> names> :
+    PredOpTrait<
+        !head(names) # " is scalar or has matching shape",
+        Or<[AnyScalarTypeMatch<[!head(names)]>.predicate,
+            AllShapesMatch<names>.predicate]>> {
+  list<string> values = names;
+}
 
 #endif // OP_BASE

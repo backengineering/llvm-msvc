@@ -1033,13 +1033,17 @@ static SDValue combineShiftToAVG(SDValue Op, SelectionDAG &DAG,
   if (!TLI.isOperationLegalOrCustom(AVGOpc, NVT)) {
     // If we could not transform, and (both) adds are nuw/nsw, we can use the
     // larger type size to do the transform.
-    if (((!IsSigned && Add->getFlags().hasNoUnsignedWrap() &&
-          (!Add2 || Add2->getFlags().hasNoUnsignedWrap())) ||
-         (IsSigned && Add->getFlags().hasNoSignedWrap() &&
-          (!Add2 || Add2->getFlags().hasNoSignedWrap()))) &&
-        TLI.isOperationLegalOrCustom(AVGOpc, VT)) {
+    if (!TLI.isOperationLegalOrCustom(AVGOpc, VT))
+      return SDValue();
+
+    if (DAG.computeOverflowForAdd(IsSigned, Add.getOperand(0),
+                                  Add.getOperand(1)) ==
+            SelectionDAG::OFK_Never &&
+        (!Add2 || DAG.computeOverflowForAdd(IsSigned, Add2.getOperand(0),
+                                            Add2.getOperand(1)) ==
+                      SelectionDAG::OFK_Never))
       NVT = VT;
-    } else
+    else
       return SDValue();
   }
 
@@ -2694,11 +2698,9 @@ bool TargetLowering::SimplifyDemandedBits(
     if (Op.getOpcode() == ISD::MUL) {
       Known = KnownBits::mul(KnownOp0, KnownOp1);
     } else { // Op.getOpcode() is either ISD::ADD or ISD::SUB.
-      // TODO: Update `computeForAddCarry` to handle the NSW flag as well so
-      //       that `Flags.hasNoSignedWrap()` can be passed through here
-      //       instead of false.
-      Known = KnownBits::computeForAddSub(Op.getOpcode() == ISD::ADD, false,
-                                          KnownOp0, KnownOp1);
+      Known = KnownBits::computeForAddSub(Op.getOpcode() == ISD::ADD,
+                                          Flags.hasNoSignedWrap(), KnownOp0,
+                                          KnownOp1);
     }
     break;
   }
@@ -4083,8 +4085,12 @@ static SDValue simplifySetCCWithCTPOP(const TargetLowering &TLI, EVT VT,
     ISD::CondCode InvCond = ISD::getSetCCInverse(Cond, CTVT);
     SDValue Add = DAG.getNode(ISD::ADD, dl, CTVT, CTOp, NegOne);
     SDValue And = DAG.getNode(ISD::AND, dl, CTVT, CTOp, Add);
-    SDValue LHS = DAG.getSetCC(dl, VT, CTOp, Zero, InvCond);
     SDValue RHS = DAG.getSetCC(dl, VT, And, Zero, Cond);
+    // Its not uncommon for known-never-zero X to exist in (ctpop X) eq/ne 1, so
+    // check before the emit a potentially unnecessary op.
+    if (DAG.isKnownNeverZero(CTOp))
+      return RHS;
+    SDValue LHS = DAG.getSetCC(dl, VT, CTOp, Zero, InvCond);
     unsigned LogicOpcode = Cond == ISD::SETEQ ? ISD::AND : ISD::OR;
     return DAG.getNode(LogicOpcode, dl, VT, LHS, RHS);
   }
@@ -5990,17 +5996,18 @@ SDValue TargetLowering::BuildSDIV(SDNode *N, SelectionDAG &DAG,
       return SDValue(LoHi.getNode(), 1);
     }
     // If type twice as wide legal, widen and use a mul plus a shift.
-    if (!VT.isVector()) {
-      unsigned Size = VT.getSizeInBits();
-      EVT WideVT = EVT::getIntegerVT(*DAG.getContext(), Size * 2);
-      if (isOperationLegal(ISD::MUL, WideVT)) {
-        X = DAG.getNode(ISD::SIGN_EXTEND, dl, WideVT, X);
-        Y = DAG.getNode(ISD::SIGN_EXTEND, dl, WideVT, Y);
-        Y = DAG.getNode(ISD::MUL, dl, WideVT, X, Y);
-        Y = DAG.getNode(ISD::SRL, dl, WideVT, Y,
-                        DAG.getShiftAmountConstant(EltBits, WideVT, dl));
-        return DAG.getNode(ISD::TRUNCATE, dl, VT, Y);
-      }
+    unsigned Size = VT.getScalarSizeInBits();
+    EVT WideVT = EVT::getIntegerVT(*DAG.getContext(), Size * 2);
+    if (VT.isVector())
+      WideVT = EVT::getVectorVT(*DAG.getContext(), WideVT,
+                                VT.getVectorElementCount());
+    if (isOperationLegalOrCustom(ISD::MUL, WideVT)) {
+      X = DAG.getNode(ISD::SIGN_EXTEND, dl, WideVT, X);
+      Y = DAG.getNode(ISD::SIGN_EXTEND, dl, WideVT, Y);
+      Y = DAG.getNode(ISD::MUL, dl, WideVT, X, Y);
+      Y = DAG.getNode(ISD::SRL, dl, WideVT, Y,
+                      DAG.getShiftAmountConstant(EltBits, WideVT, dl));
+      return DAG.getNode(ISD::TRUNCATE, dl, VT, Y);
     }
     return SDValue();
   };
@@ -6176,17 +6183,18 @@ SDValue TargetLowering::BuildUDIV(SDNode *N, SelectionDAG &DAG,
       return SDValue(LoHi.getNode(), 1);
     }
     // If type twice as wide legal, widen and use a mul plus a shift.
-    if (!VT.isVector()) {
-      unsigned Size = VT.getSizeInBits();
-      EVT WideVT = EVT::getIntegerVT(*DAG.getContext(), Size * 2);
-      if (isOperationLegal(ISD::MUL, WideVT)) {
-        X = DAG.getNode(ISD::ZERO_EXTEND, dl, WideVT, X);
-        Y = DAG.getNode(ISD::ZERO_EXTEND, dl, WideVT, Y);
-        Y = DAG.getNode(ISD::MUL, dl, WideVT, X, Y);
-        Y = DAG.getNode(ISD::SRL, dl, WideVT, Y,
-                        DAG.getShiftAmountConstant(EltBits, WideVT, dl));
-        return DAG.getNode(ISD::TRUNCATE, dl, VT, Y);
-      }
+    unsigned Size = VT.getScalarSizeInBits();
+    EVT WideVT = EVT::getIntegerVT(*DAG.getContext(), Size * 2);
+    if (VT.isVector())
+      WideVT = EVT::getVectorVT(*DAG.getContext(), WideVT,
+                                VT.getVectorElementCount());
+    if (isOperationLegalOrCustom(ISD::MUL, WideVT)) {
+      X = DAG.getNode(ISD::ZERO_EXTEND, dl, WideVT, X);
+      Y = DAG.getNode(ISD::ZERO_EXTEND, dl, WideVT, Y);
+      Y = DAG.getNode(ISD::MUL, dl, WideVT, X, Y);
+      Y = DAG.getNode(ISD::SRL, dl, WideVT, Y,
+                      DAG.getShiftAmountConstant(EltBits, WideVT, dl));
+      return DAG.getNode(ISD::TRUNCATE, dl, VT, Y);
     }
     return SDValue(); // No mulhu or equivalent
   };
@@ -6814,7 +6822,7 @@ SDValue TargetLowering::getNegatedExpression(SDValue Op, SelectionDAG &DAG,
                                              NegatibleCost &Cost,
                                              unsigned Depth) const {
   // fneg is removable even if it has multiple uses.
-  if (Op.getOpcode() == ISD::FNEG) {
+  if (Op.getOpcode() == ISD::FNEG || Op.getOpcode() == ISD::VP_FNEG) {
     Cost = NegatibleCost::Cheaper;
     return Op.getOperand(0);
   }
@@ -8048,6 +8056,19 @@ SDValue TargetLowering::expandFMINNUM_FMAXNUM(SDNode *Node,
   return SDValue();
 }
 
+/// If this FPClassTest can be performed with a fcmp to 0, return the test mask
+/// for the floating-point mode.
+static bool isFCmpEqualZero(FPClassTest Test, const fltSemantics &Semantics,
+                            const MachineFunction &MF) {
+  if (Test == fcZero &&
+      MF.getDenormalMode(Semantics).Input == DenormalMode::IEEE)
+    return true;
+  if (Test == (fcZero | fcSubnormal) &&
+      MF.getDenormalMode(Semantics).inputsAreZero())
+    return true;
+  return false;
+}
+
 SDValue TargetLowering::expandIS_FPCLASS(EVT ResultVT, SDValue Op,
                                          FPClassTest Test, SDNodeFlags Flags,
                                          const SDLoc &DL,
@@ -8056,7 +8077,7 @@ SDValue TargetLowering::expandIS_FPCLASS(EVT ResultVT, SDValue Op,
   assert(OperandVT.isFloatingPoint());
 
   // Degenerated cases.
-  if (Test == 0)
+  if (Test == fcNone)
     return DAG.getBoolConstant(false, DL, ResultVT, OperandVT);
   if ((Test & fcAllFlags) == fcAllFlags)
     return DAG.getBoolConstant(true, DL, ResultVT, OperandVT);
@@ -8086,18 +8107,14 @@ SDValue TargetLowering::expandIS_FPCLASS(EVT ResultVT, SDValue Op,
   // Some checks can be implemented using float comparisons, if floating point
   // exceptions are ignored.
   if (Flags.hasNoFPExcept() &&
+      // TODO: Should check isCondCodeLegal
       isOperationLegalOrCustom(ISD::SETCC, OperandVT.getScalarType())) {
-    if (Test == fcZero) {
-      DenormalMode Mode = DAG.getMachineFunction().getDenormalMode(Semantics);
-      if (Mode.Input == DenormalMode::IEEE) {
-        // If denormals could be implicitly treated as 0, this is not equivalent
-        // to a compare with 0 since it will also be true for denormals.
-        //
-        // TODO: With DAZ, check == fcZero | fcSubnormal
-        return DAG.getSetCC(DL, ResultVT, Op,
-                            DAG.getConstantFP(0.0, DL, OperandVT),
-                            IsInverted ? ISD::SETUNE : ISD::SETOEQ);
-      }
+    if (isFCmpEqualZero(Test, Semantics, DAG.getMachineFunction())) {
+      // If denormals could be implicitly treated as 0, this is not equivalent
+      // to a compare with 0 since it will also be true for denormals.
+      return DAG.getSetCC(DL, ResultVT, Op,
+                          DAG.getConstantFP(0.0, DL, OperandVT),
+                          IsInverted ? ISD::SETUNE : ISD::SETOEQ);
     }
 
     if (Test == fcNan)
@@ -9729,6 +9746,37 @@ SDValue TargetLowering::expandAddSubSat(SDNode *Node, SelectionDAG &DAG) const {
     }
     // Overflow ? 0 : (LHS - RHS)
     return DAG.getSelect(dl, VT, Overflow, Zero, SumDiff);
+  }
+
+  if (Opcode == ISD::SADDSAT || Opcode == ISD::SSUBSAT) {
+    APInt MinVal = APInt::getSignedMinValue(BitWidth);
+    APInt MaxVal = APInt::getSignedMaxValue(BitWidth);
+
+    KnownBits KnownLHS = DAG.computeKnownBits(LHS);
+    KnownBits KnownRHS = DAG.computeKnownBits(RHS);
+
+    // If either of the operand signs are known, then they are guaranteed to
+    // only saturate in one direction. If non-negative they will saturate
+    // towards SIGNED_MAX, if negative they will saturate towards SIGNED_MIN.
+    //
+    // In the case of ISD::SSUBSAT, 'x - y' is equivalent to 'x + (-y)', so the
+    // sign of 'y' has to be flipped.
+
+    bool LHSIsNonNegative = KnownLHS.isNonNegative();
+    bool RHSIsNonNegative = Opcode == ISD::SADDSAT ? KnownRHS.isNonNegative()
+                                                   : KnownRHS.isNegative();
+    if (LHSIsNonNegative || RHSIsNonNegative) {
+      SDValue SatMax = DAG.getConstant(MaxVal, dl, VT);
+      return DAG.getSelect(dl, VT, Overflow, SatMax, SumDiff);
+    }
+
+    bool LHSIsNegative = KnownLHS.isNegative();
+    bool RHSIsNegative = Opcode == ISD::SADDSAT ? KnownRHS.isNegative()
+                                                : KnownRHS.isNonNegative();
+    if (LHSIsNegative || RHSIsNegative) {
+      SDValue SatMin = DAG.getConstant(MinVal, dl, VT);
+      return DAG.getSelect(dl, VT, Overflow, SatMin, SumDiff);
+    }
   }
 
   // Overflow ? (SumDiff >> BW) ^ MinVal : SumDiff

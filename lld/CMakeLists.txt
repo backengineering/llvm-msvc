@@ -99,10 +99,6 @@ if(LLD_BUILT_STANDALONE)
       set(LLVM_INCLUDE_TESTS OFF)
     endif()
   endif()
-
-  if(LLVM_HAVE_LIBXAR)
-    set(XAR_LIB xar)
-  endif()
 endif() # standalone
 
 set(LLD_TOOLS_INSTALL_DIR "${CMAKE_INSTALL_BINDIR}" CACHE PATH
@@ -195,6 +191,8 @@ add_subdirectory(Common)
 add_subdirectory(tools/lld)
 
 if (LLVM_INCLUDE_TESTS)
+  add_custom_target(LLDUnitTests)
+  llvm_add_unittests(LLD_UNITTESTS_ADDED)
   add_subdirectory(test)
 endif()
 

@@ -20,11 +20,13 @@
 #include "flang/Optimizer/Dialect/FIROps.h"
 #include "flang/Optimizer/Dialect/FIROpsSupport.h"
 #include "flang/Optimizer/Dialect/FIRType.h"
+#include "flang/Optimizer/Dialect/Support/FIRContext.h"
 #include "flang/Optimizer/Dialect/Support/KindMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/ADT/DenseMap.h"
 #include <optional>
+#include <utility>
 
 namespace fir {
 class AbstractArrayBox;
@@ -40,11 +42,15 @@ class BoxValue;
 /// patterns.
 class FirOpBuilder : public mlir::OpBuilder, public mlir::OpBuilder::Listener {
 public:
-  explicit FirOpBuilder(mlir::Operation *op, const fir::KindMapping &kindMap)
-      : OpBuilder{op, /*listener=*/this}, kindMap{kindMap} {}
-  explicit FirOpBuilder(mlir::OpBuilder &builder,
-                        const fir::KindMapping &kindMap)
-      : OpBuilder(builder), OpBuilder::Listener(), kindMap{kindMap} {
+  explicit FirOpBuilder(mlir::Operation *op, fir::KindMapping kindMap)
+      : OpBuilder{op, /*listener=*/this}, kindMap{std::move(kindMap)} {}
+  explicit FirOpBuilder(mlir::OpBuilder &builder, fir::KindMapping kindMap)
+      : OpBuilder(builder), OpBuilder::Listener(), kindMap{std::move(kindMap)} {
+    setListener(this);
+  }
+  explicit FirOpBuilder(mlir::OpBuilder &builder, mlir::ModuleOp mod)
+      : OpBuilder(builder), OpBuilder::Listener(),
+        kindMap{getKindMapping(mod)} {
     setListener(this);
   }
 
@@ -52,6 +58,12 @@ public:
   FirOpBuilder(const FirOpBuilder &other)
       : OpBuilder(other), OpBuilder::Listener(), kindMap{other.kindMap},
         fastMathFlags{other.fastMathFlags} {
+    setListener(this);
+  }
+
+  FirOpBuilder(FirOpBuilder &&other)
+      : OpBuilder(other), OpBuilder::Listener(),
+        kindMap{std::move(other.kindMap)}, fastMathFlags{other.fastMathFlags} {
     setListener(this);
   }
 
@@ -457,7 +469,7 @@ private:
   /// based on the current attributes setting.
   void setCommonAttributes(mlir::Operation *op) const;
 
-  const KindMapping &kindMap;
+  KindMapping kindMap;
 
   /// FastMathFlags that need to be set for operations that support
   /// mlir::arith::FastMathAttr.
@@ -576,14 +588,16 @@ fir::ExtendedValue arraySectionElementToExtendedValue(
 /// assignment follows Fortran intrinsic assignment semantic (10.2.1.3).
 void genScalarAssignment(fir::FirOpBuilder &builder, mlir::Location loc,
                          const fir::ExtendedValue &lhs,
-                         const fir::ExtendedValue &rhs);
+                         const fir::ExtendedValue &rhs,
+                         bool isTemporaryLHS = false);
 /// Assign \p rhs to \p lhs. Both \p rhs and \p lhs must be scalar derived
 /// types. The assignment follows Fortran intrinsic assignment semantic for
 /// derived types (10.2.1.3 point 13).
 void genRecordAssignment(fir::FirOpBuilder &builder, mlir::Location loc,
                          const fir::ExtendedValue &lhs,
                          const fir::ExtendedValue &rhs,
-                         bool needFinalization = false);
+                         bool needFinalization = false,
+                         bool isTemporaryLHS = false);
 
 /// Builds and returns the type of a ragged array header used to cache mask
 /// evaluations. RaggedArrayHeader is defined in

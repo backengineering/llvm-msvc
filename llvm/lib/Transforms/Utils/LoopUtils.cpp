@@ -641,18 +641,17 @@ void llvm::deleteDeadLoop(Loop *L, DominatorTree *DT, ScalarEvolution *SE,
       }
 
     // After the loop has been deleted all the values defined and modified
-    // inside the loop are going to be unavailable.
-    // Since debug values in the loop have been deleted, inserting an undef
-    // dbg.value truncates the range of any dbg.value before the loop where the
-    // loop used to be. This is particularly important for constant values.
+    // inside the loop are going to be unavailable. Values computed in the
+    // loop will have been deleted, automatically causing their debug uses
+    // be be replaced with undef. Loop invariant values will still be available.
+    // Move dbg.values out the loop so that earlier location ranges are still
+    // terminated and loop invariant assignments are preserved.
     Instruction *InsertDbgValueBefore = ExitBlock->getFirstNonPHI();
     assert(InsertDbgValueBefore &&
            "There should be a non-PHI instruction in exit block, else these "
            "instructions will have no parent.");
-    for (auto *DVI : DeadDebugInst) {
-      DVI->setKillLocation();
+    for (auto *DVI : DeadDebugInst)
       DVI->moveBefore(InsertDbgValueBefore);
-    }
   }
 
   // Remove the block from the reference counting scheme, so that we can
@@ -769,7 +768,7 @@ void llvm::breakLoopBackedge(Loop *L, DominatorTree &DT, ScalarEvolution &SE,
   // exit blocks.  If that happened, we need to rebuild LCSSA on the outermost
   // loop which might have a had a block removed.
   if (OutermostLoop != L)
-    formLCSSARecursively(*OutermostLoop, DT, &LI);
+    formLCSSARecursively(*OutermostLoop, DT, &LI, &SE);
 }
 
 
@@ -909,6 +908,10 @@ Intrinsic::ID llvm::getMinMaxReductionIntrinsicOp(RecurKind RK) {
     return Intrinsic::minnum;
   case RecurKind::FMax:
     return Intrinsic::maxnum;
+  case RecurKind::FMinimum:
+    return Intrinsic::minimum;
+  case RecurKind::FMaximum:
+    return Intrinsic::maximum;
   }
 }
 
@@ -928,6 +931,9 @@ CmpInst::Predicate llvm::getMinMaxReductionPredicate(RecurKind RK) {
     return CmpInst::FCMP_OLT;
   case RecurKind::FMax:
     return CmpInst::FCMP_OGT;
+  // We do not add FMinimum/FMaximum recurrence kind here since there is no
+  // equivalent predicate which compares signed zeroes according to the
+  // semantics of the intrinsics (llvm.minimum/maximum).
   }
 }
 
@@ -943,7 +949,8 @@ Value *llvm::createSelectCmpOp(IRBuilderBase &Builder, Value *StartVal,
 Value *llvm::createMinMaxOp(IRBuilderBase &Builder, RecurKind RK, Value *Left,
                             Value *Right) {
   Type *Ty = Left->getType();
-  if (Ty->isIntOrIntVectorTy()) {
+  if (Ty->isIntOrIntVectorTy() ||
+      (RK == RecurKind::FMinimum || RK == RecurKind::FMaximum)) {
     // TODO: Add float minnum/maxnum support when FMF nnan is set.
     Intrinsic::ID Id = getMinMaxReductionIntrinsicOp(RK);
     return Builder.CreateIntrinsic(Ty, Id, {Left, Right}, nullptr,
@@ -1094,6 +1101,10 @@ Value *llvm::createSimpleTargetReduction(IRBuilderBase &Builder,
     return Builder.CreateFPMaxReduce(Src);
   case RecurKind::FMin:
     return Builder.CreateFPMinReduce(Src);
+  case RecurKind::FMinimum:
+    return Builder.CreateFPMinimumReduce(Src);
+  case RecurKind::FMaximum:
+    return Builder.CreateFPMaximumReduce(Src);
   default:
     llvm_unreachable("Unhandled opcode");
   }

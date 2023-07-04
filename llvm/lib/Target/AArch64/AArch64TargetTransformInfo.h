@@ -57,7 +57,8 @@ class AArch64TTIImpl : public BasicTTIImplBase<AArch64TTIImpl> {
     VECTOR_LDST_FOUR_ELEMENTS
   };
 
-  bool isWideningInstruction(Type *Ty, unsigned Opcode,
+  bool isWideningInstruction(Type *DstTy, unsigned Opcode,
+                             ArrayRef<Type *> SrcTys,
                              ArrayRef<const Value *> Args);
 
   // A helper function called by 'getVectorInstrCost'.
@@ -98,6 +99,8 @@ public:
   /// @{
 
   bool enableInterleavedAccessVectorization() { return true; }
+
+  bool enableMaskedInterleavedAccessVectorization() { return ST->hasSVE(); }
 
   unsigned getNumberOfRegisters(unsigned ClassID) const {
     bool Vector = (ClassID == 1);

@@ -53,8 +53,6 @@ ModulePass *createAMDGPURemoveIncompatibleFunctionsPass(const TargetMachine *);
 FunctionPass *createAMDGPUCodeGenPreparePass();
 FunctionPass *createAMDGPULateCodeGenPreparePass();
 FunctionPass *createAMDGPUMachineCFGStructurizerPass();
-FunctionPass *createAMDGPUPropagateAttributesEarlyPass(const TargetMachine *);
-ModulePass *createAMDGPUPropagateAttributesLatePass(const TargetMachine *);
 FunctionPass *createAMDGPURewriteOutArgumentsPass();
 ModulePass *createAMDGPULowerModuleLDSPass();
 FunctionPass *createSIModeRegisterPass();
@@ -85,13 +83,12 @@ void initializeAMDGPUAttributorPass(PassRegistry &);
 void initializeAMDGPUAnnotateKernelFeaturesPass(PassRegistry &);
 extern char &AMDGPUAnnotateKernelFeaturesID;
 
-FunctionPass *createAMDGPUAtomicOptimizerPass();
+// DPP/Iterative option enables the atomic optimizer with given strategy
+// whereas None disables the atomic optimizer.
+enum class ScanOptions { DPP, Iterative, None };
+FunctionPass *createAMDGPUAtomicOptimizerPass(ScanOptions ScanStrategy);
 void initializeAMDGPUAtomicOptimizerPass(PassRegistry &);
 extern char &AMDGPUAtomicOptimizerID;
-
-ModulePass *createAMDGPULowerIntrinsicsPass();
-void initializeAMDGPULowerIntrinsicsPass(PassRegistry &);
-extern char &AMDGPULowerIntrinsicsID;
 
 ModulePass *createAMDGPUCtorDtorLoweringLegacyPass();
 void initializeAMDGPUCtorDtorLoweringLegacyPass(PassRegistry &);
@@ -117,30 +114,6 @@ extern char &AMDGPULowerKernelAttributesID;
 struct AMDGPULowerKernelAttributesPass
     : PassInfoMixin<AMDGPULowerKernelAttributesPass> {
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-};
-
-void initializeAMDGPUPropagateAttributesEarlyPass(PassRegistry &);
-extern char &AMDGPUPropagateAttributesEarlyID;
-
-struct AMDGPUPropagateAttributesEarlyPass
-    : PassInfoMixin<AMDGPUPropagateAttributesEarlyPass> {
-  AMDGPUPropagateAttributesEarlyPass(TargetMachine &TM) : TM(TM) {}
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-
-private:
-  TargetMachine &TM;
-};
-
-void initializeAMDGPUPropagateAttributesLatePass(PassRegistry &);
-extern char &AMDGPUPropagateAttributesLateID;
-
-struct AMDGPUPropagateAttributesLatePass
-    : PassInfoMixin<AMDGPUPropagateAttributesLatePass> {
-  AMDGPUPropagateAttributesLatePass(TargetMachine &TM) : TM(TM) {}
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
-
-private:
-  TargetMachine &TM;
 };
 
 void initializeAMDGPULowerModuleLDSPass(PassRegistry &);
@@ -234,11 +207,13 @@ private:
 };
 
 struct AMDGPUAtomicOptimizerPass : PassInfoMixin<AMDGPUAtomicOptimizerPass> {
-  AMDGPUAtomicOptimizerPass(TargetMachine &TM) : TM(TM) {}
+  AMDGPUAtomicOptimizerPass(TargetMachine &TM, ScanOptions ScanImpl)
+      : TM(TM), ScanImpl(ScanImpl) {}
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
 
 private:
   TargetMachine &TM;
+  ScanOptions ScanImpl;
 };
 
 Pass *createAMDGPUStructurizeCFGPass();
@@ -317,9 +292,6 @@ extern char &SIMemoryLegalizerID;
 void initializeSIModeRegisterPass(PassRegistry&);
 extern char &SIModeRegisterID;
 
-void initializeAMDGPUReleaseVGPRsPass(PassRegistry &);
-extern char &AMDGPUReleaseVGPRsID;
-
 void initializeAMDGPUInsertDelayAluPass(PassRegistry &);
 extern char &AMDGPUInsertDelayAluID;
 
@@ -354,6 +326,9 @@ extern char &AMDGPUOpenCLEnqueuedBlockLoweringID;
 
 void initializeGCNNSAReassignPass(PassRegistry &);
 extern char &GCNNSAReassignID;
+
+void initializeGCNPreRALongBranchRegPass(PassRegistry &);
+extern char &GCNPreRALongBranchRegID;
 
 void initializeGCNPreRAOptimizationsPass(PassRegistry &);
 extern char &GCNPreRAOptimizationsID;
@@ -452,6 +427,32 @@ inline bool isExtendedGlobalAddrSpace(unsigned AS) {
          AS == AMDGPUAS::CONSTANT_ADDRESS_32BIT ||
          AS > AMDGPUAS::MAX_AMDGPU_ADDRESS;
 }
+
+static inline bool addrspacesMayAlias(unsigned AS1, unsigned AS2) {
+  static_assert(AMDGPUAS::MAX_AMDGPU_ADDRESS <= 8, "Addr space out of range");
+
+  if (AS1 > AMDGPUAS::MAX_AMDGPU_ADDRESS || AS2 > AMDGPUAS::MAX_AMDGPU_ADDRESS)
+    return true;
+
+  // This array is indexed by address space value enum elements 0 ... to 8
+  // clang-format off
+  static const bool ASAliasRules[9][9] = {
+    /*                   Flat   Global Region  Group Constant Private Const32 BufFatPtr BufRsrc */
+    /* Flat     */        {true,  true,  false, true,  true,  true,  true,  true,  true},
+    /* Global   */        {true,  true,  false, false, true,  false, true,  true,  true},
+    /* Region   */        {false, false, true,  false, false, false, false, false, false},
+    /* Group    */        {true,  false, false, true,  false, false, false, false, false},
+    /* Constant */        {true,  true,  false, false, false, false, true,  true,  true},
+    /* Private  */        {true,  false, false, false, false, true,  false, false, false},
+    /* Constant 32-bit */ {true,  true,  false, false, true,  false, false, true,  true},
+    /* Buffer Fat Ptr  */ {true,  true,  false, false, true,  false, true,  true,  true},
+    /* Buffer Resource */ {true,  true,  false, false, true,  false, true,  true,  true},
+  };
+  // clang-format on
+
+  return ASAliasRules[AS1][AS2];
+}
+
 }
 
 } // End namespace llvm

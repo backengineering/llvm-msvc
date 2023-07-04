@@ -165,7 +165,7 @@ public:
 void addAsyncDependency(Operation *op, Value token);
 
 // Handle types for sparse.
-enum class SparseHandleKind { Env, DnVec, DnMat, SpMat };
+enum class SparseHandleKind { SpMat, DnTensor };
 
 template <SparseHandleKind K>
 class SparseHandleType
@@ -176,9 +176,7 @@ public:
   using Base::Base;
 };
 
-using SparseEnvHandleType = SparseHandleType<SparseHandleKind::Env>;
-using SparseDnVecHandleType = SparseHandleType<SparseHandleKind::DnVec>;
-using SparseDnMatHandleType = SparseHandleType<SparseHandleKind::DnMat>;
+using SparseDnTensorHandleType = SparseHandleType<SparseHandleKind::DnTensor>;
 using SparseSpMatHandleType = SparseHandleType<SparseHandleKind::SpMat>;
 
 } // namespace gpu

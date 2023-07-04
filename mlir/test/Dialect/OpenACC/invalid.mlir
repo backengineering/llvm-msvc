@@ -395,6 +395,14 @@ acc.firstprivate.recipe @privatization_i32 : i32 init {
 
 // -----
 
+// expected-error@+1 {{expected ')'}}
+acc.loop gang(static=%i64Value: i64, num=%i64Value: i64 {
+  "test.openacc_dummy_op"() : () -> ()
+  acc.yield
+}
+
+// -----
+
 // expected-error@+1 {{expects non-empty init region}}
 acc.reduction.recipe @reduction_i64 : i64 reduction_operator<add> init {
 } combiner {}
@@ -406,15 +414,6 @@ acc.reduction.recipe @reduction_i64 : i64 reduction_operator<add> init {
 ^bb0(%0: i32):
   %1 = arith.constant 0 : i64
   acc.yield %1 : i64
-} combiner {}
-
-// -----
-
-// expected-error@+1 {{expects init region to yield a value of the reduction type}}
-acc.reduction.recipe @reduction_i64 : i64 reduction_operator<add> init {
-^bb0(%0: i64):
-  %1 = arith.constant 0 : i32
-  acc.yield %1 : i32
 } combiner {}
 
 // -----
@@ -465,9 +464,32 @@ acc.reduction.recipe @reduction_i64 : i64 reduction_operator<add> init {
 
 // -----
 
+// expected-error@+1 {{new value expected after comma}}
+acc.loop gang(static=%i64Value: i64, ) {
+  "test.openacc_dummy_op"() : () -> ()
+  acc.yield
+}
+
+// -----
+
 func.func @fct1(%0 : !llvm.ptr<i32>) -> () {
   // expected-error@+1 {{expected symbol reference @privatization_i32 to point to a private declaration}}
   acc.serial private(@privatization_i32 -> %0 : !llvm.ptr<i32>) {
   }
   return
+}
+
+// -----
+
+// expected-error@+1 {{expect at least one of num, dim or static values}}
+acc.loop gang() {
+  "test.openacc_dummy_op"() : () -> ()
+  acc.yield
+}
+
+// -----
+
+%i64value = arith.constant 1 : i64
+// expected-error@+1 {{num_gangs expects a maximum of 3 values}}
+acc.parallel num_gangs(%i64value, %i64value, %i64value, %i64value : i64, i64, i64, i64) {
 }

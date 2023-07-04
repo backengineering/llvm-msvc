@@ -921,127 +921,39 @@ def set_glc : SDNodeXForm<timm, [{
 // Custom Operands
 //===----------------------------------------------------------------------===//
 
-def SoppBrTarget : AsmOperandClass {
-  let Name = "SoppBrTarget";
-  let ParserMethod = "parseSOppBrTarget";
-}
-
-def sopp_brtarget : Operand<OtherVT> {
+def SOPPBrTarget : CustomOperand<OtherVT> {
+  let PrintMethod = "printOperand";
   let EncoderMethod = "getSOPPBrEncoding";
-  let DecoderMethod = "decodeSoppBrTarget";
+  let DecoderMethod = "decodeSOPPBrTarget";
   let OperandType = "OPERAND_PCREL";
-  let ParserMatchClass = SoppBrTarget;
 }
 
 def si_ga : Operand<iPTR>;
 
-def InterpSlotMatchClass : AsmOperandClass {
-  let Name = "InterpSlot";
-  let PredicateMethod = "isInterpSlot";
-  let ParserMethod = "parseInterpSlot";
-  let RenderMethod = "addImmOperands";
-}
-
-def InterpSlot : Operand<i32> {
-  let PrintMethod = "printInterpSlot";
-  let ParserMatchClass = InterpSlotMatchClass;
-  let OperandType = "OPERAND_IMMEDIATE";
-}
-
-def AttrMatchClass : AsmOperandClass {
-  let Name = "Attr";
-  let PredicateMethod = "isInterpAttr";
-  let ParserMethod = "parseInterpAttr";
-  let RenderMethod = "addImmOperands";
-}
+def InterpSlot : CustomOperand<i32>;
 
 // It appears to be necessary to create a separate operand for this to
 // be able to parse attr<num> with no space.
-def Attr : Operand<i32> {
-  let PrintMethod = "printInterpAttr";
-  let ParserMatchClass = AttrMatchClass;
-  let OperandType = "OPERAND_IMMEDIATE";
-}
+def InterpAttr : CustomOperand<i32>;
 
-def AttrChan : ImmOperand<i32, "AttrChan", 0, "printInterpAttrChan">;
-
-def SendMsgMatchClass : AsmOperandClass {
-  let Name = "SendMsg";
-  let PredicateMethod = "isSendMsg";
-  let ParserMethod = "parseSendMsgOp";
-  let RenderMethod = "addImmOperands";
-}
-
-def SwizzleMatchClass : AsmOperandClass {
-  let Name = "Swizzle";
-  let PredicateMethod = "isSwizzle";
-  let ParserMethod = "parseSwizzleOp";
-  let RenderMethod = "addImmOperands";
-  let IsOptional = 1;
-}
-
-def EndpgmMatchClass : AsmOperandClass {
-  let Name = "EndpgmImm";
-  let PredicateMethod = "isEndpgm";
-  let ParserMethod = "parseEndpgmOp";
-  let RenderMethod = "addImmOperands";
-  let IsOptional = 1;
-}
-
-def SWaitMatchClass : AsmOperandClass {
-  let Name = "SWaitCnt";
-  let RenderMethod = "addImmOperands";
-  let ParserMethod = "parseSWaitCntOps";
-}
-
-def DepCtrMatchClass : AsmOperandClass {
-  let Name = "DepCtr";
-  let RenderMethod = "addImmOperands";
-  let ParserMethod = "parseDepCtrOps";
-}
-
-def SDelayMatchClass : AsmOperandClass {
-  let Name = "SDelayAlu";
-  let RenderMethod = "addImmOperands";
-  let ParserMethod = "parseSDelayAluOps";
-}
+def InterpAttrChan : ImmOperand<i32>;
 
 def VReg32OrOffClass : AsmOperandClass {
   let Name = "VReg32OrOff";
   let ParserMethod = "parseVReg32OrOff";
 }
 
-let OperandType = "OPERAND_IMMEDIATE" in {
-def SendMsgImm : Operand<i32> {
-  let PrintMethod = "printSendMsg";
-  let ParserMatchClass = SendMsgMatchClass;
-}
+def SendMsg : CustomOperand<i32>;
 
-def SwizzleImm : Operand<i16> {
-  let PrintMethod = "printSwizzle";
-  let ParserMatchClass = SwizzleMatchClass;
-}
+def Swizzle : CustomOperand<i16, 1>;
 
-def EndpgmImm : Operand<i16> {
-  let PrintMethod = "printEndpgm";
-  let ParserMatchClass = EndpgmMatchClass;
-}
+def Endpgm : CustomOperand<i16, 1>;
 
-def WAIT_FLAG : Operand <i32> {
-  let ParserMatchClass = SWaitMatchClass;
-  let PrintMethod = "printWaitFlag";
-}
+def SWaitCnt : CustomOperand<i32>;
 
-def DepCtrImm : Operand <i32> {
-  let ParserMatchClass = DepCtrMatchClass;
-  let PrintMethod = "printDepCtr";
-}
+def DepCtr : CustomOperand<i32>;
 
-def DELAY_FLAG : Operand <i32> {
-  let ParserMatchClass = SDelayMatchClass;
-  let PrintMethod = "printDelayFlag";
-}
-} // End OperandType = "OPERAND_IMMEDIATE"
+def SDelayALU : CustomOperand<i32>;
 
 include "SIInstrFormats.td"
 include "VIInstrFormats.td"
@@ -1121,77 +1033,45 @@ def SDWAVopcDst : BoolRC {
   let PrintMethod = "printVOPDst";
 }
 
-class CustomOperandClass<string CName, bit Optional> : AsmOperandClass {
-  let Name = CName;
-  let PredicateMethod = "is"#CName;
-  let ParserMethod = "parse"#CName;
-  let RenderMethod = "addImmOperands";
-  let IsOptional = Optional;
-  let DefaultMethod = "default"#CName;
-}
-
-class CustomOperandProps<bit Optional = 0, string Name = NAME,
-    AsmOperandClass Class = CustomOperandClass<Name, Optional>> {
-  string PrintMethod = "print"#Name;
-  AsmOperandClass ParserMatchClass = Class;
-  string OperandType = "OPERAND_IMMEDIATE";
-}
-
-class CustomOperand<ValueType Type, bit Optional = 0, string Name = NAME,
-    AsmOperandClass Class = CustomOperandClass<Name, Optional>>
-  : Operand<Type>, CustomOperandProps<Optional, Name, Class>;
-
-class NamedIntOperandClass<string Prefix, string Name, string ConvertMethod>
-    : CustomOperandClass<Name, 1> {
-  string ImmTy = "AMDGPUOperand::ImmTy"#Name;
-  let ParserMethod =
-    "[this](OperandVector &Operands) -> OperandMatchResultTy { "#
-    "return parseIntWithPrefix(\""#Prefix#"\", Operands, "#ImmTy#", "#
-    ConvertMethod#"); }";
-}
-
 class NamedIntOperand<ValueType Type, string Prefix, string Name = NAME,
                       string ConvertMethod = "nullptr">
-  : CustomOperand<Type, 1, Name, NamedIntOperandClass<Prefix, Name, ConvertMethod>>;
-
-class BitOperandClass<string Id, string Name>
-    : CustomOperandClass<Name, 1> {
-  string ImmTy = "AMDGPUOperand::ImmTy"#Name;
+    : CustomOperand<Type, 1, Name> {
   let ParserMethod =
     "[this](OperandVector &Operands) -> OperandMatchResultTy { "#
-    "return parseNamedBit(\""#Id#"\", Operands, "#ImmTy#"); }";
+    "return parseIntWithPrefix(\""#Prefix#"\", Operands, "#
+    "AMDGPUOperand::"#ImmTy#", "#ConvertMethod#"); }";
 }
 
 class NamedBitOperand<string Id, string Name = NAME>
-  : CustomOperand<i1, 1, Name, BitOperandClass<Id, Name>>;
+    : CustomOperand<i1, 1, Name> {
+  let ParserMethod =
+    "[this](OperandVector &Operands) -> OperandMatchResultTy { "#
+    "return parseNamedBit(\""#Id#"\", Operands, AMDGPUOperand::"#ImmTy#"); }";
+}
 
 class DefaultOperand<CustomOperand Op, int Value>
   : OperandWithDefaultOps<Op.Type, (ops (Op.Type Value))>,
-    CustomOperandProps<1, Op.ParserMatchClass.Name, Op.ParserMatchClass>;
-
-class SDWAOperandClass<string Id, string Name>
-    : CustomOperandClass<Name, 1> {
-  string ImmTy = "AMDGPUOperand::ImmTy"#Name;
-  let ParserMethod =
-    "[this](OperandVector &Operands) -> OperandMatchResultTy { "#
-    "return parseSDWASel(Operands, \""#Id#"\", "#ImmTy#"); }";
+    CustomOperandProps<1, Op.ParserMatchClass.Name> {
+  let ParserMethod = Op.ParserMatchClass.ParserMethod;
 }
 
 class SDWAOperand<string Id, string Name = NAME>
-  : CustomOperand<i32, 1, Name, SDWAOperandClass<Id, Name>>;
-
-class ArrayOperandClass<string Id, string Name>
-    : CustomOperandClass<Name, 1> {
-  string ImmTy = "AMDGPUOperand::ImmTy"#Name;
+    : CustomOperand<i32, 1, Name> {
   let ParserMethod =
     "[this](OperandVector &Operands) -> OperandMatchResultTy { "#
-    "return parseOperandArrayWithPrefix(\""#Id#"\", Operands, "#ImmTy#"); }";
+    "return parseSDWASel(Operands, \""#Id#"\", AMDGPUOperand::"#ImmTy#"); }";
 }
 
 class ArrayOperand0<string Id, string Name = NAME>
   : OperandWithDefaultOps<i32, (ops (i32 0))>,
-    CustomOperandProps<1, Name, ArrayOperandClass<Id, Name>>;
+    CustomOperandProps<1, Name> {
+  let ParserMethod =
+    "[this](OperandVector &Operands) -> OperandMatchResultTy { "#
+    "return parseOperandArrayWithPrefix(\""#Id#"\", Operands, "#
+    "AMDGPUOperand::"#ImmTy#"); }";
+}
 
+let ImmTy = "ImmTyOffset" in
 def flat_offset : CustomOperand<i32, 1, "FlatOffset">;
 def offset : NamedIntOperand<i32, "offset", "Offset">;
 def offset0 : NamedIntOperand<i8, "offset0", "Offset0">;
@@ -1243,8 +1123,10 @@ def neg_hi0 : ArrayOperand0<"neg_hi", "NegHi">;
 def dpp8 : CustomOperand<i32, 0, "DPP8">;
 def dpp_ctrl : CustomOperand<i32, 0, "DPPCtrl">;
 
+let DefaultValue = "0xf" in {
 def row_mask : NamedIntOperand<i32, "row_mask", "DppRowMask">;
 def bank_mask : NamedIntOperand<i32, "bank_mask", "DppBankMask">;
+}
 def bound_ctrl : NamedIntOperand<i1, "bound_ctrl", "DppBoundCtrl",
     "[this] (int64_t &BC) -> bool { return convertDppBoundCtrl(BC); }">;
 def FI : NamedIntOperand<i32, "fi", "DppFI">;

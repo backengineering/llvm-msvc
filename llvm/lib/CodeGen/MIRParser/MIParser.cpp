@@ -1451,7 +1451,8 @@ bool MIParser::parseInstruction(unsigned &OpCode, unsigned &Flags) {
          Token.is(MIToken::kw_nuw) ||
          Token.is(MIToken::kw_nsw) ||
          Token.is(MIToken::kw_exact) ||
-         Token.is(MIToken::kw_nofpexcept)) {
+         Token.is(MIToken::kw_nofpexcept) ||
+         Token.is(MIToken::kw_unpredictable)) {
     // Mine frame and fast math flags
     if (Token.is(MIToken::kw_frame_setup))
       Flags |= MachineInstr::FrameSetup;
@@ -1479,6 +1480,8 @@ bool MIParser::parseInstruction(unsigned &OpCode, unsigned &Flags) {
       Flags |= MachineInstr::IsExact;
     if (Token.is(MIToken::kw_nofpexcept))
       Flags |= MachineInstr::NoFPExcept;
+    if (Token.is(MIToken::kw_unpredictable))
+      Flags |= MachineInstr::Unpredictable;
 
     lex();
   }
@@ -2520,7 +2523,7 @@ bool MIParser::parseCFIOperand(MachineOperand &Dest) {
         parseCFIAddressSpace(AddressSpace))
       return true;
     CFIIndex = MF.addFrameInst(MCCFIInstruction::createLLVMDefAspaceCfa(
-        nullptr, Reg, Offset, AddressSpace));
+        nullptr, Reg, Offset, AddressSpace, SMLoc()));
     break;
   case MIToken::kw_cfi_remember_state:
     CFIIndex = MF.addFrameInst(MCCFIInstruction::createRememberState(nullptr));

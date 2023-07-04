@@ -20,6 +20,7 @@
 #include "clang/Analysis/FlowSensitive/Solver.h"
 #include "clang/Analysis/FlowSensitive/Value.h"
 #include "clang/Analysis/FlowSensitive/WatchedLiteralsSolver.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -177,7 +178,7 @@ struct BooleanFormula {
 
 /// Converts the conjunction of `Vals` into a formula in conjunctive normal
 /// form where each clause has at least one and at most three literals.
-BooleanFormula buildBooleanFormula(const llvm::DenseSet<BoolValue *> &Vals) {
+BooleanFormula buildBooleanFormula(const llvm::ArrayRef<BoolValue *> &Vals) {
   // The general strategy of the algorithm implemented below is to map each
   // of the sub-values in `Vals` to a unique variable and use these variables in
   // the resulting CNF expression to avoid exponential blow up. The number of
@@ -438,7 +439,7 @@ class WatchedLiteralsSolverImpl {
   std::vector<Variable> ActiveVars;
 
 public:
-  explicit WatchedLiteralsSolverImpl(const llvm::DenseSet<BoolValue *> &Vals)
+  explicit WatchedLiteralsSolverImpl(const llvm::ArrayRef<BoolValue *> &Vals)
       : Formula(buildBooleanFormula(Vals)), LevelVars(Formula.LargestVar + 1),
         LevelStates(Formula.LargestVar + 1) {
     assert(!Vals.empty());
@@ -458,9 +459,15 @@ public:
     }
   }
 
-  Solver::Result solve() && {
+  // Returns the `Result` and the number of iterations "remaining" from
+  // `MaxIterations` (that is, `MaxIterations` - iterations in this call).
+  std::pair<Solver::Result, std::int64_t> solve(std::int64_t MaxIterations) && {
     size_t I = 0;
     while (I < ActiveVars.size()) {
+      if (MaxIterations == 0)
+        return std::make_pair(Solver::Result::TimedOut(), 0);
+      --MaxIterations;
+
       // Assert that the following invariants hold:
       // 1. All active variables are unassigned.
       // 2. All active variables form watched literals.
@@ -487,7 +494,7 @@ public:
         // If the root level is reached, then all possible assignments lead to
         // a conflict.
         if (Level == 0)
-          return Solver::Result::Unsatisfiable();
+          return std::make_pair(Solver::Result::Unsatisfiable(), MaxIterations);
 
         // Otherwise, take the other branch at the most recent level where a
         // decision was made.
@@ -544,7 +551,7 @@ public:
         ++I;
       }
     }
-    return Solver::Result::Satisfiable(buildSolution());
+    return std::make_pair(Solver::Result::Satisfiable(buildSolution()), MaxIterations);
   }
 
 private:
@@ -712,9 +719,13 @@ private:
   }
 };
 
-Solver::Result WatchedLiteralsSolver::solve(llvm::DenseSet<BoolValue *> Vals) {
-  return Vals.empty() ? Solver::Result::Satisfiable({{}})
-                      : WatchedLiteralsSolverImpl(Vals).solve();
+Solver::Result WatchedLiteralsSolver::solve(llvm::ArrayRef<BoolValue *> Vals) {
+  if (Vals.empty())
+    return Solver::Result::Satisfiable({{}});
+  auto [Res, Iterations] =
+      WatchedLiteralsSolverImpl(Vals).solve(MaxIterations);
+  MaxIterations = Iterations;
+  return Res;
 }
 
 } // namespace dataflow

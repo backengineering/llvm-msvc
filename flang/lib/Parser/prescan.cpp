@@ -127,6 +127,17 @@ void Prescanner::Statement() {
       } else {
         SkipSpaces();
       }
+    } else if (directiveSentinel_[0] == '@' && directiveSentinel_[1] == 'c' &&
+        directiveSentinel_[2] == 'u' && directiveSentinel_[3] == 'f' &&
+        directiveSentinel_[4] == '\0') {
+      // CUDA conditional compilation line.  Remove the sentinel and then
+      // treat the line as if it were normal source.
+      at_ += 5, column_ += 5;
+      if (inFixedForm_) {
+        LabelField(tokens);
+      } else {
+        SkipSpaces();
+      }
     } else {
       // Compiler directive.  Emit normalized sentinel.
       EmitChar(tokens, '!');
@@ -338,7 +349,7 @@ void Prescanner::EnforceStupidEndStatementRules(const TokenSequence &tokens) {
   if (!start || !end) {
     return;
   }
-  if (&start->file == &end->file && start->line == end->line) {
+  if (&*start->sourceFile == &*end->sourceFile && start->line == end->line) {
     return; // no continuation
   }
   j += 3;
@@ -366,9 +377,11 @@ void Prescanner::EnforceStupidEndStatementRules(const TokenSequence &tokens) {
       auto endOfPrefixPos{
           allSources_.GetSourcePosition(tokens.GetCharProvenance(endOfPrefix))};
       auto next{allSources_.GetSourcePosition(tokens.GetCharProvenance(j))};
-      if (endOfPrefixPos && next && &endOfPrefixPos->file == &start->file &&
+      if (endOfPrefixPos && next &&
+          &*endOfPrefixPos->sourceFile == &*start->sourceFile &&
           endOfPrefixPos->line == start->line &&
-          (&next->file != &start->file || next->line != start->line)) {
+          (&*next->sourceFile != &*start->sourceFile ||
+              next->line != start->line)) {
         Say(range,
             "Initial line of continued statement must not appear to be a program unit END in fixed form source"_err_en_US);
       }

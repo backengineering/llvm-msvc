@@ -27,6 +27,10 @@
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/raw_ostream.h"
 
+#ifdef MLIR_GREEDY_REWRITE_RANDOMIZER_SEED
+#include <random>
+#endif // MLIR_GREEDY_REWRITE_RANDOMIZER_SEED
+
 using namespace mlir;
 
 #define DEBUG_TYPE "greedy-rewriter"
@@ -165,7 +169,7 @@ public:
   /// Reverse the worklist.
   void reverse();
 
-private:
+protected:
   /// The worklist of operations.
   std::vector<Operation *> list;
 
@@ -225,6 +229,37 @@ void Worklist::reverse() {
     map[list[i]] = i;
 }
 
+#ifdef MLIR_GREEDY_REWRITE_RANDOMIZER_SEED
+/// A worklist that pops elements at a random position. This worklist is for
+/// testing/debugging purposes only. It can be used to ensure that lowering
+/// pipelines work correctly regardless of the order in which ops are processed
+/// by the GreedyPatternRewriteDriver.
+class RandomizedWorklist : public Worklist {
+public:
+  RandomizedWorklist() : Worklist() {
+    generator.seed(MLIR_GREEDY_REWRITE_RANDOMIZER_SEED);
+  }
+
+  /// Pop a random non-empty op from the worklist.
+  Operation *pop() {
+    Operation *op = nullptr;
+    do {
+      assert(!list.empty() && "cannot pop from empty worklist");
+      int64_t pos = generator() % list.size();
+      op = list[pos];
+      list.erase(list.begin() + pos);
+      for (int64_t i = pos, e = list.size(); i < e; ++i)
+        map[list[i]] = i;
+      map.erase(op);
+    } while (!op);
+    return op;
+  }
+
+private:
+  std::minstd_rand0 generator;
+};
+#endif // MLIR_GREEDY_REWRITE_RANDOMIZER_SEED
+
 //===----------------------------------------------------------------------===//
 // GreedyPatternRewriteDriver
 //===----------------------------------------------------------------------===//
@@ -272,7 +307,11 @@ protected:
 
   /// The worklist for this transformation keeps track of the operations that
   /// need to be (re)visited.
+#ifdef MLIR_GREEDY_REWRITE_RANDOMIZER_SEED
+  RandomizedWorklist worklist;
+#else
   Worklist worklist;
+#endif // MLIR_GREEDY_REWRITE_RANDOMIZER_SEED
 
   /// Non-pattern based folder for operations.
   OperationFolder folder;
@@ -577,7 +616,7 @@ public:
 
   /// Simplify ops inside `region` and simplify the region itself. Return
   /// success if the transformation converged.
-  LogicalResult simplify() &&;
+  LogicalResult simplify(bool *changed) &&;
 
 private:
   /// The region that is simplified.
@@ -613,7 +652,7 @@ private:
 };
 } // namespace
 
-LogicalResult RegionPatternRewriteDriver::simplify() && {
+LogicalResult RegionPatternRewriteDriver::simplify(bool *changed) && {
   auto insertKnownConstant = [&](Operation *op) {
     // Check for existing constants when populating the worklist. This avoids
     // accidentally reversing the constant order during processing.
@@ -624,12 +663,12 @@ LogicalResult RegionPatternRewriteDriver::simplify() && {
     return false;
   };
 
-  bool changed = false;
+  bool continueRewrites = false;
   int64_t iteration = 0;
   MLIRContext *ctx = getContext();
   do {
     // Check if the iteration limit was reached.
-    if (iteration++ >= config.maxIterations &&
+    if (++iteration > config.maxIterations &&
         config.maxIterations != GreedyRewriteConfig::kNoLimit)
       break;
 
@@ -657,24 +696,27 @@ LogicalResult RegionPatternRewriteDriver::simplify() && {
 
     ctx->executeAction<GreedyPatternRewriteIteration>(
         [&] {
-          changed = processWorklist();
+          continueRewrites = processWorklist();
 
           // After applying patterns, make sure that the CFG of each of the
           // regions is kept up to date.
           if (config.enableRegionSimplification)
-            changed |= succeeded(simplifyRegions(*this, region));
+            continueRewrites |= succeeded(simplifyRegions(*this, region));
         },
         {&region}, iteration);
-  } while (changed);
+  } while (continueRewrites);
+
+  if (changed)
+    *changed = iteration > 1;
 
   // Whether the rewrite converges, i.e. wasn't changed in the last iteration.
-  return success(!changed);
+  return success(!continueRewrites);
 }
 
 LogicalResult
 mlir::applyPatternsAndFoldGreedily(Region &region,
                                    const FrozenRewritePatternSet &patterns,
-                                   GreedyRewriteConfig config) {
+                                   GreedyRewriteConfig config, bool *changed) {
   // The top-level operation must be known to be isolated from above to
   // prevent performing canonicalizations on operations defined at or above
   // the region containing 'op'.
@@ -688,7 +730,7 @@ mlir::applyPatternsAndFoldGreedily(Region &region,
   // Start the pattern driver.
   RegionPatternRewriteDriver driver(region.getContext(), patterns, config,
                                     region);
-  LogicalResult converged = std::move(driver).simplify();
+  LogicalResult converged = std::move(driver).simplify(changed);
   LLVM_DEBUG(if (failed(converged)) {
     llvm::dbgs() << "The pattern rewrite did not converge after scanning "
                  << config.maxIterations << " times\n";

@@ -2870,89 +2870,6 @@ _RandomAccessIterator __pattern_remove_if(
 }
 
 //------------------------------------------------------------------------
-// merge
-//------------------------------------------------------------------------
-
-template <class _ForwardIterator1, class _ForwardIterator2, class _OutputIterator, class _Compare>
-_OutputIterator __brick_merge(
-    _ForwardIterator1 __first1,
-    _ForwardIterator1 __last1,
-    _ForwardIterator2 __first2,
-    _ForwardIterator2 __last2,
-    _OutputIterator __d_first,
-    _Compare __comp,
-    /* __is_vector = */ std::false_type) noexcept {
-  return std::merge(__first1, __last1, __first2, __last2, __d_first, __comp);
-}
-
-template <class _RandomAccessIterator1, class _RandomAccessIterator2, class _RandomAccessIterator3, class _Compare>
-_RandomAccessIterator3 __brick_merge(
-    _RandomAccessIterator1 __first1,
-    _RandomAccessIterator1 __last1,
-    _RandomAccessIterator2 __first2,
-    _RandomAccessIterator2 __last2,
-    _RandomAccessIterator3 __d_first,
-    _Compare __comp,
-    /* __is_vector = */ std::true_type) noexcept {
-  // TODO: vectorize
-  return std::merge(__first1, __last1, __first2, __last2, __d_first, __comp);
-}
-
-template <class _Tag,
-          class _ExecutionPolicy,
-          class _ForwardIterator1,
-          class _ForwardIterator2,
-          class _OutputIterator,
-          class _Compare>
-_OutputIterator __pattern_merge(
-    _Tag,
-    _ExecutionPolicy&&,
-    _ForwardIterator1 __first1,
-    _ForwardIterator1 __last1,
-    _ForwardIterator2 __first2,
-    _ForwardIterator2 __last2,
-    _OutputIterator __d_first,
-    _Compare __comp) noexcept {
-  return __internal::__brick_merge(
-      __first1, __last1, __first2, __last2, __d_first, __comp, typename _Tag::__is_vector{});
-}
-
-template <class _IsVector,
-          class _ExecutionPolicy,
-          class _RandomAccessIterator1,
-          class _RandomAccessIterator2,
-          class _RandomAccessIterator3,
-          class _Compare>
-_RandomAccessIterator3 __pattern_merge(
-    __parallel_tag<_IsVector> __tag,
-    _ExecutionPolicy&& __exec,
-    _RandomAccessIterator1 __first1,
-    _RandomAccessIterator1 __last1,
-    _RandomAccessIterator2 __first2,
-    _RandomAccessIterator2 __last2,
-    _RandomAccessIterator3 __d_first,
-    _Compare __comp) {
-  using __backend_tag = typename decltype(__tag)::__backend_tag;
-
-  __par_backend::__parallel_merge(
-      __backend_tag{},
-      std::forward<_ExecutionPolicy>(__exec),
-      __first1,
-      __last1,
-      __first2,
-      __last2,
-      __d_first,
-      __comp,
-      [](_RandomAccessIterator1 __f1,
-         _RandomAccessIterator1 __l1,
-         _RandomAccessIterator2 __f2,
-         _RandomAccessIterator2 __l2,
-         _RandomAccessIterator3 __f3,
-         _Compare __comp) { return __internal::__brick_merge(__f1, __l1, __f2, __l2, __f3, __comp, _IsVector{}); });
-  return __d_first + (__last1 - __first1) + (__last2 - __first2);
-}
-
-//------------------------------------------------------------------------
 // inplace_merge
 //------------------------------------------------------------------------
 template <class _BidirectionalIterator, class _Compare>
@@ -3094,8 +3011,8 @@ bool __pattern_includes(
         __first2,
         __last2,
         [__first1, __last1, __first2, __last2, &__comp](_RandomAccessIterator2 __i, _RandomAccessIterator2 __j) {
-          _LIBCPP_ASSERT(__j > __i, "");
-          //_LIBCPP_ASSERT(__j - __i > 1, "");
+          _LIBCPP_ASSERT_UNCATEGORIZED(__j > __i, "");
+          //_LIBCPP_ASSERT_UNCATEGORIZED(__j - __i > 1, "");
 
           // 1. moving boundaries to "consume" subsequence of equal elements
           auto __is_equal = [&__comp](_RandomAccessIterator2 __a, _RandomAccessIterator2 __b) -> bool {
@@ -3118,8 +3035,8 @@ bool __pattern_includes(
           // 2. testing is __a subsequence of the second range included into the first range
           auto __b = std::lower_bound(__first1, __last1, *__i, __comp);
 
-          _LIBCPP_ASSERT(!__comp(*(__last1 - 1), *__b), "");
-          _LIBCPP_ASSERT(!__comp(*(__j - 1), *__i), "");
+          _LIBCPP_ASSERT_UNCATEGORIZED(!__comp(*(__last1 - 1), *__b), "");
+          _LIBCPP_ASSERT_UNCATEGORIZED(!__comp(*(__j - 1), *__i), "");
           return !std::includes(__b, __last1, __i, __j, __comp);
         });
   });
@@ -3336,7 +3253,7 @@ _OutputIterator __parallel_set_union_op(
   }
 
   const auto __m2 = __left_bound_seq_2 - __first2;
-  _LIBCPP_ASSERT(__m1 == 0 || __m2 == 0, "");
+  _LIBCPP_ASSERT_UNCATEGORIZED(__m1 == 0 || __m2 == 0, "");
   if (__m2 > __set_algo_cut_off) {
     auto __res_or = __result;
     __result += __m2; // we know proper offset due to [first2; left_bound_seq_2) < [first1; last1)

@@ -14,10 +14,13 @@
 #include <__algorithm/pstl_backend.h>
 #include <__algorithm/pstl_frontend_dispatch.h>
 #include <__config>
+#include <__iterator/cpp17_iterator_concepts.h>
 #include <__iterator/iterator_traits.h>
+#include <__type_traits/enable_if.h>
 #include <__type_traits/is_execution_policy.h>
 #include <__type_traits/remove_cvref.h>
 #include <__type_traits/void_t.h>
+#include <__utility/move.h>
 #include <__utility/terminate_on_exception.h>
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
@@ -35,6 +38,7 @@ template <class _ExecutionPolicy,
           enable_if_t<is_execution_policy_v<_RawPolicy>, int> = 0>
 _LIBCPP_HIDE_FROM_ABI void
 for_each(_ExecutionPolicy&&, _ForwardIterator __first, _ForwardIterator __last, _Function __func) {
+  _LIBCPP_REQUIRE_CPP17_FORWARD_ITERATOR(_ForwardIterator);
   using _Backend = typename __select_backend<_RawPolicy>::type;
   std::__pstl_for_each<_RawPolicy>(_Backend{}, std::move(__first), std::move(__last), std::move(__func));
 }
@@ -50,6 +54,7 @@ template <class _ExecutionPolicy,
           enable_if_t<is_execution_policy_v<_RawPolicy>, int> = 0>
 _LIBCPP_HIDE_FROM_ABI void
 for_each_n(_ExecutionPolicy&& __policy, _ForwardIterator __first, _Size __size, _Function __func) {
+  _LIBCPP_REQUIRE_CPP17_FORWARD_ITERATOR(_ForwardIterator);
   return std::__pstl_frontend_dispatch(
       _LIBCPP_PSTL_CUSTOMIZATION_POINT(__pstl_for_each_n),
       [&](_ForwardIterator __g_first, _Size __g_size, _Function __g_func) {

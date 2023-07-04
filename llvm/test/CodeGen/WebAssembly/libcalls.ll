@@ -18,7 +18,7 @@ declare double @llvm.pow.f64(double, double)
 declare double @llvm.powi.f64.i32(double, i32)
 declare double @llvm.log.f64(double)
 declare double @llvm.exp.f64(double)
-declare double @llvm.roundeven.f64(double)
+declare double @llvm.ldexp.f64.i32(double, i32)
 declare i32 @llvm.lround(double)
 
 define fp128 @fp128libcalls(fp128 %x, fp128 %y, i32 %z) {
@@ -231,10 +231,11 @@ define i128 @i128libcalls(i128 %x, i128 %y) {
   ret i128 %c
 }
 
-define i32 @f64libcalls(double %x, double %y, i32 %z) {
+define double @f64libcalls(double %x, double %y, i32 %z) {
 ; CHECK-LABEL: f64libcalls:
-; CHECK:         .functype f64libcalls (f64, f64, i32) -> (i32)
+; CHECK:         .functype f64libcalls (f64, f64, i32) -> (f64)
 ; CHECK-NEXT:  # %bb.0:
+; CHECK-NEXT:    local.get $push12=, 0
 ; CHECK-NEXT:    local.get $push9=, 0
 ; CHECK-NEXT:    call $push0=, cos, $pop9
 ; CHECK-NEXT:    call $push1=, log10, $pop0
@@ -245,8 +246,8 @@ define i32 @f64libcalls(double %x, double %y, i32 %z) {
 ; CHECK-NEXT:    call $push4=, log, $pop3
 ; CHECK-NEXT:    call $push5=, exp, $pop4
 ; CHECK-NEXT:    call $push6=, cbrt, $pop5
-; CHECK-NEXT:    call $push7=, roundeven, $pop6
-; CHECK-NEXT:    call $push8=, lround, $pop7
+; CHECK-NEXT:    call $push7=, lround, $pop6
+; CHECK-NEXT:    call $push8=, ldexp, $pop12, $pop7
 ; CHECK-NEXT:    return $pop8
  %a = call double @llvm.cos.f64(double %x)
  %b = call double @llvm.log10.f64(double %a)
@@ -255,9 +256,9 @@ define i32 @f64libcalls(double %x, double %y, i32 %z) {
  %e = call double @llvm.log.f64(double %d)
  %f = call double @llvm.exp.f64(double %e)
  %g = call fast double @llvm.pow.f64(double %f, double 0x3FD5555555555555)
- %h = call double @llvm.roundeven.f64(double %g)
- %i = call i32 @llvm.lround(double %h)
- ret i32 %i
+ %h = call i32 @llvm.lround(double %g)
+ %i = call double @llvm.ldexp.f64.i32(double %x, i32 %h);
+ ret double %i
 }
 
 ; fcmp ord and unord (RTLIB::O_F32 / RTLIB::UO_F32 etc) are a special case (see

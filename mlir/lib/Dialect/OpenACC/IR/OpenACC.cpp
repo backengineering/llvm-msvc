@@ -62,6 +62,36 @@ LogicalResult acc::DataBoundsOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// PrivateOp
+//===----------------------------------------------------------------------===//
+LogicalResult acc::PrivateOp::verify() {
+  if (getDataClause() != acc::DataClause::acc_private)
+    return emitError(
+        "data clause associated with private operation must match its intent");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// FirstprivateOp
+//===----------------------------------------------------------------------===//
+LogicalResult acc::FirstprivateOp::verify() {
+  if (getDataClause() != acc::DataClause::acc_firstprivate)
+    return emitError("data clause associated with firstprivate operation must "
+                     "match its intent");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ReductionOp
+//===----------------------------------------------------------------------===//
+LogicalResult acc::ReductionOp::verify() {
+  if (getDataClause() != acc::DataClause::acc_reduction)
+    return emitError("data clause associated with reduction operation must "
+                     "match its intent");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // DevicePtrOp
 //===----------------------------------------------------------------------===//
 LogicalResult acc::DevicePtrOp::verify() {
@@ -416,7 +446,7 @@ LogicalResult acc::FirstprivateRecipeOp::verifyRegions() {
 LogicalResult acc::ReductionRecipeOp::verifyRegions() {
   if (failed(verifyInitLikeSingleArgRegion(*this, getInitRegion(), "reduction",
                                            "init", getType(),
-                                           /*verifyYield=*/true)))
+                                           /*verifyYield=*/false)))
     return failure();
 
   if (getCombinerRegion().empty())
@@ -498,7 +528,7 @@ template <typename Op>
 static LogicalResult
 checkSymOperandList(Operation *op, std::optional<mlir::ArrayAttr> attributes,
                     mlir::OperandRange operands, llvm::StringRef operandName,
-                    llvm::StringRef symbolName) {
+                    llvm::StringRef symbolName, bool checkOperandType = true) {
   if (!operands.empty()) {
     if (!attributes || attributes->size() != operands.size())
       return op->emitOpError()
@@ -527,7 +557,7 @@ checkSymOperandList(Operation *op, std::optional<mlir::ArrayAttr> attributes,
              << "expected symbol reference " << symbolRef << " to point to a "
              << operandName << " declaration";
 
-    if (decl.getType() && decl.getType() != varType)
+    if (checkOperandType && decl.getType() && decl.getType() != varType)
       return op->emitOpError() << "expected " << operandName << " (" << varType
                                << ") to be the same type as " << operandName
                                << " declaration (" << decl.getType() << ")";
@@ -543,7 +573,7 @@ unsigned ParallelOp::getNumDataOperands() {
 
 Value ParallelOp::getDataOperand(unsigned i) {
   unsigned numOptional = getAsync() ? 1 : 0;
-  numOptional += getNumGangs() ? 1 : 0;
+  numOptional += getNumGangs().size();
   numOptional += getNumWorkers() ? 1 : 0;
   numOptional += getVectorLength() ? 1 : 0;
   numOptional += getIfCond() ? 1 : 0;
@@ -558,8 +588,10 @@ LogicalResult acc::ParallelOp::verify() {
     return failure();
   if (failed(checkSymOperandList<mlir::acc::ReductionRecipeOp>(
           *this, getReductionRecipes(), getReductionOperands(), "reduction",
-          "reductions")))
+          "reductions", false)))
     return failure();
+  if (getNumGangs().size() > 3)
+    return emitOpError() << "num_gangs expects a maximum of 3 values";
   return checkDataOperands<acc::ParallelOp>(*this, getDataClauseOperands());
 }
 
@@ -586,7 +618,7 @@ LogicalResult acc::SerialOp::verify() {
     return failure();
   if (failed(checkSymOperandList<mlir::acc::ReductionRecipeOp>(
           *this, getReductionRecipes(), getReductionOperands(), "reduction",
-          "reductions")))
+          "reductions", false)))
     return failure();
   return checkDataOperands<acc::SerialOp>(*this, getDataClauseOperands());
 }
@@ -601,12 +633,18 @@ unsigned KernelsOp::getNumDataOperands() {
 
 Value KernelsOp::getDataOperand(unsigned i) {
   unsigned numOptional = getAsync() ? 1 : 0;
+  numOptional += getWaitOperands().size();
+  numOptional += getNumGangs().size();
+  numOptional += getNumWorkers() ? 1 : 0;
+  numOptional += getVectorLength() ? 1 : 0;
   numOptional += getIfCond() ? 1 : 0;
   numOptional += getSelfCond() ? 1 : 0;
-  return getOperand(getWaitOperands().size() + numOptional + i);
+  return getOperand(numOptional + i);
 }
 
 LogicalResult acc::KernelsOp::verify() {
+  if (getNumGangs().size() > 3)
+    return emitOpError() << "num_gangs expects a maximum of 3 values";
   return checkDataOperands<acc::KernelsOp>(*this, getDataClauseOperands());
 }
 
@@ -615,11 +653,11 @@ LogicalResult acc::KernelsOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult acc::HostDataOp::verify() {
-  if (getDataOperands().empty())
+  if (getDataClauseOperands().empty())
     return emitError("at least one operand must appear on the host_data "
                      "operation");
 
-  for (mlir::Value operand : getDataOperands())
+  for (mlir::Value operand : getDataClauseOperands())
     if (!mlir::isa<acc::UseDeviceOp>(operand.getDefiningOp()))
       return emitError("expect data entry operation as defining op");
   return success();
@@ -635,37 +673,72 @@ void acc::HostDataOp::getCanonicalizationPatterns(RewritePatternSet &results,
 //===----------------------------------------------------------------------===//
 
 static ParseResult
-parseGangClause(OpAsmParser &parser,
-                std::optional<OpAsmParser::UnresolvedOperand> &gangNum,
-                Type &gangNumType,
-                std::optional<OpAsmParser::UnresolvedOperand> &gangStatic,
-                Type &gangStaticType, UnitAttr &hasGang) {
+parseGangValue(OpAsmParser &parser, llvm::StringRef keyword,
+               std::optional<OpAsmParser::UnresolvedOperand> &value,
+               Type &valueType, bool &needComa, bool &newValue) {
+  if (succeeded(parser.parseOptionalKeyword(keyword))) {
+    if (parser.parseEqual())
+      return failure();
+    value = OpAsmParser::UnresolvedOperand{};
+    if (parser.parseOperand(*value) || parser.parseColonType(valueType))
+      return failure();
+    needComa = true;
+    newValue = true;
+  }
+  return success();
+}
+
+static ParseResult parseGangClause(
+    OpAsmParser &parser, std::optional<OpAsmParser::UnresolvedOperand> &gangNum,
+    Type &gangNumType, std::optional<OpAsmParser::UnresolvedOperand> &gangDim,
+    Type &gangDimType,
+    std::optional<OpAsmParser::UnresolvedOperand> &gangStatic,
+    Type &gangStaticType, UnitAttr &hasGang) {
   hasGang = UnitAttr::get(parser.getBuilder().getContext());
+  gangNum = std::nullopt;
+  gangDim = std::nullopt;
+  gangStatic = std::nullopt;
+  bool needComa = false;
+
   // optional gang operands
   if (succeeded(parser.parseOptionalLParen())) {
-    if (succeeded(parser.parseOptionalKeyword(LoopOp::getGangNumKeyword()))) {
-      if (parser.parseEqual())
+    while (true) {
+      bool newValue = false;
+      bool needValue = false;
+      if (needComa) {
+        if (succeeded(parser.parseOptionalComma()))
+          needValue = true; // expect a new value after comma.
+        else
+          break;
+      }
+
+      if (failed(parseGangValue(parser, LoopOp::getGangNumKeyword(), gangNum,
+                                gangNumType, needComa, newValue)))
         return failure();
-      gangNum = OpAsmParser::UnresolvedOperand{};
-      if (parser.parseOperand(*gangNum) || parser.parseColonType(gangNumType))
+      if (failed(parseGangValue(parser, LoopOp::getGangDimKeyword(), gangDim,
+                                gangDimType, needComa, newValue)))
         return failure();
-    } else {
-      gangNum = std::nullopt;
+      if (failed(parseGangValue(parser, LoopOp::getGangStaticKeyword(),
+                                gangStatic, gangStaticType, needComa,
+                                newValue)))
+        return failure();
+
+      if (!newValue && needValue) {
+        parser.emitError(parser.getCurrentLocation(),
+                         "new value expected after comma");
+        return failure();
+      }
+
+      if (!newValue)
+        break;
     }
-    // FIXME: Comma should require subsequent operands.
-    (void)parser.parseOptionalComma();
-    if (succeeded(
-            parser.parseOptionalKeyword(LoopOp::getGangStaticKeyword()))) {
-      gangStatic = OpAsmParser::UnresolvedOperand{};
-      if (parser.parseEqual())
-        return failure();
-      gangStatic = OpAsmParser::UnresolvedOperand{};
-      if (parser.parseOperand(*gangStatic) ||
-          parser.parseColonType(gangStaticType))
-        return failure();
+
+    if (!gangNum && !gangDim && !gangStatic) {
+      parser.emitError(parser.getCurrentLocation(),
+                       "expect at least one of num, dim or static values");
+      return failure();
     }
-    // FIXME: Why allow optional last commas?
-    (void)parser.parseOptionalComma();
+
     if (failed(parser.parseRParen()))
       return failure();
   }
@@ -673,13 +746,19 @@ parseGangClause(OpAsmParser &parser,
 }
 
 void printGangClause(OpAsmPrinter &p, Operation *op, Value gangNum,
-                     Type gangNumType, Value gangStatic, Type gangStaticType,
-                     UnitAttr hasGang) {
-  if (gangNum || gangStatic) {
+                     Type gangNumType, Value gangDim, Type gangDimType,
+                     Value gangStatic, Type gangStaticType, UnitAttr hasGang) {
+  if (gangNum || gangStatic || gangDim) {
     p << "(";
     if (gangNum) {
       p << LoopOp::getGangNumKeyword() << "=" << gangNum << " : "
         << gangNumType;
+      if (gangStatic || gangDim)
+        p << ", ";
+    }
+    if (gangDim) {
+      p << LoopOp::getGangDimKeyword() << "=" << gangDim << " : "
+        << gangDimType;
       if (gangStatic)
         p << ", ";
     }
@@ -751,7 +830,7 @@ LogicalResult acc::LoopOp::verify() {
 
   if (failed(checkSymOperandList<mlir::acc::ReductionRecipeOp>(
           *this, getReductionRecipes(), getReductionOperands(), "reduction",
-          "reductions")))
+          "reductions", false)))
     return failure();
 
   // Check non-empty body().
@@ -788,6 +867,8 @@ unsigned DataOp::getNumDataOperands() { return getDataClauseOperands().size(); }
 
 Value DataOp::getDataOperand(unsigned i) {
   unsigned numOptional = getIfCond() ? 1 : 0;
+  numOptional += getAsync() ? 1 : 0;
+  numOptional += getWaitOperands().size();
   return getOperand(numOptional + i);
 }
 

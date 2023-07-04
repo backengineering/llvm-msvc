@@ -10,11 +10,15 @@
 #define _LIBCPP___STRING_CONSTEXPR_C_FUNCTIONS_H
 
 #include <__config>
+#include <__type_traits/datasizeof.h>
+#include <__type_traits/is_always_bitcastable.h>
 #include <__type_traits/is_constant_evaluated.h>
 #include <__type_traits/is_equality_comparable.h>
 #include <__type_traits/is_same.h>
+#include <__type_traits/is_trivially_copyable.h>
 #include <__type_traits/is_trivially_lexicographically_comparable.h>
 #include <__type_traits/remove_cv.h>
+#include <__utility/is_pointer_in_range.h>
 #include <cstddef>
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
@@ -22,6 +26,10 @@
 #endif
 
 _LIBCPP_BEGIN_NAMESPACE_STD
+
+// Type used to encode that a function takes an integer that represents a number
+// of elements as opposed to a number of bytes.
+enum class __element_count : size_t {};
 
 inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 size_t __constexpr_strlen(const char* __str) {
   // GCC currently doesn't support __builtin_strlen for heap-allocated memory during constant evaluation.
@@ -42,14 +50,16 @@ inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 size_t __constexpr_st
 // of invoking it on every object individually.
 template <class _Tp, class _Up>
 _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 int
-__constexpr_memcmp(const _Tp* __lhs, const _Up* __rhs, size_t __count) {
+__constexpr_memcmp(const _Tp* __lhs, const _Up* __rhs, __element_count __n) {
   static_assert(__libcpp_is_trivially_lexicographically_comparable<_Tp, _Up>::value,
                 "_Tp and _Up have to be trivially lexicographically comparable");
+
+  auto __count = static_cast<size_t>(__n);
 
   if (__libcpp_is_constant_evaluated()) {
 #ifdef _LIBCPP_COMPILER_CLANG_BASED
     if (sizeof(_Tp) == 1 && !is_same<_Tp, bool>::value)
-      return __builtin_memcmp(__lhs, __rhs, __count);
+      return __builtin_memcmp(__lhs, __rhs, __count * sizeof(_Tp));
 #endif
 
     while (__count != 0) {
@@ -58,13 +68,13 @@ __constexpr_memcmp(const _Tp* __lhs, const _Up* __rhs, size_t __count) {
       if (*__rhs < *__lhs)
         return 1;
 
-      __count -= sizeof(_Tp);
+      --__count;
       ++__lhs;
       ++__rhs;
     }
     return 0;
   } else {
-    return __builtin_memcmp(__lhs, __rhs, __count);
+    return __builtin_memcmp(__lhs, __rhs, __count * sizeof(_Tp));
   }
 }
 
@@ -73,26 +83,28 @@ __constexpr_memcmp(const _Tp* __lhs, const _Up* __rhs, size_t __count) {
 // of invoking it on every object individually.
 template <class _Tp, class _Up>
 _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 bool
-__constexpr_memcmp_equal(const _Tp* __lhs, const _Up* __rhs, size_t __count) {
+__constexpr_memcmp_equal(const _Tp* __lhs, const _Up* __rhs, __element_count __n) {
   static_assert(__libcpp_is_trivially_equality_comparable<_Tp, _Up>::value,
                 "_Tp and _Up have to be trivially equality comparable");
+
+  auto __count = static_cast<size_t>(__n);
 
   if (__libcpp_is_constant_evaluated()) {
 #ifdef _LIBCPP_COMPILER_CLANG_BASED
     if (sizeof(_Tp) == 1 && is_integral<_Tp>::value && !is_same<_Tp, bool>::value)
-      return __builtin_memcmp(__lhs, __rhs, __count) == 0;
+      return __builtin_memcmp(__lhs, __rhs, __count * sizeof(_Tp)) == 0;
 #endif
     while (__count != 0) {
       if (*__lhs != *__rhs)
         return false;
 
-      __count -= sizeof(_Tp);
+      --__count;
       ++__lhs;
       ++__rhs;
     }
     return true;
   } else {
-    return __builtin_memcmp(__lhs, __rhs, __count) == 0;
+    return __builtin_memcmp(__lhs, __rhs, __count * sizeof(_Tp)) == 0;
   }
 }
 
@@ -119,6 +131,30 @@ _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 _Tp* __constexpr_memchr(_Tp*
     __builtin_memcpy(&__value_buffer, &__value, sizeof(char));
     return static_cast<_Tp*>(__builtin_memchr(__str, __value_buffer, __count));
   }
+}
+
+template <class _Tp, class _Up, __enable_if_t<__is_always_bitcastable<_Up, _Tp>::value, int> = 0>
+_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 _Tp*
+__constexpr_memmove(_Tp* __dest, _Up* __src, __element_count __n) {
+  size_t __count = static_cast<size_t>(__n);
+  if (__libcpp_is_constant_evaluated()) {
+#ifdef _LIBCPP_COMPILER_CLANG_BASED
+    if (is_same<__remove_cv_t<_Tp>, __remove_cv_t<_Up> >::value) {
+      ::__builtin_memmove(__dest, __src, __count * sizeof(_Tp));
+      return __dest;
+    }
+#endif
+    if (std::__is_pointer_in_range(__src, __src + __count, __dest)) {
+      for (; __count > 0; --__count)
+        __dest[__count - 1] = __src[__count - 1];
+    } else {
+      for (size_t __i = 0; __i != __count; ++__i)
+        __dest[__i] = __src[__i];
+    }
+  } else if (__count > 0) {
+    ::__builtin_memmove(__dest, __src, (__count - 1) * sizeof(_Tp) + __libcpp_datasizeof<_Tp>::value);
+  }
+  return __dest;
 }
 
 _LIBCPP_END_NAMESPACE_STD

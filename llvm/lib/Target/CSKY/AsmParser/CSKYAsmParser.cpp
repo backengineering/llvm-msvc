@@ -77,7 +77,7 @@ class CSKYAsmParser : public MCTargetAsmParser {
   bool ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
                         SMLoc NameLoc, OperandVector &Operands) override;
 
-  bool ParseDirective(AsmToken DirectiveID) override;
+  ParseStatus parseDirective(AsmToken DirectiveID) override;
 
   // Helper to actually emit an instruction to the MCStreamer. Also, when
   // possible, compression of the instruction is performed.
@@ -1254,11 +1254,8 @@ OperandMatchResultTy CSKYAsmParser::parseDataSymbol(OperandVector &Operands) {
   SMLoc E = SMLoc::getFromPointer(S.getPointer() - 1);
   const MCExpr *Res;
 
-  if (getLexer().getKind() != AsmToken::LBrac)
+  if (!parseOptionalToken(AsmToken::LBrac))
     return MatchOperand_NoMatch;
-
-  getLexer().Lex(); // Eat '['.
-
   if (getLexer().getKind() != AsmToken::Identifier) {
     const MCExpr *Expr;
     if (getParser().parseExpression(Expr)) {
@@ -1266,12 +1263,8 @@ OperandMatchResultTy CSKYAsmParser::parseDataSymbol(OperandVector &Operands) {
       return MatchOperand_ParseFail;
     }
 
-    if (getLexer().getKind() != AsmToken::RBrac) {
-      Error(getLoc(), "expected ]");
+    if (parseToken(AsmToken::RBrac, "expected ']'"))
       return MatchOperand_ParseFail;
-    }
-
-    getLexer().Lex(); // Eat ']'.
 
     Operands.push_back(CSKYOperand::createConstpoolOp(Expr, S, E));
     return MatchOperand_Success;
@@ -1337,13 +1330,8 @@ OperandMatchResultTy CSKYAsmParser::parseDataSymbol(OperandVector &Operands) {
     Error(getLoc(), "unknown expression");
     return MatchOperand_ParseFail;
   }
-
-  if (getLexer().getKind() != AsmToken::RBrac) {
-    Error(getLoc(), "expected ']'");
+  if (parseToken(AsmToken::RBrac, "expected ']'"))
     return MatchOperand_ParseFail;
-  }
-
-  getLexer().Lex(); // Eat ']'.
 
   Res = MCBinaryExpr::create(Opcode, Res, Expr, getContext());
   Operands.push_back(CSKYOperand::createConstpoolOp(Res, S, E));
@@ -1356,10 +1344,8 @@ CSKYAsmParser::parseConstpoolSymbol(OperandVector &Operands) {
   SMLoc E = SMLoc::getFromPointer(S.getPointer() - 1);
   const MCExpr *Res;
 
-  if (getLexer().getKind() != AsmToken::LBrac)
+  if (!parseOptionalToken(AsmToken::LBrac))
     return MatchOperand_NoMatch;
-
-  getLexer().Lex(); // Eat '['.
 
   if (getLexer().getKind() != AsmToken::Identifier) {
     const MCExpr *Expr;
@@ -1367,13 +1353,8 @@ CSKYAsmParser::parseConstpoolSymbol(OperandVector &Operands) {
       Error(getLoc(), "unknown expression");
       return MatchOperand_ParseFail;
     }
-
-    if (getLexer().getKind() != AsmToken::RBrac) {
-      Error(getLoc(), "expected ']'");
+    if (parseToken(AsmToken::RBrac))
       return MatchOperand_ParseFail;
-    }
-
-    getLexer().Lex(); // Eat ']'.
 
     Operands.push_back(CSKYOperand::createConstpoolOp(Expr, S, E));
     return MatchOperand_Success;
@@ -1430,13 +1411,8 @@ CSKYAsmParser::parseConstpoolSymbol(OperandVector &Operands) {
     Error(getLoc(), "unknown expression");
     return MatchOperand_ParseFail;
   }
-
-  if (getLexer().getKind() != AsmToken::RBrac) {
-    Error(getLoc(), "expected ']'");
+  if (parseToken(AsmToken::RBrac, "expected ']'"))
     return MatchOperand_ParseFail;
-  }
-
-  getLexer().Lex(); // Eat ']'.
 
   Res = MCBinaryExpr::create(Opcode, Res, Expr, getContext());
   Operands.push_back(CSKYOperand::createConstpoolOp(Res, S, E));
@@ -1474,12 +1450,8 @@ OperandMatchResultTy CSKYAsmParser::parsePSRFlag(OperandVector &Operands) {
     if (getLexer().is(AsmToken::EndOfStatement))
       break;
 
-    if (getLexer().is(AsmToken::Comma)) {
-      getLexer().Lex(); // eat ','
-    } else {
-      Error(getLoc(), "expected ,");
+    if (parseToken(AsmToken::Comma, "expected ','"))
       return MatchOperand_ParseFail;
-    }
   }
 
   Operands.push_back(
@@ -1496,13 +1468,8 @@ OperandMatchResultTy CSKYAsmParser::parseRegSeq(OperandVector &Operands) {
   auto Ry = Operands.back()->getReg();
   Operands.pop_back();
 
-  if (getLexer().isNot(AsmToken::Minus)) {
-    Error(getLoc(), "expected '-'");
+  if (parseToken(AsmToken::Minus, "expected '-'"))
     return MatchOperand_ParseFail;
-  }
-
-  getLexer().Lex(); // eat '-'
-
   if (parseRegister(Operands) != MatchOperand_Success) {
     Error(getLoc(), "invalid register");
     return MatchOperand_ParseFail;
@@ -1530,9 +1497,7 @@ OperandMatchResultTy CSKYAsmParser::parseRegList(OperandVector &Operands) {
     auto Ry = Operands.back()->getReg();
     Operands.pop_back();
 
-    if (getLexer().is(AsmToken::Minus)) {
-      getLexer().Lex(); // eat '-'
-
+    if (parseOptionalToken(AsmToken::Minus)) {
       if (parseRegister(Operands) != MatchOperand_Success) {
         Error(getLoc(), "invalid register");
         return MatchOperand_ParseFail;
@@ -1544,16 +1509,12 @@ OperandMatchResultTy CSKYAsmParser::parseRegList(OperandVector &Operands) {
       reglist.push_back(Ry);
       reglist.push_back(Rz);
 
-      if (getLexer().is(AsmToken::Comma))
-        getLexer().Lex(); // eat ','
-      else if (getLexer().is(AsmToken::EndOfStatement))
+      if (getLexer().is(AsmToken::EndOfStatement))
         break;
-
-    } else if (getLexer().is(AsmToken::Comma)) {
+      (void)parseOptionalToken(AsmToken::Comma);
+    } else if (parseOptionalToken(AsmToken::Comma)) {
       reglist.push_back(Ry);
       reglist.push_back(Ry);
-
-      getLexer().Lex(); // eat ','
     } else if (getLexer().is(AsmToken::EndOfStatement)) {
       reglist.push_back(Ry);
       reglist.push_back(Ry);
@@ -1582,14 +1543,9 @@ bool CSKYAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
     return true;
 
   // Parse until end of statement, consuming commas between operands.
-  while (getLexer().is(AsmToken::Comma)) {
-    // Consume comma token.
-    getLexer().Lex();
-
-    // Parse next operand.
+  while (parseOptionalToken(AsmToken::Comma))
     if (parseOperand(Operands, Name))
       return true;
-  }
 
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
     SMLoc Loc = getLexer().getLoc();
@@ -1617,17 +1573,13 @@ OperandMatchResultTy CSKYAsmParser::tryParseRegister(MCRegister &RegNo,
   return MatchOperand_Success;
 }
 
-bool CSKYAsmParser::ParseDirective(AsmToken DirectiveID) {
-  // This returns false if this function recognizes the directive
-  // regardless of whether it is successfully handles or reports an
-  // error. Otherwise it returns true to give the generic parser a
-  // chance at recognizing it.
+ParseStatus CSKYAsmParser::parseDirective(AsmToken DirectiveID) {
   StringRef IDVal = DirectiveID.getString();
 
   if (IDVal == ".csky_attribute")
     return parseDirectiveAttribute();
 
-  return true;
+  return ParseStatus::NoMatch;
 }
 
 /// parseDirectiveAttribute
@@ -1641,10 +1593,8 @@ bool CSKYAsmParser::parseDirectiveAttribute() {
     StringRef Name = Parser.getTok().getIdentifier();
     std::optional<unsigned> Ret =
         ELFAttrs::attrTypeFromString(Name, CSKYAttrs::getCSKYAttributeTags());
-    if (!Ret) {
-      Error(TagLoc, "attribute name not recognised: " + Name);
-      return false;
-    }
+    if (!Ret)
+      return Error(TagLoc, "attribute name not recognised: " + Name);
     Tag = *Ret;
     Parser.Lex();
   } else {
@@ -1655,8 +1605,8 @@ bool CSKYAsmParser::parseDirectiveAttribute() {
       return true;
 
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(AttrExpr);
-    if (check(!CE, TagLoc, "expected numeric constant"))
-      return true;
+    if (!CE)
+      return Error(TagLoc, "expected numeric constant");
 
     Tag = CE->getValue();
   }

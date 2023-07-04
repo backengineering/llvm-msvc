@@ -16,6 +16,7 @@
 #include "SystemZConstantPoolValue.h"
 #include "SystemZMCInstLower.h"
 #include "TargetInfo/SystemZTargetInfo.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
@@ -1058,7 +1059,7 @@ void SystemZAsmPrinter::emitPPA1(MCSymbol *FnEndSym) {
 
   OutStreamer->AddComment("Length/4 of Parms");
   OutStreamer->emitInt16(
-      static_cast<uint16_t>(MFFrame.getMaxCallFrameSize() / 4)); // Parms/4.
+      static_cast<uint16_t>(ZFI->getSizeOfFnParams() / 4)); // Parms/4.
   OutStreamer->AddComment("Length of Code");
   OutStreamer->emitAbsoluteSymbolDiff(FnEndSym, CurrentFnEPMarkerSym, 4);
 

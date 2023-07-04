@@ -217,7 +217,7 @@ std::optional<Location> makeLocation(const ASTContext &AST, SourceLocation Loc,
   const auto F = SM.getFileEntryRefForID(SM.getFileID(Loc));
   if (!F)
     return std::nullopt;
-  auto FilePath = getCanonicalPath(*F, SM);
+  auto FilePath = getCanonicalPath(*F, SM.getFileManager());
   if (!FilePath) {
     log("failed to get path!");
     return std::nullopt;
@@ -1408,7 +1408,7 @@ ReferencesResult findReferences(ParsedAST &AST, Position Pos, uint32_t Limit,
       if (Refs != IDToRefs.end()) {
         for (const auto &Ref : Refs->second) {
           ReferencesResult::Reference Result;
-          Result.Loc.range = Ref.Rng;
+          Result.Loc.range = Ref.toRange(SM);
           Result.Loc.uri = URIMainFile;
           if (Ref.IsDefinition) {
             Result.Attributes |= ReferencesResult::Declaration;
@@ -1688,7 +1688,7 @@ declToHierarchyItem(const NamedDecl &ND, llvm::StringRef TUPath) {
   const auto FE = SM.getFileEntryRefForID(SM.getFileID(NameLoc));
   if (!FE)
     return std::nullopt;
-  auto FilePath = getCanonicalPath(*FE, SM);
+  auto FilePath = getCanonicalPath(*FE, SM.getFileManager());
   if (!FilePath)
     return std::nullopt; // Not useful without a uri.
 

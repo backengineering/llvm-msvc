@@ -409,29 +409,27 @@ ModuleMap::findKnownHeader(const FileEntry *File) {
   return Known;
 }
 
-ModuleMap::KnownHeader
-ModuleMap::findHeaderInUmbrellaDirs(const FileEntry *File,
-                    SmallVectorImpl<const DirectoryEntry *> &IntermediateDirs) {
+ModuleMap::KnownHeader ModuleMap::findHeaderInUmbrellaDirs(
+    FileEntryRef File, SmallVectorImpl<DirectoryEntryRef> &IntermediateDirs) {
   if (UmbrellaDirs.empty())
     return {};
 
-  const DirectoryEntry *Dir = File->getDir();
-  assert(Dir && "file in no directory");
+  OptionalDirectoryEntryRef Dir = File.getDir();
 
   // Note: as an egregious but useful hack we use the real path here, because
   // frameworks moving from top-level frameworks to embedded frameworks tend
   // to be symlinked from the top-level location to the embedded location,
   // and we need to resolve lookups as if we had found the embedded location.
-  StringRef DirName = SourceMgr.getFileManager().getCanonicalName(Dir);
+  StringRef DirName = SourceMgr.getFileManager().getCanonicalName(*Dir);
 
   // Keep walking up the directory hierarchy, looking for a directory with
   // an umbrella header.
   do {
-    auto KnownDir = UmbrellaDirs.find(Dir);
+    auto KnownDir = UmbrellaDirs.find(*Dir);
     if (KnownDir != UmbrellaDirs.end())
       return KnownHeader(KnownDir->second, NormalHeader);
 
-    IntermediateDirs.push_back(Dir);
+    IntermediateDirs.push_back(*Dir);
 
     // Retrieve our parent path.
     DirName = llvm::sys::path::parent_path(DirName);
@@ -439,10 +437,7 @@ ModuleMap::findHeaderInUmbrellaDirs(const FileEntry *File,
       break;
 
     // Resolve the parent path to a directory entry.
-    if (auto DirEntry = SourceMgr.getFileManager().getDirectory(DirName))
-      Dir = *DirEntry;
-    else
-      Dir = nullptr;
+    Dir = SourceMgr.getFileManager().getOptionalDirectoryRef(DirName);
   } while (Dir);
   return {};
 }
@@ -582,7 +577,7 @@ static bool isBetterKnownHeader(const ModuleMap::KnownHeader &New,
   return false;
 }
 
-ModuleMap::KnownHeader ModuleMap::findModuleForHeader(const FileEntry *File,
+ModuleMap::KnownHeader ModuleMap::findModuleForHeader(FileEntryRef File,
                                                       bool AllowTextual,
                                                       bool AllowExcluded) {
   auto MakeResult = [&](ModuleMap::KnownHeader R) -> ModuleMap::KnownHeader {
@@ -612,10 +607,10 @@ ModuleMap::KnownHeader ModuleMap::findModuleForHeader(const FileEntry *File,
 }
 
 ModuleMap::KnownHeader
-ModuleMap::findOrCreateModuleForHeaderInUmbrellaDir(const FileEntry *File) {
+ModuleMap::findOrCreateModuleForHeaderInUmbrellaDir(FileEntryRef File) {
   assert(!Headers.count(File) && "already have a module for this header");
 
-  SmallVector<const DirectoryEntry *, 2> SkippedDirs;
+  SmallVector<DirectoryEntryRef, 2> SkippedDirs;
   KnownHeader H = findHeaderInUmbrellaDirs(File, SkippedDirs);
   if (H) {
     Module *Result = H.getModule();
@@ -635,11 +630,11 @@ ModuleMap::findOrCreateModuleForHeaderInUmbrellaDir(const FileEntry *File) {
       // the actual header is located.
       bool Explicit = UmbrellaModule->InferExplicitSubmodules;
 
-      for (const DirectoryEntry *SkippedDir : llvm::reverse(SkippedDirs)) {
+      for (DirectoryEntryRef SkippedDir : llvm::reverse(SkippedDirs)) {
         // Find or create the module that corresponds to this directory name.
         SmallString<32> NameBuf;
         StringRef Name = sanitizeFilenameAsIdentifier(
-            llvm::sys::path::stem(SkippedDir->getName()), NameBuf);
+            llvm::sys::path::stem(SkippedDir.getName()), NameBuf);
         Result = findOrCreateModule(Name, Result, /*IsFramework=*/false,
                                     Explicit).first;
         InferredModuleAllowedBy[Result] = UmbrellaModuleMap;
@@ -657,7 +652,7 @@ ModuleMap::findOrCreateModuleForHeaderInUmbrellaDir(const FileEntry *File) {
       // Infer a submodule with the same name as this header file.
       SmallString<32> NameBuf;
       StringRef Name = sanitizeFilenameAsIdentifier(
-                         llvm::sys::path::stem(File->getName()), NameBuf);
+                         llvm::sys::path::stem(File.getName()), NameBuf);
       Result = findOrCreateModule(Name, Result, /*IsFramework=*/false,
                                   Explicit).first;
       InferredModuleAllowedBy[Result] = UmbrellaModuleMap;
@@ -684,12 +679,12 @@ ModuleMap::findOrCreateModuleForHeaderInUmbrellaDir(const FileEntry *File) {
 }
 
 ArrayRef<ModuleMap::KnownHeader>
-ModuleMap::findAllModulesForHeader(const FileEntry *File, bool AllowCreation) {
+ModuleMap::findAllModulesForHeader(FileEntryRef File) {
   HeadersMap::iterator Known = findKnownHeader(File);
   if (Known != Headers.end())
     return Known->second;
 
-  if (AllowCreation && findOrCreateModuleForHeaderInUmbrellaDir(File))
+  if (findOrCreateModuleForHeaderInUmbrellaDir(File))
     return Headers.find(File)->second;
 
   return std::nullopt;
@@ -705,13 +700,12 @@ ModuleMap::findResolvedModulesForHeader(const FileEntry *File) const {
   return It->second;
 }
 
-bool ModuleMap::isHeaderInUnavailableModule(const FileEntry *Header) const {
+bool ModuleMap::isHeaderInUnavailableModule(FileEntryRef Header) const {
   return isHeaderUnavailableInModule(Header, nullptr);
 }
 
-bool
-ModuleMap::isHeaderUnavailableInModule(const FileEntry *Header,
-                                       const Module *RequestingModule) const {
+bool ModuleMap::isHeaderUnavailableInModule(
+    FileEntryRef Header, const Module *RequestingModule) const {
   resolveHeaderDirectives(Header);
   HeadersMap::const_iterator Known = Headers.find(Header);
   if (Known != Headers.end()) {
@@ -739,8 +733,8 @@ ModuleMap::isHeaderUnavailableInModule(const FileEntry *Header,
     return true;
   }
 
-  const DirectoryEntry *Dir = Header->getDir();
-  SmallVector<const DirectoryEntry *, 2> SkippedDirs;
+  OptionalDirectoryEntryRef Dir = Header.getDir();
+  SmallVector<DirectoryEntryRef, 2> SkippedDirs;
   StringRef DirName = Dir->getName();
 
   auto IsUnavailable = [&](const Module *M) {
@@ -751,8 +745,7 @@ ModuleMap::isHeaderUnavailableInModule(const FileEntry *Header,
   // Keep walking up the directory hierarchy, looking for a directory with
   // an umbrella header.
   do {
-    llvm::DenseMap<const DirectoryEntry *, Module *>::const_iterator KnownDir
-      = UmbrellaDirs.find(Dir);
+    auto KnownDir = UmbrellaDirs.find(*Dir);
     if (KnownDir != UmbrellaDirs.end()) {
       Module *Found = KnownDir->second;
       if (IsUnavailable(Found))
@@ -766,11 +759,11 @@ ModuleMap::isHeaderUnavailableInModule(const FileEntry *Header,
         UmbrellaModule = UmbrellaModule->Parent;
 
       if (UmbrellaModule->InferSubmodules) {
-        for (const DirectoryEntry *SkippedDir : llvm::reverse(SkippedDirs)) {
+        for (DirectoryEntryRef SkippedDir : llvm::reverse(SkippedDirs)) {
           // Find or create the module that corresponds to this directory name.
           SmallString<32> NameBuf;
           StringRef Name = sanitizeFilenameAsIdentifier(
-              llvm::sys::path::stem(SkippedDir->getName()), NameBuf);
+              llvm::sys::path::stem(SkippedDir.getName()), NameBuf);
           Found = lookupModuleQualified(Name, Found);
           if (!Found)
             return false;
@@ -781,7 +774,7 @@ ModuleMap::isHeaderUnavailableInModule(const FileEntry *Header,
         // Infer a submodule with the same name as this header file.
         SmallString<32> NameBuf;
         StringRef Name = sanitizeFilenameAsIdentifier(
-                           llvm::sys::path::stem(Header->getName()),
+                           llvm::sys::path::stem(Header.getName()),
                            NameBuf);
         Found = lookupModuleQualified(Name, Found);
         if (!Found)
@@ -791,7 +784,7 @@ ModuleMap::isHeaderUnavailableInModule(const FileEntry *Header,
       return IsUnavailable(Found);
     }
 
-    SkippedDirs.push_back(Dir);
+    SkippedDirs.push_back(*Dir);
 
     // Retrieve our parent path.
     DirName = llvm::sys::path::parent_path(DirName);
@@ -799,10 +792,7 @@ ModuleMap::isHeaderUnavailableInModule(const FileEntry *Header,
       break;
 
     // Resolve the parent path to a directory entry.
-    if (auto DirEntry = SourceMgr.getFileManager().getDirectory(DirName))
-      Dir = *DirEntry;
-    else
-      Dir = nullptr;
+    Dir = SourceMgr.getFileManager().getOptionalDirectoryRef(DirName);
   } while (Dir);
 
   return false;
@@ -1180,7 +1170,7 @@ void ModuleMap::setUmbrellaHeaderAsWritten(
 
   // Notify callbacks that we just added a new header.
   for (const auto &Cb : Callbacks)
-    Cb->moduleMapAddUmbrellaHeader(&SourceMgr.getFileManager(), UmbrellaHeader);
+    Cb->moduleMapAddUmbrellaHeader(UmbrellaHeader);
 }
 
 void ModuleMap::setUmbrellaDirAsWritten(
@@ -1289,7 +1279,7 @@ void ModuleMap::addHeader(Module *Mod, Module::Header Header,
 
   // Notify callbacks that we just added a new header.
   for (const auto &Cb : Callbacks)
-    Cb->moduleMapAddHeader(Header.Entry->getName());
+    Cb->moduleMapAddHeader(Header.Entry.getName());
 }
 
 OptionalFileEntryRef
@@ -1329,9 +1319,9 @@ ModuleMap::canonicalizeModuleMapPath(SmallVectorImpl<char> &Path) {
   }
 
   FileManager &FM = SourceMgr.getFileManager();
-  auto DirEntry = FM.getDirectory(Dir.empty() ? "." : Dir);
+  auto DirEntry = FM.getDirectoryRef(Dir.empty() ? "." : Dir);
   if (!DirEntry)
-    return DirEntry.getError();
+    return llvm::errorToErrorCode(DirEntry.takeError());
 
   // Canonicalize the directory.
   StringRef CanonicalDir = FM.getCanonicalName(*DirEntry);
@@ -2541,7 +2531,7 @@ void ModuleMapParser::parseUmbrellaDirDecl(SourceLocation UmbrellaLoc) {
     for (llvm::vfs::recursive_directory_iterator I(FS, Dir->getName(), EC), E;
          I != E && !EC; I.increment(EC)) {
       if (auto FE = SourceMgr.getFileManager().getOptionalFileRef(I->path())) {
-        Module::Header Header = {"", std::string(I->path()), FE};
+        Module::Header Header = {"", std::string(I->path()), *FE};
         Headers.push_back(std::move(Header));
       }
     }

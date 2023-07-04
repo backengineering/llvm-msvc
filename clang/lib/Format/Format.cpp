@@ -375,6 +375,7 @@ template <> struct ScalarEnumerationTraits<FormatStyle::LanguageKind> {
     IO.enumCase(Value, "TextProto", FormatStyle::LK_TextProto);
     IO.enumCase(Value, "CSharp", FormatStyle::LK_CSharp);
     IO.enumCase(Value, "Json", FormatStyle::LK_Json);
+    IO.enumCase(Value, "Verilog", FormatStyle::LK_Verilog);
   }
 };
 
@@ -941,6 +942,7 @@ template <> struct MappingTraits<FormatStyle> {
     IO.mapOptional("JavaScriptWrapImports", Style.JavaScriptWrapImports);
     IO.mapOptional("KeepEmptyLinesAtTheStartOfBlocks",
                    Style.KeepEmptyLinesAtTheStartOfBlocks);
+    IO.mapOptional("KeepEmptyLinesAtEOF", Style.KeepEmptyLinesAtEOF);
     IO.mapOptional("LambdaBodyIndentation", Style.LambdaBodyIndentation);
     IO.mapOptional("LineEnding", Style.LineEnding);
     IO.mapOptional("MacroBlockBegin", Style.MacroBlockBegin);
@@ -1409,6 +1411,7 @@ FormatStyle getLLVMStyle(FormatStyle::LanguageKind Language) {
       /*Hex=*/0,     /*HexMinDigits=*/0};
   LLVMStyle.JavaScriptQuotes = FormatStyle::JSQS_Leave;
   LLVMStyle.JavaScriptWrapImports = true;
+  LLVMStyle.KeepEmptyLinesAtEOF = false;
   LLVMStyle.KeepEmptyLinesAtTheStartOfBlocks = true;
   LLVMStyle.LambdaBodyIndentation = FormatStyle::LBI_Signature;
   LLVMStyle.LineEnding = FormatStyle::LE_DeriveLF;
@@ -3469,21 +3472,16 @@ reformat(const FormatStyle &Style, StringRef Code,
   typedef std::function<std::pair<tooling::Replacements, unsigned>(
       const Environment &)>
       AnalyzerPass;
-  SmallVector<AnalyzerPass, 8> Passes;
+
+  SmallVector<AnalyzerPass, 16> Passes;
 
   Passes.emplace_back([&](const Environment &Env) {
     return IntegerLiteralSeparatorFixer().process(Env, Expanded);
   });
 
   if (Style.isCpp()) {
-    if (Style.QualifierAlignment != FormatStyle::QAS_Leave) {
-      Passes.emplace_back([&](const Environment &Env) {
-        return QualifierAlignmentFixer(Env, Expanded, Code, Ranges,
-                                       FirstStartColumn, NextStartColumn,
-                                       LastStartColumn, FileName)
-            .process();
-      });
-    }
+    if (Style.QualifierAlignment != FormatStyle::QAS_Leave)
+      addQualifierAlignmentFixerPasses(Expanded, Passes);
 
     if (Style.InsertBraces) {
       FormatStyle S = Expanded;
@@ -3566,6 +3564,24 @@ reformat(const FormatStyle &Style, StringRef Code,
           return {};
       }
     }
+  }
+
+  if (Style.QualifierAlignment != FormatStyle::QAS_Leave) {
+    // Don't make replacements that replace nothing. QualifierAlignment can
+    // produce them if one of its early passes changes e.g. `const volatile` to
+    // `volatile const` and then a later pass changes it back again.
+    tooling::Replacements NonNoOpFixes;
+    for (const tooling::Replacement &Fix : Fixes) {
+      StringRef OriginalCode = Code.substr(Fix.getOffset(), Fix.getLength());
+      if (!OriginalCode.equals(Fix.getReplacementText())) {
+        auto Err = NonNoOpFixes.add(Fix);
+        if (Err) {
+          llvm::errs() << "Error adding replacements : "
+                       << llvm::toString(std::move(Err)) << "\n";
+        }
+      }
+    }
+    Fixes = std::move(NonNoOpFixes);
   }
 
   return {Fixes, Penalty};

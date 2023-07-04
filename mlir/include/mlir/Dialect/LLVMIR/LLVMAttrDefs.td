@@ -30,6 +30,15 @@ def CConvAttr : LLVM_Attr<"CConv", "cconv"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ComdatAttr
+//===----------------------------------------------------------------------===//
+
+def ComdatAttr : LLVM_Attr<"Comdat", "comdat"> {
+  let parameters = (ins "comdat::Comdat":$comdat);
+  let assemblyFormat = "$comdat";
+}
+
+//===----------------------------------------------------------------------===//
 // LinkageAttr
 //===----------------------------------------------------------------------===//
 
@@ -506,6 +515,31 @@ def LLVM_DISubroutineTypeAttr : LLVM_Attr<"DISubroutineType", "di_subroutine_typ
       return $_get($_ctxt, /*callingConvention=*/0, types);
     }]>
   ];
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+//===----------------------------------------------------------------------===//
+// DILabelAttr
+//===----------------------------------------------------------------------===//
+
+def LLVM_DILabelAttr : LLVM_Attr<"DILabel", "di_label",
+                                 /*traits=*/[], "DINodeAttr"> {
+  let parameters = (ins
+    "DIScopeAttr":$scope,
+    OptionalParameter<"StringAttr">:$name,
+    OptionalParameter<"DIFileAttr">:$file,
+    OptionalParameter<"unsigned">:$line
+  );
+  let builders = [
+    AttrBuilderWithInferredContext<(ins
+      "DIScopeAttr":$scope, "StringRef":$name, "DIFileAttr":$file,
+      "unsigned":$line
+    ), [{
+      MLIRContext *ctx = scope.getContext();
+      return $_get(ctx, scope, StringAttr::get(ctx, name), file, line);
+    }]>
+  ];
+
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
