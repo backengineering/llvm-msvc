@@ -6712,12 +6712,16 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   else if (Args.hasArg(options::OPT_fno_declspec))
     CmdArgs.push_back("-fno-declspec"); // Explicitly disabling __declspec.
 
+  bool IsKernel = false;
+  if (Args.hasArg(options::OPT__SLASH_kernel))
+    IsKernel = true;
+
   // -fthreadsafe-static is default, except for MSVC compatibility versions less
-  // than 19.
-  if (!Args.hasFlag(options::OPT_fthreadsafe_statics,
-                    options::OPT_fno_threadsafe_statics,
-                    !types::isOpenCL(InputType) &&
-                        (!IsWindowsMSVC || IsMSVC2015Compatible)))
+  // than 19 and windows driver.
+  if (IsKernel || !Args.hasFlag(options::OPT_fthreadsafe_statics,
+                                options::OPT_fno_threadsafe_statics,
+                                !types::isOpenCL(InputType) &&
+                                    (!IsWindowsMSVC || IsMSVC2015Compatible)))
     CmdArgs.push_back("-fno-threadsafe-statics");
 
   // -fno-delayed-template-parsing is default, except when targeting MSVC.
