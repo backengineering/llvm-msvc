@@ -6712,9 +6712,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   else if (Args.hasArg(options::OPT_fno_declspec))
     CmdArgs.push_back("-fno-declspec"); // Explicitly disabling __declspec.
 
-  bool IsKernel = false;
-  if (Args.hasArg(options::OPT__SLASH_kernel))
-    IsKernel = true;
+  bool IsKernel = Args.hasArg(options::OPT__SLASH_kernel);
 
   // -fthreadsafe-static is default, except for MSVC compatibility versions less
   // than 19 and windows driver.
