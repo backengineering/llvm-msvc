@@ -788,6 +788,10 @@ bool Preprocessor::HandleIdentifier(Token &Identifier) {
 
   IdentifierInfo &II = *Identifier.getIdentifierInfo();
 
+  // It means we are windows drivers. We do not support ThreadsafeStatics
+  if (II.getName() == "DEPRECATE_DDK_FUNCTIONS")
+    LangOpts.ThreadsafeStatics = false;
+
   // If the information about this identifier is out of date, update it from
   // the external source.
   // We have to treat __VA_ARGS__ in a special way, since it gets
