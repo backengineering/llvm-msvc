@@ -18896,10 +18896,11 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
     if (!Func->isDefined()) {
       if (mightHaveNonExternalLinkage(Func))
         UndefinedButUsed.insert(std::make_pair(Func->getCanonicalDecl(), Loc));
-      else if (Func->getMostRecentDecl()->isInlined() &&
-               !LangOpts.GNUInline &&
-               !Func->getMostRecentDecl()->hasAttr<GNUInlineAttr>())
+      else if (Func->getMostRecentDecl()->isInlined() && !LangOpts.GNUInline &&
+               !Func->getMostRecentDecl()->hasAttr<GNUInlineAttr>()) {
+        Func->getMostRecentDecl()->setImplicitlyInline(false);
         UndefinedButUsed.insert(std::make_pair(Func->getCanonicalDecl(), Loc));
+      }
       else if (isExternalWithNoLinkageType(Func))
         UndefinedButUsed.insert(std::make_pair(Func->getCanonicalDecl(), Loc));
     }
