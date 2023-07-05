@@ -213,7 +213,7 @@ static void addVisualCDefines(const LangOptions &Opts, MacroBuilder &Builder) {
     if (Opts.CPlusPlus11 && Opts.isCompatibleWithMSVC(LangOptions::MSVC2015))
       Builder.defineMacro("_HAS_CHAR16_T_LANGUAGE_SUPPORT", Twine(1));
 
-    if (Opts.isCompatibleWithMSVC(LangOptions::MSVC2015)) {
+    if (Opts.isCompatibleWithMSVC(LangOptions::MSVC2017)) {
       if (Opts.CPlusPlus23)
         // TODO update to the proper value.
         Builder.defineMacro("_MSVC_LANG", "202004L");
@@ -223,6 +223,8 @@ static void addVisualCDefines(const LangOptions &Opts, MacroBuilder &Builder) {
         Builder.defineMacro("_MSVC_LANG", "201703L");
       else if (Opts.CPlusPlus14)
         Builder.defineMacro("_MSVC_LANG", "201402L");
+    } else if (Opts.isCompatibleWithMSVC(LangOptions::MSVC2015)) {
+      Builder.defineMacro("_MSVC_LANG", "201402L");
     }
   }
 
