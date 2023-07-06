@@ -1008,9 +1008,9 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
   }
 
   // If a custom alignment is used, force realigning to this alignment on
-  // any main function which certainly will need it. 
-  // [MSVC Compatibility] Force stackrealign
-  if (FD)
+  // any main function which certainly will need it.
+  if (FD && ((FD->isMain() || FD->isMSVCRTEntryPoint()) &&
+             CGM.getCodeGenOpts().StackAlignment))
     Fn->addFnAttr("stackrealign");
 
   // "main" doesn't need to zero out call-used registers.
