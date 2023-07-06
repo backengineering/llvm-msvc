@@ -21,6 +21,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/BranchProbabilityInfo.h"
@@ -391,6 +392,12 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
   const Function &Fn = mf.getFunction();
   MF = &mf;
 
+  // Restore Options after exiting from this function.
+  auto OldEnableFastISel = TM.Options.EnableFastISel;
+  auto RestoreOptions = llvm::make_scope_exit([this, OldEnableFastISel]() {
+    TM.Options.EnableFastISel = OldEnableFastISel;
+  });
+
   if (OptLevel == CodeGenOpt::None) {
     bool HasInline = false;
     for (auto &BB : MF->getFunction())
@@ -409,6 +416,9 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
     if (HasInline)
       TM.Options.EnableFastISel = false;
   }
+
+  if (Fn.isFastISelDisabled())
+    TM.Options.EnableFastISel = false;
 
   // Decide what flavour of variable location debug-info will be used, before
   // we change the optimisation level.
