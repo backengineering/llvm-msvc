@@ -404,12 +404,17 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
       for (auto &I : BB) {
         if (I.getOpcode() == Instruction::Call) {
           CallInst *CallIst = dyn_cast<CallInst>(&I);
-          if (CallIst->isInlineAsm())
+          if (CallIst->isInlineAsm()) {
             HasInline = true;
+            break;
+          }
+
         } else if (I.getOpcode() == Instruction::Invoke) {
           InvokeInst *InvokeIst = dyn_cast<InvokeInst>(&I);
-          if (InvokeIst->isInlineAsm())
+          if (InvokeIst->isInlineAsm()) {
             HasInline = true;
+            break;
+          }
         }
       }
 
