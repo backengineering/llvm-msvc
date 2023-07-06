@@ -460,8 +460,12 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
     else if (LangOpts.CPlusPlus20)
       Builder.defineMacro("__cplusplus", "202002L");
     //      [C++17] The integer literal 201703L.
-    else if (LangOpts.CPlusPlus17)
-      Builder.defineMacro("__cplusplus", "201703L");
+    else if (LangOpts.CPlusPlus17) {
+      if (LangOpts.isCompatibleWithMSVC(LangOptions::MSVC2017))
+        Builder.defineMacro("__cplusplus", "201703L");
+      else if (LangOpts.isCompatibleWithMSVC(LangOptions::MSVC2015))
+        Builder.defineMacro("__cplusplus", "201402L");
+    }
     //      [C++14] The name __cplusplus is defined to the value 201402L when
     //      compiling a C++ translation unit.
     else if (LangOpts.CPlusPlus14)
