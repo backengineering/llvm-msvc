@@ -1935,6 +1935,8 @@ void CodeGenFunction::EmitCapturedLocals(CodeGenFunction &ParentCGF,
 
   // Create llvm.localrecover calls for all captures.
   for (const VarDecl *VD : Finder.Captures) {
+    if (!VD)
+      continue;
     if (VD->getType()->isVariablyModifiedType()) {
       CGM.ErrorUnsupported(VD, "VLA captured by SEH");
       continue;
