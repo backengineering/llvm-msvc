@@ -722,6 +722,7 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
 
   // Finally, insert state stores before call-sites which transition us to a new
   // state.
+  bool EnterSEHBegin = false;
   for (BasicBlock *BB : RPOT) {
     auto &BBColors = BlockColors[BB];
     BasicBlock *FuncletEntryBB = BBColors.front();
@@ -733,11 +734,20 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
                       << " PrevState=" << PrevState << '\n');
 
     for (Instruction &I : *BB) {
+      if (auto InvokeIst = dyn_cast<InvokeInst>(&I)) {
+        if (auto CalledFunction = InvokeIst->getCalledFunction()) {
+          if (CalledFunction->getIntrinsicID() == Intrinsic::seh_try_begin)
+            EnterSEHBegin = true;
+          else if (CalledFunction->getIntrinsicID() == Intrinsic::seh_try_end)
+            EnterSEHBegin = false;
+        }
+      }
+
       auto *Call = dyn_cast<CallBase>(&I);
       if (!Call || !isStateStoreNeeded(Personality, *Call))
         continue;
-      if (!Call->getCalledFunction() ||
-          Call->getCalledFunction()->isIntrinsic())
+      if (EnterSEHBegin && (!Call->getCalledFunction() ||
+                            Call->getCalledFunction()->isIntrinsic()))
         continue;
       int State = getStateForCall(BlockColors, FuncInfo, *Call);
       if (State != PrevState)
