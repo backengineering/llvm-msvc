@@ -375,6 +375,10 @@ public:
                                    Instruction *InsertBefore = nullptr);
   static BinaryOperator *CreateNeg(Value *Op, const Twine &Name,
                                    BasicBlock *InsertAtEnd);
+  static BinaryOperator *CreateFNeg(Value *Op, const Twine &Name = "",
+                                    Instruction *InsertBefore = nullptr);
+  static BinaryOperator *CreateFNeg(Value *Op, const Twine &Name,
+                                    BasicBlock *InsertAtEnd);
   static BinaryOperator *CreateNSWNeg(Value *Op, const Twine &Name = "",
                                       Instruction *InsertBefore = nullptr);
   static BinaryOperator *CreateNSWNeg(Value *Op, const Twine &Name,
