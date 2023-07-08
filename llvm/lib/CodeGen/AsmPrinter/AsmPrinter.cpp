@@ -1674,7 +1674,7 @@ void AsmPrinter::emitFunctionBody() {
         {
           // Include inline asm
           auto MI2 = std::next(MI.getIterator());
-          if (IsEHa && MI2 != MBB.end() &&
+          if (MI2 != MBB.end() &&
               (MI2->mayLoadOrStore() || MI2->mayRaiseFPException() ||
                MI2->isInlineAsm()))
             emitNops(1);
