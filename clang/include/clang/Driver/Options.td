@@ -1574,7 +1574,7 @@ defm cxx_exceptions: BoolFOption<"cxx-exceptions",
   LangOpts<"CXXExceptions">, DefaultFalse,
   PosFlag<SetTrue, [CC1Option], "Enable C++ exceptions">, NegFlag<SetFalse>>;
 defm async_exceptions: BoolFOption<"async-exceptions",
-  LangOpts<"EHAsynch">, DefaultTrue,
+  LangOpts<"EHAsynch">, DefaultFalse,
   PosFlag<SetTrue, [CC1Option], "Enable EH Asynchronous exceptions">, NegFlag<SetFalse>>;
 defm cxx_modules : BoolFOption<"cxx-modules",
   LangOpts<"CPlusPlusModules">, Default<cpp20.KeyPath>,
