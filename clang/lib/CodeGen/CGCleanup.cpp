@@ -1032,7 +1032,7 @@ void CodeGenFunction::PopCleanupBlock(bool FallthroughIsBranchThrough) {
       EHStack.pushTerminate();
       PushedTerminate = true;
     } else if (IsEHa && getInvokeDest()) {
-      EmitSehCppScopeEnd();
+      // EmitSehCppScopeEnd();
     }
 
     // We only actually emit the cleanup code if the cleanup is either
@@ -1365,7 +1365,6 @@ void CodeGenFunction::EmitSehCppScopeEnd() {
 
 // Invoke a llvm.seh.try.begin at the beginning of a SEH scope for -EHa
 void CodeGenFunction::EmitSehTryScopeBegin() {
-  assert(getLangOpts().EHAsynch);
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
@@ -1375,7 +1374,6 @@ void CodeGenFunction::EmitSehTryScopeBegin() {
 
 // Invoke a llvm.seh.try.end at the end of a SEH scope for -EHa
 void CodeGenFunction::EmitSehTryScopeEnd() {
-  assert(getLangOpts().EHAsynch);
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
