@@ -645,7 +645,8 @@ void CodeGenFunction::EnterCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
       CatchScope->setHandler(I, CGM.getCXXABI().getCatchAllTypeInfo(), Handler);
       // Under async exceptions, catch(...) need to catch HW exception too
       // Mark scope with SehTryBegin as a SEH __try scope
-      if (getLangOpts().EHAsynch)
+      const EHPersonality &Personality = EHPersonality::get(*this);
+      if (getLangOpts().EHAsynch && Personality.isMSVCXXPersonality())
         EmitSehTryScopeBegin();
     }
   }
@@ -1642,12 +1643,10 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
     SEHTryEpilogueStack.push_back(&TryExit);
 
     llvm::BasicBlock *TryBB = nullptr;
-    // IsEHa: emit an invoke to _seh_try_begin() runtime for -EHa
-    if (getLangOpts().EHAsynch) {
-      EmitRuntimeCallOrInvoke(getSehTryBeginFn(CGM));
-      if (SEHTryEpilogueStack.size() == 1) // outermost only
-        TryBB = Builder.GetInsertBlock();
-    }
+    // Emit an invoke to _seh_try_begin() runtime for
+    EmitRuntimeCallOrInvoke(getSehTryBeginFn(CGM));
+    if (SEHTryEpilogueStack.size() == 1) // outermost only
+      TryBB = Builder.GetInsertBlock();
 
     EmitStmt(S.getTryBlock());
 
@@ -2198,8 +2197,8 @@ void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S) {
     return;
   }
 
-  // IsEHa: emit an invoke _seh_try_end() to mark end of FT flow
-  if (getLangOpts().EHAsynch && Builder.GetInsertBlock()) {
+  // Emit an invoke _seh_try_end() to mark end of FT flow
+  if (Builder.GetInsertBlock()) {
     llvm::FunctionCallee SehTryEnd = getSehTryEndFn(CGM);
     EmitRuntimeCallOrInvoke(SehTryEnd);
   }
