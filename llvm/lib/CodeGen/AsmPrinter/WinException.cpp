@@ -763,11 +763,7 @@ void WinException::emitCXXFrameHandler3Table(const MachineFunction *MF) {
   OS.emitInt32(0);
 
   AddComment("EHFlags");
-  if (MMI->getModule()->getModuleFlag("eh-asynch")) {
-    OS.emitInt32(0);
-  } else {
-    OS.emitInt32(1);
-  }
+  OS.emitInt32(0);
 
   // UnwindMapEntry {
   //   int32_t ToState;
