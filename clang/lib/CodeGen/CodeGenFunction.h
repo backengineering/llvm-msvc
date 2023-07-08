@@ -2925,10 +2925,10 @@ public:
   void EmitCXXTemporary(const CXXTemporary *Temporary, QualType TempType,
                         Address Ptr);
 
-  void EmitSehCppScopeBegin();
-  void EmitSehCppScopeEnd();
-  void EmitSehTryScopeBegin();
-  void EmitSehTryScopeEnd();
+  bool EmitSehCppScopeBegin();
+  bool EmitSehCppScopeEnd();
+  bool EmitSehTryScopeBegin();
+  bool EmitSehTryScopeEnd();
 
   llvm::Value *EmitLifetimeStart(llvm::TypeSize Size, llvm::Value *Addr);
   void EmitLifetimeEnd(llvm::Value *Size, llvm::Value *Addr);

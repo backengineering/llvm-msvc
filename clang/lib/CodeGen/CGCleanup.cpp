@@ -1328,10 +1328,13 @@ void CodeGenFunction::EmitCXXTemporary(const CXXTemporary *Temporary,
 
 // Need to set "funclet" in OperandBundle properly for noThrow
 //       intrinsic (see CGCall.cpp)
-static void EmitSehScope(CodeGenFunction &CGF,
+static bool EmitSehScope(CodeGenFunction &CGF,
                          llvm::FunctionCallee &SehCppScope) {
   llvm::BasicBlock *InvokeDest = CGF.getInvokeDest();
-  if (!(CGF.Builder.GetInsertBlock() && InvokeDest)) return;
+  if (!InvokeDest)
+    return true; // We do not care it.
+  if (!(CGF.Builder.GetInsertBlock()))
+    return false; // Not found the insert point.
   llvm::BasicBlock *Cont = CGF.createBasicBlock("invoke.cont");
   SmallVector<llvm::OperandBundleDef, 1> BundleList =
       CGF.getBundlesForFunclet(SehCppScope.getCallee());
@@ -1340,43 +1343,44 @@ static void EmitSehScope(CodeGenFunction &CGF,
   CGF.Builder.CreateInvoke(SehCppScope, Cont, InvokeDest, std::nullopt,
                            BundleList);
   CGF.EmitBlock(Cont);
+  return true;
 }
 
 // Invoke a llvm.seh.scope.begin at the beginning of a CPP scope for -EHa
-void CodeGenFunction::EmitSehCppScopeBegin() {
+bool CodeGenFunction::EmitSehCppScopeBegin() {
   assert(getLangOpts().EHAsynch);
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
       CGM.CreateRuntimeFunction(FTy, "llvm.seh.scope.begin");
-  EmitSehScope(*this, SehCppScope);
+  return EmitSehScope(*this, SehCppScope);
 }
 
 // Invoke a llvm.seh.scope.end at the end of a CPP scope for -EHa
 //   llvm.seh.scope.end is emitted before popCleanup, so it's "invoked"
-void CodeGenFunction::EmitSehCppScopeEnd() {
+bool CodeGenFunction::EmitSehCppScopeEnd() {
   assert(getLangOpts().EHAsynch);
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
       CGM.CreateRuntimeFunction(FTy, "llvm.seh.scope.end");
-  EmitSehScope(*this, SehCppScope);
+  return EmitSehScope(*this, SehCppScope);
 }
 
 // Invoke a llvm.seh.try.begin at the beginning of a SEH scope for -EHa
-void CodeGenFunction::EmitSehTryScopeBegin() {
+bool CodeGenFunction::EmitSehTryScopeBegin() {
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
       CGM.CreateRuntimeFunction(FTy, "llvm.seh.try.begin");
-  EmitSehScope(*this, SehCppScope);
+  return EmitSehScope(*this, SehCppScope);
 }
 
 // Invoke a llvm.seh.try.end at the end of a SEH scope for -EHa
-void CodeGenFunction::EmitSehTryScopeEnd() {
+bool CodeGenFunction::EmitSehTryScopeEnd() {
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
       CGM.CreateRuntimeFunction(FTy, "llvm.seh.try.end");
-  EmitSehScope(*this, SehCppScope);
+  return EmitSehScope(*this, SehCppScope);
 }
