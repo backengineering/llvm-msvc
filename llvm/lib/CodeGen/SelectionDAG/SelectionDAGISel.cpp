@@ -1753,9 +1753,8 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
     ElidedArgCopyInstrs.clear();
   }
 
-  // AsynchEH: Report Block State under -AsynchEH
-  if (Fn.getParent()->getModuleFlag("eh-asynch"))
-    reportIPToStateForBlocks(MF);
+  // Report Block State under
+  reportIPToStateForBlocks(MF);
 
   SP.copyToMachineFrameInfo(MF->getFrameInfo());
 
