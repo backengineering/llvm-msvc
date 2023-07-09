@@ -571,7 +571,7 @@ public:
   /// complexity when asserts are enabled as when they are disabled.
   void validateInstrOrdering() const;
 
-private:
+public:
 #if defined(_AIX) && (!defined(__GNUC__) || defined(__clang__))
 // Except for GCC; by default, AIX compilers store bit-fields in 4-byte words
 // and give the `pack` pragma push semantics.
