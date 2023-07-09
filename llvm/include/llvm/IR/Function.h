@@ -731,7 +731,7 @@ public:
   /// \Returns \p ToIt.
   Function::iterator erase(Function::iterator FromIt, Function::iterator ToIt);
 
-private:
+public:
   // These need access to the underlying BB list.
   friend void BasicBlock::removeFromParent();
   friend iplist<BasicBlock>::iterator BasicBlock::eraseFromParent();

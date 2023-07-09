@@ -133,6 +133,36 @@ iplist<BasicBlock>::iterator BasicBlock::eraseFromParent() {
   return getParent()->getBasicBlockList().erase(getIterator());
 }
 
+BasicBlock *BasicBlock::getPrevOrNextBasicBlock(bool Previous) {
+  // If there is no parent or empty basic block list, return nullptr
+  if (getParent() == nullptr || getParent()->getBasicBlockList().empty())
+    return nullptr;
+
+  // Find this basic block in the parent's basic block list
+  auto &BBList = getParent()->getBasicBlockList();
+  auto It = BBList.begin();
+  for (; It != BBList.end(); ++It)
+    if (&(*It) == this)
+      break;
+  if (It == BBList.end())
+    return nullptr;
+
+  // Return the previous or next basic block based on boolean input
+  if (Previous) {
+    if (It == BBList.begin())
+      return nullptr;
+    else
+      return &(*(--It));
+
+  } else {
+    ++It;
+    if (It == BBList.end())
+      return nullptr;
+    else
+      return &(*It);
+  }
+}
+
 void BasicBlock::moveBefore(SymbolTableList<BasicBlock>::iterator MovePos) {
   getParent()->splice(MovePos, getParent(), getIterator());
 }

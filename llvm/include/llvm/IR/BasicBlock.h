@@ -134,6 +134,15 @@ public:
         static_cast<const BasicBlock *>(this)->getTerminator());
   }
 
+  /// Get the previous or next basic block
+  BasicBlock *getPrevOrNextBasicBlock(bool Previous);
+
+  /// Get the previous basic block
+  BasicBlock *getPrevBasicBlock() { return getPrevOrNextBasicBlock(true); }
+
+  /// Get the next basic block
+  BasicBlock *getNextBasicBlock() { return getPrevOrNextBasicBlock(false); }
+
   /// Returns the call instruction calling \@llvm.experimental.deoptimize
   /// prior to the terminating return instruction of this basic block, if such
   /// a call is present.  Otherwise, returns null.
