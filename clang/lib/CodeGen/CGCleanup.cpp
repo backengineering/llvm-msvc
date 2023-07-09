@@ -1332,7 +1332,7 @@ static bool EmitSehScope(CodeGenFunction &CGF,
                          llvm::FunctionCallee &SehCppScope) {
   llvm::BasicBlock *InvokeDest = CGF.getInvokeDest();
   if (!InvokeDest)
-    return true; // We do not care it.
+    return false;
   if (!(CGF.Builder.GetInsertBlock()))
     return false; // Not found the insert point.
   llvm::BasicBlock *Cont = CGF.createBasicBlock("invoke.cont");
