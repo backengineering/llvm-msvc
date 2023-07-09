@@ -2192,9 +2192,8 @@ void CodeGenFunction::EnterSEHTryStmt(const SEHTryStmt &S) {
 
 void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S) {
   // Emit an invoke _seh_try_end() to mark end of FT flow
-  if (Builder.GetInsertBlock()) {
-    llvm::FunctionCallee SehTryEnd = getSehTryEndFn(CGM);
-    EmitRuntimeCallOrInvoke(SehTryEnd);
+  if (HaveInsertPoint()) {
+    EmitRuntimeCallOrInvoke(getSehTryEndFn(CGM));
   }
 
   // Just pop the cleanup if it's a __finally block.
