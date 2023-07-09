@@ -140,12 +140,7 @@ BasicBlock *BasicBlock::getPrevOrNextBasicBlock(bool Previous) {
 
   // Find this basic block in the parent's basic block list
   auto &BBList = getParent()->getBasicBlockList();
-  auto It = BBList.begin();
-  for (; It != BBList.end(); ++It)
-    if (&(*It) == this)
-      break;
-  if (It == BBList.end())
-    return nullptr;
+  auto It = this->getIterator();
 
   // Return the previous or next basic block based on boolean input
   if (Previous) {

@@ -145,6 +145,17 @@ public:
         static_cast<const BasicBlock *>(this)->getLastInstruction());
   }
 
+  /// Get the first instruction of this block
+  const Instruction *getFirstInstruction() const {
+    if (InstList.empty())
+      return nullptr;
+    return &InstList.front();
+  }
+  Instruction *getFirstInstruction() {
+    return const_cast<Instruction *>(
+        static_cast<const BasicBlock *>(this)->getFirstInstruction());
+  }
+
   /// Get the previous or next basic block
   BasicBlock *getPrevOrNextBasicBlock(bool Previous);
 
@@ -413,7 +424,7 @@ public:
   }
   iterator_range<phi_iterator> phis();
 
-private:
+public:
   /// Return the underlying instruction list container.
   /// This is deliberately private because we have implemented an adequate set
   /// of functions to modify the list, including BasicBlock::splice(),
