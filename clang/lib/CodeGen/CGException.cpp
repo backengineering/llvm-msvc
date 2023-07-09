@@ -1644,7 +1644,7 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
 
     llvm::BasicBlock *TryBB = nullptr;
     // Emit an invoke to _seh_try_begin() runtime for
-    EmitRuntimeCallOrInvoke(getSehTryBeginFn(CGM));
+    auto Inst = EmitRuntimeCallOrInvoke(getSehTryBeginFn(CGM));
     if (SEHTryEpilogueStack.size() == 1) // outermost only
       TryBB = Builder.GetInsertBlock();
 
@@ -1657,6 +1657,20 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
     }
 
     SEHTryEpilogueStack.pop_back();
+
+    // Emit an invoke _seh_try_end() to mark end of FT flow
+    if (HaveInsertPoint()) {
+      Builder.CreateCall(getSehTryEndFn(CGM));
+    } else {
+      if (auto InvokeIst = dyn_cast<llvm::InvokeInst>(Inst)) {
+        if (auto LastInst = InvokeIst->getNormalDest()->getTerminator()) {
+          auto OldIP = Builder.saveIP();
+          Builder.SetInsertPoint(LastInst);
+          Builder.CreateCall(getSehTryEndFn(CGM));
+          Builder.restoreIP(OldIP);
+        }
+      }
+    }
 
     if (!TryExit.getBlock()->use_empty())
       EmitBlock(TryExit.getBlock(), /*IsFinished=*/true);
@@ -2191,11 +2205,6 @@ void CodeGenFunction::EnterSEHTryStmt(const SEHTryStmt &S) {
 }
 
 void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S) {
-  // Emit an invoke _seh_try_end() to mark end of FT flow
-  if (HaveInsertPoint()) {
-    EmitRuntimeCallOrInvoke(getSehTryEndFn(CGM));
-  }
-
   // Just pop the cleanup if it's a __finally block.
   if (S.getFinallyHandler()) {
     PopCleanupBlock();
