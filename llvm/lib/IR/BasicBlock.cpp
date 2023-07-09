@@ -153,7 +153,6 @@ BasicBlock *BasicBlock::getPrevOrNextBasicBlock(bool Previous) {
       return nullptr;
     else
       return &(*(--It));
-
   } else {
     ++It;
     if (It == BBList.end())
