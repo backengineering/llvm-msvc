@@ -329,6 +329,12 @@ const BasicBlock *BasicBlock::getSinglePredecessor() const {
   return (PI == E) ? ThePred : nullptr /*multiple preds*/;
 }
 
+const BasicBlock *BasicBlock::getFirstPredecessor() const {
+  if (pred_empty(this))
+    return nullptr;
+  return *pred_begin(this);
+}
+
 const BasicBlock *BasicBlock::getUniquePredecessor() const {
   const_pred_iterator PI = pred_begin(this), E = pred_end(this);
   if (PI == E) return nullptr; // No preds.

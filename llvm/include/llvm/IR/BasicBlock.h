@@ -134,6 +134,17 @@ public:
         static_cast<const BasicBlock *>(this)->getTerminator());
   }
 
+  /// Get the last instruction of this block
+  const Instruction *getLastInstruction() const {
+    if (InstList.empty())
+      return nullptr;
+    return &InstList.back();
+  }
+  Instruction *getLastInstruction() {
+    return const_cast<Instruction *>(
+        static_cast<const BasicBlock *>(this)->getLastInstruction());
+  }
+
   /// Get the previous or next basic block
   BasicBlock *getPrevOrNextBasicBlock(bool Previous);
 
@@ -283,6 +294,13 @@ public:
   BasicBlock *getSinglePredecessor() {
     return const_cast<BasicBlock *>(
                  static_cast<const BasicBlock *>(this)->getSinglePredecessor());
+  }
+
+  /// Get the first predecessor of this block
+  const BasicBlock *getFirstPredecessor() const;
+  BasicBlock *getFirstPredecessor() {
+    return const_cast<BasicBlock *>(
+        static_cast<const BasicBlock *>(this)->getFirstPredecessor());
   }
 
   /// Return the predecessor of this block if it has a unique predecessor
