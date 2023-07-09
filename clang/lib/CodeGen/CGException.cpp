@@ -2191,16 +2191,16 @@ void CodeGenFunction::EnterSEHTryStmt(const SEHTryStmt &S) {
 }
 
 void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S) {
-  // Just pop the cleanup if it's a __finally block.
-  if (S.getFinallyHandler()) {
-    PopCleanupBlock();
-    return;
-  }
-
   // Emit an invoke _seh_try_end() to mark end of FT flow
   if (Builder.GetInsertBlock()) {
     llvm::FunctionCallee SehTryEnd = getSehTryEndFn(CGM);
     EmitRuntimeCallOrInvoke(SehTryEnd);
+  }
+
+  // Just pop the cleanup if it's a __finally block.
+  if (S.getFinallyHandler()) {
+    PopCleanupBlock();
+    return;
   }
 
   // Otherwise, we must have an __except block.
