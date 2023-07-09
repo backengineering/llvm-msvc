@@ -120,6 +120,15 @@ public:
   /// \returns an iterator pointing to the element after the erased one
   SymbolTableList<Instruction>::iterator eraseFromParent();
 
+  /// Get the previous or next instruction
+  Instruction *getPrevOrNextInst(bool Previous);
+
+  /// Get the previous instruction
+  Instruction *getPrevInst() { return getPrevOrNextInst(true); }
+
+  /// Get the next instruction
+  Instruction *getNextInst() { return getPrevOrNextInst(false); }
+
   /// Insert an unlinked instruction into a basic block immediately before
   /// the specified instruction.
   void insertBefore(Instruction *InsertPos);

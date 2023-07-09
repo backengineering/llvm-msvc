@@ -84,6 +84,41 @@ iplist<Instruction>::iterator Instruction::eraseFromParent() {
   return getParent()->getInstList().erase(getIterator());
 }
 
+Instruction *Instruction::getPrevOrNextInst(bool Previous) {
+  // If there is no parent or instruction list empty, return null pointer
+  if (!getParent() || getParent()->getInstList().empty())
+    return nullptr;
+
+  Instruction *ResInst = nullptr;
+
+  auto It = this->getIterator();
+  auto &InstList = getParent()->getInstList();
+
+  if (Previous) {
+    auto ParentFunc = getParent()->getParent();
+    if (ParentFunc && &*It == ParentFunc->getEntryBlock().getFirstInstruction())
+      return nullptr;
+    else
+      --It;
+  } else {
+    ++It;
+  }
+
+  if (It != InstList.end()) {
+    ResInst = &*(It);
+  } else {
+    // If the instruction is not found in the list, get the instruction from
+    // the previous or next basic block
+    BasicBlock *PrevOrNextBB = getParent()->getPrevOrNextBasicBlock(Previous);
+    if (PrevOrNextBB) {
+      ResInst = Previous ? &PrevOrNextBB->getInstList().back()
+                         : &*PrevOrNextBB->getInstList().begin();
+    }
+  }
+
+  return ResInst;
+}
+
 /// Insert an unlinked instruction into a basic block immediately before the
 /// specified instruction.
 void Instruction::insertBefore(Instruction *InsertPos) {
