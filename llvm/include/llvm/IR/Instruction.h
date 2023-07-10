@@ -47,6 +47,8 @@ class Instruction : public User,
   /// O(1) local dominance checks between instructions.
   mutable unsigned Order = 0;
 
+  bool IsVolatileInstruction = false;      // Is this a volatile instruction?
+
 protected:
   // The 15 first bits of `Value::SubclassData` are available for subclasses of
   // `Instruction` to use.
@@ -655,6 +657,7 @@ public:
 
   /// Return true if this instruction has a volatile memory access.
   bool isVolatile() const LLVM_READONLY;
+  void setVolatile(bool Volatile = true) { IsVolatileInstruction = Volatile; }
 
   /// Return the type this instruction accesses in memory, if any.
   Type *getAccessType() const LLVM_READONLY;

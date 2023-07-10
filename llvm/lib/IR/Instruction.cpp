@@ -750,6 +750,8 @@ bool Instruction::hasAtomicStore() const {
 }
 
 bool Instruction::isVolatile() const {
+  if (IsVolatileInstruction)
+      return true;
   switch (getOpcode()) {
   default:
     return false;
@@ -1037,5 +1039,7 @@ Instruction *Instruction::clone() const {
 
   New->SubclassOptionalData = SubclassOptionalData;
   New->copyMetadata(*this);
+  if (isVolatile())
+    New->setVolatile();
   return New;
 }
