@@ -5085,6 +5085,8 @@ PreservedAnalyses SROAPass::runImpl(Function &F, DomTreeUpdater &RunDTU,
   for (BasicBlock::iterator I = EntryBB.begin(), E = std::prev(EntryBB.end());
        I != E; ++I) {
     if (AllocaInst *AI = dyn_cast<AllocaInst>(I)) {
+      if (AI->isVolatile())
+        continue;
       if (DL.getTypeAllocSize(AI->getAllocatedType()).isScalable() &&
           isAllocaPromotable(AI))
         PromotableAllocas.push_back(AI);
