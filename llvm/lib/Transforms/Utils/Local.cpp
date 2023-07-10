@@ -1626,9 +1626,12 @@ bool llvm::LowerDbgDeclare(Function &F) {
   DIBuilder DIB(*F.getParent(), /*AllowUnresolved*/ false);
   SmallVector<DbgDeclareInst *, 4> Dbgs;
   for (auto &FI : F)
-    for (Instruction &BI : FI)
+    for (Instruction &BI : FI) {
+      if (BI.isVolatile())
+        continue;
       if (auto DDI = dyn_cast<DbgDeclareInst>(&BI))
         Dbgs.push_back(DDI);
+    }
 
   if (Dbgs.empty())
     return Changed;
@@ -1769,7 +1772,9 @@ bool llvm::replaceDbgDeclare(Value *Address, Value *NewAddress,
     DIExpr = DIExpression::prepend(DIExpr, DIExprFlags, Offset);
     // Insert llvm.dbg.declare immediately before DII, and remove old
     // llvm.dbg.declare.
-    Builder.insertDeclare(NewAddress, DIVar, DIExpr, Loc, DII);
+    auto NewInst = Builder.insertDeclare(NewAddress, DIVar, DIExpr, Loc, DII);
+    if (DII->isVolatile())
+      NewInst->setVolatile();
     DII->eraseFromParent();
   }
   return !DbgDeclares.empty();
