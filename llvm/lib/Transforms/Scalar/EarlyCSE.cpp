@@ -781,6 +781,8 @@ private:
     }
 
     bool isVolatile() const {
+      if (Inst->isVolatile())
+        return true;
       if (IntrID != 0)
         return Info.IsVolatile;
 

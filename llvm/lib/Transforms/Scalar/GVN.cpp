@@ -2875,6 +2875,9 @@ bool GVNPass::performScalarPRE(Instruction *CurInst) {
       isa<DbgInfoIntrinsic>(CurInst))
     return false;
 
+  if (CurInst->isVolatile())
+    return false;
+
   // Don't do PRE on compares. The PHI would prevent CodeGenPrepare from
   // sinking the compare again, and it would force the code generator to
   // move the i1 from processor flags or predicate registers into a general

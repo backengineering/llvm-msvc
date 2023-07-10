@@ -781,6 +781,24 @@ bool Instruction::isVolatile() const {
   }
 }
 
+void Instruction::setVolatile(bool Volatile) {
+  IsVolatileInstruction = Volatile;
+  switch (getOpcode()) {
+  case Instruction::AtomicRMW:
+    cast<AtomicRMWInst>(this)->setVolatile(true);
+    break;
+  case Instruction::Store:
+    cast<StoreInst>(this)->setVolatile(true);
+    break;
+  case Instruction::Load:
+    cast<LoadInst>(this)->setVolatile(true);
+    break;
+  case Instruction::AtomicCmpXchg:
+    cast<AtomicCmpXchgInst>(this)->setVolatile(true);
+    break;
+  }
+}
+
 Type *Instruction::getAccessType() const {
   switch (getOpcode()) {
   case Instruction::Store:

@@ -657,7 +657,7 @@ public:
 
   /// Return true if this instruction has a volatile memory access.
   bool isVolatile() const LLVM_READONLY;
-  void setVolatile(bool Volatile = true) { IsVolatileInstruction = Volatile; }
+  void setVolatile(bool Volatile = true);
 
   /// Return the type this instruction accesses in memory, if any.
   Type *getAccessType() const LLVM_READONLY;
