@@ -90,7 +90,7 @@ def ext_cce_narrowing : ExtWarn<
   "array size|explicit specifier argument|noexcept specifier argument}0 "
   "%select{cannot be narrowed from type %2 to %3|"
   "evaluates to %2, which cannot be narrowed to type %3}1">,
-  InGroup<CXX11Narrowing>, DefaultError, SFINAEFailure;
+  InGroup<CXX11Narrowing>;
 def err_ice_not_integral : Error<
   "%select{integer|integral}1 constant expression must have "
   "%select{integer|integral or unscoped enumeration}1 type, not %0">;
@@ -6043,24 +6043,24 @@ def err_illegal_initializer : Error<
 def err_illegal_initializer_type : Error<"illegal initializer type %0">;
 def ext_init_list_type_narrowing : ExtWarn<
   "type %0 cannot be narrowed to %1 in initializer list">,
-  InGroup<CXX11Narrowing>, DefaultError, SFINAEFailure;
+  InGroup<CXX11Narrowing>;
 def ext_init_list_variable_narrowing : ExtWarn<
   "non-constant-expression cannot be narrowed from type %0 to %1 in "
-  "initializer list">, InGroup<CXX11Narrowing>, DefaultError, SFINAEFailure;
+  "initializer list">, InGroup<CXX11Narrowing>;
 def ext_init_list_constant_narrowing : ExtWarn<
   "constant expression evaluates to %0 which cannot be narrowed to type %1">,
-  InGroup<CXX11Narrowing>, DefaultError, SFINAEFailure;
+  InGroup<CXX11Narrowing>;
 def warn_init_list_type_narrowing : Warning<
   "type %0 cannot be narrowed to %1 in initializer list in C++11">,
-  InGroup<CXX11Narrowing>, DefaultIgnore;
+  InGroup<CXX11Narrowing>;
 def warn_init_list_variable_narrowing : Warning<
   "non-constant-expression cannot be narrowed from type %0 to %1 in "
   "initializer list in C++11">,
-  InGroup<CXX11Narrowing>, DefaultIgnore;
+  InGroup<CXX11Narrowing>;
 def warn_init_list_constant_narrowing : Warning<
   "constant expression evaluates to %0 which cannot be narrowed to type %1 in "
   "C++11">,
-  InGroup<CXX11Narrowing>, DefaultIgnore;
+  InGroup<CXX11Narrowing>;
 def note_init_list_narrowing_silence : Note<
   "insert an explicit cast to silence this issue">;
 def err_init_objc_class : Error<
