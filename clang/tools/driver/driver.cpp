@@ -409,6 +409,7 @@ int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
   for (auto Arg : Args) {
     if (StringRef(Arg).compare("-fprint-arguments") == 0) {
       HasPrintArgs = true;
+      break;
     }
   }
   

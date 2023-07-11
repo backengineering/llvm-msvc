@@ -2155,6 +2155,10 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
         ctx.driver.addBuffer(std::move(buf), false, false);
       }
     }
+  } else {
+    // Add /defaultlib: "Psapi.lib"
+    if (std::optional<StringRef> path = findLibIfNew("Psapi.lib"))
+      enqueuePath(*path, false, false);
   }
 
   // Handle /RELEASE
