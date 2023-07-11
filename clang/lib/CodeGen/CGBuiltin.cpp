@@ -15585,9 +15585,15 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     return Builder.CreateCall(F);
   }
   case X86::BI__stosb: {
-    // We treat __stosb as a volatile memset - it may not generate "rep stosb"
-    // instruction, but it will create a memset that won't be optimized away.
-    return Builder.CreateMemSet(Ops[0], Ops[1], Ops[2], Align(1), true);
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8PtrTy, SizeTy}),
+        {Int8Ty, Int8PtrTy, SizeTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "rep stosb",
+        "={di},={cx},{ax},0,1,~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[1], Ops[0], Ops[2]});
+    return CI;
   }
   case X86::BI__ud2:
     // llvm.trap makes a ud2a instruction on x86.
