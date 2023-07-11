@@ -1667,7 +1667,14 @@ void AsmPrinter::emitFunctionBody() {
         //   Or the exception won't be caught.
         //   (see MCConstantExpr::create(1,..) in WinException.cpp)
         {
-          emitNops(1);
+          auto MI2 = std::next(MI.getIterator());
+          if (MI2 != MBB.end()) {
+            if ((MI2->mayLoadOrStore() || MI2->mayRaiseFPException() ||
+                 MI2->isInlineAsm()))
+              emitNops(1);
+          } else {
+            emitNops(1);
+          }
         }
         break;
       case TargetOpcode::INLINEASM:
