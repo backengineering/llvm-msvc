@@ -168,7 +168,7 @@ void LinkerDriver::parseMerge(StringRef s) {
   if (!inserted) {
     StringRef existing = pair.first->second;
     if (existing != to)
-      warn(s + ": already merged into " + existing);
+      message(s + ": already merged into " + existing);
   }
 }
 
