@@ -2133,11 +2133,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   for (auto *arg : args.filtered(OPT_defaultlib))
     if (std::optional<StringRef> path = findLibIfNew(arg->getValue()))
       enqueuePath(*path, false, false);
-  
-  // Add /defaultlib: "Psapi.lib"
-  if (std::optional<StringRef> path = findLibIfNew("Psapi.lib"))
-    enqueuePath(*path, false, false);
-          
+
   // Add intrinsic rewrite lib to windows driver
   if (config->driver) {
     size_t libSize = 0;
