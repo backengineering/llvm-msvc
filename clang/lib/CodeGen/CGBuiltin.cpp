@@ -15865,6 +15865,134 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     Builder.SetInsertPoint(BBDest);
     return Builder.CreateLoad(Address(AI, AI->getType(), CU));
   }
+  case X86::BI__writedr: {
+    llvm::FunctionType *FTy =
+        llvm::FunctionType::get(VoidTy, {Int32Ty, SizeTy}, false);
+    llvm::Function *F = cast<Function>(
+        CGM.getModule().getOrInsertFunction("__writedr", FTy).getCallee());
+    if (F->size() == 0) {
+      F->addFnAttr(Attribute::AttrKind::AlwaysInline);
+      BasicBlock *EntryBlock = createBasicBlock("EntryBlock", F);
+      IRBuilder<> IRB(EntryBlock);
+      BasicBlock *BB0 = createBasicBlock("BB0", F);
+      BasicBlock *BB1 = createBasicBlock("BB1", F);
+      BasicBlock *BB2 = createBasicBlock("BB2", F);
+      BasicBlock *BB3 = createBasicBlock("BB3", F);
+      BasicBlock *BB4 = createBasicBlock("BB4", F);
+      BasicBlock *BB5 = createBasicBlock("BB5", F);
+      BasicBlock *BB6 = createBasicBlock("BB6", F);
+      BasicBlock *BB7 = createBasicBlock("BB7", F);
+      BasicBlock *BBDest = createBasicBlock("BBDest", F);
+      llvm::SwitchInst *SI = IRB.CreateSwitch(F->getArg(0), BBDest, 8);
+      SI->addCase(IRB.getInt32(0), BB0);
+      SI->addCase(IRB.getInt32(1), BB1);
+      SI->addCase(IRB.getInt32(2), BB2);
+      SI->addCase(IRB.getInt32(3), BB3);
+      SI->addCase(IRB.getInt32(4), BB4);
+      SI->addCase(IRB.getInt32(5), BB5);
+      SI->addCase(IRB.getInt32(6), BB6);
+      SI->addCase(IRB.getInt32(7), BB7);
+      IRB.SetInsertPoint(BB0);
+      {
+        llvm::StringRef AsmStr =
+            SizeTy->getBitWidth() == 32 ? "mov $0, %dr0" : "movq ${0:q}, %dr0";
+        llvm::FunctionType *FTy =
+            llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+        llvm::InlineAsm *IA = llvm::InlineAsm::get(
+            FTy, AsmStr, "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+            /*hasSideEffects=*/true);
+        IRB.CreateCall(IA, {F->getArg(1)});
+        IRB.CreateBr(BBDest);
+      }
+      IRB.SetInsertPoint(BB1);
+      {
+        llvm::StringRef AsmStr =
+            SizeTy->getBitWidth() == 32 ? "mov $0, %dr1" : "movq ${0:q}, %dr1";
+        llvm::FunctionType *FTy =
+            llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+        llvm::InlineAsm *IA = llvm::InlineAsm::get(
+            FTy, AsmStr, "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+            /*hasSideEffects=*/true);
+        IRB.CreateCall(IA, {F->getArg(1)});
+        IRB.CreateBr(BBDest);
+      }
+      IRB.SetInsertPoint(BB2);
+      {
+        llvm::StringRef AsmStr =
+            SizeTy->getBitWidth() == 32 ? "mov $0, %dr2" : "movq ${0:q}, %dr2";
+        llvm::FunctionType *FTy =
+            llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+        llvm::InlineAsm *IA = llvm::InlineAsm::get(
+            FTy, AsmStr, "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+            /*hasSideEffects=*/true);
+        IRB.CreateCall(IA, {F->getArg(1)});
+        IRB.CreateBr(BBDest);
+      }
+      IRB.SetInsertPoint(BB3);
+      {
+        llvm::StringRef AsmStr =
+            SizeTy->getBitWidth() == 32 ? "mov $0, %dr3" : "movq ${0:q}, %dr3";
+        llvm::FunctionType *FTy =
+            llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+        llvm::InlineAsm *IA = llvm::InlineAsm::get(
+            FTy, AsmStr, "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+            /*hasSideEffects=*/true);
+        IRB.CreateCall(IA, {F->getArg(1)});
+        IRB.CreateBr(BBDest);
+      }
+      IRB.SetInsertPoint(BB4);
+      {
+        llvm::StringRef AsmStr =
+            SizeTy->getBitWidth() == 32 ? "mov $0, %dr4" : "movq ${0:q}, %dr4";
+        llvm::FunctionType *FTy =
+            llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+        llvm::InlineAsm *IA = llvm::InlineAsm::get(
+            FTy, AsmStr, "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+            /*hasSideEffects=*/true);
+        IRB.CreateCall(IA, {F->getArg(1)});
+        IRB.CreateBr(BBDest);
+      }
+      IRB.SetInsertPoint(BB5);
+      {
+        llvm::StringRef AsmStr =
+            SizeTy->getBitWidth() == 32 ? "mov $0, %dr5" : "movq ${0:q}, %dr5";
+        llvm::FunctionType *FTy =
+            llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+        llvm::InlineAsm *IA = llvm::InlineAsm::get(
+            FTy, AsmStr, "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+            /*hasSideEffects=*/true);
+        IRB.CreateCall(IA, {F->getArg(1)});
+        IRB.CreateBr(BBDest);
+      }
+      IRB.SetInsertPoint(BB6);
+      {
+        llvm::StringRef AsmStr =
+            SizeTy->getBitWidth() == 32 ? "mov $0, %dr6" : "movq ${0:q}, %dr6";
+        llvm::FunctionType *FTy =
+            llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+        llvm::InlineAsm *IA = llvm::InlineAsm::get(
+            FTy, AsmStr, "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+            /*hasSideEffects=*/true);
+        IRB.CreateCall(IA, {F->getArg(1)});
+        IRB.CreateBr(BBDest);
+      }
+      IRB.SetInsertPoint(BB7);
+      {
+        llvm::StringRef AsmStr =
+            SizeTy->getBitWidth() == 32 ? "mov $0, %dr7" : "movq ${0:q}, %dr7";
+        llvm::FunctionType *FTy =
+            llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+        llvm::InlineAsm *IA = llvm::InlineAsm::get(
+            FTy, AsmStr, "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+            /*hasSideEffects=*/true);
+        IRB.CreateCall(IA, {F->getArg(1)});
+        IRB.CreateBr(BBDest);
+      }
+      IRB.SetInsertPoint(BBDest);
+      IRB.CreateRetVoid();
+    }
+    return Builder.CreateCall(F, {Ops[0], Ops[1]});
+  }
   case X86::BI__builtin_ia32_encodekey128_u32: {
     Intrinsic::ID IID = Intrinsic::x86_encodekey128;
 
