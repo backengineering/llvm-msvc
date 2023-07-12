@@ -15744,6 +15744,127 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return CI;
   }
+  case X86::BI__readdr: {
+    BasicBlock *BB0 = createBasicBlock("BB0", this->CurFn);
+    BasicBlock *BB1 = createBasicBlock("BB1", this->CurFn);
+    BasicBlock *BB2 = createBasicBlock("BB2", this->CurFn);
+    BasicBlock *BB3 = createBasicBlock("BB3", this->CurFn);
+    BasicBlock *BB4 = createBasicBlock("BB4", this->CurFn);
+    BasicBlock *BB5 = createBasicBlock("BB5", this->CurFn);
+    BasicBlock *BB6 = createBasicBlock("BB6", this->CurFn);
+    BasicBlock *BB7 = createBasicBlock("BB7", this->CurFn);
+    BasicBlock *BBDest = createBasicBlock("BBDest", this->CurFn);
+    llvm::AllocaInst *AI = Builder.CreateAlloca(SizeTy);
+    CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
+                                               : CharUnits::fromQuantity(8);
+    llvm::SwitchInst *SI = Builder.CreateSwitch(Ops[0], BBDest, 8);
+    SI->addCase(Builder.getInt32(0), BB0);
+    SI->addCase(Builder.getInt32(1), BB1);
+    SI->addCase(Builder.getInt32(2), BB2);
+    SI->addCase(Builder.getInt32(3), BB3);
+    SI->addCase(Builder.getInt32(4), BB4);
+    SI->addCase(Builder.getInt32(5), BB5);
+    SI->addCase(Builder.getInt32(6), BB6);
+    SI->addCase(Builder.getInt32(7), BB7);
+    Builder.SetInsertPoint(BB0);
+    {
+      llvm::StringRef AsmStr =
+          SizeTy->getBitWidth() == 32 ? "mov %dr0, $0" : "movq %dr0, ${0:q}";
+      llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+      llvm::InlineAsm *IA =
+          llvm::InlineAsm::get(FTy, AsmStr, "=r,~{dirflag},~{fpsr},~{flags}",
+                               /*hasSideEffects=*/true);
+      llvm::CallInst *CI = Builder.CreateCall(IA);
+      Builder.CreateStore(CI, Address(AI, AI->getType(), CU));
+      Builder.CreateBr(BBDest);
+    }
+    Builder.SetInsertPoint(BB1);
+    {
+      llvm::StringRef AsmStr =
+          SizeTy->getBitWidth() == 32 ? "mov %dr1, $0" : "movq %dr1, ${0:q}";
+      llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+      llvm::InlineAsm *IA =
+          llvm::InlineAsm::get(FTy, AsmStr, "=r,~{dirflag},~{fpsr},~{flags}",
+                               /*hasSideEffects=*/true);
+      llvm::CallInst *CI = Builder.CreateCall(IA);
+      Builder.CreateStore(CI, Address(AI, AI->getType(), CU));
+      Builder.CreateBr(BBDest);
+    }
+    Builder.SetInsertPoint(BB2);
+    {
+      llvm::StringRef AsmStr =
+          SizeTy->getBitWidth() == 32 ? "mov %dr2, $0" : "movq %dr2, ${0:q}";
+      llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+      llvm::InlineAsm *IA =
+          llvm::InlineAsm::get(FTy, AsmStr, "=r,~{dirflag},~{fpsr},~{flags}",
+                               /*hasSideEffects=*/true);
+      llvm::CallInst *CI = Builder.CreateCall(IA);
+      Builder.CreateStore(CI, Address(AI, AI->getType(), CU));
+      Builder.CreateBr(BBDest);
+    }
+    Builder.SetInsertPoint(BB3);
+    {
+      llvm::StringRef AsmStr =
+          SizeTy->getBitWidth() == 32 ? "mov %dr3, $0" : "movq %dr3, ${0:q}";
+      llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+      llvm::InlineAsm *IA =
+          llvm::InlineAsm::get(FTy, AsmStr, "=r,~{dirflag},~{fpsr},~{flags}",
+                               /*hasSideEffects=*/true);
+      llvm::CallInst *CI = Builder.CreateCall(IA);
+      Builder.CreateStore(CI, Address(AI, AI->getType(), CU));
+      Builder.CreateBr(BBDest);
+    }
+    Builder.SetInsertPoint(BB4);
+    {
+      llvm::StringRef AsmStr =
+          SizeTy->getBitWidth() == 32 ? "mov %dr4, $0" : "movq %dr4, ${0:q}";
+      llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+      llvm::InlineAsm *IA =
+          llvm::InlineAsm::get(FTy, AsmStr, "=r,~{dirflag},~{fpsr},~{flags}",
+                               /*hasSideEffects=*/true);
+      llvm::CallInst *CI = Builder.CreateCall(IA);
+      Builder.CreateStore(CI, Address(AI, AI->getType(), CU));
+      Builder.CreateBr(BBDest);
+    }
+    Builder.SetInsertPoint(BB5);
+    {
+      llvm::StringRef AsmStr =
+          SizeTy->getBitWidth() == 32 ? "mov %dr5, $0" : "movq %dr5, ${0:q}";
+      llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+      llvm::InlineAsm *IA =
+          llvm::InlineAsm::get(FTy, AsmStr, "=r,~{dirflag},~{fpsr},~{flags}",
+                               /*hasSideEffects=*/true);
+      llvm::CallInst *CI = Builder.CreateCall(IA);
+      Builder.CreateStore(CI, Address(AI, AI->getType(), CU));
+      Builder.CreateBr(BBDest);
+    }
+    Builder.SetInsertPoint(BB6);
+    {
+      llvm::StringRef AsmStr =
+          SizeTy->getBitWidth() == 32 ? "mov %dr6, $0" : "movq %dr6, ${0:q}";
+      llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+      llvm::InlineAsm *IA =
+          llvm::InlineAsm::get(FTy, AsmStr, "=r,~{dirflag},~{fpsr},~{flags}",
+                               /*hasSideEffects=*/true);
+      llvm::CallInst *CI = Builder.CreateCall(IA);
+      Builder.CreateStore(CI, Address(AI, AI->getType(), CU));
+      Builder.CreateBr(BBDest);
+    }
+    Builder.SetInsertPoint(BB7);
+    {
+      llvm::StringRef AsmStr =
+          SizeTy->getBitWidth() == 32 ? "mov %dr7, $0" : "movq %dr7, ${0:q}";
+      llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+      llvm::InlineAsm *IA =
+          llvm::InlineAsm::get(FTy, AsmStr, "=r,~{dirflag},~{fpsr},~{flags}",
+                               /*hasSideEffects=*/true);
+      llvm::CallInst *CI = Builder.CreateCall(IA);
+      Builder.CreateStore(CI, Address(AI, AI->getType(), CU));
+      Builder.CreateBr(BBDest);
+    }
+    Builder.SetInsertPoint(BBDest);
+    return Builder.CreateLoad(Address(AI, AI->getType(), CU));
+  }
   case X86::BI__builtin_ia32_encodekey128_u32: {
     Intrinsic::ID IID = Intrinsic::x86_encodekey128;
 
