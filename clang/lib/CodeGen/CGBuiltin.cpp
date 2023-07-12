@@ -15664,6 +15664,46 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     Load->setVolatile(true);
     return Load;
   }
+  case X86::BI__readcr0: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(FTy, "mov %cr0, $0",
+                                               "=r,~{dirflag},~{fpsr},~{flags}",
+                                               /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA);
+    return CI;
+  }
+  case X86::BI__readcr2: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(FTy, "mov %cr2, $0",
+                                               "=r,~{dirflag},~{fpsr},~{flags}",
+                                               /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA);
+    return CI;
+  }
+  case X86::BI__readcr3: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(FTy, "mov %cr3, $0",
+                                               "=r,~{dirflag},~{fpsr},~{flags}",
+                                               /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA);
+    return CI;
+  }
+  case X86::BI__readcr4: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(FTy, "mov %cr4, $0",
+                                               "=r,~{dirflag},~{fpsr},~{flags}",
+                                               /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA);
+    return CI;
+  }
+  case X86::BI__readcr8: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(SizeTy, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(FTy, "mov %cr8, $0",
+                                               "=r,~{dirflag},~{fpsr},~{flags}",
+                                               /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA);
+    return CI;
+  }
   case X86::BI__builtin_ia32_encodekey128_u32: {
     Intrinsic::ID IID = Intrinsic::x86_encodekey128;
 
