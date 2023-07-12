@@ -2131,6 +2131,8 @@ TARGET_HEADER_BUILTIN(__writecr3, "vUQi", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
 TARGET_HEADER_BUILTIN(__writecr4, "vUQi", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
 TARGET_HEADER_BUILTIN(__writecr8, "vUQi", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
 
+TARGET_HEADER_BUILTIN(__readdr, "UQiUi", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
+
 // AVX-NE-CONVERT
 TARGET_BUILTIN(__builtin_ia32_vbcstnebf162ps128, "V4fyC*", "nV:128:", "avxneconvert")
 TARGET_BUILTIN(__builtin_ia32_vbcstnebf162ps256, "V8fyC*", "nV:256:", "avxneconvert")
