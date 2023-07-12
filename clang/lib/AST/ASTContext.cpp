@@ -11260,6 +11260,13 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
       if (Context.getTargetInfo().getLongWidth() == 32)
         ++HowLong;
       break;
+    case 'Q':
+      // long or long long
+      if (Context.getTargetInfo().PointerWidth == 32)
+        HowLong = 1;
+      else if (Context.getTargetInfo().PointerWidth == 64)
+        HowLong = 2;
+      break;
     case 'W':
       // This modifier represents int64 type.
       assert(!IsSpecial && "Can't use two 'N', 'W', 'Z' or 'O' modifiers!");
