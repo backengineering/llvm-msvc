@@ -2781,23 +2781,24 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
   }
   }
 
-  // Since the target specific builtins for each arch overlap, only check those
-  // of the arch we are compiling for.
-  if (Context.BuiltinInfo.isTSBuiltin(BuiltinID)) {
-    if (Context.BuiltinInfo.isAuxBuiltinID(BuiltinID)) {
-      assert(Context.getAuxTargetInfo() &&
-             "Aux Target Builtin, but not an aux target?");
+  // Dont check... just return the call expr.
+  //// Since the target specific builtins for each arch overlap, only check those
+  //// of the arch we are compiling for.
+  //if (Context.BuiltinInfo.isTSBuiltin(BuiltinID)) {
+  //  if (Context.BuiltinInfo.isAuxBuiltinID(BuiltinID)) {
+  //    assert(Context.getAuxTargetInfo() &&
+  //           "Aux Target Builtin, but not an aux target?");
 
-      if (CheckTSBuiltinFunctionCall(
-              *Context.getAuxTargetInfo(),
-              Context.BuiltinInfo.getAuxBuiltinID(BuiltinID), TheCall))
-        return ExprError();
-    } else {
-      if (CheckTSBuiltinFunctionCall(Context.getTargetInfo(), BuiltinID,
-                                     TheCall))
-        return ExprError();
-    }
-  }
+  //    if (CheckTSBuiltinFunctionCall(
+  //            *Context.getAuxTargetInfo(),
+  //            Context.BuiltinInfo.getAuxBuiltinID(BuiltinID), TheCall))
+  //      return ExprError();
+  //  } else {
+  //    if (CheckTSBuiltinFunctionCall(Context.getTargetInfo(), BuiltinID,
+  //                                   TheCall))
+  //      return ExprError();
+  //  }
+  //}
 
   return TheCallResult;
 }
