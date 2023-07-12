@@ -93,8 +93,8 @@ void __outwordstring(unsigned short, unsigned short *, unsigned long);
 unsigned __LPTRINT_TYPE__ __readcr0(void);
 unsigned __LPTRINT_TYPE__ __readcr2(void);
 unsigned __LPTRINT_TYPE__ __readcr3(void);
-unsigned __int64 __readcr4(void);
-unsigned __int64 __readcr8(void);
+unsigned __LPTRINT_TYPE__ __readcr4(void);
+unsigned __LPTRINT_TYPE__ __readcr8(void);
 unsigned __LPTRINT_TYPE__ __readdr(unsigned int);
 #ifdef __i386__
 unsigned char __readfsbyte(unsigned long);
@@ -499,22 +499,6 @@ static __inline__ void __DEFAULT_FN_ATTRS __movsw(unsigned short *__dst,
                        : "memory");
 #endif
 }
-static __inline__ void __DEFAULT_FN_ATTRS __stosd(unsigned long *__dst,
-                                                  unsigned long __x,
-                                                  size_t __n) {
-  __asm__ __volatile__("rep stos{l|d}"
-                       : "+D"(__dst), "+c"(__n)
-                       : "a"(__x)
-                       : "memory");
-}
-static __inline__ void __DEFAULT_FN_ATTRS __stosw(unsigned short *__dst,
-                                                  unsigned short __x,
-                                                  size_t __n) {
-  __asm__ __volatile__("rep stosw"
-                       : "+D"(__dst), "+c"(__n)
-                       : "a"(__x)
-                       : "memory");
-}
 #endif
 #ifdef __x86_64__
 static __inline__ void __DEFAULT_FN_ATTRS __movsq(
@@ -522,12 +506,6 @@ static __inline__ void __DEFAULT_FN_ATTRS __movsq(
   __asm__ __volatile__("rep movsq"
                        : "+D"(__dst), "+S"(__src), "+c"(__n)
                        :
-                       : "memory");
-}
-static __inline__ void __DEFAULT_FN_ATTRS __stosq(unsigned __int64 *__dst,
-                                                  unsigned __int64 __x,
-                                                  size_t __n) {
-  __asm__ __volatile__("rep stosq" : "+D"(__dst), "+c"(__n) : "a"(__x)
                        : "memory");
 }
 #endif
@@ -593,17 +571,7 @@ __readmsr(unsigned long __register) {
   return (((unsigned __int64)__edx) << 32) | (unsigned __int64)__eax;
 }
 #endif
-
-static __inline__ unsigned __LPTRINT_TYPE__ __DEFAULT_FN_ATTRS __readcr3(void) {
-  unsigned __LPTRINT_TYPE__ __cr3_val;
-  __asm__ __volatile__(
-                       "mov {%%cr3, %0|%0, cr3}"
-                       : "=r"(__cr3_val)
-                       :
-                       : "memory");
-  return __cr3_val;
-}
-
+  
 static __inline__ void __DEFAULT_FN_ATTRS
 __writecr3(unsigned __INTPTR_TYPE__ __cr3_val) {
   __asm__ ("mov {%0, %%cr3|cr3, %0}" : : "r"(__cr3_val) : "memory");
