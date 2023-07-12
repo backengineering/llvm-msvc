@@ -15704,6 +15704,46 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::CallInst *CI = Builder.CreateCall(IA);
     return CI;
   }
+  case X86::BI__writecr0: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "mov $0, %cr0", "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
+    return CI;
+  }
+  case X86::BI__writecr2: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "mov $0, %cr2", "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
+    return CI;
+  }
+  case X86::BI__writecr3: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "mov $0, %cr3", "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
+    return CI;
+  }
+  case X86::BI__writecr4: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "mov $0, %cr4", "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
+    return CI;
+  }
+  case X86::BI__writecr8: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, {SizeTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "mov $0, %cr8", "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
+    return CI;
+  }
   case X86::BI__builtin_ia32_encodekey128_u32: {
     Intrinsic::ID IID = Intrinsic::x86_encodekey128;
 
