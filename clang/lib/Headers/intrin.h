@@ -121,11 +121,11 @@ unsigned __int64 __ull_rshift(unsigned __int64, int);
 void __vmx_off(void);
 void __vmx_vmptrst(unsigned __int64 *);
 void __wbinvd(void);
-void __writecr0(unsigned __int64);
+void __writecr0(unsigned __LPTRINT_TYPE__);
 void __writecr2(unsigned __LPTRINT_TYPE__);
-void __writecr3(unsigned __int64);
-void __writecr4(unsigned __int64);
-void __writecr8(unsigned __int64);
+void __writecr3(unsigned __LPTRINT_TYPE__);
+void __writecr4(unsigned __LPTRINT_TYPE__);
+void __writecr8(unsigned __LPTRINT_TYPE__);
 void __writedr(unsigned int, __LPTRINT_TYPE__);
 void __writefsbyte(unsigned long, unsigned char);
 void __writefsdword(unsigned long, unsigned long);
@@ -572,11 +572,6 @@ __readmsr(unsigned long __register) {
 }
 #endif
   
-static __inline__ void __DEFAULT_FN_ATTRS
-__writecr3(unsigned __INTPTR_TYPE__ __cr3_val) {
-  __asm__ ("mov {%0, %%cr3|cr3, %0}" : : "r"(__cr3_val) : "memory");
-}
-
 #ifdef __cplusplus
 }
 #endif
