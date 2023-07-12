@@ -126,7 +126,7 @@ void __writecr2(unsigned __LPTRINT_TYPE__);
 void __writecr3(unsigned __LPTRINT_TYPE__);
 void __writecr4(unsigned __LPTRINT_TYPE__);
 void __writecr8(unsigned __LPTRINT_TYPE__);
-void __writedr(unsigned int, __LPTRINT_TYPE__);
+void __writedr(unsigned int, unsigned __LPTRINT_TYPE__);
 void __writefsbyte(unsigned long, unsigned char);
 void __writefsdword(unsigned long, unsigned long);
 void __writefsqword(unsigned long, unsigned __int64);
