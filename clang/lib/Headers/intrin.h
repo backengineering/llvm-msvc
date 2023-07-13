@@ -38,8 +38,10 @@
 
 #if defined(__x86_64__) || defined(_WIN64) || defined(_AMD64_)
 #define __LPTRINT_TYPE__ __int64
+#define __LPTRINT_TYPE__INT __int64
 #else
 #define __LPTRINT_TYPE__ long
+#define __LPTRINT_TYPE__INT int
 #endif
 
 #ifdef __cplusplus
@@ -95,7 +97,7 @@ unsigned __LPTRINT_TYPE__ __readcr2(void);
 unsigned __LPTRINT_TYPE__ __readcr3(void);
 unsigned __LPTRINT_TYPE__ __readcr4(void);
 unsigned __LPTRINT_TYPE__ __readcr8(void);
-unsigned __LPTRINT_TYPE__ __readdr(unsigned int);
+unsigned __LPTRINT_TYPE__INT __readdr(unsigned int);
 #ifdef __i386__
 unsigned char __readfsbyte(unsigned long);
 unsigned short __readfsword(unsigned long);
@@ -121,12 +123,12 @@ unsigned __int64 __ull_rshift(unsigned __int64, int);
 void __vmx_off(void);
 void __vmx_vmptrst(unsigned __int64 *);
 void __wbinvd(void);
-void __writecr0(unsigned __LPTRINT_TYPE__);
-void __writecr2(unsigned __LPTRINT_TYPE__);
-void __writecr3(unsigned __LPTRINT_TYPE__);
-void __writecr4(unsigned __LPTRINT_TYPE__);
-void __writecr8(unsigned __LPTRINT_TYPE__);
-void __writedr(unsigned int, unsigned __LPTRINT_TYPE__);
+void __writecr0(unsigned __LPTRINT_TYPE__INT);
+void __writecr2(unsigned __LPTRINT_TYPE__INT);
+void __writecr3(unsigned __LPTRINT_TYPE__INT);
+void __writecr4(unsigned __LPTRINT_TYPE__INT);
+void __writecr8(unsigned __LPTRINT_TYPE__INT);
+void __writedr(unsigned int, unsigned __LPTRINT_TYPE__INT);
 void __writefsbyte(unsigned long, unsigned char);
 void __writefsdword(unsigned long, unsigned long);
 void __writefsqword(unsigned long, unsigned __int64);
@@ -557,19 +559,7 @@ unsigned __int64 __readx18qword(unsigned long offset);
 |* Privileged intrinsics
 \*----------------------------------------------------------------------------*/
 #if defined(__i386__) || defined(__x86_64__)
-static __inline__ unsigned __int64 __DEFAULT_FN_ATTRS
-__readmsr(unsigned long __register) {
-  // Loads the contents of a 64-bit model specific register (MSR) specified in
-  // the ECX register into registers EDX:EAX. The EDX register is loaded with
-  // the high-order 32 bits of the MSR and the EAX register is loaded with the
-  // low-order 32 bits. If less than 64 bits are implemented in the MSR being
-  // read, the values returned to EDX:EAX in unimplemented bit locations are
-  // undefined.
-  unsigned long __edx;
-  unsigned long __eax;
-  __asm__ ("rdmsr" : "=d"(__edx), "=a"(__eax) : "c"(__register));
-  return (((unsigned __int64)__edx) << 32) | (unsigned __int64)__eax;
-}
+
 #endif
   
 #ifdef __cplusplus
@@ -577,6 +567,7 @@ __readmsr(unsigned long __register) {
 #endif
 
 #undef __LPTRINT_TYPE__
+#undef __LPTRINT_TYPE__INT
 
 #undef __DEFAULT_FN_ATTRS
 
