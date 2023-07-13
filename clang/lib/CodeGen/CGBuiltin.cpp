@@ -16026,6 +16026,22 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return CI;
   }
+  case X86::BI_disable: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "cli", "~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA);
+    return CI;
+  }
+  case X86::BI_enable: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "sti", "~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA);
+    return CI;
+  }
   case X86::BI__builtin_ia32_encodekey128_u32: {
     Intrinsic::ID IID = Intrinsic::x86_encodekey128;
 
