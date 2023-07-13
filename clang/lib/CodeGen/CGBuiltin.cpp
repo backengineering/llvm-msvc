@@ -15993,6 +15993,39 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     }
     return Builder.CreateCall(F, {Ops[0], Ops[1]});
   }
+  case X86::BI__readmsr: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int32Ty, Int32Ty}, Int32Ty),
+        false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "rdmsr", "={dx},={ax},{cx},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
+    auto EDX = Builder.CreateExtractValue(CI, 0);
+    auto EAX = Builder.CreateExtractValue(CI, 1);
+    auto RDX = Builder.CreateZExt(EDX, Int64Ty);
+    auto LeftRDX = Builder.CreateShl(RDX, Builder.getInt64(32), "", true);
+    auto RightRAX = Builder.CreateZExt(EAX, Int64Ty);
+    return Builder.CreateOr(LeftRDX, RightRAX);
+  }
+  case X86::BI__writemsr: {
+    llvm::FunctionType *FTy =
+        llvm::FunctionType::get(VoidTy, {Int64Ty, Int64Ty, Int32Ty}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "wrmsr", "{ax},{dx},{cx},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    auto EDX = Builder.CreateLShr(Ops[1], Builder.getInt64(32), "");
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[1], EDX, Ops[0]});
+    return CI;
+  }
+  case X86::BI__readpmc: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(Int64Ty, Int32Ty, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "rdpmc", "=A,{cx},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
+    return CI;
+  }
   case X86::BI__builtin_ia32_encodekey128_u32: {
     Intrinsic::ID IID = Intrinsic::x86_encodekey128;
 
