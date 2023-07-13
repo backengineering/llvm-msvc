@@ -22,7 +22,7 @@ let SchedRW = [WriteSystem] in {
 let usesCustomInserter = 1 in
 def XBEGIN : I<0, Pseudo, (outs GR32:$dst), (ins),
                "# XBEGIN", [(set GR32:$dst, (int_x86_xbegin))]>,
-             Requires<[HasRTM]>;
+             Requires<[]>;
 
 let isBranch = 1, isTerminator = 1, Defs = [EAX] in {
 def XBEGIN_2 : Ii16PCRel<0xc7, MRM_F8, (outs), (ins brtarget16:$dst),
@@ -37,15 +37,15 @@ def XABORT_DEF : I<0, Pseudo, (outs), (ins), "# XABORT DEF", []>;
 }
 
 def XEND : I<0x01, MRM_D5, (outs), (ins),
-             "xend", [(int_x86_xend)]>, PS, Requires<[HasRTM]>;
+             "xend", [(int_x86_xend)]>, PS, Requires<[]>;
 
 let Defs = [EFLAGS] in
 def XTEST : I<0x01, MRM_D6, (outs), (ins),
-              "xtest", [(set EFLAGS, (X86xtest))]>, PS, Requires<[HasRTM]>;
+              "xtest", [(set EFLAGS, (X86xtest))]>, PS, Requires<[]>;
 
 def XABORT : Ii8<0xc6, MRM_F8, (outs), (ins i8imm:$imm),
                  "xabort\t$imm",
-                 [(int_x86_xabort timm:$imm)]>, Requires<[HasRTM]>;
+                 [(int_x86_xabort timm:$imm)]>, Requires<[]>;
 } // SchedRW
 
 // HLE prefixes
