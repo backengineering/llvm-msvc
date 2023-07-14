@@ -16076,6 +16076,13 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::CallInst *CI = Builder.CreateCall(IA, ConstantInt::get(Int32Ty, -1));
     return CI;
   }
+  case X86::BI_xabort: {
+    return Builder.CreateIntrinsic(VoidTy, llvm::Intrinsic::x86_xabort,
+                                   {Ops[0]});
+  }
+  case X86::BI_xtest: {
+    return Builder.CreateIntrinsic(Int8Ty, llvm::Intrinsic::x86_xtest, {});
+  }
   case X86::BI_xend: {
     llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, false);
     llvm::InlineAsm *IA = llvm::InlineAsm::get(
