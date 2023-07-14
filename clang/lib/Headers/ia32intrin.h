@@ -358,11 +358,11 @@ __rdpmc(int __A) {
   return __builtin_ia32_rdpmc(__A);
 }
 
-/* __rdtscp */
-static __inline__ unsigned long long __DEFAULT_FN_ATTRS
-__rdtscp(unsigned int *__A) {
-  return __builtin_ia32_rdtscp(__A);
-}
+// /* __rdtscp */
+// static __inline__ unsigned long long __DEFAULT_FN_ATTRS
+// __rdtscp(unsigned int *__A) {
+//   return __builtin_ia32_rdtscp(__A);
+// }
 
 #define _rdtsc() __rdtsc()
 
