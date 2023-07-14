@@ -373,11 +373,6 @@ _wbinvd(void) {
   __builtin_ia32_wbinvd();
 }
 
-static __inline__ void __DEFAULT_FN_ATTRS
-__wbinvd(void) {
-  __builtin_ia32_wbinvd();
-}
-
 static __inline__ unsigned char __DEFAULT_FN_ATTRS_CONSTEXPR
 __rolb(unsigned char __X, int __C) {
   return __builtin_rotateleft8(__X, __C);
