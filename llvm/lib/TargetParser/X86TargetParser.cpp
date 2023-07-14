@@ -690,6 +690,7 @@ void llvm::X86::getFeaturesForCPU(StringRef CPU,
   // Matches Microsoft's default support.
   Bits |= FeatureSSE3;
   Bits |= FeatureINVPCID;
+  Bits |= FeatureRTM;
 #endif
   
   // Add the string version of all set bits.
