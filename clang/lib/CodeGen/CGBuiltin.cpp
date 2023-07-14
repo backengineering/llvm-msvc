@@ -15625,6 +15625,32 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1], Ops[2]});
     return CI;
   }
+  case X86::BI__inbyte: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(Int8Ty, {Int16Ty}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "inb ${1:w}, ${0:b}", "={ax},N{dx},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
+    return CI;
+  }
+  case X86::BI__inword: {
+    llvm::FunctionType *FTy =
+        llvm::FunctionType::get(Int16Ty, {Int16Ty}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "inw ${1:w}, ${0:w}", "={ax},N{dx},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
+    return CI;
+  }
+  case X86::BI__indword: {
+    llvm::FunctionType *FTy =
+        llvm::FunctionType::get(Int32Ty, {Int16Ty}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "inl ${1:w}, ${0:k}", "={ax},N{dx},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
+    return CI;
+  }
   case X86::BI__ud2:
     // llvm.trap makes a ud2a instruction on x86.
     return EmitTrapCall(Intrinsic::trap);
@@ -16026,6 +16052,10 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return CI;
   }
+  case X86::BI__rdtscp: {
+    return Builder.CreateIntrinsic(Int64Ty, llvm::Intrinsic::x86_rdtscp,
+                                   {Ops[0]});
+  }
   case X86::BI_disable: {
     llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, false);
     llvm::InlineAsm *IA = llvm::InlineAsm::get(
@@ -16059,6 +16089,10 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
         /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return CI;
+  }
+  case X86::BI_invpcid: {
+    return Builder.CreateIntrinsic(VoidTy, llvm::Intrinsic::x86_invpcid,
+                                   {Ops[0], Ops[1]});
   }
   case X86::BI__wbinvd: {
     llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, false);
