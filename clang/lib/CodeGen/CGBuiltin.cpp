@@ -15651,6 +15651,39 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return CI;
   }
+  case X86::BI__inbytestring: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8PtrTy, Int32Ty}),
+        {Int16Ty, Int8PtrTy, Int32Ty}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "rep insb",
+        "={di},={cx},{dx},0,1,~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1], Ops[2]});
+    return CI;
+  }
+  case X86::BI__inwordstring: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8PtrTy, Int32Ty}),
+        {Int16Ty, Int16PtrTy, Int32Ty}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "rep insw",
+        "={di},={cx},{dx},0,1,~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1], Ops[2]});
+    return CI;
+  }
+  case X86::BI__indwordstring: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8PtrTy, Int32Ty}),
+        {Int16Ty, Int32PtrTy, Int32Ty}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "rep insl",
+        "={di},={cx},{dx},0,1,~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1], Ops[2]});
+    return CI;
+  }
   case X86::BI__ud2:
     // llvm.trap makes a ud2a instruction on x86.
     return EmitTrapCall(Intrinsic::trap);
