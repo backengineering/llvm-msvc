@@ -38,7 +38,7 @@
 //   __builtin_ia32_xend();
 // }
 
-#define _xabort(imm) __builtin_ia32_xabort((imm))
+// #define _xabort(imm) __builtin_ia32_xabort((imm))
 
 #undef __DEFAULT_FN_ATTRS
 
