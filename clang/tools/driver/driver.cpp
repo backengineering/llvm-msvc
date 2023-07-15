@@ -415,11 +415,10 @@ int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
   
   // [clang] Add print arguments
   if (HasPrintArgs) {
-    llvm::outs() << "llvm-msvc compiler arguments: ";
+    llvm::outs() << "llvm-msvc compiler arguments: \n";
     for (auto Arg : Args) {
-      llvm::outs() << Arg << " ";
+      llvm::outs() << "\"" << Arg << "\",\n";
     }
-    llvm::outs() << "\n";
   }
   
   if (Args.size() >= 2 && StringRef(Args[1]).startswith("-cc1")) {
