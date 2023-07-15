@@ -106,6 +106,9 @@ bool WaitInsert::runOnMachineFunction(MachineFunction &MF) {
       // Jump non X87 instruction.
       if (!X86::isX87Instruction(*MI))
         continue;
+      // Jump inline asm
+      if (MI->isInlineAsm())
+        continue;
       // If the instruction instruction neither has float exception nor is
       // a load/store instruction, or the instruction is x87 control
       // instruction, do not insert wait.
