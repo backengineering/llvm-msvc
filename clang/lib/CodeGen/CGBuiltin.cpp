@@ -16380,6 +16380,21 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return CI;
   }
+  case X86::BI__vmx_vmwrite: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}),
+        {SizeTy, SizeTy}, false);
+    llvm::InlineAsm *IA =
+        llvm::InlineAsm::get(FTy,
+                             "vmwrite $3, $2\n"
+                             "setz $0\n"
+                             "setb $1\n"
+                             "adc $1, $0\n",
+                             "={dl},={al},r,r,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1]});
+    return Builder.CreateExtractValue(CI, 0);
+  }
   case X86::BI__builtin_ia32_encodekey128_u32: {
     Intrinsic::ID IID = Intrinsic::x86_encodekey128;
 
