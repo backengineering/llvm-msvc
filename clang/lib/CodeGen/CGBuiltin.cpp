@@ -16222,15 +16222,15 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__readeflags: {
     return Builder.CreateIntrinsic(SizeTy,
                                    SizeTy->getBitWidth() == 32
-                                       ? llvm ::Intrinsic::x86_flags_read_u32
-                                       : llvm ::Intrinsic::x86_flags_read_u64,
+                                       ? llvm::Intrinsic::x86_flags_read_u32
+                                       : llvm::Intrinsic::x86_flags_read_u64,
                                    {});
   }
   case X86::BI__writeeflags: {
     return Builder.CreateIntrinsic(VoidTy,
                                    SizeTy->getBitWidth() == 32
-                                       ? llvm ::Intrinsic::x86_flags_write_u32
-                                       : llvm ::Intrinsic::x86_flags_write_u64,
+                                       ? llvm::Intrinsic::x86_flags_write_u32
+                                       : llvm::Intrinsic::x86_flags_write_u64,
                                    {Ops[0]});
   }
   case X86::BI__readmsr: {
