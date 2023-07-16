@@ -56,8 +56,6 @@
 #include <tuple>
 #include <regex>
 
-#include "IntrinsicRewrite.h"
-
 using namespace llvm;
 using namespace llvm::object;
 using namespace llvm::COFF;
@@ -2134,27 +2132,9 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
     if (std::optional<StringRef> path = findLibIfNew(arg->getValue()))
       enqueuePath(*path, false, false);
 
-  // Add intrinsic rewrite lib to windows driver
+  // Add libs to windows driver
   if (config->driver) {
-    size_t libSize = 0;
-    char *libBufPtr = nullptr;
-    if (config->machine == AMD64) {
-      // X64
-      libSize = sizeof(LLVMINTRINSICREWRITE_X64_LIB);
-      libBufPtr = (char *)LLVMINTRINSICREWRITE_X64_LIB;
-    } else if (config->machine == I386) {
-      // X86 TODO
-    } else {
-      // ARM TODO
-    }
-
-    if (libSize) {
-      auto buf = WritableMemoryBuffer::getNewUninitMemBuffer(libSize);
-      if (buf) {
-        memcpy(buf->getBufferStart(), libBufPtr, libSize);
-        ctx.driver.addBuffer(std::move(buf), false, false);
-      }
-    }
+    // TODO
   } else {
     // Add /defaultlib: "Psapi.lib"
     if (std::optional<StringRef> path = findLibIfNew("Psapi.lib"))
