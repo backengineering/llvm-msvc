@@ -16395,6 +16395,127 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1]});
     return Builder.CreateExtractValue(CI, 0);
   }
+  case X86::BI__vmx_vmread: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}),
+        {SizeTy, VoidTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy,
+        "vmread $2, $3\n"
+        "setz $0\n"
+        "setb $1\n"
+        "adc $1, $0\n",
+        "={dl},={al},r,+m,~{cc},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
+                                               : CharUnits::fromQuantity(8);
+    llvm::CallInst *CI = Builder.CreateCall(
+        IA,
+        {Ops[0], Builder.CreateLoad(Address(Ops[1], Ops[1]->getType(), CU))});
+    return Builder.CreateExtractValue(CI, 0);
+  }
+  case X86::BI__vmx_vmlaunch: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}), false);
+    llvm::InlineAsm *IA =
+        llvm::InlineAsm::get(FTy,
+                             "vmlaunch\n"
+                             "setz $0\n"
+                             "setb $1\n"
+                             "adc $1, $0\n",
+                             "={dl},={al},~{cc},~{dirflag},~{fpsr},~{flags}",
+                             /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA);
+    return Builder.CreateExtractValue(CI, 0);
+  }
+  case X86::BI__vmx_off: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, false);
+    llvm::InlineAsm *IA =
+        llvm::InlineAsm::get(FTy, "vmxoff", "~{dirflag},~{fpsr},~{flags}",
+                             /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA);
+    return CI;
+  }
+  case X86::BI__vmx_vmclear: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}), {VoidPtrTy},
+        false);
+    llvm::InlineAsm *IA =
+        llvm::InlineAsm::get(FTy,
+                             "vmclear $2\n"
+                             "setz $0\n"
+                             "setb $1\n"
+                             "adc $1, $0\n",
+                             "={dl},={al},+m,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             /*hasSideEffects=*/true);
+    CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
+                                               : CharUnits::fromQuantity(8);
+    llvm::CallInst *CI = Builder.CreateCall(
+        IA, {Builder.CreateLoad(Address(Ops[0], Ops[0]->getType(), CU))});
+    return Builder.CreateExtractValue(CI, 0);
+  }
+  case X86::BI__vmx_vmptrld: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}), {VoidPtrTy},
+        false);
+    llvm::InlineAsm *IA =
+        llvm::InlineAsm::get(FTy,
+                             "vmptrld $2\n"
+                             "setz $0\n"
+                             "setb $1\n"
+                             "adc $1, $0\n",
+                             "={dl},={al},+m,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             /*hasSideEffects=*/true);
+    CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
+                                               : CharUnits::fromQuantity(8);
+    llvm::CallInst *CI = Builder.CreateCall(
+        IA, {Builder.CreateLoad(Address(Ops[0], Ops[0]->getType(), CU))});
+    return Builder.CreateExtractValue(CI, 0);
+  }
+  case X86::BI__vmx_vmptrst: {
+    llvm::FunctionType *FTy =
+        llvm::FunctionType::get(VoidTy, {VoidPtrTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(FTy, "vmptrst $0",
+                                               "+m,~{dirflag},~{fpsr},~{flags}",
+                                               /*hasSideEffects=*/true);
+    CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
+                                               : CharUnits::fromQuantity(8);
+    llvm::CallInst *CI = Builder.CreateCall(
+        IA, {Builder.CreateLoad(Address(Ops[0], Ops[0]->getType(), CU))});
+    return CI;
+  }
+  case X86::BI__vmx_vmresume: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}), false);
+    llvm::InlineAsm *IA =
+        llvm::InlineAsm::get(FTy,
+                             "vmresume\n"
+                             "setz $0\n"
+                             "setb $1\n"
+                             "adc $1, $0\n",
+                             "={dl},={al},~{cc},~{dirflag},~{fpsr},~{flags}",
+                             /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA);
+    return Builder.CreateExtractValue(CI, 0);
+  }
+  case X86::BI__vmx_on: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}), {VoidPtrTy},
+        false);
+    llvm::InlineAsm *IA =
+        llvm::InlineAsm::get(FTy,
+                             "vmxon $2\n"
+                             "setz $0\n"
+                             "setb $1\n"
+                             "adc $1, $0\n",
+                             "={dl},={al},+m,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             /*hasSideEffects=*/true);
+    CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
+                                               : CharUnits::fromQuantity(8);
+    llvm::CallInst *CI = Builder.CreateCall(
+        IA, {Builder.CreateLoad(Address(Ops[0], Ops[0]->getType(), CU))});
+    return Builder.CreateExtractValue(CI, 0);
+  }
   case X86::BI__builtin_ia32_encodekey128_u32: {
     Intrinsic::ID IID = Intrinsic::x86_encodekey128;
 
