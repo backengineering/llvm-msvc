@@ -2196,6 +2196,14 @@ TARGET_HEADER_BUILTIN(_sgdt, "vv*", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
 TARGET_HEADER_BUILTIN(_lgdt, "vv*", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
 
 TARGET_HEADER_BUILTIN(__vmx_vmwrite, "Uczz", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
+TARGET_HEADER_BUILTIN(__vmx_vmread, "Uczz*", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
+TARGET_HEADER_BUILTIN(__vmx_vmlaunch, "Uc", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
+TARGET_HEADER_BUILTIN(__vmx_off, "v", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
+TARGET_HEADER_BUILTIN(__vmx_vmclear, "Ucz*", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
+TARGET_HEADER_BUILTIN(__vmx_vmptrld, "Ucz*", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
+TARGET_HEADER_BUILTIN(__vmx_vmptrst, "vz*", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
+TARGET_HEADER_BUILTIN(__vmx_vmresume, "Uc", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
+TARGET_HEADER_BUILTIN(__vmx_on, "Ucz*", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
 
 // AVX-NE-CONVERT
 TARGET_BUILTIN(__builtin_ia32_vbcstnebf162ps128, "V4fyC*", "nV:128:", "avxneconvert")
