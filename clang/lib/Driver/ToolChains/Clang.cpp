@@ -1181,23 +1181,30 @@ void Clang::AddPreprocessingOptions(Compilation &C, const JobAction &JA,
 
   // If we are compiling for a GPU target we want to override the system headers
   // with ones created by the 'libc' project if present.
-  // FIXME: We need to find a way to make these headers compatible with the
-  // host environment so they can be included from offloading languages. For now
-  // these are only active when targeting the GPU with cross-compilation.
   if (!Args.hasArg(options::OPT_nostdinc) &&
       !Args.hasArg(options::OPT_nogpuinc) &&
       !Args.hasArg(options::OPT_nobuiltininc) &&
-      C.getActiveOffloadKinds() == Action::OFK_None &&
       (getToolChain().getTriple().isNVPTX() ||
        getToolChain().getTriple().isAMDGCN())) {
 
-      // Add include/gpu-none-libc/* to our system include path. This lets us use
-      // GPU-specific system headers first.
+    // Without an offloading language we will include these headers directly.
+    // Offloading languages will instead only use the declarations stored in
+    // the resource directory at clang/lib/Headers/llvm_libc_wrappers.
+    if (C.getActiveOffloadKinds() == Action::OFK_None) {
       SmallString<128> P(llvm::sys::path::parent_path(D.InstalledDir));
       llvm::sys::path::append(P, "include");
       llvm::sys::path::append(P, "gpu-none-llvm");
       CmdArgs.push_back("-c-isystem");
       CmdArgs.push_back(Args.MakeArgString(P));
+    } else if (C.getActiveOffloadKinds() == Action::OFK_OpenMP) {
+      // TODO: CUDA / HIP include their own headers for some common functions
+      // implemented here. We'll need to clean those up so they do not conflict.
+      SmallString<128> P(D.ResourceDir);
+      llvm::sys::path::append(P, "include");
+      llvm::sys::path::append(P, "llvm_libc_wrappers");
+      CmdArgs.push_back("-internal-isystem");
+      CmdArgs.push_back(Args.MakeArgString(P));
+    }
   }
 
   // If we are offloading to a target via OpenMP we need to include the
@@ -1304,6 +1311,9 @@ void Clang::AddPreprocessingOptions(Compilation &C, const JobAction &JA,
       continue;
     } else if (A->getOption().matches(options::OPT_stdlibxx_isystem)) {
       // Translated to -internal-isystem by the driver, no need to pass to cc1.
+      continue;
+    } else if (A->getOption().matches(options::OPT_ibuiltininc)) {
+      // This is used only by the driver. No need to pass to cc1.
       continue;
     }
 
@@ -4766,6 +4776,14 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // Select the appropriate action.
   RewriteKind rewriteKind = RK_None;
 
+  bool UnifiedLTO = false;
+  if (IsUsingLTO) {
+    UnifiedLTO = Args.hasFlag(options::OPT_funified_lto,
+                              options::OPT_fno_unified_lto, Triple.isPS());
+    if (UnifiedLTO)
+      CmdArgs.push_back("-funified-lto");
+  }
+
   // If CollectArgsForIntegratedAssembler() isn't called below, claim the args
   // it claims when not running an assembler. Otherwise, clang would emit
   // "argument unused" warnings for assembler flags when e.g. adding "-E" to
@@ -4910,7 +4928,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         assert(LTOMode == LTOK_Full || LTOMode == LTOK_Thin);
         CmdArgs.push_back(Args.MakeArgString(
             Twine("-flto=") + (LTOMode == LTOK_Thin ? "thin" : "full")));
-        CmdArgs.push_back("-flto-unit");
+        // PS4 uses the legacy LTO API, which does not support some of the
+        // features enabled by -flto-unit.
+        if (!RawTriple.isPS4() ||
+            (D.getLTOMode() == LTOK_Full) || !UnifiedLTO)
+          CmdArgs.push_back("-flto-unit");
       }
     }
   }
@@ -4935,6 +4957,18 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (MemProfArg &&
       !MemProfArg->getOption().matches(options::OPT_fno_memory_profile))
     MemProfArg->render(Args, CmdArgs);
+
+  if (auto *MemProfUseArg =
+          Args.getLastArg(options::OPT_fmemory_profile_use_EQ)) {
+    if (MemProfArg)
+      D.Diag(diag::err_drv_argument_not_allowed_with)
+          << MemProfUseArg->getAsString(Args) << MemProfArg->getAsString(Args);
+    if (auto *PGOInstrArg = Args.getLastArg(options::OPT_fprofile_generate,
+                                            options::OPT_fprofile_generate_EQ))
+      D.Diag(diag::err_drv_argument_not_allowed_with)
+          << MemProfUseArg->getAsString(Args) << PGOInstrArg->getAsString(Args);
+    MemProfUseArg->render(Args, CmdArgs);
+  }
 
   // Embed-bitcode option.
   // Only white-listed flags below are allowed to be embedded.
@@ -5300,7 +5334,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
           Triple.getArch() != llvm::Triple::x86_64)
         D.Diag(diag::err_drv_unsupported_opt_for_target)
             << Name << Triple.getArchName();
-    } else if (Name == "SLEEF") {
+    } else if (Name == "SLEEF" || Name == "ArmPL") {
       if (Triple.getArch() != llvm::Triple::aarch64 &&
           Triple.getArch() != llvm::Triple::aarch64_be)
         D.Diag(diag::err_drv_unsupported_opt_for_target)
@@ -7162,7 +7196,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   auto FRecordSwitches =
       Args.hasFlag(options::OPT_frecord_command_line,
                    options::OPT_fno_record_command_line, false);
-  if (FRecordSwitches && !Triple.isOSBinFormatELF())
+  if (FRecordSwitches && !Triple.isOSBinFormatELF() &&
+      !Triple.isOSBinFormatXCOFF())
     D.Diag(diag::err_drv_unsupported_opt_for_target)
         << Args.getLastArg(options::OPT_frecord_command_line)->getAsString(Args)
         << TripleStr;
@@ -7248,11 +7283,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   // OpenMP offloading device jobs take the argument -fopenmp-host-ir-file-path
   // to specify the result of the compile phase on the host, so the meaningful
-  // device declarations can be identified. Also, -fopenmp-is-device is passed
-  // along to tell the frontend that it is generating code for a device, so that
-  // only the relevant declarations are emitted.
+  // device declarations can be identified. Also, -fopenmp-is-target-device is
+  // passed along to tell the frontend that it is generating code for a device,
+  // so that only the relevant declarations are emitted.
   if (IsOpenMPDevice) {
-    CmdArgs.push_back("-fopenmp-is-device");
+    CmdArgs.push_back("-fopenmp-is-target-device");
     if (OpenMPDeviceInput) {
       CmdArgs.push_back("-fopenmp-host-ir-file-path");
       CmdArgs.push_back(Args.MakeArgString(OpenMPDeviceInput->getFilename()));
@@ -7305,22 +7340,30 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   if (WholeProgramVTables) {
-    // Propagate -fwhole-program-vtables if this is an LTO compile.
-    if (IsUsingLTO)
-      CmdArgs.push_back("-fwhole-program-vtables");
+    // PS4 uses the legacy LTO API, which does not support this feature in
+    // ThinLTO mode.
+    bool IsPS4 = getToolChain().getTriple().isPS4();
+
     // Check if we passed LTO options but they were suppressed because this is a
     // device offloading action, or we passed device offload LTO options which
     // were suppressed because this is not the device offload action.
+    // Check if we are using PS4 in regular LTO mode.
     // Otherwise, issue an error.
-    else if (!D.isUsingLTO(!IsDeviceOffloadAction))
+    if ((!IsUsingLTO && !D.isUsingLTO(!IsDeviceOffloadAction)) ||
+        (IsPS4 && !UnifiedLTO && (D.getLTOMode() != LTOK_Full)))
       D.Diag(diag::err_drv_argument_only_allowed_with)
           << "-fwhole-program-vtables"
-          << "-flto";
+          << ((IsPS4 && !UnifiedLTO) ? "-flto=full" : "-flto");
+
+    // Propagate -fwhole-program-vtables if this is an LTO compile.
+    if (IsUsingLTO)
+      CmdArgs.push_back("-fwhole-program-vtables");
   }
 
   bool DefaultsSplitLTOUnit =
-      (WholeProgramVTables || SanitizeArgs.needsLTO()) &&
-      (LTOMode == LTOK_Full || TC.canSplitThinLTOUnit());
+      ((WholeProgramVTables || SanitizeArgs.needsLTO()) &&
+          (LTOMode == LTOK_Full || TC.canSplitThinLTOUnit())) ||
+      (!Triple.isPS4() && UnifiedLTO);
   bool SplitLTOUnit =
       Args.hasFlag(options::OPT_fsplit_lto_unit,
                    options::OPT_fno_split_lto_unit, DefaultsSplitLTOUnit);
@@ -7329,6 +7372,22 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                                                     << "-fsanitize=cfi";
   if (SplitLTOUnit)
     CmdArgs.push_back("-fsplit-lto-unit");
+
+  if (Arg *A = Args.getLastArg(options::OPT_ffat_lto_objects,
+                               options::OPT_fno_fat_lto_objects)) {
+    if (IsUsingLTO && A->getOption().matches(options::OPT_ffat_lto_objects)) {
+      assert(LTOMode == LTOK_Full || LTOMode == LTOK_Thin);
+      if (!Triple.isOSBinFormatELF()) {
+        D.Diag(diag::err_drv_unsupported_opt_for_target)
+            << A->getAsString(Args) << TC.getTripleString();
+      }
+      CmdArgs.push_back(Args.MakeArgString(
+          Twine("-flto=") + (LTOMode == LTOK_Thin ? "thin" : "full")));
+      CmdArgs.push_back("-flto-unit");
+      CmdArgs.push_back("-ffat-lto-objects");
+      A->render(Args, CmdArgs);
+    }
+  }
 
   if (Arg *A = Args.getLastArg(options::OPT_fglobal_isel,
                                options::OPT_fno_global_isel)) {
@@ -7380,6 +7439,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   Args.addOptInFlag(CmdArgs, options::OPT_fkeep_static_consts,
                     options::OPT_fno_keep_static_consts);
+  Args.addOptInFlag(CmdArgs, options::OPT_fkeep_persistent_storage_variables,
+                    options::OPT_fno_keep_persistent_storage_variables);
   Args.addOptInFlag(CmdArgs, options::OPT_fcomplete_member_pointers,
                     options::OPT_fno_complete_member_pointers);
   Args.addOptOutFlag(CmdArgs, options::OPT_fcxx_static_destructors,

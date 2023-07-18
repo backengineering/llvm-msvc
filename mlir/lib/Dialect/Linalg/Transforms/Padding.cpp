@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/ValueBoundsOpInterface.h"
@@ -125,8 +126,17 @@ static FailureOr<Value> padOperandToSmallestStaticBoundingBox(
     return rewriter.notifyMatchFailure(opToPad, "--no padding value specified");
   }
   Attribute paddingAttr = options.paddingValues[opOperand->getOperandNumber()];
-  Value paddingValue = rewriter.create<arith::ConstantOp>(
-      opToPad.getLoc(), cast<TypedAttr>(paddingAttr));
+
+  Value paddingValue;
+  if (auto complexTy = dyn_cast<ComplexType>(
+          getElementTypeOrSelf(opOperand->get().getType()))) {
+    auto complexAttr = cast<ArrayAttr>(paddingAttr);
+    paddingValue = rewriter.create<complex::ConstantOp>(opToPad.getLoc(),
+                                                        complexTy, complexAttr);
+  } else {
+    paddingValue = rewriter.create<arith::ConstantOp>(
+        opToPad.getLoc(), cast<TypedAttr>(paddingAttr));
+  }
 
   // Pad the operand to the bounding box defined by `paddedShape`.
   auto paddedTensorType = RankedTensorType::get(
@@ -139,11 +149,23 @@ static FailureOr<Value> padOperandToSmallestStaticBoundingBox(
 
 LogicalResult
 linalg::rewriteAsPaddedOp(RewriterBase &rewriter, LinalgOp opToPad,
-                          const LinalgPaddingOptions &options,
+                          const LinalgPaddingOptions &constOptions,
                           LinalgOp &paddedOp, SmallVector<Value> &replacements,
                           SmallVector<tensor::PadOp> &padOps, bool copyBack) {
   LLVM_DEBUG(DBGS() << "Start rewriteAsPaddedOp : " << opToPad << "\n");
   Location loc = opToPad->getLoc();
+
+  LinalgPaddingOptions options(constOptions);
+  // Allow inference of pad values if they are not explicitly specified.
+  // TODO: be mindful about the value depending on the actual operation.
+  if (options.paddingValues.empty()) {
+    SmallVector<Type> types(opToPad->getOperandTypes());
+    llvm::append_range(types, opToPad->getResultTypes());
+    for (Type t : types) {
+      options.paddingValues.push_back(
+          rewriter.getZeroAttr(getElementTypeOrSelf(t)));
+    }
+  }
 
   // TODO: there are cases where we may still want to pad to larger sizes.
   if (!opToPad.hasTensorSemantics())

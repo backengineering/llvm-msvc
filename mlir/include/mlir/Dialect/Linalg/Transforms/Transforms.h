@@ -46,6 +46,14 @@ std::optional<vector::CombiningKind> getCombinerOpKind(Operation *combinerOp);
 // Bufferization-related transforms.
 //===----------------------------------------------------------------------===//
 
+struct BufferizeToAllocationOptions {
+  enum class AllocOp { MemrefAlloc = 0, MemrefAlloca = 1 };
+  AllocOp allocOp = AllocOp::MemrefAlloc;
+
+  enum class MemcpyOp { MemrefTensorStore = 0, MemrefCopy = 1, LinalgCopy = 2 };
+  MemcpyOp memcpyOp = MemcpyOp::MemrefTensorStore;
+};
+
 /// Materialize a buffer allocation for the given tensor.pad op and lower the
 /// op to linalg.fill/linalg.generic + memref.tensor_store. E.g.:
 ///
@@ -62,8 +70,9 @@ std::optional<vector::CombiningKind> getCombinerOpKind(Operation *combinerOp);
 /// In addition to rewriting the IR as shown above, this function returns the
 /// newly allocated buffer. The `insertionPoint` parameter can be used to
 /// specify a custom insertion point for the buffer allocation.
-Value bufferizeToAllocation(RewriterBase &rewriter, tensor::PadOp padOp,
-                            Attribute memorySpace = {},
+Value bufferizeToAllocation(RewriterBase &rewriter,
+                            const BufferizeToAllocationOptions &options,
+                            tensor::PadOp padOp, Attribute memorySpace = {},
                             Operation *insertionPoint = nullptr);
 
 /// Materialize a buffer allocation for the given vector.mask op and bufferize
@@ -85,8 +94,9 @@ Value bufferizeToAllocation(RewriterBase &rewriter, tensor::PadOp padOp,
 /// In addition to rewriting the IR as shown above, this function returns the
 /// newly allocated buffer. The `insertionPoint` parameter can be used to
 /// specify a custom insertion point for the buffer allocation.
-Value bufferizeToAllocation(RewriterBase &rewriter, vector::MaskOp maskOp,
-                            Attribute memorySpace = {},
+Value bufferizeToAllocation(RewriterBase &rewriter,
+                            const BufferizeToAllocationOptions &options,
+                            vector::MaskOp maskOp, Attribute memorySpace = {},
                             Operation *insertionPoint = nullptr);
 
 /// Bufferize the given op with tensor semantics and materialize the result in
@@ -105,8 +115,9 @@ Value bufferizeToAllocation(RewriterBase &rewriter, vector::MaskOp maskOp,
 /// This function returns the newly allocated buffer. The `insertionPoint`
 /// parameter can be used to specify a custom insertion point for the buffer
 /// allocation.
-Value bufferizeToAllocation(RewriterBase &rewriter, Operation *op,
-                            Attribute memorySpace = {},
+Value bufferizeToAllocation(RewriterBase &rewriter,
+                            const BufferizeToAllocationOptions &options,
+                            Operation *op, Attribute memorySpace = {},
                             Operation *insertionPoint = nullptr);
 
 /// Try to eliminate tensor::EmptyOps inside `op` that are anchored on a
@@ -1050,6 +1061,20 @@ FailureOr<PackTransposeResult>
 packTranspose(RewriterBase &rewriter, tensor::PackOp packOp,
               linalg::LinalgOp linalgOp, tensor::UnPackOp maybeUnPackOp,
               ArrayRef<int64_t> outerPerm, ArrayRef<int64_t> innerPerm);
+
+/// Pack a LinalgOp by greedily inferring matmul dimensions (m, n, k) where m
+/// and n are proper parallel dimensions and k is a proper reduction
+/// dimension. Packing occurs by rewriting the op as a linalg.generic and
+/// calling linalg::pack by `mnkPackedSizes`. The order of the packed
+/// dimensions is customizable: the `mnkOrder` is a permutation of {0, 1, 2}
+/// to reorder {m, n, k} into one of the 8 possible forms. The outer
+/// dimensions of the operands are not permuted at this time, this is left for
+/// future work.
+FailureOr<PackResult>
+packMatmulGreedily(RewriterBase &rewriter, LinalgOp linalgOp,
+                   ArrayRef<OpFoldResult> mnkPackedSizes,
+                   ArrayRef<int64_t> mnkPaddedSizesNextMultipleOf,
+                   ArrayRef<int64_t> mnkOrder);
 
 /// Rewrite tensor.from_elements to linalg.generic.
 FailureOr<Operation *>

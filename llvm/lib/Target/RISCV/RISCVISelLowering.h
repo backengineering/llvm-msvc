@@ -128,6 +128,13 @@ enum NodeType : unsigned {
   ORC_B,
   ZIP,
   UNZIP,
+
+  // Scalar cryptography
+  CLMUL, CLMULH, CLMULR,
+  SHA256SIG0, SHA256SIG1, SHA256SUM0, SHA256SUM1,
+  SM4KS, SM4ED,
+  SM3P0, SM3P1,
+
   // Vector Extension
   // VMV_V_V_VL matches the semantics of vmv.v.v but includes an extra operand
   // for the VL value to be used for the operation. The first operand is
@@ -226,6 +233,12 @@ enum NodeType : unsigned {
   SMAX_VL,
   UMIN_VL,
   UMAX_VL,
+
+  BITREVERSE_VL,
+  BSWAP_VL,
+  CTLZ_VL,
+  CTTZ_VL,
+  CTPOP_VL,
 
   SADDSAT_VL,
   UADDSAT_VL,
@@ -355,6 +368,11 @@ enum NodeType : unsigned {
   // required CSR and the third is the value to write. Two results are produced,
   // the value read before the modification and the new chain pointer.
   SWAP_CSR,
+
+  // Branchless select operations, matching the semantics of the instructions
+  // defined in zicond.
+  CZERO_EQZ,
+  CZERO_NEZ,
 
   // FP to 32 bit int conversions for RV64. These are used to keep track of the
   // result being sign extended to 64 bit. These saturate out of range inputs.
@@ -742,7 +760,8 @@ public:
 
   /// Returns whether or not generating a interleaved load/store intrinsic for
   /// this type will be legal.
-  bool isLegalInterleavedAccessType(VectorType *, unsigned Factor,
+  bool isLegalInterleavedAccessType(VectorType *VTy, unsigned Factor,
+                                    Align Alignment, unsigned AddrSpace,
                                     const DataLayout &) const;
 
   /// Return true if a stride load store of the given result type and

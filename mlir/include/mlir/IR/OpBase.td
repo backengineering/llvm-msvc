@@ -570,6 +570,8 @@ def F128 : F<128>;
 
 def BF16 : Type<CPred<"$_self.isBF16()">, "bfloat16 type">,
            BuildableType<"$_builder.getBF16Type()">;
+def TF32 : Type<CPred<"$_self.isTF32()">, "tf32 type">,
+           BuildableType<"$_builder.getTF32Type()">;
 def F8E4M3FN : Type<CPred<"$_self.isFloat8E4M3FN()">, "f8E4M3FN type">,
                BuildableType<"$_builder.getFloat8E4M3FNType()">;
 def F8E5M2 : Type<CPred<"$_self.isFloat8E5M2()">, "f8E5M2 type">,
@@ -1804,6 +1806,10 @@ class AllAttrOf<list<AttrConstraint> constraints> : AttrConstraint<
     !interleave(!foreach(con, constraints, con.summary), " and ")> {
 }
 
+class IntNEQValue<int n> : AttrConstraint<
+    CPred<"::llvm::cast<::mlir::IntegerAttr>($_self).getInt() != " # n>,
+    "whose minimum value is " # n>;
+
 class IntMinValue<int n> : AttrConstraint<
     CPred<"::llvm::cast<::mlir::IntegerAttr>($_self).getInt() >= " # n>,
     "whose minimum value is " # n>;
@@ -1956,9 +1962,16 @@ class TraitList<list<Trait> props> : Trait {
 // NativeTrait corresponds to the MLIR C++ trait mechanism. The purpose to wrap
 // around C++ symbol string with this class is to make traits specified for
 // entities in TableGen less alien and more integrated.
-class NativeTrait<string name, string entityType> : Trait {
+// `extraConcreteClassDeclaration` and `extraConcreteClassDefinition` code
+// get injected into the entities in which the NativeTrait is specified for.
+class NativeTrait<string name, string entityType,
+                    code extraClassDeclaration = [{}],
+                    code extraClassDefinition = [{}]> : Trait {
   string trait = name;
   string cppNamespace = "::mlir::" # entityType # "Trait";
+
+  code extraConcreteClassDeclaration = extraClassDeclaration;
+  code extraConcreteClassDefinition = extraClassDefinition;
 }
 
 // ParamNativeTrait corresponds to the template-parameterized traits in the C++
@@ -1991,8 +2004,13 @@ class PredTrait<string descr, Pred pred> : Trait {
 class StructuralOpTrait;
 
 // These classes are used to define operation specific traits.
-class NativeOpTrait<string name, list<Trait> traits = []>
-    : NativeTrait<name, "Op"> {
+
+// Specify op specific declarations and definitions in `extraOpDeclaration`
+// and `extraOpDefinition` template arguments.
+class NativeOpTrait<string name, list<Trait> traits = [],
+                    code extraOpDeclaration = [{}],
+                    code extraOpDefinition = [{}]>
+    : NativeTrait<name, "Op", extraOpDeclaration, extraOpDefinition> {
   // Specify the list of traits that need to be verified before the verification
   // of this NativeOpTrait.
   list<Trait> dependentTraits = traits;

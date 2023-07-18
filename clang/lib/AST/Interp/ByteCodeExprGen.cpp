@@ -1610,14 +1610,13 @@ bool ByteCodeExprGen<Emitter>::visitExpr(const Expr *Exp) {
 template <class Emitter>
 bool ByteCodeExprGen<Emitter>::visitDecl(const VarDecl *VD) {
   assert(!VD->isInvalidDecl() && "Trying to constant evaluate an invalid decl");
-  std::optional<PrimType> VarT = classify(VD->getType());
 
   // Create and initialize the variable.
   if (!this->visitVarDecl(VD))
     return false;
 
   // Get a pointer to the variable
-  if (shouldBeGloballyIndexed(VD)) {
+  if (Context::shouldBeGloballyIndexed(VD)) {
     auto GlobalIndex = P.getGlobal(VD);
     assert(GlobalIndex); // visitVarDecl() didn't return false.
     if (!this->emitGetPtrGlobal(*GlobalIndex, VD))
@@ -1630,7 +1629,7 @@ bool ByteCodeExprGen<Emitter>::visitDecl(const VarDecl *VD) {
   }
 
   // Return the value
-  if (VarT) {
+  if (std::optional<PrimType> VarT = classify(VD->getType())) {
     if (!this->emitLoadPop(*VarT, VD))
       return false;
 
@@ -1649,7 +1648,7 @@ bool ByteCodeExprGen<Emitter>::visitVarDecl(const VarDecl *VD) {
   const Expr *Init = VD->getInit();
   std::optional<PrimType> VarT = classify(VD->getType());
 
-  if (shouldBeGloballyIndexed(VD)) {
+  if (Context::shouldBeGloballyIndexed(VD)) {
     // We've already seen and initialized this global.
     if (P.getGlobal(VD))
       return true;

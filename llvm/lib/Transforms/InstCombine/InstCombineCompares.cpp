@@ -1945,6 +1945,59 @@ Instruction *InstCombinerImpl::foldICmpAndConstant(ICmpInst &Cmp,
   return nullptr;
 }
 
+/// Fold icmp eq/ne (or (xor (X1, X2), xor(X3, X4))), 0.
+static Value *foldICmpOrXorChain(ICmpInst &Cmp, BinaryOperator *Or,
+                                 InstCombiner::BuilderTy &Builder) {
+  // Are we using xors to bitwise check for a pair or pairs of (in)equalities?
+  // Convert to a shorter form that has more potential to be folded even
+  // further.
+  // ((X1 ^ X2) || (X3 ^ X4)) == 0 --> (X1 == X2) && (X3 == X4)
+  // ((X1 ^ X2) || (X3 ^ X4)) != 0 --> (X1 != X2) || (X3 != X4)
+  // ((X1 ^ X2) || (X3 ^ X4) || (X5 ^ X6)) == 0 -->
+  // (X1 == X2) && (X3 == X4) && (X5 == X6)
+  // ((X1 ^ X2) || (X3 ^ X4) || (X5 ^ X6)) != 0 -->
+  // (X1 != X2) || (X3 != X4) || (X5 != X6)
+  // TODO: Implement for sub
+  SmallVector<std::pair<Value *, Value *>, 2> CmpValues;
+  SmallVector<Value *, 16> WorkList(1, Or);
+
+  while (!WorkList.empty()) {
+    auto MatchOrOperatorArgument = [&](Value *OrOperatorArgument) {
+      Value *Lhs, *Rhs;
+
+      if (match(OrOperatorArgument,
+                m_OneUse(m_Xor(m_Value(Lhs), m_Value(Rhs))))) {
+        CmpValues.emplace_back(Lhs, Rhs);
+      } else {
+        WorkList.push_back(OrOperatorArgument);
+      }
+    };
+
+    Value *CurrentValue = WorkList.pop_back_val();
+    Value *OrOperatorLhs, *OrOperatorRhs;
+
+    if (!match(CurrentValue,
+               m_Or(m_Value(OrOperatorLhs), m_Value(OrOperatorRhs)))) {
+      return nullptr;
+    }
+
+    MatchOrOperatorArgument(OrOperatorRhs);
+    MatchOrOperatorArgument(OrOperatorLhs);
+  }
+
+  ICmpInst::Predicate Pred = Cmp.getPredicate();
+  auto BOpc = Pred == CmpInst::ICMP_EQ ? Instruction::And : Instruction::Or;
+  Value *LhsCmp = Builder.CreateICmp(Pred, CmpValues.rbegin()->first,
+                                     CmpValues.rbegin()->second);
+
+  for (auto It = CmpValues.rbegin() + 1; It != CmpValues.rend(); ++It) {
+    Value *RhsCmp = Builder.CreateICmp(Pred, It->first, It->second);
+    LhsCmp = Builder.CreateBinOp(BOpc, LhsCmp, RhsCmp);
+  }
+
+  return LhsCmp;
+}
+
 /// Fold icmp (or X, Y), C.
 Instruction *InstCombinerImpl::foldICmpOrConstant(ICmpInst &Cmp,
                                                   BinaryOperator *Or,
@@ -2030,18 +2083,8 @@ Instruction *InstCombinerImpl::foldICmpOrConstant(ICmpInst &Cmp,
     return BinaryOperator::Create(BOpc, CmpP, CmpQ);
   }
 
-  // Are we using xors to bitwise check for a pair of (in)equalities? Convert to
-  // a shorter form that has more potential to be folded even further.
-  Value *X1, *X2, *X3, *X4;
-  if (match(OrOp0, m_OneUse(m_Xor(m_Value(X1), m_Value(X2)))) &&
-      match(OrOp1, m_OneUse(m_Xor(m_Value(X3), m_Value(X4))))) {
-    // ((X1 ^ X2) || (X3 ^ X4)) == 0 --> (X1 == X2) && (X3 == X4)
-    // ((X1 ^ X2) || (X3 ^ X4)) != 0 --> (X1 != X2) || (X3 != X4)
-    Value *Cmp12 = Builder.CreateICmp(Pred, X1, X2);
-    Value *Cmp34 = Builder.CreateICmp(Pred, X3, X4);
-    auto BOpc = Pred == CmpInst::ICMP_EQ ? Instruction::And : Instruction::Or;
-    return BinaryOperator::Create(BOpc, Cmp12, Cmp34);
-  }
+  if (Value *V = foldICmpOrXorChain(Cmp, Or, Builder))
+    return replaceInstUsesWith(Cmp, V);
 
   return nullptr;
 }
@@ -3323,7 +3366,29 @@ Instruction *InstCombinerImpl::foldICmpBinOpEqualityWithConstant(
     break;
   }
   case Instruction::UDiv:
-    if (C.isZero()) {
+  case Instruction::SDiv:
+    if (BO->isExact()) {
+      // div exact X, Y eq/ne 0 -> X eq/ne 0
+      // div exact X, Y eq/ne 1 -> X eq/ne Y
+      // div exact X, Y eq/ne C ->
+      //    if Y * C never-overflow && OneUse:
+      //      -> Y * C eq/ne X
+      if (C.isZero())
+        return new ICmpInst(Pred, BOp0, Constant::getNullValue(BO->getType()));
+      else if (C.isOne())
+        return new ICmpInst(Pred, BOp0, BOp1);
+      else if (BO->hasOneUse()) {
+        OverflowResult OR = computeOverflow(
+            Instruction::Mul, BO->getOpcode() == Instruction::SDiv, BOp1,
+            Cmp.getOperand(1), BO);
+        if (OR == OverflowResult::NeverOverflows) {
+          Value *YC =
+              Builder.CreateMul(BOp1, ConstantInt::get(BO->getType(), C));
+          return new ICmpInst(Pred, YC, BOp0);
+        }
+      }
+    }
+    if (BO->getOpcode() == Instruction::UDiv && C.isZero()) {
       // (icmp eq/ne (udiv A, B), 0) -> (icmp ugt/ule i32 B, A)
       auto NewPred = isICMP_NE ? ICmpInst::ICMP_ULE : ICmpInst::ICMP_UGT;
       return new ICmpInst(NewPred, BOp1, BOp0);
@@ -3580,48 +3645,73 @@ Instruction *InstCombinerImpl::foldICmpBinOpWithConstant(ICmpInst &Cmp,
 }
 
 static Instruction *
-foldICmpUSubSatWithConstant(ICmpInst::Predicate Pred, IntrinsicInst *II,
-                            const APInt &C, InstCombiner::BuilderTy &Builder) {
+foldICmpUSubSatOrUAddSatWithConstant(ICmpInst::Predicate Pred,
+                                     SaturatingInst *II, const APInt &C,
+                                     InstCombiner::BuilderTy &Builder) {
   // This transform may end up producing more than one instruction for the
   // intrinsic, so limit it to one user of the intrinsic.
   if (!II->hasOneUse())
     return nullptr;
 
-  // Let Y = usub_sat(X, C) pred C2
-  //  => Y = (X < C ? 0 : (X - C)) pred C2
-  //  => Y = (X < C) ? (0 pred C2) : ((X - C) pred C2)
+  // Let Y        = [add/sub]_sat(X, C) pred C2
+  //     SatVal   = The saturating value for the operation
+  //     WillWrap = Whether or not the operation will underflow / overflow
+  // => Y = (WillWrap ? SatVal : (X binop C)) pred C2
+  // => Y = WillWrap ? (SatVal pred C2) : ((X binop C) pred C2)
   //
-  // When (0 pred C2) is true, then
-  //    Y = (X < C) ? true : ((X - C) pred C2)
-  // => Y = (X < C) || ((X - C) pred C2)
+  // When (SatVal pred C2) is true, then
+  //    Y = WillWrap ? true : ((X binop C) pred C2)
+  // => Y = WillWrap || ((X binop C) pred C2)
   // else
-  //    Y = (X < C) ? false : ((X - C) pred C2)
-  // => Y = !(X < C) && ((X - C) pred C2)
-  // => Y = (X >= C) && ((X - C) pred C2)
+  //    Y =  WillWrap ? false : ((X binop C) pred C2)
+  // => Y = !WillWrap ?  ((X binop C) pred C2) : false
+  // => Y = !WillWrap && ((X binop C) pred C2)
   Value *Op0 = II->getOperand(0);
   Value *Op1 = II->getOperand(1);
 
-  // Check (0 pred C2)
-  auto [NewPred, LogicalOp] =
-      ICmpInst::compare(APInt::getZero(C.getBitWidth()), C, Pred)
-          ? std::make_pair(ICmpInst::ICMP_ULT, Instruction::BinaryOps::Or)
-          : std::make_pair(ICmpInst::ICMP_UGE, Instruction::BinaryOps::And);
-
   const APInt *COp1;
-  // This transform only works when the usub_sat has an integral constant or
+  // This transform only works when the intrinsic has an integral constant or
   // splat vector as the second operand.
   if (!match(Op1, m_APInt(COp1)))
     return nullptr;
 
-  ConstantRange C1 = ConstantRange::makeExactICmpRegion(NewPred, *COp1);
-  // Convert '(X - C) pred C2' into 'X pred C2' shifted by C.
+  APInt SatVal;
+  switch (II->getIntrinsicID()) {
+  default:
+    llvm_unreachable(
+        "This function only works with usub_sat and uadd_sat for now!");
+  case Intrinsic::uadd_sat:
+    SatVal = APInt::getAllOnes(C.getBitWidth());
+    break;
+  case Intrinsic::usub_sat:
+    SatVal = APInt::getZero(C.getBitWidth());
+    break;
+  }
+
+  // Check (SatVal pred C2)
+  bool SatValCheck = ICmpInst::compare(SatVal, C, Pred);
+
+  // !WillWrap.
+  ConstantRange C1 = ConstantRange::makeExactNoWrapRegion(
+      II->getBinaryOp(), *COp1, II->getNoWrapKind());
+
+  // WillWrap.
+  if (SatValCheck)
+    C1 = C1.inverse();
+
   ConstantRange C2 = ConstantRange::makeExactICmpRegion(Pred, C);
-  C2 = C2.add(*COp1);
+  if (II->getBinaryOp() == Instruction::Add)
+    C2 = C2.sub(*COp1);
+  else
+    C2 = C2.add(*COp1);
+
+  Instruction::BinaryOps CombiningOp =
+      SatValCheck ? Instruction::BinaryOps::Or : Instruction::BinaryOps::And;
 
   std::optional<ConstantRange> Combination;
-  if (LogicalOp == Instruction::BinaryOps::Or)
+  if (CombiningOp == Instruction::BinaryOps::Or)
     Combination = C1.exactUnionWith(C2);
-  else /* LogicalOp == Instruction::BinaryOps::And */
+  else /* CombiningOp == Instruction::BinaryOps::And */
     Combination = C1.exactIntersectWith(C2);
 
   if (!Combination)
@@ -3649,8 +3739,10 @@ Instruction *InstCombinerImpl::foldICmpIntrinsicWithConstant(ICmpInst &Cmp,
   switch (II->getIntrinsicID()) {
   default:
     break;
+  case Intrinsic::uadd_sat:
   case Intrinsic::usub_sat:
-    if (auto *Folded = foldICmpUSubSatWithConstant(Pred, II, C, Builder))
+    if (auto *Folded = foldICmpUSubSatOrUAddSatWithConstant(
+            Pred, cast<SaturatingInst>(II), C, Builder))
       return Folded;
     break;
   }
@@ -5233,10 +5325,19 @@ Instruction *InstCombinerImpl::foldICmpWithZextOrSext(ICmpInst &ICmp) {
     bool IsZext0 = isa<ZExtOperator>(ICmp.getOperand(0));
     bool IsZext1 = isa<ZExtOperator>(ICmp.getOperand(1));
 
-    // If we have mismatched casts, treat the zext of a non-negative source as
-    // a sext to simulate matching casts. Otherwise, we are done.
-    // TODO: Can we handle some predicates (equality) without non-negative?
     if (IsZext0 != IsZext1) {
+        // If X and Y and both i1
+        // (icmp eq/ne (zext X) (sext Y))
+        //      eq -> (icmp eq (or X, Y), 0)
+        //      ne -> (icmp ne (or X, Y), 0)
+      if (ICmp.isEquality() && X->getType()->isIntOrIntVectorTy(1) &&
+          Y->getType()->isIntOrIntVectorTy(1))
+        return new ICmpInst(ICmp.getPredicate(), Builder.CreateOr(X, Y),
+                            Constant::getNullValue(X->getType()));
+
+      // If we have mismatched casts, treat the zext of a non-negative source as
+      // a sext to simulate matching casts. Otherwise, we are done.
+      // TODO: Can we handle some predicates (equality) without non-negative?
       if ((IsZext0 && isKnownNonNegative(X, DL, 0, &AC, &ICmp, &DT)) ||
           (IsZext1 && isKnownNonNegative(Y, DL, 0, &AC, &ICmp, &DT)))
         IsSignedExt = true;

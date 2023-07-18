@@ -215,6 +215,7 @@ libcxx/include/__format/formatter_pointer.h
 libcxx/include/__format/formatter_string.h
 libcxx/include/__format/parser_std_format_spec.h
 libcxx/include/__format/unicode.h
+libcxx/include/__format/write_escaped.h
 libcxx/include/forward_list
 libcxx/include/fstream
 libcxx/include/__functional/binary_function.h
@@ -551,6 +552,7 @@ libcxx/src/mutex.cpp
 libcxx/src/mutex_destructor.cpp
 libcxx/src/new.cpp
 libcxx/src/optional.cpp
+libcxx/src/pstl/libdispatch.cpp
 libcxx/src/random.cpp
 libcxx/src/random_shuffle.cpp
 libcxx/src/regex.cpp

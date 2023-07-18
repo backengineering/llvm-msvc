@@ -3269,6 +3269,92 @@ VariableSP SymbolFileDWARF::ParseVariableDIECached(const SymbolContext &sc,
   return var_sp;
 }
 
+/// Creates a DWARFExpressionList from an DW_AT_location form_value.
+static DWARFExpressionList GetExprListFromAtLocation(DWARFFormValue form_value,
+                                                     ModuleSP module,
+                                                     const DWARFDIE &die,
+                                                     const addr_t func_low_pc) {
+  if (DWARFFormValue::IsBlockForm(form_value.Form())) {
+    const DWARFDataExtractor &data = die.GetData();
+
+    uint32_t block_offset = form_value.BlockData() - data.GetDataStart();
+    uint32_t block_length = form_value.Unsigned();
+    return DWARFExpressionList(
+        module, DataExtractor(data, block_offset, block_length), die.GetCU());
+  }
+
+  DWARFExpressionList location_list(module, DWARFExpression(), die.GetCU());
+  DataExtractor data = die.GetCU()->GetLocationData();
+  dw_offset_t offset = form_value.Unsigned();
+  if (form_value.Form() == DW_FORM_loclistx)
+    offset = die.GetCU()->GetLoclistOffset(offset).value_or(-1);
+  if (data.ValidOffset(offset)) {
+    data = DataExtractor(data, offset, data.GetByteSize() - offset);
+    const DWARFUnit *dwarf_cu = form_value.GetUnit();
+    if (DWARFExpression::ParseDWARFLocationList(dwarf_cu, data, &location_list))
+      location_list.SetFuncFileAddress(func_low_pc);
+  }
+
+  return location_list;
+}
+
+/// Creates a DWARFExpressionList from an DW_AT_const_value. This is either a
+/// block form, or a string, or a data form. For data forms, this returns an
+/// empty list, as we cannot initialize it properly without a SymbolFileType.
+static DWARFExpressionList
+GetExprListFromAtConstValue(DWARFFormValue form_value, ModuleSP module,
+                            const DWARFDIE &die) {
+  const DWARFDataExtractor &debug_info_data = die.GetData();
+  if (DWARFFormValue::IsBlockForm(form_value.Form())) {
+    // Retrieve the value as a block expression.
+    uint32_t block_offset =
+        form_value.BlockData() - debug_info_data.GetDataStart();
+    uint32_t block_length = form_value.Unsigned();
+    return DWARFExpressionList(
+        module, DataExtractor(debug_info_data, block_offset, block_length),
+        die.GetCU());
+  }
+  if (const char *str = form_value.AsCString())
+    return DWARFExpressionList(module,
+                               DataExtractor(str, strlen(str) + 1,
+                                             die.GetCU()->GetByteOrder(),
+                                             die.GetCU()->GetAddressByteSize()),
+                               die.GetCU());
+  return DWARFExpressionList(module, DWARFExpression(), die.GetCU());
+}
+
+/// Global variables that are not initialized may have their address set to
+/// zero. Since multiple variables may have this address, we cannot apply the
+/// OSO relink address approach we normally use.
+/// However, the executable will have a matching symbol with a good address;
+/// this function attempts to find the correct address by looking into the
+/// executable's symbol table. If it succeeds, the expr_list is updated with
+/// the new address and the executable's symbol is returned.
+static Symbol *fixupExternalAddrZeroVariable(
+    SymbolFileDWARFDebugMap &debug_map_symfile, llvm::StringRef name,
+    DWARFExpressionList &expr_list, const DWARFDIE &die) {
+  ObjectFile *debug_map_objfile = debug_map_symfile.GetObjectFile();
+  if (!debug_map_objfile)
+    return nullptr;
+
+  Symtab *debug_map_symtab = debug_map_objfile->GetSymtab();
+  if (!debug_map_symtab)
+    return nullptr;
+  Symbol *exe_symbol = debug_map_symtab->FindFirstSymbolWithNameAndType(
+      ConstString(name), eSymbolTypeData, Symtab::eDebugYes,
+      Symtab::eVisibilityExtern);
+  if (!exe_symbol || !exe_symbol->ValueIsAddress())
+    return nullptr;
+  const addr_t exe_file_addr = exe_symbol->GetAddressRef().GetFileAddress();
+  if (exe_file_addr == LLDB_INVALID_ADDRESS)
+    return nullptr;
+
+  DWARFExpression *location = expr_list.GetMutableExpressionAtAddress();
+  if (location->Update_DW_OP_addr(die.GetCU(), exe_file_addr))
+    return exe_symbol;
+  return nullptr;
+}
+
 VariableSP SymbolFileDWARF::ParseVariableDIE(const SymbolContext &sc,
                                              const DWARFDIE &die,
                                              const lldb::addr_t func_low_pc) {
@@ -3290,7 +3376,6 @@ VariableSP SymbolFileDWARF::ParseVariableDIE(const SymbolContext &sc,
   const char *mangled = nullptr;
   Declaration decl;
   DWARFFormValue type_die_form;
-  DWARFExpressionList location_list(module, DWARFExpression(), die.GetCU());
   bool is_external = false;
   bool is_artificial = false;
   DWARFFormValue const_value_form, location_form;
@@ -3355,57 +3440,16 @@ VariableSP SymbolFileDWARF::ParseVariableDIE(const SymbolContext &sc,
   // for static constexpr member variables -- DW_AT_const_value will be
   // present in the class declaration and DW_AT_location in the DIE defining
   // the member.
-  bool location_is_const_value_data = false;
-  bool has_explicit_location = location_form.IsValid();
-  bool use_type_size_for_value = false;
-  if (location_form.IsValid()) {
-    if (DWARFFormValue::IsBlockForm(location_form.Form())) {
-      const DWARFDataExtractor &data = die.GetData();
+  bool location_is_const_value_data =
+      const_value_form.IsValid() && !location_form.IsValid();
 
-      uint32_t block_offset = location_form.BlockData() - data.GetDataStart();
-      uint32_t block_length = location_form.Unsigned();
-      location_list = DWARFExpressionList(
-          module, DataExtractor(data, block_offset, block_length), die.GetCU());
-    } else {
-      DataExtractor data = die.GetCU()->GetLocationData();
-      dw_offset_t offset = location_form.Unsigned();
-      if (location_form.Form() == DW_FORM_loclistx)
-        offset = die.GetCU()->GetLoclistOffset(offset).value_or(-1);
-      if (data.ValidOffset(offset)) {
-        data = DataExtractor(data, offset, data.GetByteSize() - offset);
-        const DWARFUnit *dwarf_cu = location_form.GetUnit();
-        if (DWARFExpression::ParseDWARFLocationList(dwarf_cu, data,
-                                                    &location_list))
-          location_list.SetFuncFileAddress(func_low_pc);
-      }
-    }
-  } else if (const_value_form.IsValid()) {
-    location_is_const_value_data = true;
-    // The constant value will be either a block, a data value or a
-    // string.
-    const DWARFDataExtractor &debug_info_data = die.GetData();
-    if (DWARFFormValue::IsBlockForm(const_value_form.Form())) {
-      // Retrieve the value as a block expression.
-      uint32_t block_offset =
-          const_value_form.BlockData() - debug_info_data.GetDataStart();
-      uint32_t block_length = const_value_form.Unsigned();
-      location_list = DWARFExpressionList(
-          module, DataExtractor(debug_info_data, block_offset, block_length),
-          die.GetCU());
-    } else if (DWARFFormValue::IsDataForm(const_value_form.Form())) {
-      // Constant value size does not have to match the size of the
-      // variable. We will fetch the size of the type after we create
-      // it.
-      use_type_size_for_value = true;
-    } else if (const char *str = const_value_form.AsCString()) {
-      uint32_t string_length = strlen(str) + 1;
-      location_list = DWARFExpressionList(
-          module,
-          DataExtractor(str, string_length, die.GetCU()->GetByteOrder(),
-                        die.GetCU()->GetAddressByteSize()),
-          die.GetCU());
-    }
-  }
+  DWARFExpressionList location_list = [&] {
+    if (location_form.IsValid())
+      return GetExprListFromAtLocation(location_form, module, die, func_low_pc);
+    if (const_value_form.IsValid())
+      return GetExprListFromAtConstValue(const_value_form, module, die);
+    return DWARFExpressionList(module, DWARFExpression(), die.GetCU());
+  }();
 
   const DWARFDIE parent_context_die = GetDeclContextDIEContainingDIE(die);
   const DWARFDIE sc_parent_die = GetParentSymbolContextDIE(die);
@@ -3448,6 +3492,7 @@ VariableSP SymbolFileDWARF::ParseVariableDIE(const SymbolContext &sc,
     // Clang likes to combine small global variables into the same symbol
     // with locations like: DW_OP_addr(0x1000), DW_OP_constu(2), DW_OP_plus
     // so we need to look through the whole expression.
+    bool has_explicit_location = location_form.IsValid();
     bool is_static_lifetime =
         has_explicit_mangled ||
         (has_explicit_location && !location_list.IsValid());
@@ -3483,49 +3528,14 @@ VariableSP SymbolFileDWARF::ParseVariableDIE(const SymbolContext &sc,
         scope = eValueTypeVariableStatic;
 
       if (debug_map_symfile) {
-        // When leaving the DWARF in the .o files on darwin, when we have a
-        // global variable that wasn't initialized, the .o file might not
-        // have allocated a virtual address for the global variable. In
-        // this case it will have created a symbol for the global variable
-        // that is undefined/data and external and the value will be the
-        // byte size of the variable. When we do the address map in
-        // SymbolFileDWARFDebugMap we rely on having an address, we need to
-        // do some magic here so we can get the correct address for our
-        // global variable. The address for all of these entries will be
-        // zero, and there will be an undefined symbol in this object file,
-        // and the executable will have a matching symbol with a good
-        // address. So here we dig up the correct address and replace it in
-        // the location for the variable, and set the variable's symbol
-        // context scope to be that of the main executable so the file
-        // address will resolve correctly.
         bool linked_oso_file_addr = false;
+
         if (is_external && location_DW_OP_addr == 0) {
-          // we have a possible uninitialized extern global
-          ConstString const_name(mangled ? mangled : name);
-          ObjectFile *debug_map_objfile = debug_map_symfile->GetObjectFile();
-          if (debug_map_objfile) {
-            Symtab *debug_map_symtab = debug_map_objfile->GetSymtab();
-            if (debug_map_symtab) {
-              Symbol *exe_symbol =
-                  debug_map_symtab->FindFirstSymbolWithNameAndType(
-                      const_name, eSymbolTypeData, Symtab::eDebugYes,
-                      Symtab::eVisibilityExtern);
-              if (exe_symbol) {
-                if (exe_symbol->ValueIsAddress()) {
-                  const addr_t exe_file_addr =
-                      exe_symbol->GetAddressRef().GetFileAddress();
-                  if (exe_file_addr != LLDB_INVALID_ADDRESS) {
-                    DWARFExpression *location =
-                        location_list.GetMutableExpressionAtAddress();
-                    if (location->Update_DW_OP_addr(die.GetCU(),
-                                                    exe_file_addr)) {
-                      linked_oso_file_addr = true;
-                      symbol_context_scope = exe_symbol;
-                    }
-                  }
-                }
-              }
-            }
+          if (Symbol *exe_symbol = fixupExternalAddrZeroVariable(
+                  *debug_map_symfile, mangled ? mangled : name, location_list,
+                  die)) {
+            linked_oso_file_addr = true;
+            symbol_context_scope = exe_symbol;
           }
         }
 
@@ -3597,6 +3607,9 @@ VariableSP SymbolFileDWARF::ParseVariableDIE(const SymbolContext &sc,
   auto type_sp = std::make_shared<SymbolFileType>(
       *this, type_die_form.Reference().GetID());
 
+  bool use_type_size_for_value =
+      location_is_const_value_data &&
+      DWARFFormValue::IsDataForm(const_value_form.Form());
   if (use_type_size_for_value && type_sp->GetType()) {
     DWARFExpression *location = location_list.GetMutableExpressionAtAddress();
     location->UpdateValue(const_value_form.Unsigned(),

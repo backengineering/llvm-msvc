@@ -93,7 +93,7 @@ unsigned FloatType::getWidth() {
     return 8;
   if (llvm::isa<Float16Type, BFloat16Type>(*this))
     return 16;
-  if (llvm::isa<Float32Type>(*this))
+  if (llvm::isa<Float32Type, FloatTF32Type>(*this))
     return 32;
   if (llvm::isa<Float64Type>(*this))
     return 64;
@@ -120,6 +120,8 @@ const llvm::fltSemantics &FloatType::getFloatSemantics() {
     return APFloat::BFloat();
   if (llvm::isa<Float16Type>(*this))
     return APFloat::IEEEhalf();
+  if (llvm::isa<FloatTF32Type>(*this))
+    return APFloat::FloatTF32();
   if (llvm::isa<Float32Type>(*this))
     return APFloat::IEEEsingle();
   if (llvm::isa<Float64Type>(*this))
@@ -954,10 +956,16 @@ AffineExpr mlir::makeCanonicalStridedLayoutExpr(ArrayRef<int64_t> sizes,
   return makeCanonicalStridedLayoutExpr(sizes, exprs, context);
 }
 
-/// Return true if the layout for `t` is compatible with strided semantics.
 bool mlir::isStrided(MemRefType t) {
   int64_t offset;
   SmallVector<int64_t, 4> strides;
   auto res = getStridesAndOffset(t, strides, offset);
   return succeeded(res);
+}
+
+bool mlir::isLastMemrefDimUnitStride(MemRefType type) {
+  int64_t offset;
+  SmallVector<int64_t> strides;
+  auto successStrides = getStridesAndOffset(type, strides, offset);
+  return succeeded(successStrides) && (strides.empty() || strides.back() == 1);
 }

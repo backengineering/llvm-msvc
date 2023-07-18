@@ -537,6 +537,10 @@ static Instruction *foldCttzCtlz(IntrinsicInst &II, InstCombinerImpl &IC) {
     if (match(Op0, m_Neg(m_Value(X))))
       return IC.replaceOperand(II, 0, X);
 
+    // cttz(-x & x) -> cttz(x)
+    if (match(Op0, m_c_And(m_Neg(m_Value(X)), m_Deferred(X))))
+      return IC.replaceOperand(II, 0, X);
+
     // cttz(sext(x)) -> cttz(zext(x))
     if (match(Op0, m_OneUse(m_SExt(m_Value(X))))) {
       auto *Zext = IC.Builder.CreateZExt(X, II.getType());
@@ -1024,6 +1028,19 @@ static std::optional<bool> getKnownSign(Value *Op, Instruction *CxtI,
 
   return isImpliedByDomCondition(
       ICmpInst::ICMP_SLT, Op, Constant::getNullValue(Op->getType()), CxtI, DL);
+}
+
+/// Return true if two values \p Op0 and \p Op1 are known to have the same sign.
+static bool signBitMustBeTheSame(Value *Op0, Value *Op1, Instruction *CxtI,
+                                 const DataLayout &DL, AssumptionCache *AC,
+                                 DominatorTree *DT) {
+  std::optional<bool> Known1 = getKnownSign(Op1, CxtI, DL, AC, DT);
+  if (!Known1)
+    return false;
+  std::optional<bool> Known0 = getKnownSign(Op0, CxtI, DL, AC, DT);
+  if (!Known0)
+    return false;
+  return *Known0 == *Known1;
 }
 
 /// Try to canonicalize min/max(X + C0, C1) as min/max(X, C1 - C0) + C0. This
@@ -2356,6 +2373,42 @@ Instruction *InstCombinerImpl::visitCallInst(CallInst &CI) {
       FNeg->copyFastMathFlags(II);
       return FNeg;
     }
+    break;
+  }
+  case Intrinsic::ldexp: {
+    // ldexp(ldexp(x, a), b) -> ldexp(x, a + b)
+    //
+    // The danger is if the first ldexp would overflow to infinity or underflow
+    // to zero, but the combined exponent avoids it. We ignore this with
+    // reassoc.
+    //
+    // It's also safe to fold if we know both exponents are >= 0 or <= 0 since
+    // it would just double down on the overflow/underflow which would occur
+    // anyway.
+    //
+    // TODO: Could do better if we had range tracking for the input value
+    // exponent. Also could broaden sign check to cover == 0 case.
+    Value *Src = II->getArgOperand(0);
+    Value *Exp = II->getArgOperand(1);
+    Value *InnerSrc;
+    Value *InnerExp;
+    if (match(Src, m_OneUse(m_Intrinsic<Intrinsic::ldexp>(
+                       m_Value(InnerSrc), m_Value(InnerExp)))) &&
+        Exp->getType() == InnerExp->getType()) {
+      FastMathFlags FMF = II->getFastMathFlags();
+      FastMathFlags InnerFlags = cast<FPMathOperator>(Src)->getFastMathFlags();
+
+      if ((FMF.allowReassoc() && InnerFlags.allowReassoc()) ||
+          signBitMustBeTheSame(Exp, InnerExp, II, DL, &AC, &DT)) {
+        // TODO: Add nsw/nuw probably safe if integer type exceeds exponent
+        // width.
+        Value *NewExp = Builder.CreateAdd(InnerExp, Exp);
+        II->setArgOperand(1, NewExp);
+        II->setFastMathFlags(InnerFlags); // Or the inner flags.
+        return replaceOperand(*II, 0, InnerSrc);
+      }
+    }
+
     break;
   }
   case Intrinsic::ptrauth_auth:

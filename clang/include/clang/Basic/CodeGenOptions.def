@@ -167,10 +167,12 @@ CODEGENOPT(PrepareForThinLTO , 1, 0) ///< Set when -flto=thin is enabled on the
                                      ///< compile step.
 CODEGENOPT(LTOUnit, 1, 0) ///< Emit IR to support LTO unit features (CFI, whole
                           ///< program vtable opt).
+CODEGENOPT(FatLTO, 1, 0) ///< Set when -ffat-lto-objects is enabled.
 CODEGENOPT(EnableSplitLTOUnit, 1, 0) ///< Enable LTO unit splitting to support
 				     /// CFI and traditional whole program
 				     /// devirtualization that require whole
 				     /// program IR support.
+CODEGENOPT(UnifiedLTO, 1, 0) ///< Use the unified LTO pipeline.
 CODEGENOPT(IncrementalLinkerCompatible, 1, 0) ///< Emit an object file which can
                                               ///< be used with an incremental
                                               ///< linker.
@@ -478,6 +480,10 @@ CODEGENOPT(Addrsig, 1, 0)
 
 /// Whether to emit unused static constants.
 CODEGENOPT(KeepStaticConsts, 1, 0)
+
+/// Whether to emit all variables that have a persistent storage duration,
+/// including global, static and thread local variables.
+CODEGENOPT(KeepPersistentStorageVariables, 1, 0)
 
 /// Whether to follow the AAPCS enforcing at least one read before storing to a volatile bitfield
 CODEGENOPT(ForceAAPCSBitfieldLoad, 1, 0)

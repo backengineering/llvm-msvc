@@ -31,6 +31,7 @@
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -2239,6 +2240,17 @@ static unsigned mutateLongDoubleBuiltin(unsigned BuiltinID) {
   }
 }
 
+static Value *tryUseTestFPKind(CodeGenFunction &CGF, unsigned BuiltinID,
+                               Value *V) {
+  if (CGF.Builder.getIsFPConstrained() &&
+      CGF.Builder.getDefaultConstrainedExcept() != fp::ebIgnore) {
+    if (Value *Result =
+            CGF.getTargetHooks().testFPKind(V, BuiltinID, CGF.Builder, CGF.CGM))
+      return Result;
+  }
+  return nullptr;
+}
+
 RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
                                         const CallExpr *E,
                                         ReturnValueSlot ReturnValue) {
@@ -2532,11 +2544,12 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
     case Builtin::BI__builtin_sqrtf:
     case Builtin::BI__builtin_sqrtf16:
     case Builtin::BI__builtin_sqrtl:
-    case Builtin::BI__builtin_sqrtf128:
-      return RValue::get(emitUnaryMaybeConstrainedFPBuiltin(*this, E,
-                                   Intrinsic::sqrt,
-                                   Intrinsic::experimental_constrained_sqrt));
-
+    case Builtin::BI__builtin_sqrtf128: {
+      llvm::Value *Call = emitUnaryMaybeConstrainedFPBuiltin(
+          *this, E, Intrinsic::sqrt, Intrinsic::experimental_constrained_sqrt);
+      SetSqrtFPAccuracy(Call);
+      return RValue::get(Call);
+    }
     case Builtin::BItrunc:
     case Builtin::BItruncf:
     case Builtin::BItruncl:
@@ -3122,37 +3135,49 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
     // ZExt bool to int type.
     return RValue::get(Builder.CreateZExt(LHS, ConvertType(E->getType())));
   }
+
   case Builtin::BI__builtin_isnan: {
     CodeGenFunction::CGFPOptionsRAII FPOptsRAII(*this, E);
     Value *V = EmitScalarExpr(E->getArg(0));
-    llvm::Type *Ty = V->getType();
-    const llvm::fltSemantics &Semantics = Ty->getFltSemantics();
-    if (!Builder.getIsFPConstrained() ||
-        Builder.getDefaultConstrainedExcept() == fp::ebIgnore ||
-        !Ty->isIEEE()) {
-      V = Builder.CreateFCmpUNO(V, V, "cmp");
-      return RValue::get(Builder.CreateZExt(V, ConvertType(E->getType())));
-    }
-
-    if (Value *Result = getTargetHooks().testFPKind(V, BuiltinID, Builder, CGM))
+    if (Value *Result = tryUseTestFPKind(*this, BuiltinID, V))
       return RValue::get(Result);
+    return RValue::get(
+        Builder.CreateZExt(Builder.createIsFPClass(V, FPClassTest::fcNan),
+                           ConvertType(E->getType())));
+  }
 
-    // NaN has all exp bits set and a non zero significand. Therefore:
-    // isnan(V) == ((exp mask - (abs(V) & exp mask)) < 0)
-    unsigned bitsize = Ty->getScalarSizeInBits();
-    llvm::IntegerType *IntTy = Builder.getIntNTy(bitsize);
-    Value *IntV = Builder.CreateBitCast(V, IntTy);
-    APInt AndMask = APInt::getSignedMaxValue(bitsize);
-    Value *AbsV =
-        Builder.CreateAnd(IntV, llvm::ConstantInt::get(IntTy, AndMask));
-    APInt ExpMask = APFloat::getInf(Semantics).bitcastToAPInt();
-    Value *Sub =
-        Builder.CreateSub(llvm::ConstantInt::get(IntTy, ExpMask), AbsV);
-    // V = sign bit (Sub) <=> V = (Sub < 0)
-    V = Builder.CreateLShr(Sub, llvm::ConstantInt::get(IntTy, bitsize - 1));
-    if (bitsize > 32)
-      V = Builder.CreateTrunc(V, ConvertType(E->getType()));
-    return RValue::get(V);
+  case Builtin::BI__builtin_isinf: {
+    CodeGenFunction::CGFPOptionsRAII FPOptsRAII(*this, E);
+    Value *V = EmitScalarExpr(E->getArg(0));
+    if (Value *Result = tryUseTestFPKind(*this, BuiltinID, V))
+      return RValue::get(Result);
+    return RValue::get(
+        Builder.CreateZExt(Builder.createIsFPClass(V, FPClassTest::fcInf),
+                           ConvertType(E->getType())));
+  }
+
+  case Builtin::BIfinite:
+  case Builtin::BI__finite:
+  case Builtin::BIfinitef:
+  case Builtin::BI__finitef:
+  case Builtin::BIfinitel:
+  case Builtin::BI__finitel:
+  case Builtin::BI__builtin_isfinite: {
+    CodeGenFunction::CGFPOptionsRAII FPOptsRAII(*this, E);
+    Value *V = EmitScalarExpr(E->getArg(0));
+    if (Value *Result = tryUseTestFPKind(*this, BuiltinID, V))
+      return RValue::get(Result);
+    return RValue::get(
+        Builder.CreateZExt(Builder.createIsFPClass(V, FPClassTest::fcFinite),
+                           ConvertType(E->getType())));
+  }
+
+  case Builtin::BI__builtin_isnormal: {
+    CodeGenFunction::CGFPOptionsRAII FPOptsRAII(*this, E);
+    Value *V = EmitScalarExpr(E->getArg(0));
+    return RValue::get(
+        Builder.CreateZExt(Builder.createIsFPClass(V, FPClassTest::fcNormal),
+                           ConvertType(E->getType())));
   }
 
   case Builtin::BI__builtin_isfpclass: {
@@ -3388,52 +3413,6 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
     return RValue::get(Result);
   }
 
-  case Builtin::BIfinite:
-  case Builtin::BI__finite:
-  case Builtin::BIfinitef:
-  case Builtin::BI__finitef:
-  case Builtin::BIfinitel:
-  case Builtin::BI__finitel:
-  case Builtin::BI__builtin_isinf:
-  case Builtin::BI__builtin_isfinite: {
-    // isinf(x)    --> fabs(x) == infinity
-    // isfinite(x) --> fabs(x) != infinity
-    // x != NaN via the ordered compare in either case.
-    CodeGenFunction::CGFPOptionsRAII FPOptsRAII(*this, E);
-    Value *V = EmitScalarExpr(E->getArg(0));
-    llvm::Type *Ty = V->getType();
-    if (!Builder.getIsFPConstrained() ||
-        Builder.getDefaultConstrainedExcept() == fp::ebIgnore ||
-        !Ty->isIEEE()) {
-      Value *Fabs = EmitFAbs(*this, V);
-      Constant *Infinity = ConstantFP::getInfinity(V->getType());
-      CmpInst::Predicate Pred = (BuiltinID == Builtin::BI__builtin_isinf)
-                                    ? CmpInst::FCMP_OEQ
-                                    : CmpInst::FCMP_ONE;
-      Value *FCmp = Builder.CreateFCmp(Pred, Fabs, Infinity, "cmpinf");
-      return RValue::get(Builder.CreateZExt(FCmp, ConvertType(E->getType())));
-    }
-
-    if (Value *Result = getTargetHooks().testFPKind(V, BuiltinID, Builder, CGM))
-      return RValue::get(Result);
-
-    // Inf values have all exp bits set and a zero significand. Therefore:
-    // isinf(V) == ((V << 1) == ((exp mask) << 1))
-    // isfinite(V) == ((V << 1) < ((exp mask) << 1)) using unsigned comparison
-    unsigned bitsize = Ty->getScalarSizeInBits();
-    llvm::IntegerType *IntTy = Builder.getIntNTy(bitsize);
-    Value *IntV = Builder.CreateBitCast(V, IntTy);
-    Value *Shl1 = Builder.CreateShl(IntV, 1);
-    const llvm::fltSemantics &Semantics = Ty->getFltSemantics();
-    APInt ExpMask = APFloat::getInf(Semantics).bitcastToAPInt();
-    Value *ExpMaskShl1 = llvm::ConstantInt::get(IntTy, ExpMask.shl(1));
-    if (BuiltinID == Builtin::BI__builtin_isinf)
-      V = Builder.CreateICmpEQ(Shl1, ExpMaskShl1);
-    else
-      V = Builder.CreateICmpULT(Shl1, ExpMaskShl1);
-    return RValue::get(Builder.CreateZExt(V, ConvertType(E->getType())));
-  }
-
   case Builtin::BI__builtin_isinf_sign: {
     // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
     CodeGenFunction::CGFPOptionsRAII FPOptsRAII(*this, E);
@@ -3451,26 +3430,6 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
     Value *SignResult = Builder.CreateSelect(IsNeg, NegativeOne, One);
     Value *Result = Builder.CreateSelect(IsInf, SignResult, Zero);
     return RValue::get(Result);
-  }
-
-  case Builtin::BI__builtin_isnormal: {
-    // isnormal(x) --> x == x && fabsf(x) < infinity && fabsf(x) >= float_min
-    CodeGenFunction::CGFPOptionsRAII FPOptsRAII(*this, E);
-    // FIXME: for strictfp/IEEE-754 we need to not trap on SNaN here.
-    Value *V = EmitScalarExpr(E->getArg(0));
-    Value *Eq = Builder.CreateFCmpOEQ(V, V, "iseq");
-
-    Value *Abs = EmitFAbs(*this, V);
-    Value *IsLessThanInf =
-      Builder.CreateFCmpULT(Abs, ConstantFP::getInfinity(V->getType()),"isinf");
-    APFloat Smallest = APFloat::getSmallestNormalized(
-                   getContext().getFloatTypeSemantics(E->getArg(0)->getType()));
-    Value *IsNormal =
-      Builder.CreateFCmpUGE(Abs, ConstantFP::get(V->getContext(), Smallest),
-                            "isnormal");
-    V = Builder.CreateAnd(Eq, IsLessThanInf, "and");
-    V = Builder.CreateAnd(V, IsNormal, "and");
-    return RValue::get(Builder.CreateZExt(V, ConvertType(E->getType())));
   }
 
   case Builtin::BI__builtin_flt_rounds: {
@@ -5296,7 +5255,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
   case Builtin::BIprintf:
     if (getTarget().getTriple().isNVPTX() ||
         getTarget().getTriple().isAMDGCN()) {
-      if (getLangOpts().OpenMPIsDevice)
+      if (getLangOpts().OpenMPIsTargetDevice)
         return EmitOpenMPDevicePrintfCallExpr(E);
       if (getTarget().getTriple().isNVPTX())
         return EmitNVPTXDevicePrintfCallExpr(E);
@@ -6790,6 +6749,21 @@ static const std::pair<unsigned, unsigned> NEONEquivalentIntrinsicMap[] = {
   { NEON::BI__builtin_neon_vuzpq_f16, NEON::BI__builtin_neon_vuzpq_v, },
   { NEON::BI__builtin_neon_vzip_f16, NEON::BI__builtin_neon_vzip_v, },
   { NEON::BI__builtin_neon_vzipq_f16, NEON::BI__builtin_neon_vzipq_v, },
+  // The mangling rules cause us to have one ID for each type for vldap1(q)_lane
+  // and vstl1(q)_lane, but codegen is equivalent for all of them. Choose an
+  // arbitrary one to be handled as tha canonical variation.
+  { NEON::BI__builtin_neon_vldap1_lane_u64, NEON::BI__builtin_neon_vldap1_lane_s64 },
+  { NEON::BI__builtin_neon_vldap1_lane_f64, NEON::BI__builtin_neon_vldap1_lane_s64 },
+  { NEON::BI__builtin_neon_vldap1_lane_p64, NEON::BI__builtin_neon_vldap1_lane_s64 },
+  { NEON::BI__builtin_neon_vldap1q_lane_u64, NEON::BI__builtin_neon_vldap1q_lane_s64 },
+  { NEON::BI__builtin_neon_vldap1q_lane_f64, NEON::BI__builtin_neon_vldap1q_lane_s64 },
+  { NEON::BI__builtin_neon_vldap1q_lane_p64, NEON::BI__builtin_neon_vldap1q_lane_s64 },
+  { NEON::BI__builtin_neon_vstl1_lane_u64, NEON::BI__builtin_neon_vstl1_lane_s64 },
+  { NEON::BI__builtin_neon_vstl1_lane_f64, NEON::BI__builtin_neon_vstl1_lane_s64 },
+  { NEON::BI__builtin_neon_vstl1_lane_p64, NEON::BI__builtin_neon_vstl1_lane_s64 },
+  { NEON::BI__builtin_neon_vstl1q_lane_u64, NEON::BI__builtin_neon_vstl1q_lane_s64 },
+  { NEON::BI__builtin_neon_vstl1q_lane_f64, NEON::BI__builtin_neon_vstl1q_lane_s64 },
+  { NEON::BI__builtin_neon_vstl1q_lane_p64, NEON::BI__builtin_neon_vstl1q_lane_s64 },
 };
 
 #undef NEONMAP0
@@ -7932,6 +7906,17 @@ Value *CodeGenFunction::EmitARMBuiltinExpr(unsigned BuiltinID,
     return Builder.CreateCall(
         CGM.getIntrinsic(Intrinsic::bitreverse, Arg->getType()), Arg, "rbit");
   }
+
+  if (BuiltinID == clang::ARM::BI__builtin_arm_clz ||
+      BuiltinID == clang::ARM::BI__builtin_arm_clz64) {
+    llvm::Value *Arg = EmitScalarExpr(E->getArg(0));
+    Function *F = CGM.getIntrinsic(Intrinsic::ctlz, Arg->getType());
+    Value *Res = Builder.CreateCall(F, {Arg, Builder.getInt1(false)});
+    if (BuiltinID == clang::ARM::BI__builtin_arm_clz64)
+      Res = Builder.CreateTrunc(Res, Builder.getInt32Ty());
+    return Res;
+  }
+
 
   if (BuiltinID == clang::ARM::BI__builtin_arm_cls) {
     llvm::Value *Arg = EmitScalarExpr(E->getArg(0));
@@ -10015,6 +10000,16 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
         CGM.getIntrinsic(Intrinsic::bitreverse, Arg->getType()), Arg, "rbit");
   }
 
+  if (BuiltinID == clang::AArch64::BI__builtin_arm_clz ||
+      BuiltinID == clang::AArch64::BI__builtin_arm_clz64) {
+    llvm::Value *Arg = EmitScalarExpr(E->getArg(0));
+    Function *F = CGM.getIntrinsic(Intrinsic::ctlz, Arg->getType());
+    Value *Res = Builder.CreateCall(F, {Arg, Builder.getInt1(false)});
+    if (BuiltinID == clang::AArch64::BI__builtin_arm_clz64)
+      Res = Builder.CreateTrunc(Res, Builder.getInt32Ty());
+    return Res;
+  }
+
   if (BuiltinID == clang::AArch64::BI__builtin_arm_cls) {
     llvm::Value *Arg = EmitScalarExpr(E->getArg(0));
     return Builder.CreateCall(CGM.getIntrinsic(Intrinsic::aarch64_cls), Arg,
@@ -10596,6 +10591,10 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
       case NEON::BI__builtin_neon_vst1q_v:
       case NEON::BI__builtin_neon_vst1_lane_v:
       case NEON::BI__builtin_neon_vst1q_lane_v:
+      case NEON::BI__builtin_neon_vldap1_lane_s64:
+      case NEON::BI__builtin_neon_vldap1q_lane_s64:
+      case NEON::BI__builtin_neon_vstl1_lane_s64:
+      case NEON::BI__builtin_neon_vstl1q_lane_s64:
         // Get the alignment for the argument in addition to the value;
         // we'll use it later.
         PtrOp0 = EmitPointerWithAlignment(E->getArg(0));
@@ -12194,6 +12193,17 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
                                        PtrOp0.getAlignment());
     return Builder.CreateInsertElement(Ops[1], Ops[0], Ops[2], "vld1_lane");
   }
+  case NEON::BI__builtin_neon_vldap1_lane_s64:
+  case NEON::BI__builtin_neon_vldap1q_lane_s64: {
+    Ops[1] = Builder.CreateBitCast(Ops[1], Ty);
+    Ty = llvm::PointerType::getUnqual(VTy->getElementType());
+    Ops[0] = Builder.CreateBitCast(Ops[0], Ty);
+    llvm::LoadInst *LI = Builder.CreateAlignedLoad(
+        VTy->getElementType(), Ops[0], PtrOp0.getAlignment());
+    LI->setAtomic(llvm::AtomicOrdering::Acquire);
+    Ops[0] = LI;
+    return Builder.CreateInsertElement(Ops[1], Ops[0], Ops[2], "vldap1_lane");
+  }
   case NEON::BI__builtin_neon_vld1_dup_v:
   case NEON::BI__builtin_neon_vld1q_dup_v: {
     Value *V = PoisonValue::get(Ty);
@@ -12212,6 +12222,16 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
     Ty = llvm::PointerType::getUnqual(Ops[1]->getType());
     return Builder.CreateAlignedStore(Ops[1], Builder.CreateBitCast(Ops[0], Ty),
                                       PtrOp0.getAlignment());
+  case NEON::BI__builtin_neon_vstl1_lane_s64:
+  case NEON::BI__builtin_neon_vstl1q_lane_s64: {
+    Ops[1] = Builder.CreateBitCast(Ops[1], Ty);
+    Ops[1] = Builder.CreateExtractElement(Ops[1], Ops[2]);
+    Ty = llvm::PointerType::getUnqual(Ops[1]->getType());
+    llvm::StoreInst *SI = Builder.CreateAlignedStore(
+        Ops[1], Builder.CreateBitCast(Ops[0], Ty), PtrOp0.getAlignment());
+    SI->setAtomic(llvm::AtomicOrdering::Release);
+    return SI;
+  }
   case NEON::BI__builtin_neon_vld2_v:
   case NEON::BI__builtin_neon_vld2q_v: {
     llvm::Type *PTy = llvm::PointerType::getUnqual(VTy);
@@ -21047,12 +21067,18 @@ Value *CodeGenFunction::EmitRISCVBuiltinExpr(unsigned BuiltinID,
   case RISCV::BI__builtin_riscv_clz_64:
   case RISCV::BI__builtin_riscv_ctz_32:
   case RISCV::BI__builtin_riscv_ctz_64:
-  case RISCV::BI__builtin_riscv_clmul:
-  case RISCV::BI__builtin_riscv_clmulh:
-  case RISCV::BI__builtin_riscv_clmulr:
-  case RISCV::BI__builtin_riscv_xperm4:
-  case RISCV::BI__builtin_riscv_xperm8:
-  case RISCV::BI__builtin_riscv_brev8:
+  case RISCV::BI__builtin_riscv_clmul_32:
+  case RISCV::BI__builtin_riscv_clmul_64:
+  case RISCV::BI__builtin_riscv_clmulh_32:
+  case RISCV::BI__builtin_riscv_clmulh_64:
+  case RISCV::BI__builtin_riscv_clmulr_32:
+  case RISCV::BI__builtin_riscv_clmulr_64:
+  case RISCV::BI__builtin_riscv_xperm4_32:
+  case RISCV::BI__builtin_riscv_xperm4_64:
+  case RISCV::BI__builtin_riscv_xperm8_32:
+  case RISCV::BI__builtin_riscv_xperm8_64:
+  case RISCV::BI__builtin_riscv_brev8_32:
+  case RISCV::BI__builtin_riscv_brev8_64:
   case RISCV::BI__builtin_riscv_zip_32:
   case RISCV::BI__builtin_riscv_unzip_32: {
     switch (BuiltinID) {
@@ -21065,35 +21091,49 @@ Value *CodeGenFunction::EmitRISCVBuiltinExpr(unsigned BuiltinID,
     case RISCV::BI__builtin_riscv_clz_32:
     case RISCV::BI__builtin_riscv_clz_64: {
       Function *F = CGM.getIntrinsic(Intrinsic::ctlz, Ops[0]->getType());
-      return Builder.CreateCall(F, {Ops[0], Builder.getInt1(false)});
+      Value *Result = Builder.CreateCall(F, {Ops[0], Builder.getInt1(false)});
+      if (Result->getType() != ResultType)
+        Result = Builder.CreateIntCast(Result, ResultType, /*isSigned*/true,
+                                       "cast");
+      return Result;
     }
     case RISCV::BI__builtin_riscv_ctz_32:
     case RISCV::BI__builtin_riscv_ctz_64: {
       Function *F = CGM.getIntrinsic(Intrinsic::cttz, Ops[0]->getType());
-      return Builder.CreateCall(F, {Ops[0], Builder.getInt1(false)});
+      Value *Result = Builder.CreateCall(F, {Ops[0], Builder.getInt1(false)});
+      if (Result->getType() != ResultType)
+        Result = Builder.CreateIntCast(Result, ResultType, /*isSigned*/true,
+                                       "cast");
+      return Result;
     }
 
     // Zbc
-    case RISCV::BI__builtin_riscv_clmul:
+    case RISCV::BI__builtin_riscv_clmul_32:
+    case RISCV::BI__builtin_riscv_clmul_64:
       ID = Intrinsic::riscv_clmul;
       break;
-    case RISCV::BI__builtin_riscv_clmulh:
+    case RISCV::BI__builtin_riscv_clmulh_32:
+    case RISCV::BI__builtin_riscv_clmulh_64:
       ID = Intrinsic::riscv_clmulh;
       break;
-    case RISCV::BI__builtin_riscv_clmulr:
+    case RISCV::BI__builtin_riscv_clmulr_32:
+    case RISCV::BI__builtin_riscv_clmulr_64:
       ID = Intrinsic::riscv_clmulr;
       break;
 
     // Zbkx
-    case RISCV::BI__builtin_riscv_xperm8:
+    case RISCV::BI__builtin_riscv_xperm8_32:
+    case RISCV::BI__builtin_riscv_xperm8_64:
       ID = Intrinsic::riscv_xperm8;
       break;
-    case RISCV::BI__builtin_riscv_xperm4:
+    case RISCV::BI__builtin_riscv_xperm4_32:
+    case RISCV::BI__builtin_riscv_xperm4_64:
       ID = Intrinsic::riscv_xperm4;
       break;
 
     // Zbkb
-    case RISCV::BI__builtin_riscv_brev8:
+    case RISCV::BI__builtin_riscv_brev8_32:
+    case RISCV::BI__builtin_riscv_brev8_64:
       ID = Intrinsic::riscv_brev8;
       break;
     case RISCV::BI__builtin_riscv_zip_32:
@@ -21110,111 +21150,34 @@ Value *CodeGenFunction::EmitRISCVBuiltinExpr(unsigned BuiltinID,
 
   // Zk builtins
 
-  // Zknd
-  case RISCV::BI__builtin_riscv_aes32dsi_32:
-    ID = Intrinsic::riscv_aes32dsi;
-    break;
-  case RISCV::BI__builtin_riscv_aes32dsmi_32:
-    ID = Intrinsic::riscv_aes32dsmi;
-    break;
-  case RISCV::BI__builtin_riscv_aes64ds_64:
-    ID = Intrinsic::riscv_aes64ds;
-    break;
-  case RISCV::BI__builtin_riscv_aes64dsm_64:
-    ID = Intrinsic::riscv_aes64dsm;
-    break;
-  case RISCV::BI__builtin_riscv_aes64im_64:
-    ID = Intrinsic::riscv_aes64im;
-    break;
-
-  // Zkne
-  case RISCV::BI__builtin_riscv_aes32esi_32:
-    ID = Intrinsic::riscv_aes32esi;
-    break;
-  case RISCV::BI__builtin_riscv_aes32esmi_32:
-    ID = Intrinsic::riscv_aes32esmi;
-    break;
-  case RISCV::BI__builtin_riscv_aes64es_64:
-    ID = Intrinsic::riscv_aes64es;
-    break;
-  case RISCV::BI__builtin_riscv_aes64esm_64:
-    ID = Intrinsic::riscv_aes64esm;
-    break;
-
-  // Zknd & Zkne
-  case RISCV::BI__builtin_riscv_aes64ks1i_64:
-    ID = Intrinsic::riscv_aes64ks1i;
-    break;
-  case RISCV::BI__builtin_riscv_aes64ks2_64:
-    ID = Intrinsic::riscv_aes64ks2;
-    break;
-
   // Zknh
   case RISCV::BI__builtin_riscv_sha256sig0:
     ID = Intrinsic::riscv_sha256sig0;
-    IntrinsicTypes = {ResultType};
     break;
   case RISCV::BI__builtin_riscv_sha256sig1:
     ID = Intrinsic::riscv_sha256sig1;
-    IntrinsicTypes = {ResultType};
     break;
   case RISCV::BI__builtin_riscv_sha256sum0:
     ID = Intrinsic::riscv_sha256sum0;
-    IntrinsicTypes = {ResultType};
     break;
   case RISCV::BI__builtin_riscv_sha256sum1:
     ID = Intrinsic::riscv_sha256sum1;
-    IntrinsicTypes = {ResultType};
-    break;
-  case RISCV::BI__builtin_riscv_sha512sig0_64:
-    ID = Intrinsic::riscv_sha512sig0;
-    break;
-  case RISCV::BI__builtin_riscv_sha512sig0h_32:
-    ID = Intrinsic::riscv_sha512sig0h;
-    break;
-  case RISCV::BI__builtin_riscv_sha512sig0l_32:
-    ID = Intrinsic::riscv_sha512sig0l;
-    break;
-  case RISCV::BI__builtin_riscv_sha512sig1_64:
-    ID = Intrinsic::riscv_sha512sig1;
-    break;
-  case RISCV::BI__builtin_riscv_sha512sig1h_32:
-    ID = Intrinsic::riscv_sha512sig1h;
-    break;
-  case RISCV::BI__builtin_riscv_sha512sig1l_32:
-    ID = Intrinsic::riscv_sha512sig1l;
-    break;
-  case RISCV::BI__builtin_riscv_sha512sum0_64:
-    ID = Intrinsic::riscv_sha512sum0;
-    break;
-  case RISCV::BI__builtin_riscv_sha512sum0r_32:
-    ID = Intrinsic::riscv_sha512sum0r;
-    break;
-  case RISCV::BI__builtin_riscv_sha512sum1_64:
-    ID = Intrinsic::riscv_sha512sum1;
-    break;
-  case RISCV::BI__builtin_riscv_sha512sum1r_32:
-    ID = Intrinsic::riscv_sha512sum1r;
     break;
 
   // Zksed
   case RISCV::BI__builtin_riscv_sm4ks:
     ID = Intrinsic::riscv_sm4ks;
-    IntrinsicTypes = {ResultType};
     break;
   case RISCV::BI__builtin_riscv_sm4ed:
     ID = Intrinsic::riscv_sm4ed;
-    IntrinsicTypes = {ResultType};
     break;
 
   // Zksh
   case RISCV::BI__builtin_riscv_sm3p0:
     ID = Intrinsic::riscv_sm3p0;
-    IntrinsicTypes = {ResultType};
     break;
   case RISCV::BI__builtin_riscv_sm3p1:
     ID = Intrinsic::riscv_sm3p1;
-    IntrinsicTypes = {ResultType};
     break;
 
   // Zihintntl

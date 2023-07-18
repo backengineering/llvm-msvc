@@ -744,13 +744,11 @@ static void finalizeBlockRelax(LinkGraph &G, Block &Block, BlockRelaxAux &Aux) {
   // Remove AlignRelaxable edges: all other relaxable edges got modified and
   // will be used later while linking. Alignment is entirely handled here so we
   // don't need these edges anymore.
-  for (auto *B : G.blocks()) {
-    for (auto IE = B->edges().begin(); IE != B->edges().end();) {
-      if (IE->getKind() == AlignRelaxable)
-        IE = B->removeEdge(IE);
-      else
-        ++IE;
-    }
+  for (auto IE = Block.edges().begin(); IE != Block.edges().end();) {
+    if (IE->getKind() == AlignRelaxable)
+      IE = Block.removeEdge(IE);
+    else
+      ++IE;
   }
 }
 
@@ -967,7 +965,7 @@ void link_ELF_riscv(std::unique_ptr<LinkGraph> G,
       Config.PrePrunePasses.push_back(markAllSymbolsLive);
     Config.PostPrunePasses.push_back(
         PerGraphGOTAndPLTStubsBuilder_ELF_riscv::asPass);
-    Config.PreFixupPasses.push_back(relax);
+    Config.PostAllocationPasses.push_back(relax);
   }
   if (auto Err = Ctx->modifyPassConfig(*G, Config))
     return Ctx->notifyFailed(std::move(Err));

@@ -23,6 +23,7 @@
 #include "asan_suppressions.h"
 #include "asan_thread.h"
 #include "lsan/lsan_common.h"
+#include "sanitizer_common/sanitizer_errno.h"
 #include "sanitizer_common/sanitizer_internal_defs.h"
 #include "sanitizer_common/sanitizer_libc.h"
 
@@ -146,10 +147,54 @@ DECLARE_REAL_AND_INTERCEPTOR(void, free, void *)
       *begin = *end = 0;                               \
     }
 
+template <class Mmap>
+static void* mmap_interceptor(Mmap real_mmap, void *addr, SIZE_T length,
+                              int prot, int flags, int fd, OFF64_T offset) {
+  void *res = real_mmap(addr, length, prot, flags, fd, offset);
+  if (length && res != (void *)-1) {
+    const uptr beg = reinterpret_cast<uptr>(res);
+    DCHECK(IsAligned(beg, GetPageSize()));
+    SIZE_T rounded_length = RoundUpTo(length, GetPageSize());
+    // Only unpoison shadow if it's an ASAN managed address.
+    if (AddrIsInMem(beg) && AddrIsInMem(beg + rounded_length - 1))
+      PoisonShadow(beg, RoundUpTo(length, GetPageSize()), 0);
+  }
+  return res;
+}
+
+template <class Munmap>
+static int munmap_interceptor(Munmap real_munmap, void *addr, SIZE_T length) {
+  // We should not tag if munmap fail, but it's to late to tag after
+  // real_munmap, as the pages could be mmaped by another thread.
+  const uptr beg = reinterpret_cast<uptr>(addr);
+  if (length && IsAligned(beg, GetPageSize())) {
+    SIZE_T rounded_length = RoundUpTo(length, GetPageSize());
+    // Protect from unmapping the shadow.
+    if (AddrIsInMem(beg) && AddrIsInMem(beg + rounded_length - 1))
+      PoisonShadow(beg, rounded_length, 0);
+  }
+  return real_munmap(addr, length);
+}
+
+#  define COMMON_INTERCEPTOR_MMAP_IMPL(ctx, mmap, addr, length, prot, flags,   \
+                                     fd, offset)                               \
+  do {                                                                         \
+    (void)(ctx);                                                               \
+    return mmap_interceptor(REAL(mmap), addr, sz, prot, flags, fd, off);       \
+  } while (false)
+
+#  define COMMON_INTERCEPTOR_MUNMAP_IMPL(ctx, addr, length)                    \
+  do {                                                                         \
+    (void)(ctx);                                                               \
+    return munmap_interceptor(REAL(munmap), addr, sz);                         \
+  } while (false)
+
 #if CAN_SANITIZE_LEAKS
 #define COMMON_INTERCEPTOR_STRERROR()                       \
   __lsan::ScopedInterceptorDisabler disabler
 #endif
+
+#define SIGNAL_INTERCEPTOR_ENTER() ENSURE_ASAN_INITED()
 
 #include "sanitizer_common/sanitizer_common_interceptors.inc"
 #include "sanitizer_common/sanitizer_signal_interceptors.inc"
@@ -494,6 +539,17 @@ INTERCEPTOR(char *, strcpy, char *to, const char *from) {
   return REAL(strcpy)(to, from);
 }
 
+// Windows doesn't always define the strdup identifier,
+// and when it does it's a macro defined to either _strdup
+// or _strdup_dbg, _strdup_dbg ends up calling _strdup, so
+// we want to intercept that. push/pop_macro are used to avoid problems
+// if this file ends up including <string.h> in the future.
+#  if SANITIZER_WINDOWS
+#    pragma push_macro("strdup")
+#    undef strdup
+#    define strdup _strdup
+#  endif
+
 INTERCEPTOR(char*, strdup, const char *s) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, strdup);
@@ -511,7 +567,7 @@ INTERCEPTOR(char*, strdup, const char *s) {
   return reinterpret_cast<char*>(new_mem);
 }
 
-#if ASAN_INTERCEPT___STRDUP
+#  if ASAN_INTERCEPT___STRDUP
 INTERCEPTOR(char*, __strdup, const char *s) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, strdup);
@@ -697,7 +753,7 @@ void InitializeAsanInterceptors() {
   ASAN_INTERCEPT_FUNC(strncat);
   ASAN_INTERCEPT_FUNC(strncpy);
   ASAN_INTERCEPT_FUNC(strdup);
-#if ASAN_INTERCEPT___STRDUP
+#  if ASAN_INTERCEPT___STRDUP
   ASAN_INTERCEPT_FUNC(__strdup);
 #endif
 #if ASAN_INTERCEPT_INDEX && ASAN_USE_ALIAS_ATTRIBUTE_FOR_INDEX
@@ -785,6 +841,10 @@ void InitializeAsanInterceptors() {
 
   VReport(1, "AddressSanitizer: libc interceptors initialized\n");
 }
+
+#  if SANITIZER_WINDOWS
+#    pragma pop_macro("strdup")
+#  endif
 
 } // namespace __asan
 

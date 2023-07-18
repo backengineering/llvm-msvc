@@ -2,6 +2,8 @@
 // RUN: %clang_cc1 -triple riscv32 -target-feature +zbkx -emit-llvm %s -o - \
 // RUN:     | FileCheck %s  -check-prefix=RV32ZBKX
 
+#include <stdint.h>
+
 // RV32ZBKX-LABEL: @xperm8(
 // RV32ZBKX-NEXT:  entry:
 // RV32ZBKX-NEXT:    [[RS1_ADDR:%.*]] = alloca i32, align 4
@@ -13,9 +15,9 @@
 // RV32ZBKX-NEXT:    [[TMP2:%.*]] = call i32 @llvm.riscv.xperm8.i32(i32 [[TMP0]], i32 [[TMP1]])
 // RV32ZBKX-NEXT:    ret i32 [[TMP2]]
 //
-long xperm8(long rs1, long rs2)
+uint32_t xperm8(uint32_t rs1, uint32_t rs2)
 {
-  return __builtin_riscv_xperm8(rs1, rs2);
+  return __builtin_riscv_xperm8_32(rs1, rs2);
 }
 
 // RV32ZBKX-LABEL: @xperm4(
@@ -29,7 +31,7 @@ long xperm8(long rs1, long rs2)
 // RV32ZBKX-NEXT:    [[TMP2:%.*]] = call i32 @llvm.riscv.xperm4.i32(i32 [[TMP0]], i32 [[TMP1]])
 // RV32ZBKX-NEXT:    ret i32 [[TMP2]]
 //
-long xperm4(long rs1, long rs2)
+uint32_t xperm4(uint32_t rs1, uint32_t rs2)
 {
-  return __builtin_riscv_xperm4(rs1, rs2);
+  return __builtin_riscv_xperm4_32(rs1, rs2);
 }

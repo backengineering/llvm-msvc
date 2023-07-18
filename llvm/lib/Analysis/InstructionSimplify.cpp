@@ -4140,7 +4140,8 @@ static Value *simplifyFCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
       case FCmpInst::FCMP_UGT:
       case FCmpInst::FCMP_UNE:
         // (X >= 0) implies (X > C) when (C < 0)
-        if (CannotBeOrderedLessThanZero(LHS, Q.DL, Q.TLI))
+        if (cannotBeOrderedLessThanZero(LHS, Q.DL, Q.TLI, 0,
+                                        Q.AC, Q.CxtI, Q.DT))
           return getTrue(RetTy);
         break;
       case FCmpInst::FCMP_OEQ:
@@ -4205,19 +4206,23 @@ static Value *simplifyFCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
   if (match(RHS, m_AnyZeroFP())) {
     switch (Pred) {
     case FCmpInst::FCMP_OGE:
-    case FCmpInst::FCMP_ULT:
+    case FCmpInst::FCMP_ULT: {
+      FPClassTest Interested = FMF.noNaNs() ? fcNegative : fcNegative | fcNan;
+      KnownFPClass Known = computeKnownFPClass(LHS, Q.DL, Interested, 0,
+                                               Q.TLI, Q.AC, Q.CxtI, Q.DT);
+
       // Positive or zero X >= 0.0 --> true
       // Positive or zero X <  0.0 --> false
-      if ((FMF.noNaNs() ||
-           isKnownNeverNaN(LHS, Q.DL, Q.TLI, 0, Q.AC, Q.CxtI, Q.DT)) &&
-          CannotBeOrderedLessThanZero(LHS, Q.DL, Q.TLI))
+      if ((FMF.noNaNs() || Known.isKnownNeverNaN()) &&
+          Known.cannotBeOrderedLessThanZero())
         return Pred == FCmpInst::FCMP_OGE ? getTrue(RetTy) : getFalse(RetTy);
       break;
+    }
     case FCmpInst::FCMP_UGE:
     case FCmpInst::FCMP_OLT:
       // Positive or zero or nan X >= 0.0 --> true
       // Positive or zero or nan X <  0.0 --> false
-      if (CannotBeOrderedLessThanZero(LHS, Q.DL, Q.TLI))
+      if (cannotBeOrderedLessThanZero(LHS, Q.DL, Q.TLI, 0, Q.AC, Q.CxtI, Q.DT))
         return Pred == FCmpInst::FCMP_UGE ? getTrue(RetTy) : getFalse(RetTy);
       break;
     default:
@@ -4319,10 +4324,10 @@ static Value *simplifyWithOpReplaced(Value *V, Value *Op, Value *RepOp,
         return RepOp;
     }
 
-    if (auto *GEP = dyn_cast<GetElementPtrInst>(I)) {
-      // getelementptr x, 0 -> x
-      if (NewOps.size() == 2 && match(NewOps[1], m_Zero()) &&
-          !GEP->isInBounds())
+    if (isa<GetElementPtrInst>(I)) {
+      // getelementptr x, 0 -> x.
+      // This never returns poison, even if inbounds is set.
+      if (NewOps.size() == 2 && match(NewOps[1], m_Zero()))
         return NewOps[0];
     }
   } else if (MaxRecurse) {
@@ -4885,10 +4890,8 @@ static Value *simplifyGEPInst(Type *SrcTy, Value *Ptr,
     }
   }
 
-  // For opaque pointers an all-zero GEP is a no-op. For typed pointers,
-  // it may be equivalent to a bitcast.
-  if (Ptr->getType()->getScalarType()->isOpaquePointerTy() &&
-      Ptr->getType() == GEPTy &&
+  // All-zero GEP is a no-op, unless it performs a vector splat.
+  if (Ptr->getType() == GEPTy &&
       all_of(Indices, [](const auto *V) { return match(V, m_Zero()); }))
     return Ptr;
 
@@ -4898,9 +4901,9 @@ static Value *simplifyGEPInst(Type *SrcTy, Value *Ptr,
       any_of(Indices, [](const auto *V) { return isa<PoisonValue>(V); }))
     return PoisonValue::get(GEPTy);
 
+  // getelementptr undef, idx -> undef
   if (Q.isUndefValue(Ptr))
-    // If inbounds, we can choose an out-of-bounds pointer as a base pointer.
-    return InBounds ? PoisonValue::get(GEPTy) : UndefValue::get(GEPTy);
+    return UndefValue::get(GEPTy);
 
   bool IsScalableVec =
       isa<ScalableVectorType>(SrcTy) || any_of(Indices, [](const Value *V) {
@@ -5552,7 +5555,7 @@ simplifyFAddInst(Value *Op0, Value *Op1, FastMathFlags FMF,
   // fadd X, 0 ==> X, when we know X is not -0
   if (canIgnoreSNaN(ExBehavior, FMF))
     if (match(Op1, m_PosZeroFP()) &&
-        (FMF.noSignedZeros() || CannotBeNegativeZero(Op0, Q.TLI)))
+        (FMF.noSignedZeros() || cannotBeNegativeZero(Op0, Q.DL, Q.TLI)))
       return Op0;
 
   if (!isDefaultFPEnvironment(ExBehavior, Rounding))
@@ -5614,7 +5617,7 @@ simplifyFSubInst(Value *Op0, Value *Op1, FastMathFlags FMF,
   // fsub X, -0 ==> X, when we know X is not -0
   if (canIgnoreSNaN(ExBehavior, FMF))
     if (match(Op1, m_NegZeroFP()) &&
-        (FMF.noSignedZeros() || CannotBeNegativeZero(Op0, Q.TLI)))
+        (FMF.noSignedZeros() || cannotBeNegativeZero(Op0, Q.DL, Q.TLI)))
       return Op0;
 
   // fsub -0.0, (fsub -0.0, X) ==> X
@@ -6158,6 +6161,15 @@ static Value *simplifyUnaryIntrinsic(Function *F, Value *Op0,
     if (isSplatValue(Op0))
       return Op0;
     break;
+  case Intrinsic::frexp: {
+    // Frexp is idempotent with the added complication of the struct return.
+    if (match(Op0, m_ExtractValue<0>(m_Value(X)))) {
+      if (match(X, m_Intrinsic<Intrinsic::frexp>(m_Value())))
+        return X;
+    }
+
+    break;
+  }
   default:
     break;
   }

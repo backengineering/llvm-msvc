@@ -21,9 +21,9 @@
 #include "MCTargetDesc/AArch64AddressingModes.h"
 #include "MCTargetDesc/AArch64MCTargetDesc.h"
 #include "llvm/BinaryFormat/Dwarf.h"
+#include "llvm/CodeGen/GlobalISel/GIMatchTableExecutorImpl.h"
 #include "llvm/CodeGen/GlobalISel/GenericMachineInstrs.h"
 #include "llvm/CodeGen/GlobalISel/InstructionSelector.h"
-#include "llvm/CodeGen/GlobalISel/InstructionSelectorImpl.h"
 #include "llvm/CodeGen/GlobalISel/MIPatternMatch.h"
 #include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
 #include "llvm/CodeGen/GlobalISel/Utils.h"
@@ -76,7 +76,7 @@ public:
   static const char *getName() { return DEBUG_TYPE; }
 
   void setupMF(MachineFunction &MF, GISelKnownBits *KB,
-               CodeGenCoverage &CoverageInfo, ProfileSummaryInfo *PSI,
+               CodeGenCoverage *CoverageInfo, ProfileSummaryInfo *PSI,
                BlockFrequencyInfo *BFI) override {
     InstructionSelector::setupMF(MF, KB, CoverageInfo, PSI, BFI);
     MIB.setMF(MF);
@@ -1785,7 +1785,7 @@ bool AArch64InstructionSelector::selectCompareBranch(
       MIB.buildInstr(AArch64::ANDSWri, {LLT::scalar(32)}, {CondReg}).addImm(1);
   constrainSelectedInstRegOperands(*TstMI, TII, TRI, RBI);
   auto Bcc = MIB.buildInstr(AArch64::Bcc)
-                 .addImm(AArch64CC::EQ)
+                 .addImm(AArch64CC::NE)
                  .addMBB(I.getOperand(1).getMBB());
   I.eraseFromParent();
   return constrainSelectedInstRegOperands(*Bcc, TII, TRI, RBI);

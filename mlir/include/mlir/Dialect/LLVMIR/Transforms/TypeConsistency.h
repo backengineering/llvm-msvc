@@ -53,16 +53,41 @@ public:
                                 PatternRewriter &rewriter) const override;
 };
 
-/// Splits stores of integers which write into multiple adjacent stores
-/// of a pointer. The integer is then split and stores are generated for
-/// every field being stored in a type-consistent manner.
-/// This is currently done on a best-effort basis.
-class SplitIntegerStores : public OpRewritePattern<StoreOp> {
+/// Splits stores which write into multiple adjacent elements of an aggregate
+/// through a pointer. Currently, integers and vector are split and stores
+/// are generated for every element being stored to in a type-consistent manner.
+/// This is done on a best-effort basis.
+class SplitStores : public OpRewritePattern<StoreOp> {
+  unsigned maxVectorSplitSize;
+
+public:
+  SplitStores(MLIRContext *context, unsigned maxVectorSplitSize)
+      : OpRewritePattern(context), maxVectorSplitSize(maxVectorSplitSize) {}
+
+  LogicalResult matchAndRewrite(StoreOp store,
+                                PatternRewriter &rewrite) const override;
+};
+
+/// Transforms type-inconsistent stores, aka stores where the type hint of
+/// the address contradicts the value stored, by inserting a bitcast if
+/// possible.
+class BitcastStores : public OpRewritePattern<StoreOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(StoreOp store,
-                                PatternRewriter &rewrite) const override;
+                                PatternRewriter &rewriter) const override;
+};
+
+/// Splits GEPs with more than two indices into multiple GEPs with exactly
+/// two indices. The created GEPs are then guaranteed to index into only
+/// one aggregate at a time.
+class SplitGEP : public OpRewritePattern<GEPOp> {
+public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(GEPOp gepOp,
+                                PatternRewriter &rewriter) const override;
 };
 
 } // namespace LLVM

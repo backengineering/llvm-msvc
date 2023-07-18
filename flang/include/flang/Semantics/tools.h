@@ -656,5 +656,13 @@ const DerivedTypeSpec *GetDtvArgDerivedType(const Symbol &);
 void WarnOnDeferredLengthCharacterScalar(SemanticsContext &, const SomeExpr *,
     parser::CharBlock at, const char *what);
 
+inline const parser::Name *getDesignatorNameIfDataRef(
+    const parser::Designator &designator) {
+  const auto *dataRef{std::get_if<parser::DataRef>(&designator.u)};
+  return dataRef ? std::get_if<parser::Name>(&dataRef->u) : nullptr;
+}
+
+bool CouldBeDataPointerValuedFunction(const Symbol *);
+
 } // namespace Fortran::semantics
 #endif // FORTRAN_SEMANTICS_TOOLS_H_

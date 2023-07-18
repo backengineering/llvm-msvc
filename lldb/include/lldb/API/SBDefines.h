@@ -83,6 +83,7 @@ class LLDB_API SBMemoryRegionInfoList;
 class LLDB_API SBModule;
 class LLDB_API SBModuleSpec;
 class LLDB_API SBModuleSpecList;
+class LLDB_API SBPlatform;
 class LLDB_API SBProcess;
 class LLDB_API SBProcessInfo;
 class LLDB_API SBQueue;
@@ -107,6 +108,7 @@ class LLDB_API SBTypeEnumMember;
 class LLDB_API SBTypeEnumMemberList;
 class LLDB_API SBTypeFilter;
 class LLDB_API SBTypeFormat;
+class LLDB_API SBTypeMember;
 class LLDB_API SBTypeMemberFunction;
 class LLDB_API SBTypeNameSpecifier;
 class LLDB_API SBTypeSummary;
@@ -125,6 +127,10 @@ typedef bool (*SBBreakpointHitCallback)(void *baton, SBProcess &process,
 
 typedef void (*SBDebuggerDestroyCallback)(lldb::user_id_t debugger_id,
                                           void *baton);
+
+typedef SBError (*SBPlatformLocateModuleCallback)(
+    void *baton, const SBModuleSpec &module_spec, SBFileSpec &module_file_spec,
+    SBFileSpec &symbol_file_spec);
 
 typedef void *ScriptedObject;
 }

@@ -130,11 +130,11 @@ def OffloadModuleInterface : OpInterface<"OffloadModuleInterface"> {
       argument.
       }],
       /*retTy=*/"void",
-      /*methodName=*/"setIsDevice",
-      (ins "bool":$isDevice), [{}], [{
+      /*methodName=*/"setIsTargetDevice",
+      (ins "bool":$isTargetDevice), [{}], [{
         $_op->setAttr(
-          mlir::StringAttr::get($_op->getContext(), llvm::Twine{"omp.is_device"}),
-            mlir::BoolAttr::get($_op->getContext(), isDevice));
+          mlir::StringAttr::get($_op->getContext(), llvm::Twine{"omp.is_target_device"}),
+            mlir::BoolAttr::get($_op->getContext(), isTargetDevice));
       }]>,
     InterfaceMethod<
       /*description=*/[{
@@ -142,11 +142,11 @@ def OffloadModuleInterface : OpInterface<"OffloadModuleInterface"> {
         return its value, if it doesn't exist it returns false by default.
       }],
       /*retTy=*/"bool",
-      /*methodName=*/"getIsDevice",
+      /*methodName=*/"getIsTargetDevice",
       (ins), [{}], [{
-        if (Attribute isDevice = $_op->getAttr("omp.is_device"))
-          if (isDevice.isa<mlir::BoolAttr>())
-           return isDevice.dyn_cast<BoolAttr>().getValue();
+        if (Attribute isTargetDevice = $_op->getAttr("omp.is_target_device"))
+          if (isTargetDevice.isa<mlir::BoolAttr>())
+           return isTargetDevice.dyn_cast<BoolAttr>().getValue();
         return false;
       }]>,
     InterfaceMethod<
@@ -258,6 +258,46 @@ def OffloadModuleInterface : OpInterface<"OffloadModuleInterface"> {
       (ins "::mlir::omp::ClauseRequires":$clauses), [{}], [{
         $_op->setAttr(mlir::StringAttr::get($_op->getContext(), "omp.requires"),
           mlir::omp::ClauseRequiresAttr::get($_op->getContext(), clauses));
+      }]>
+  ];
+}
+
+def EarlyOutliningInterface : OpInterface<"EarlyOutliningInterface"> {
+  let description = [{
+    FuncOps that are a result of early outlining should have this interface.
+  }];
+
+  let cppNamespace = "::mlir::omp";
+
+  let methods = [
+    InterfaceMethod<
+      /*description=*/[{
+        Set a StringAttr on an outlined target region function containing the
+        name of the parent function where the target region was outlined
+        from. The parent name is used to construct the kernel names for target
+        regions.
+      }],
+      /*retTy=*/"void",
+      /*methodName=*/"setParentName",
+      (ins "std::string":$parentName), [{}], [{
+        $_op->setAttr(
+          mlir::StringAttr::get($_op->getContext(),
+                                llvm::Twine{"omp.outline_parent_name"}),
+          mlir::StringAttr::get($_op->getContext(), parentName));
+       }]>,
+
+    InterfaceMethod<
+      /*description=*/[{
+        Returns the parent function name from where the target op was outlined
+        from. If it doesn't exist it returns an empty string.
+      }],
+      /*retTy=*/"llvm::StringRef",
+      /*methodName=*/"getParentName",
+      (ins), [{}], [{
+        if (Attribute parentName = $_op->getAttr("omp.outline_parent_name"))
+          if (::llvm::isa<mlir::StringAttr>(parentName))
+            return ::llvm::dyn_cast<mlir::StringAttr>(parentName).getValue();
+        return {};
       }]>
   ];
 }
