@@ -1328,26 +1328,26 @@ void CodeGenFunction::EmitCXXTemporary(const CXXTemporary *Temporary,
 
 // Need to set "funclet" in OperandBundle properly for noThrow
 //       intrinsic (see CGCall.cpp)
-static bool EmitSehScope(CodeGenFunction &CGF,
-                         llvm::FunctionCallee &SehCppScope) {
+static llvm::InvokeInst *EmitSehScope(CodeGenFunction &CGF,
+                                      llvm::FunctionCallee &SehCppScope) {
   llvm::BasicBlock *InvokeDest = CGF.getInvokeDest();
   if (!InvokeDest)
-    return false;
+    return nullptr;
   if (!(CGF.Builder.GetInsertBlock()))
-    return false; // Not found the insert point.
+    return nullptr; // Not found the insert point.
   llvm::BasicBlock *Cont = CGF.createBasicBlock("invoke.cont");
   SmallVector<llvm::OperandBundleDef, 1> BundleList =
       CGF.getBundlesForFunclet(SehCppScope.getCallee());
   if (CGF.CurrentFuncletPad)
     BundleList.emplace_back("funclet", CGF.CurrentFuncletPad);
-  CGF.Builder.CreateInvoke(SehCppScope, Cont, InvokeDest, std::nullopt,
-                           BundleList);
+  auto InvokeIst = CGF.Builder.CreateInvoke(SehCppScope, Cont, InvokeDest,
+                                            std::nullopt, BundleList);
   CGF.EmitBlock(Cont);
-  return true;
+  return InvokeIst;
 }
 
 // Invoke a llvm.seh.scope.begin at the beginning of a CPP scope for -EHa
-bool CodeGenFunction::EmitSehCppScopeBegin() {
+llvm::InvokeInst *CodeGenFunction::EmitSehCppScopeBegin() {
   assert(getLangOpts().EHAsynch);
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
@@ -1358,7 +1358,7 @@ bool CodeGenFunction::EmitSehCppScopeBegin() {
 
 // Invoke a llvm.seh.scope.end at the end of a CPP scope for -EHa
 //   llvm.seh.scope.end is emitted before popCleanup, so it's "invoked"
-bool CodeGenFunction::EmitSehCppScopeEnd() {
+llvm::InvokeInst *CodeGenFunction::EmitSehCppScopeEnd() {
   assert(getLangOpts().EHAsynch);
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
@@ -1368,7 +1368,7 @@ bool CodeGenFunction::EmitSehCppScopeEnd() {
 }
 
 // Invoke a llvm.seh.try.begin at the beginning of a SEH scope for -EHa
-bool CodeGenFunction::EmitSehTryScopeBegin() {
+llvm::InvokeInst *CodeGenFunction::EmitSehTryScopeBegin() {
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
@@ -1377,7 +1377,7 @@ bool CodeGenFunction::EmitSehTryScopeBegin() {
 }
 
 // Invoke a llvm.seh.try.end at the end of a SEH scope for -EHa
-bool CodeGenFunction::EmitSehTryScopeEnd() {
+llvm::InvokeInst *CodeGenFunction::EmitSehTryScopeEnd() {
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
