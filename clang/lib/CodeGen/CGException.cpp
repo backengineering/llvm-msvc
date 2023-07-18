@@ -1638,9 +1638,10 @@ llvm::BasicBlock *CodeGenFunction::getEHResumeBlock(bool isCleanup) {
 void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
   EnterSEHTryStmt(S);
   {
-    JumpDest TryExit = getJumpDestInCurrentScope("__try.__leave");
+    // __leave block
+    JumpDest TryLeave = getJumpDestInCurrentScope("__try.__leave");
 
-    SEHTryEpilogueStack.push_back(&TryExit);
+    SEHTryEpilogueStack.push_back(&TryLeave);
 
     llvm::BasicBlock *TryBB = nullptr;
     // Emit an invoke to _seh_try_begin() runtime for
@@ -1649,14 +1650,6 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
       TryBB = Builder.GetInsertBlock();
 
     EmitStmt(S.getTryBlock());
-
-    // Volatilize all blocks in Try, till current insert point
-    if (TryBB) {
-      llvm::SmallPtrSet<llvm::BasicBlock *, 10> Visited;
-      VolatilizeTryBlocks(TryBB, Visited);
-    }
-
-    SEHTryEpilogueStack.pop_back();
 
     // Emit an invoke _seh_try_end() to mark end of FT flow
     if (HaveInsertPoint()) {
@@ -1672,10 +1665,19 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
       }
     }
 
-    if (!TryExit.getBlock()->use_empty())
-      EmitBlock(TryExit.getBlock(), /*IsFinished=*/true);
+    // Volatilize all blocks in Try, till current insert point
+    if (TryBB) {
+      llvm::SmallPtrSet<llvm::BasicBlock *, 10> Visited;
+      VolatilizeTryBlocks(TryBB, Visited);
+    }
+
+    SEHTryEpilogueStack.pop_back();
+
+    // Emit '__leave' block
+    if (!TryLeave.getBlock()->use_empty())
+      EmitBlock(TryLeave.getBlock(), /*IsFinished=*/true);
     else
-      delete TryExit.getBlock();
+      delete TryLeave.getBlock();
   }
   ExitSEHTryStmt(S);
 }
@@ -2227,7 +2229,7 @@ void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S) {
   }
 
   // The fall-through block.
-  llvm::BasicBlock *ContBB = createBasicBlock("__try.cont");
+  llvm::BasicBlock *ContBB = createBasicBlock("__try.end");
 
   // We just emitted the body of the __try; jump to the continue block.
   if (HaveInsertPoint())
