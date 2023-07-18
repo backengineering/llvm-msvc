@@ -1651,6 +1651,13 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
 
     EmitStmt(S.getTryBlock());
 
+    // Set name to '__try' block
+    if (auto InvokeIst = dyn_cast<llvm::InvokeInst>(Inst)) {
+      if (auto TryBB = InvokeIst->getNormalDest()) {
+          TryBB->setName("__try.begin");
+      }
+    }
+
     // Emit an invoke _seh_try_end() to mark end of FT flow
     if (HaveInsertPoint()) {
       Builder.CreateCall(getSehTryEndFn(CGM));
@@ -2193,7 +2200,7 @@ void CodeGenFunction::EnterSEHTryStmt(const SEHTryStmt &S) {
                                            getContext().IntTy);
   if (CGM.getTarget().getTriple().getArch() != llvm::Triple::x86 && C &&
       C->isOneValue()) {
-    CatchScope->setCatchAllHandler(0, createBasicBlock("__except"));
+    CatchScope->setCatchAllHandler(0, createBasicBlock("__except.enter"));
     return;
   }
 
@@ -2248,7 +2255,7 @@ void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S) {
   // catchret.
   llvm::CatchPadInst *CPI =
       cast<llvm::CatchPadInst>(CatchPadBB->getFirstNonPHI());
-  llvm::BasicBlock *ExceptBB = createBasicBlock("__except");
+  llvm::BasicBlock *ExceptBB = createBasicBlock("__except.exit");
   Builder.CreateCatchRet(CPI, ExceptBB);
   EmitBlock(ExceptBB);
 
