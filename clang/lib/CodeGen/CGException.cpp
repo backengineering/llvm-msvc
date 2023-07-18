@@ -1652,11 +1652,9 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
     EmitStmt(S.getTryBlock());
 
     // Set name to '__try' block
-    if (auto InvokeIst = dyn_cast<llvm::InvokeInst>(Inst)) {
-      if (auto TryBB = InvokeIst->getNormalDest()) {
+    if (auto InvokeIst = dyn_cast<llvm::InvokeInst>(Inst))
+      if (auto TryBB = InvokeIst->getNormalDest())
           TryBB->setName("__try.begin");
-      }
-    }
 
     // Emit an invoke _seh_try_end() to mark end of FT flow
     if (HaveInsertPoint()) {
