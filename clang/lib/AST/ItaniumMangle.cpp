@@ -750,6 +750,10 @@ bool ItaniumMangleContextImpl::shouldMangleCXXName(const NamedDecl *D) {
     if (VD->isExternC())
       return false;
 
+    // '_tls_callback' is not mangled.
+    if (VD->getName() == "_tls_callback" || VD->getName() == "__tls_callback")
+      return false;
+
     // Variables at global scope are not mangled unless they have internal
     // linkage or are specializations or are attached to a named module.
     const DeclContext *DC = getEffectiveDeclContext(D);

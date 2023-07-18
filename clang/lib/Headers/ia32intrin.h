@@ -181,30 +181,30 @@ __popcntq(unsigned long long __A)
 #endif /* __x86_64__ */
 
 #ifdef __x86_64__
-static __inline__ unsigned long long __DEFAULT_FN_ATTRS
-__readeflags(void)
-{
-  return __builtin_ia32_readeflags_u64();
-}
+// static __inline__ unsigned long long __DEFAULT_FN_ATTRS
+// __readeflags(void)
+// {
+//   return __builtin_ia32_readeflags_u64();
+// }
 
-static __inline__ void __DEFAULT_FN_ATTRS
-__writeeflags(unsigned long long __f)
-{
-  __builtin_ia32_writeeflags_u64(__f);
-}
+// static __inline__ void __DEFAULT_FN_ATTRS
+// __writeeflags(unsigned long long __f)
+// {
+//   __builtin_ia32_writeeflags_u64(__f);
+// }
 
-#else /* !__x86_64__ */
-static __inline__ unsigned int __DEFAULT_FN_ATTRS
-__readeflags(void)
-{
-  return __builtin_ia32_readeflags_u32();
-}
+// #else /* !__x86_64__ */
+// static __inline__ unsigned int __DEFAULT_FN_ATTRS
+// __readeflags(void)
+// {
+//   return __builtin_ia32_readeflags_u32();
+// }
 
-static __inline__ void __DEFAULT_FN_ATTRS
-__writeeflags(unsigned int __f)
-{
-  __builtin_ia32_writeeflags_u32(__f);
-}
+// static __inline__ void __DEFAULT_FN_ATTRS
+// __writeeflags(unsigned int __f)
+// {
+//   __builtin_ia32_writeeflags_u32(__f);
+// }
 #endif /* !__x86_64__ */
 
 /** Cast a 32-bit float value to a 32-bit unsigned integer value
@@ -358,11 +358,11 @@ __rdpmc(int __A) {
   return __builtin_ia32_rdpmc(__A);
 }
 
-/* __rdtscp */
-static __inline__ unsigned long long __DEFAULT_FN_ATTRS
-__rdtscp(unsigned int *__A) {
-  return __builtin_ia32_rdtscp(__A);
-}
+// /* __rdtscp */
+// static __inline__ unsigned long long __DEFAULT_FN_ATTRS
+// __rdtscp(unsigned int *__A) {
+//   return __builtin_ia32_rdtscp(__A);
+// }
 
 #define _rdtsc() __rdtsc()
 

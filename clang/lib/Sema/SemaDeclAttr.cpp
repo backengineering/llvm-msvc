@@ -2156,26 +2156,31 @@ static void handleCmseNSEntryAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 }
 
 static void handleNakedAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
-  if (AL.isDeclspecAttribute()) {
-    const auto &Triple = S.getASTContext().getTargetInfo().getTriple();
-    const auto &Arch = Triple.getArch();
-    if (Arch != llvm::Triple::x86 &&
-        (Arch != llvm::Triple::arm && Arch != llvm::Triple::thumb)) {
-      S.Diag(AL.getLoc(), diag::err_attribute_not_supported_on_arch)
-          << AL << Triple.getArchName();
-      return;
-    }
+  //if (AL.isDeclspecAttribute()) {
+  //  const auto &Triple = S.getASTContext().getTargetInfo().getTriple();
+  //  const auto &Arch = Triple.getArch();
+  //  if (Arch != llvm::Triple::x86 &&
+  //      Arch != llvm::Triple::x86_64 &&
+  //      (Arch != llvm::Triple::arm && Arch != llvm::Triple::thumb)) {
+  //    S.Diag(AL.getLoc(), diag::err_attribute_not_supported_on_arch)
+  //        << AL << Triple.getArchName();
+  //    return;
+  //  }
 
-    // This form is not allowed to be written on a member function (static or
-    // nonstatic) when in Microsoft compatibility mode.
-    if (S.getLangOpts().MSVCCompat && isa<CXXMethodDecl>(D)) {
-      S.Diag(AL.getLoc(), diag::err_attribute_wrong_decl_type_str)
-          << AL << AL.isRegularKeywordAttribute() << "non-member functions";
-      return;
-    }
-  }
+  //  // This form is not allowed to be written on a member function (static or
+  //  // nonstatic) when in Microsoft compatibility mode.
+  //  if (S.getLangOpts().MSVCCompat && isa<CXXMethodDecl>(D)) {
+  //    S.Diag(AL.getLoc(), diag::err_attribute_wrong_decl_type_str)
+  //        << AL << "non-member functions";
+  //    return;
+  //  }
+  //}
 
   D->addAttr(::new (S.Context) NakedAttr(S.Context, AL));
+}
+
+static void handleVolatileAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+  D->addAttr(::new (S.Context) VolatileAttr(S.Context, AL));
 }
 
 static void handleNoReturnAttr(Sema &S, Decl *D, const ParsedAttr &Attrs) {
@@ -9025,6 +9030,9 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
     break;
   case ParsedAttr::AT_Naked:
     handleNakedAttr(S, D, AL);
+    break;
+  case ParsedAttr::AT_Volatile:
+    handleVolatileAttr(S, D, AL);
     break;
   case ParsedAttr::AT_NoReturn:
     handleNoReturnAttr(S, D, AL);

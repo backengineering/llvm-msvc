@@ -6682,6 +6682,22 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Triple.isWindowsMSVCEnvironment() && !D.IsCLMode() &&
       Args.hasArg(options::OPT_fms_runtime_lib_EQ))
     ProcessVSRuntimeLibrary(Args, CmdArgs);
+  
+  // -fprint-arguments (printf clang arguments)
+  if (Args.hasArg(options::OPT_fprint_arguments))
+    CmdArgs.push_back("-fprint-arguments");
+
+  // -fencrypt-string (encrypt your string)
+  if (Args.hasArg(options::OPT_fencrypt_string))
+    CmdArgs.push_back("-fencrypt-string");
+
+  // -fauto-generate-bitcode (Automatically generate bitcode)
+  if (Args.hasArg(options::OPT_fauto_generate_bitcode))
+    CmdArgs.push_back("-fauto-generate-bitcode");
+
+  // -fauto-generate-ir (Automatically generate ir)
+  if (Args.hasArg(options::OPT_fauto_generate_ir))
+    CmdArgs.push_back("-fauto-generate-ir");
 
   // Handle -fgcc-version, if present.
   VersionTuple GNUCVer;
@@ -6762,12 +6778,14 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   else if (Args.hasArg(options::OPT_fno_declspec))
     CmdArgs.push_back("-fno-declspec"); // Explicitly disabling __declspec.
 
+  bool IsKernel = Args.hasArg(options::OPT__SLASH_kernel);
+
   // -fthreadsafe-static is default, except for MSVC compatibility versions less
-  // than 19.
-  if (!Args.hasFlag(options::OPT_fthreadsafe_statics,
-                    options::OPT_fno_threadsafe_statics,
-                    !types::isOpenCL(InputType) &&
-                        (!IsWindowsMSVC || IsMSVC2015Compatible)))
+  // than 19 and windows driver.
+  if (IsKernel || !Args.hasFlag(options::OPT_fthreadsafe_statics,
+                                options::OPT_fno_threadsafe_statics,
+                                !types::isOpenCL(InputType) &&
+                                    (!IsWindowsMSVC || IsMSVC2015Compatible)))
     CmdArgs.push_back("-fno-threadsafe-statics");
 
   // -fno-delayed-template-parsing is default, except when targeting MSVC.
@@ -7794,9 +7812,9 @@ void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
   // This controls whether or not we emit stack-protector instrumentation.
   // In MSVC, Buffer Security Check (/GS) is on by default.
   if (!isNVPTX && Args.hasFlag(options::OPT__SLASH_GS, options::OPT__SLASH_GS_,
-                               /*Default=*/true)) {
-    CmdArgs.push_back("-stack-protector");
-    CmdArgs.push_back(Args.MakeArgString(Twine(LangOptions::SSPStrong)));
+                              /*Default=*/true)) {
+      CmdArgs.push_back("-stack-protector");
+      CmdArgs.push_back(Args.MakeArgString(Twine(LangOptions::SSPStrong)));
   }
 
   // Emit CodeView if -Z7 or -gline-tables-only are present.
@@ -7953,6 +7971,7 @@ void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
     CmdArgs.push_back("-fdiagnostics-format");
     CmdArgs.push_back("msvc");
   }
+  
 
   if (Args.hasArg(options::OPT__SLASH_kernel))
     CmdArgs.push_back("-fms-kernel");

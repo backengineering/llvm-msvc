@@ -184,12 +184,11 @@
 #define LLVM_ATTRIBUTE_UNUSED
 #endif
 
-// FIXME: Provide this for PE/COFF targets.
 #if __has_attribute(weak) && !defined(__MINGW32__) && !defined(__CYGWIN__) &&  \
     !defined(_WIN32)
 #define LLVM_ATTRIBUTE_WEAK __attribute__((__weak__))
 #else
-#define LLVM_ATTRIBUTE_WEAK
+#define LLVM_ATTRIBUTE_WEAK __declspec(dllexport)
 #endif
 
 // Prior to clang 3.2, clang did not accept any spelling of

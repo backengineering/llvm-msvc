@@ -3811,6 +3811,9 @@ bool InstCombinerImpl::run() {
     Instruction *I = Worklist.removeOne();
     if (I == nullptr) continue;  // skip null values.
 
+    if (I->isVolatile())
+      continue;
+
     // Check to see if we can DCE the instruction.
     if (isInstructionTriviallyDead(I, &TLI)) {
       eraseInstFromFunction(*I);

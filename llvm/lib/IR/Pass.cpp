@@ -15,6 +15,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Config/llvm-config.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassNameParser.h"

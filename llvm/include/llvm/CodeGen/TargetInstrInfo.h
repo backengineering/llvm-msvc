@@ -242,6 +242,9 @@ public:
   unsigned getCatchReturnOpcode() const { return CatchRetOpcode; }
   unsigned getReturnOpcode() const { return ReturnOpcode; }
 
+  // Fix the last call at the end of the block.
+  virtual void fixNoReturnCall(MachineBasicBlock &MBB) const {};
+
   /// Returns the actual stack pointer adjustment made by an instruction
   /// as part of a call sequence. By default, only call frame setup/destroy
   /// instructions adjust the stack, but targets may want to override this

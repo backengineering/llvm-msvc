@@ -329,6 +329,8 @@ void AggressiveDeadCodeElimination::initialize() {
 }
 
 bool AggressiveDeadCodeElimination::isAlwaysLive(Instruction &I) {
+  if (I.isVolatile())
+    return true;
   // TODO -- use llvm::isInstructionTriviallyDead
   if (I.isEHPad() || I.mayHaveSideEffects()) {
     // Skip any value profile instrumentation calls if they are

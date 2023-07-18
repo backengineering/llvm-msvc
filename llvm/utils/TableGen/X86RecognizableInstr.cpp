@@ -500,7 +500,7 @@ void RecognizableInstr::emitInstructionSpecifier() {
     return;
   case X86Local::RawFrm:
     // Operand 1 (optional) is an address or immediate.
-    assert(numPhysicalOperands <= 1 &&
+    assert(numPhysicalOperands <= 2 &&
            "Unexpected number of operands for RawFrm");
     HANDLE_OPTIONAL(relocation)
     break;
@@ -1294,6 +1294,7 @@ RecognizableInstr::relocationEncodingFromString(const std::string &s,
   ENCODING("dstidx16",           ENCODING_DI)
   ENCODING("dstidx32",           ENCODING_DI)
   ENCODING("dstidx64",           ENCODING_DI)
+  ENCODING("GR32",               ENCODING_Rv)
   errs() << "Unhandled relocation encoding " << s << "\n";
   llvm_unreachable("Unhandled relocation encoding");
 }

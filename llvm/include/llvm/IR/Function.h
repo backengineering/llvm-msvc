@@ -76,6 +76,8 @@ private:
   std::unique_ptr<ValueSymbolTable>
       SymTab;                             ///< Symbol table of args/instructions
   AttributeList AttributeSets;            ///< Parameter attributes
+  bool IsVolatileFunction : 1;            ///< Is this a volatile function?
+  bool IsFastISelDisabled : 1;            ///< Is fast-isel for this function disabled?
 
   /*
    * Value::SubclassData
@@ -181,6 +183,16 @@ public:
   /// getContext - Return a reference to the LLVMContext associated with this
   /// function.
   LLVMContext &getContext() const;
+
+  /// If the value is a volatile function, we will preserve it.
+  bool isVolatile() const { return IsVolatileFunction; }
+  void setVolatile(bool Volatile = true) { IsVolatileFunction = Volatile; }
+
+  /// Indicate that whether we should disable fast-isel for this function.
+  bool isFastISelDisabled() const { return IsFastISelDisabled; }
+  void setFastISelDisabled(bool Disabled = true) {
+    IsFastISelDisabled = Disabled;
+  }
 
   /// isVarArg - Return true if this function takes a variable number of
   /// arguments.
@@ -719,7 +731,7 @@ public:
   /// \Returns \p ToIt.
   Function::iterator erase(Function::iterator FromIt, Function::iterator ToIt);
 
-private:
+public:
   // These need access to the underlying BB list.
   friend void BasicBlock::removeFromParent();
   friend iplist<BasicBlock>::iterator BasicBlock::eraseFromParent();

@@ -292,6 +292,7 @@ public:
   void merge(iplist_impl &Right) { return merge(Right, op_less); }
 
   using base_list_type::sort;
+  using base_list_type::shuffle;
 
   /// Get the previous node, or \c nullptr for the list head.
   pointer getPrevNode(reference N) const {

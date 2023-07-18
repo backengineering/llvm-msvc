@@ -699,8 +699,10 @@ class VarDecl;
 /// an lvalue) a function (in which case it is a function designator) or
 /// an enum constant.
 class ValueDecl : public NamedDecl {
+public:
   QualType DeclType;
 
+private:
   void anchor() override;
 
 protected:

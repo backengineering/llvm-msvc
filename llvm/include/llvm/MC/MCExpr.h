@@ -355,7 +355,8 @@ public:
     VK_VE_TLS_GD_LO32, // symbol@tls_gd_lo
     VK_VE_TPOFF_HI32,  // symbol@tpoff_hi
     VK_VE_TPOFF_LO32,  // symbol@tpoff_lo
-
+    
+    VK_INLINEASM_MOV_LABEL,
     VK_TPREL,
     VK_DTPREL
   };

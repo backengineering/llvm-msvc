@@ -3087,6 +3087,20 @@ BinaryOperator *BinaryOperator::CreateNeg(Value *Op, const Twine &Name,
                             Op->getType(), Name, InsertAtEnd);
 }
 
+BinaryOperator *BinaryOperator::CreateFNeg(Value *Op, const Twine &Name,
+                                           Instruction *InsertBefore) {
+  Value *Zero = ConstantFP::getZeroValueForNegation(Op->getType());
+  return new BinaryOperator(Instruction::FSub, Zero, Op, Op->getType(), Name,
+                            InsertBefore);
+}
+
+BinaryOperator *BinaryOperator::CreateFNeg(Value *Op, const Twine &Name,
+                                           BasicBlock *InsertAtEnd) {
+  Value *Zero = ConstantFP::getZeroValueForNegation(Op->getType());
+  return new BinaryOperator(Instruction::FSub, Zero, Op, Op->getType(), Name,
+                            InsertAtEnd);
+}
+
 BinaryOperator *BinaryOperator::CreateNSWNeg(Value *Op, const Twine &Name,
                                              Instruction *InsertBefore) {
   Value *Zero = ConstantInt::get(Op->getType(), 0);

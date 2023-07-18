@@ -614,12 +614,13 @@ static int getSuccState(DenseMap<BasicBlock *, int> &InitialStates, Function &F,
 
 bool WinEHStatePass::isStateStoreNeeded(EHPersonality Personality,
                                         CallBase &Call) {
-  // If the function touches memory, it needs a state store.
-  if (isAsynchronousEHPersonality(Personality))
-    return !Call.doesNotAccessMemory();
+  //// If the function touches memory, it needs a state store.
+  //if (isAsynchronousEHPersonality(Personality))
+  //  return !Call.doesNotAccessMemory();
 
-  // If the function throws, it needs a state store.
-  return !Call.doesNotThrow();
+  //// If the function throws, it needs a state store.
+  //return !Call.doesNotThrow();
+  return true;
 }
 
 void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
@@ -734,7 +735,9 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
       auto *Call = dyn_cast<CallBase>(&I);
       if (!Call || !isStateStoreNeeded(Personality, *Call))
         continue;
-
+      if ((!Call->getCalledFunction() ||
+           Call->getCalledFunction()->isIntrinsic()))
+        continue;
       int State = getStateForCall(BlockColors, FuncInfo, *Call);
       if (State != PrevState)
         insertStateNumberStore(&I, State);

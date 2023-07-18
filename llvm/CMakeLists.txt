@@ -76,6 +76,7 @@ if(DEFINED CMAKE_CXX_STANDARD AND CMAKE_CXX_STANDARD LESS ${LLVM_REQUIRED_CXX_ST
 endif()
 
 set(CMAKE_CXX_STANDARD ${LLVM_REQUIRED_CXX_STANDARD} CACHE STRING "C++ standard to conform to")
+
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
 if (CYGWIN)
@@ -329,7 +330,7 @@ option(LLVM_TOOL_LLVM_DRIVER_BUILD "Enables building the llvm multicall tool" OF
 
 set(PACKAGE_NAME LLVM)
 set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
-set(PACKAGE_BUGREPORT "https://github.com/llvm/llvm-project/issues/")
+set(PACKAGE_BUGREPORT "https://github.com/NewWorldComingSoon/llvm-msvc-issues/issues/")
 
 set(BUG_REPORT_URL "${PACKAGE_BUGREPORT}" CACHE STRING
   "Default URL where bug reports are to be submitted.")

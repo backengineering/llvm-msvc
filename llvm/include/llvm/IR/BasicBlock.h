@@ -134,6 +134,37 @@ public:
         static_cast<const BasicBlock *>(this)->getTerminator());
   }
 
+  /// Get the last instruction of this block
+  const Instruction *getLastInstruction() const {
+    if (InstList.empty())
+      return nullptr;
+    return &InstList.back();
+  }
+  Instruction *getLastInstruction() {
+    return const_cast<Instruction *>(
+        static_cast<const BasicBlock *>(this)->getLastInstruction());
+  }
+
+  /// Get the first instruction of this block
+  const Instruction *getFirstInstruction() const {
+    if (InstList.empty())
+      return nullptr;
+    return &InstList.front();
+  }
+  Instruction *getFirstInstruction() {
+    return const_cast<Instruction *>(
+        static_cast<const BasicBlock *>(this)->getFirstInstruction());
+  }
+
+  /// Get the previous or next basic block
+  BasicBlock *getPrevOrNextBasicBlock(bool Previous);
+
+  /// Get the previous basic block
+  BasicBlock *getPrevBasicBlock() { return getPrevOrNextBasicBlock(true); }
+
+  /// Get the next basic block
+  BasicBlock *getNextBasicBlock() { return getPrevOrNextBasicBlock(false); }
+
   /// Returns the call instruction calling \@llvm.experimental.deoptimize
   /// prior to the terminating return instruction of this basic block, if such
   /// a call is present.  Otherwise, returns null.
@@ -276,6 +307,13 @@ public:
                  static_cast<const BasicBlock *>(this)->getSinglePredecessor());
   }
 
+  /// Get the first predecessor of this block
+  const BasicBlock *getFirstPredecessor() const;
+  BasicBlock *getFirstPredecessor() {
+    return const_cast<BasicBlock *>(
+        static_cast<const BasicBlock *>(this)->getFirstPredecessor());
+  }
+
   /// Return the predecessor of this block if it has a unique predecessor
   /// block. Otherwise return a null pointer.
   ///
@@ -386,7 +424,7 @@ public:
   }
   iterator_range<phi_iterator> phis();
 
-private:
+public:
   /// Return the underlying instruction list container.
   /// This is deliberately private because we have implemented an adequate set
   /// of functions to modify the list, including BasicBlock::splice(),
@@ -571,7 +609,7 @@ public:
   /// complexity when asserts are enabled as when they are disabled.
   void validateInstrOrdering() const;
 
-private:
+public:
 #if defined(_AIX) && (!defined(__GNUC__) || defined(__clang__))
 // Except for GCC; by default, AIX compilers store bit-fields in 4-byte words
 // and give the `pack` pragma push semantics.

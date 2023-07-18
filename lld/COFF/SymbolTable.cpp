@@ -59,6 +59,7 @@ void SymbolTable::addFile(InputFile *file) {
   } else {
     file->parse();
     if (auto *f = dyn_cast<ObjFile>(file)) {
+      // message("llvm-msvc linker reading object " + toString(file));
       ctx.objFileInstances.push_back(f);
     } else if (auto *f = dyn_cast<BitcodeFile>(file)) {
       ctx.bitcodeFileInstances.push_back(f);
@@ -674,7 +675,7 @@ void SymbolTable::reportDuplicate(Symbol *existing, InputFile *newFile,
   if (ctx.config.forceMultiple)
     warn(os.str());
   else
-    error(os.str());
+    message(os.str()); //[MSVC Compatibility]
 }
 
 Symbol *SymbolTable::addAbsolute(StringRef n, COFFSymbolRef sym) {

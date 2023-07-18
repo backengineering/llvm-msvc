@@ -1384,6 +1384,8 @@ def : Pat<(X86call (i32 texternalsym:$dst)),
           (CALLpcrel32 texternalsym:$dst)>;
 def : Pat<(X86call (i32 imm:$dst)),
           (CALLpcrel32 imm:$dst)>, Requires<[CallImmAddr]>;
+def : Pat<(X86call GR32:$src1, addr:$src2),
+          (CALLEiprel32  GR32:$src1, addr:$src2)>, Requires<[CallImmAddr]>;
 
 // Comparisons.
 

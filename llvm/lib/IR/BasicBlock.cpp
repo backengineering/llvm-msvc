@@ -133,6 +133,30 @@ iplist<BasicBlock>::iterator BasicBlock::eraseFromParent() {
   return getParent()->getBasicBlockList().erase(getIterator());
 }
 
+BasicBlock *BasicBlock::getPrevOrNextBasicBlock(bool Previous) {
+  // If there is no parent or empty basic block list, return nullptr
+  if (getParent() == nullptr || getParent()->getBasicBlockList().empty())
+    return nullptr;
+
+  // Find this basic block in the parent's basic block list
+  auto &BBList = getParent()->getBasicBlockList();
+  auto It = this->getIterator();
+
+  // Return the previous or next basic block based on boolean input
+  if (Previous) {
+    if (It == BBList.begin())
+      return nullptr;
+    else
+      return &(*(--It));
+  } else {
+    ++It;
+    if (It == BBList.end())
+      return nullptr;
+    else
+      return &(*It);
+  }
+}
+
 void BasicBlock::moveBefore(SymbolTableList<BasicBlock>::iterator MovePos) {
   getParent()->splice(MovePos, getParent(), getIterator());
 }
@@ -207,8 +231,10 @@ const CallInst *BasicBlock::getPostdominatingDeoptimizeCall() const {
 const Instruction *BasicBlock::getFirstMayFaultInst() const {
   if (InstList.empty())
     return nullptr;
+  // [SEH] LoadInst/StoreInst/CallBase(InlineAsm/CallInst/CallBrInst)/IntrinsicInst
   for (const Instruction &I : *this)
-    if (isa<LoadInst>(I) || isa<StoreInst>(I) || isa<CallBase>(I))
+    if (isa<LoadInst>(I) || isa<StoreInst>(I) || isa<CallBase>(I) ||
+        isa<IntrinsicInst>(I))
       return &I;
   return nullptr;
 }
@@ -295,6 +321,12 @@ const BasicBlock *BasicBlock::getSinglePredecessor() const {
   const BasicBlock *ThePred = *PI;
   ++PI;
   return (PI == E) ? ThePred : nullptr /*multiple preds*/;
+}
+
+const BasicBlock *BasicBlock::getFirstPredecessor() const {
+  if (pred_empty(this))
+    return nullptr;
+  return *pred_begin(this);
 }
 
 const BasicBlock *BasicBlock::getUniquePredecessor() const {

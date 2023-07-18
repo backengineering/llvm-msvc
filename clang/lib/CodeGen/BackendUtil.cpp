@@ -24,6 +24,7 @@
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
+#include "llvm/Bitcode/BitcodeAutoGeneratorPass.h"
 #include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -35,6 +36,7 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRPrinter/IRPrintingPasses.h"
+#include "llvm/IRPrinter/IRAutoGeneratorPass.h"
 #include "llvm/LTO/LTOBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/TargetRegistry.h"
@@ -1091,6 +1093,28 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
                                uint32_t(CodeGenOpts.EnableSplitLTOUnit));
     if (CodeGenOpts.UnifiedLTO && !TheModule->getModuleFlag("UnifiedLTO"))
       TheModule->addModuleFlag(Module::Error, "UnifiedLTO", uint32_t(1));
+  }
+
+  // Pre pass
+  {
+    // IR auto generator pass(Pre)
+    MPM.addPassToFront(IRAutoGeneratorPrePass(CodeGenOpts.AutoGenerateIR,
+                                                "IRAutoGeneratorPre"));
+
+    // Bitcode auto generator pass(Pre)
+    MPM.addPassToFront(BitcodeAutoGeneratorPrePass(
+          CodeGenOpts.AutoGenerateBitcode, "BitcodeAutoGeneratorPre"));
+  }
+
+  // Post pass
+  {
+    // IR auto generator pass(Post)
+    MPM.addPass(IRAutoGeneratorPostPass(CodeGenOpts.AutoGenerateIR,
+                                          "IRAutoGeneratorPost"));
+    
+    // Bitcode auto generator pass(Post)
+    MPM.addPass(BitcodeAutoGeneratorPostPass(CodeGenOpts.AutoGenerateBitcode,
+                                              "BitcodeAutoGeneratorPost"));
   }
 
   // Now that we have all of the passes ready, run them.

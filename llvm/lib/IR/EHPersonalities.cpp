@@ -88,15 +88,18 @@ EHPersonality llvm::getDefaultEHPersonality(const Triple &T) {
 }
 
 bool llvm::canSimplifyInvokeNoUnwind(const Function *F) {
-  EHPersonality Personality = classifyEHPersonality(F->getPersonalityFn());
+  // EHPersonality Personality = classifyEHPersonality(F->getPersonalityFn());
   // We can't simplify any invokes to nounwind functions if the personality
   // function wants to catch asynch exceptions.  The nounwind attribute only
   // implies that the function does not throw synchronous exceptions.
-
+ 
   // Cannot simplify CXX Personality under AsynchEH
-  const llvm::Module *M = (const llvm::Module *)F->getParent();
-  bool EHa = M->getModuleFlag("eh-asynch");
-  return !EHa && !isAsynchronousEHPersonality(Personality);
+  // const llvm::Module *M = (const llvm::Module *)F->getParent();
+  // bool EHa = M->getModuleFlag("eh-asynch");
+  // return !EHa && !isAsynchronousEHPersonality(Personality);
+
+  // [SEH] Never simplify CXX Personality
+  return false;
 }
 
 DenseMap<BasicBlock *, ColorVector> llvm::colorEHFunclets(Function &F) {

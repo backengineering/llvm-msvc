@@ -798,6 +798,8 @@ void Parser::ParseMicrosoftDeclSpecs(ParsedAttributes &Attrs) {
           T.skipToEnd();
           return;
         }
+        if (Str.front() == '"' && Str.back() == '"')
+          Str = Str.drop_front(1).drop_back(1);
         AttrName = PP.getIdentifierInfo(Str);
         AttrNameLoc = ConsumeStringToken();
       } else {
@@ -829,6 +831,7 @@ void Parser::ParseMicrosoftDeclSpecs(ParsedAttributes &Attrs) {
 void Parser::ParseMicrosoftTypeAttributes(ParsedAttributes &attrs) {
   // Treat these like attributes
   while (true) {
+    // [MSVC Compatibility]
     auto Kind = Tok.getKind();
     switch (Kind) {
     case tok::kw___fastcall:
@@ -846,6 +849,14 @@ void Parser::ParseMicrosoftTypeAttributes(ParsedAttributes &attrs) {
       SourceLocation AttrNameLoc = ConsumeToken();
       attrs.addNew(AttrName, AttrNameLoc, nullptr, AttrNameLoc, nullptr, 0,
                    Kind);
+      // [MSVC Compatibility]
+      if (Kind == tok::kw___stdcall || Kind == tok::kw___cdecl ||
+          Kind == tok::kw___fastcall || Kind == tok::kw___thiscall ||
+          Kind == tok::kw___regcall || Kind == tok::kw___vectorcall) {
+        if (Tok.is(tok::r_paren) && NextToken().is(tok::l_paren)) {
+          ConsumeParen();
+        }
+      }
       break;
     }
     default:
@@ -3598,7 +3609,19 @@ void Parser::ParseDeclarationSpecifiers(
 
       DS.SetRangeEnd(Tok.getAnnotationEndLoc());
       ConsumeAnnotationToken(); // The typename
-
+      //[MSVC Compatibility]
+      if (Tok.is(tok::l_paren) &&
+          NextToken().isOneOf(tok::kw___stdcall, tok::kw___cdecl,
+                              tok::kw___fastcall, tok::kw___thiscall,
+                              tok::kw___regcall, tok::kw___vectorcall)) {
+        const Token &NextNextToken = PP.LookAhead(1);
+        if (NextNextToken.is(tok::r_paren)) {
+          const Token &NextToken2 = PP.LookAhead(2);
+          if (NextToken2.is(tok::l_paren)) {
+            ConsumeParen();
+          }
+        }
+      }
       continue;
     }
 

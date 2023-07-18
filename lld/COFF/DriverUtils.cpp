@@ -168,7 +168,7 @@ void LinkerDriver::parseMerge(StringRef s) {
   if (!inserted) {
     StringRef existing = pair.first->second;
     if (existing != to)
-      warn(s + ": already merged into " + existing);
+      message(s + ": already merged into " + existing);
   }
 }
 
@@ -224,6 +224,12 @@ void LinkerDriver::parseSection(StringRef s) {
   if (name.empty() || attrs.empty())
     fatal("/section: invalid argument: " + s);
   ctx.config.section[name] = parseSectionAttributes(attrs);
+  // If /driver is specified, we assume that the user wants to create a driver
+  // and set the default attributes for the 'INIT' section.
+  if (ctx.config.driver && name == "INIT")
+    ctx.config.section[name] |= IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_READ |
+                                IMAGE_SCN_MEM_EXECUTE |
+                                IMAGE_SCN_MEM_DISCARDABLE;
 }
 
 // Parses /aligncomm option argument.
@@ -379,11 +385,12 @@ std::string LinkerDriver::createDefaultXml() {
 
   // Emit the XML. Note that we do *not* verify that the XML attributes are
   // syntactically correct. This is intentional for link.exe compatibility.
-  os << "<?xml version=\"1.0\" standalone=\"yes\"?>\n"
-     << "<assembly xmlns=\"urn:schemas-microsoft-com:asm.v1\"\n"
-     << "          manifestVersion=\"1.0\">\n";
+  // Use microsoft xml to support win-xp.
+  os << "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n"
+     << "<assembly xmlns='urn:schemas-microsoft-com:asm.v1' "
+        "manifestVersion='1.0'>\n";
   if (ctx.config.manifestUAC) {
-    os << "  <trustInfo>\n"
+    os << "  <trustInfo xmlns=\"urn:schemas-microsoft-com:asm.v3\">\n"
        << "    <security>\n"
        << "      <requestedPrivileges>\n"
        << "         <requestedExecutionLevel level=" << ctx.config.manifestLevel

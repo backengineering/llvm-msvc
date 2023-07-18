@@ -1750,6 +1750,12 @@ def Mode : Attr {
   let PragmaAttributeSupport = 0;
 }
 
+def Volatile : InheritableAttr {
+  let Spellings = [GCC<"volatile">, Declspec<"volatile">];
+  let Subjects = SubjectList<[Function]>;
+  let Documentation = [Undocumented];
+}
+
 def Naked : InheritableAttr {
   let Spellings = [GCC<"naked">, Declspec<"naked">];
   let Subjects = SubjectList<[Function]>;

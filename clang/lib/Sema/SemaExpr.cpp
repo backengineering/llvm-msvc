@@ -13355,10 +13355,11 @@ QualType Sema::CheckCompareOperands(ExprResult &LHS, ExprResult &RHS,
     } else if ((LHSIsNull && LHSType->isIntegerType()) ||
                (RHSIsNull && RHSType->isIntegerType())) {
       if (IsOrdered) {
-        isError = getLangOpts().CPlusPlus;
-        DiagID =
-          isError ? diag::err_typecheck_ordered_comparison_of_pointer_and_zero
-                  : diag::ext_typecheck_ordered_comparison_of_pointer_and_zero;
+        // [MSVC Compatibility]
+        //isError = getLangOpts().CPlusPlus;
+        //DiagID =
+        //  isError ? diag::err_typecheck_ordered_comparison_of_pointer_and_zero
+        //          : diag::ext_typecheck_ordered_comparison_of_pointer_and_zero;
       }
     } else if (getLangOpts().CPlusPlus) {
       DiagID = diag::err_typecheck_comparison_of_pointer_integer;
@@ -18920,10 +18921,11 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
     if (!Func->isDefined()) {
       if (mightHaveNonExternalLinkage(Func))
         UndefinedButUsed.insert(std::make_pair(Func->getCanonicalDecl(), Loc));
-      else if (Func->getMostRecentDecl()->isInlined() &&
-               !LangOpts.GNUInline &&
-               !Func->getMostRecentDecl()->hasAttr<GNUInlineAttr>())
+      else if (Func->getMostRecentDecl()->isInlined() && !LangOpts.GNUInline &&
+               !Func->getMostRecentDecl()->hasAttr<GNUInlineAttr>()) {
+        Func->getMostRecentDecl()->setImplicitlyInline(false);
         UndefinedButUsed.insert(std::make_pair(Func->getCanonicalDecl(), Loc));
+      }
       else if (isExternalWithNoLinkageType(Func))
         UndefinedButUsed.insert(std::make_pair(Func->getCanonicalDecl(), Loc));
     }

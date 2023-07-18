@@ -47,6 +47,8 @@ class Instruction : public User,
   /// O(1) local dominance checks between instructions.
   mutable unsigned Order = 0;
 
+  bool IsVolatileInstruction = false;      // Is this a volatile instruction?
+
 protected:
   // The 15 first bits of `Value::SubclassData` are available for subclasses of
   // `Instruction` to use.
@@ -119,6 +121,15 @@ public:
   ///
   /// \returns an iterator pointing to the element after the erased one
   SymbolTableList<Instruction>::iterator eraseFromParent();
+
+  /// Get the previous or next instruction
+  Instruction *getPrevOrNextInst(bool Previous);
+
+  /// Get the previous instruction
+  Instruction *getPrevInst() { return getPrevOrNextInst(true); }
+
+  /// Get the next instruction
+  Instruction *getNextInst() { return getPrevOrNextInst(false); }
 
   /// Insert an unlinked instruction into a basic block immediately before
   /// the specified instruction.
@@ -646,6 +657,7 @@ public:
 
   /// Return true if this instruction has a volatile memory access.
   bool isVolatile() const LLVM_READONLY;
+  void setVolatile(bool Volatile = true);
 
   /// Return the type this instruction accesses in memory, if any.
   Type *getAccessType() const LLVM_READONLY;

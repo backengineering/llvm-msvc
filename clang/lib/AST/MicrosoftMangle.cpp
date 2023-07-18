@@ -532,6 +532,10 @@ bool MicrosoftMangleContextImpl::shouldMangleCXXName(const NamedDecl *D) {
     if (VD->isExternC())
       return false;
 
+    // '_tls_callback' is not mangled.
+    if (VD->getName() == "_tls_callback" || VD->getName() == "__tls_callback")
+      return false;
+
     // Variables at global scope with internal linkage are not mangled.
     const DeclContext *DC = getEffectiveDeclContext(D);
     // Check for extern variable declared locally.

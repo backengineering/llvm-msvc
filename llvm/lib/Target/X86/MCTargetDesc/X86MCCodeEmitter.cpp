@@ -1412,14 +1412,27 @@ void X86MCCodeEmitter::encodeInstruction(const MCInst &MI,
     [[fallthrough]];
   case X86II::RawFrm:
     emitByte(BaseOpcode + OpcodeOffset, CB);
+    bool HasCallDollar = false;
+    if (MI.getNumOperands() > 0) {
+      const MCOperand &Op0 = MI.getOperand(CurOp);
+      if (BaseOpcode == 0xE8 && Op0.isReg() && Op0.getReg() == X86::EIP) {
+        const MCOperand &Op3 = MI.getOperand(CurOp + 4);
+        int64_t Offset = Op3.getImm();
+        Offset = Offset - 5;
+        emitConstant(Offset, 4, CB);
+        CurOp += MI.getNumOperands();
+        HasCallDollar = true;
+      }
+    }
+    if (!HasCallDollar) {
+      if (!STI.hasFeature(X86::Is64Bit) || !isPCRel32Branch(MI, MCII))
+        break;
 
-    if (!STI.hasFeature(X86::Is64Bit) || !isPCRel32Branch(MI, MCII))
-      break;
-
-    const MCOperand &Op = MI.getOperand(CurOp++);
-    emitImmediate(Op, MI.getLoc(), X86II::getSizeOfImm(TSFlags),
-                  MCFixupKind(X86::reloc_branch_4byte_pcrel), StartByte, CB,
-                  Fixups);
+      const MCOperand &Op = MI.getOperand(CurOp++);
+      emitImmediate(Op, MI.getLoc(), X86II::getSizeOfImm(TSFlags),
+                    MCFixupKind(X86::reloc_branch_4byte_pcrel), StartByte, CB,
+                    Fixups);
+    }
     break;
   }
   case X86II::RawFrmMemOffs:

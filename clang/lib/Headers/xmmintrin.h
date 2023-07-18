@@ -2069,12 +2069,24 @@ _mm_storer_ps(float *__p, __m128 __a)
   _mm_store_ps(__p, __a);
 }
 
+#ifndef _MM_HINT_ET0
 #define _MM_HINT_ET0 7
+#endif
+#ifndef _MM_HINT_ET1
 #define _MM_HINT_ET1 6
+#endif
+#ifndef _MM_HINT_T0
 #define _MM_HINT_T0  3
+#endif
+#ifndef _MM_HINT_T1
 #define _MM_HINT_T1  2
+#endif
+#ifndef _MM_HINT_T2
 #define _MM_HINT_T2  1
+#endif
+#ifndef _MM_HINT_NTA
 #define _MM_HINT_NTA 0
+#endif
 
 #ifndef _MSC_VER
 /* FIXME: We have to #define this because "sel" must be a constant integer, and

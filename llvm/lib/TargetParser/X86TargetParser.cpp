@@ -687,6 +687,14 @@ void llvm::X86::getFeaturesForCPU(StringRef CPU,
   // be used with 64-bit mode.
   Bits &= ~Feature64BIT;
 
+  // [MSVC Compatibility]
+#ifdef _WIN32
+  // Matches Microsoft's default support.
+  Bits |= FeatureSSE3;
+  Bits |= FeatureINVPCID;
+  Bits |= FeatureRTM;
+#endif
+  
   // Add the string version of all set bits.
   for (unsigned i = 0; i != CPU_FEATURE_MAX; ++i)
     if (Bits[i] && !FeatureInfos[i].Name.empty() &&

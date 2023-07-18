@@ -3195,7 +3195,7 @@ bool AsmParser::parseDirectiveValue(StringRef IDVal, unsigned Size) {
     return false;
   };
 
-  return parseMany(parseOp);
+  return parseMany(parseOp, true, AsmToken::Identifier);
 }
 
 static bool parseHexOcta(AsmParser &Asm, uint64_t &hi, uint64_t &lo) {

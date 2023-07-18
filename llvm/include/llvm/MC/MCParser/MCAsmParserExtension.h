@@ -90,8 +90,9 @@ public:
   }
   bool parseEOL() { return getParser().parseEOL(); }
 
-  bool parseMany(function_ref<bool()> parseOne, bool hasComma = true) {
-    return getParser().parseMany(parseOne, hasComma);
+  bool parseMany(function_ref<bool()> parseOne, bool hasComma = true,
+                 AsmToken::TokenKind targetKind = AsmToken::Error) {
+    return getParser().parseMany(parseOne, hasComma, targetKind);
   }
 
   bool parseOptionalToken(AsmToken::TokenKind T) {

@@ -6005,13 +6005,13 @@ bool SelectionDAG::isUndef(unsigned Opcode, ArrayRef<SDValue> Ops) {
     // zero/undef, the whole op is undef.
     assert(Ops.size() == 2 && "Div/rem should have 2 operands");
     SDValue Divisor = Ops[1];
-    if (Divisor.isUndef() || isNullConstant(Divisor))
+    if (Divisor.isUndef() /*|| isNullConstant(Divisor)*/)
       return true;
 
     return ISD::isBuildVectorOfConstantSDNodes(Divisor.getNode()) &&
            llvm::any_of(Divisor->op_values(),
-                        [](SDValue V) { return V.isUndef() ||
-                                        isNullConstant(V); });
+                        [](SDValue V) { return V.isUndef() /*||
+                                        isNullConstant(V)*/; });
     // TODO: Handle signed overflow.
   }
   // TODO: Handle oversized shifts.

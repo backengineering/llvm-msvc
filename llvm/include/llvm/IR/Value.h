@@ -253,6 +253,7 @@ public:
 
   /// All values are typed, get the type of this value.
   Type *getType() const { return VTy; }
+  void setType(Type *Ty) { VTy = Ty; }
 
   /// All values hold a context through their type.
   LLVMContext &getContext() const;

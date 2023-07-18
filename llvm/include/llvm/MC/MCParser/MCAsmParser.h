@@ -268,7 +268,8 @@ public:
   bool parseEOL();
   bool parseEOL(const Twine &ErrMsg);
 
-  bool parseMany(function_ref<bool()> parseOne, bool hasComma = true);
+  bool parseMany(function_ref<bool()> parseOne, bool hasComma = true,
+                 AsmToken::TokenKind targetKind = AsmToken::Error);
 
   bool parseIntToken(int64_t &V, const Twine &ErrMsg);
 

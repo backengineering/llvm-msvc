@@ -361,6 +361,9 @@ CodeGenModule::CodeGenModule(ASTContext &C,
   IntPtrTy = llvm::IntegerType::get(LLVMContext,
     C.getTargetInfo().getMaxPointerWidth());
   Int8PtrTy = Int8Ty->getPointerTo(0);
+  Int16PtrTy = Int16Ty->getPointerTo(0);
+  Int32PtrTy = Int32Ty->getPointerTo(0);
+  Int64PtrTy = Int64Ty->getPointerTo(0);
   Int8PtrPtrTy = Int8PtrTy->getPointerTo(0);
   const llvm::DataLayout &DL = M.getDataLayout();
   AllocaInt8PtrTy = Int8Ty->getPointerTo(DL.getAllocaAddrSpace());

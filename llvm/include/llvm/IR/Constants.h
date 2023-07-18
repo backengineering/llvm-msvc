@@ -289,6 +289,12 @@ public:
                            APInt *Payload = nullptr);
   static Constant *getZero(Type *Ty, bool Negative = false);
   static Constant *getNegativeZero(Type *Ty) { return getZero(Ty, true); }
+
+  /// Floating point negation must be implemented with f(x) = -0.0 - x. This
+  /// method returns the negative zero constant for floating point or vector
+  /// floating point types; for all other types, it returns the null value.
+  static Constant *getZeroValueForNegation(Type *Ty);
+
   static Constant *getInfinity(Type *Ty, bool Negative = false);
 
   /// Return true if Ty is big enough to represent V.

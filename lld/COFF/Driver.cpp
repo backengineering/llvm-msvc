@@ -54,6 +54,7 @@
 #include <memory>
 #include <optional>
 #include <tuple>
+#include <regex>
 
 using namespace llvm;
 using namespace llvm::object;
@@ -242,7 +243,8 @@ void LinkerDriver::addBuffer(std::unique_ptr<MemoryBuffer> mb,
   }
 }
 
-void LinkerDriver::enqueuePath(StringRef path, bool wholeArchive, bool lazy) {
+void LinkerDriver::enqueuePathInternal(StringRef path, bool wholeArchive,
+                                   bool lazy) {
   auto future = std::make_shared<std::future<MBErrPair>>(
       createFutureForFile(std::string(path)));
   std::string pathStr = std::string(path);
@@ -276,12 +278,51 @@ void LinkerDriver::enqueuePath(StringRef path, bool wholeArchive, bool lazy) {
       // directory.
       std::string nearest;
       if (ctx.optTable.findNearest(pathStr, nearest) > 1)
-        error(msg);
+        message(msg); //[MSVC Compatibility]
       else
         error(msg + "; did you mean '" + nearest + "'");
     } else
       ctx.driver.addBuffer(std::move(mb), wholeArchive, lazy);
   });
+}
+
+void LinkerDriver::enqueuePath(StringRef path, bool wholeArchive, bool lazy) {
+  // Check if the filename contains wildcard character *
+  bool hasWildcard = sys::path::filename(path).contains("*");
+  if (!hasWildcard) {
+    // If the filename doesn't contain wildcard, simply enqueue the file
+    enqueuePathInternal(path, wholeArchive, lazy);
+    return;
+  }
+
+  // Construct a regular expression that matches the wildcard pattern
+  std::string regexStr =
+      std::regex_replace("^" + path.str() + "$", std::regex("\\\\"), "\\\\");
+  regexStr = std::regex_replace(regexStr, std::regex("/"), "\\\\");
+  regexStr = std::regex_replace(regexStr, std::regex("\\."), "\\.");
+  regexStr = std::regex_replace(regexStr, std::regex("\\*"), ".*");
+  std::regex regex(regexStr);
+
+  // Traverse all the files in the parent directory of path recursively,
+  // and enqueue those files that match the regular expression.
+  std::error_code ec;
+  for (sys::fs::recursive_directory_iterator
+           i(sys::path::parent_path(path), ec),
+       e;
+       i != e; i.increment(ec)) {
+    if (ec) {
+      std::string msg = "could not open '" + path.str() + "': " + ec.message() +
+                        " in LinkerDriver::enqueuePath";
+      error(msg);
+      break;
+    }
+
+    // Check if the current filename matches the regular expression
+    if (std::regex_match(i->path(), regex)) {
+      // Enqueue the matched file
+      enqueuePathInternal(i->path(), wholeArchive, lazy);
+    }
+  }
 }
 
 void LinkerDriver::addArchiveBuffer(MemoryBufferRef mb, StringRef symName,
@@ -368,7 +409,7 @@ void LinkerDriver::parseDirectives(InputFile *file) {
   if (s.empty())
     return;
 
-  log("Directives: " + toString(file) + ": " + s);
+  // message("Directives: " + toString(file) + ": " + s);
 
   ArgParser parser(ctx);
   // .drectve is always tokenized using Windows shell rules.
@@ -438,6 +479,7 @@ void LinkerDriver::parseDirectives(InputFile *file) {
       ctx.config.noDefaultLibs.insert(findLib(arg->getValue()).lower());
       break;
     case OPT_release:
+      // Handle #pragma comment(linker, "/RELEASE")
       ctx.config.writeCheckSum = true;
       break;
     case OPT_section:
@@ -466,6 +508,10 @@ void LinkerDriver::parseDirectives(InputFile *file) {
     case OPT_inferasanlibs:
     case OPT_inferasanlibs_no:
       break;
+    case OPT_align:
+      // [MSVC Compatibility] Handle #pragma comment(linker, "/ALIGN:0x10000")
+      parseNumbers(arg->getValue(), &ctx.config.align);
+      break;
     default:
       error(arg->getSpelling() + " is not allowed in .drectve (" +
             toString(file) + ")");
@@ -482,9 +528,19 @@ StringRef LinkerDriver::findFile(StringRef filename) {
         return saver().save(statOrErr->getName());
     return filename;
   };
-
+  
   if (sys::path::is_absolute(filename))
     return getFilename(filename);
+  
+  bool hasPathSep = (filename.find_first_of("/\\") != StringRef::npos);
+  if (hasPathSep) {
+    if (sys::fs::exists(filename.str())) {
+      // [MSVC Compatibility]
+      // If the file is not found, the search should continue
+      return getFilename(filename);
+    }
+  }
+  
   bool hasExt = filename.contains('.');
   for (StringRef dir : searchPaths) {
     SmallString<128> path = dir;
@@ -868,6 +924,10 @@ enum class DebugKind {
 };
 
 static DebugKind parseDebugKind(const opt::InputArgList &args) {
+  
+  // Returns Full (Generating PDB by default)
+  return DebugKind::Full;
+
   auto *a = args.getLastArg(OPT_debug, OPT_debug_opt);
   if (!a)
     return DebugKind::None;
@@ -932,13 +992,14 @@ static unsigned parseDebugTypes(const opt::InputArgList &args) {
 std::string LinkerDriver::getMapFile(const opt::InputArgList &args,
                                      opt::OptSpecifier os,
                                      opt::OptSpecifier osFile) {
-  auto *arg = args.getLastArg(os, osFile);
-  if (!arg)
-    return "";
-  if (arg->getOption().getID() == osFile.getID())
-    return arg->getValue();
+  // Force generating map file.
+  // auto *arg = args.getLastArg(os, osFile);
+  // if (!arg)
+  //  return "";
+  // if (arg->getOption().getID() == osFile.getID())
+  //  return arg->getValue();
 
-  assert(arg->getOption().getID() == os.getID());
+  // assert(arg->getOption().getID() == os.getID());
   StringRef outFile = ctx.config.outputFile;
   return (outFile.substr(0, outFile.rfind('.')) + ".map").str();
 }
@@ -1480,7 +1541,14 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   // Parse command line options.
   ArgParser parser(ctx);
   opt::InputArgList args = parser.parse(argsArr);
-
+  
+  // Print linker arguments
+  llvm::outs() << "llvm-msvc linker arguments: ";
+  for (auto arg : args) {
+    llvm::outs() << arg->getAsString(args) << " ";
+  }
+  llvm::outs() << "\n";
+          
   // Parse and evaluate -mllvm options.
   std::vector<const char *> v;
   v.push_back("lld-link (LLVM option parsing)");
@@ -1882,6 +1950,9 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   parseMerge(".didat=.rdata");
   parseMerge(".edata=.rdata");
   parseMerge(".xdata=.rdata");
+  parseMerge(".00cfg=.rdata");
+  parseMerge(".retplne=.rdata");
+  parseMerge(".voltbl=.rdata");
   parseMerge(".bss=.data");
 
   if (config->mingw) {
@@ -1991,6 +2062,13 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   if (config->mingw || config->debugDwarf)
     config->warnLongSectionNames = false;
 
+  config->lldmapFile = getMapFile(args, OPT_lldmap, OPT_lldmap_file);
+  config->mapFile = getMapFile(args, OPT_map, OPT_map_file);
+
+  if (config->lldmapFile != "" && config->lldmapFile == config->mapFile) {
+    config->lldmapFile.clear();
+  }
+
   if (config->incremental && args.hasArg(OPT_profile)) {
     warn("ignoring '/incremental' due to '/profile' specification");
     config->incremental = false;
@@ -2094,6 +2172,20 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   for (auto *arg : args.filtered(OPT_defaultlib))
     if (std::optional<StringRef> path = findLibIfNew(arg->getValue()))
       enqueuePath(*path, false, false);
+
+  // Add libs to windows driver
+  if (config->driver) {
+    // TODO
+  } else {
+    // Add /defaultlib: "Psapi.lib"
+    if (std::optional<StringRef> path = findLibIfNew("Psapi.lib"))
+      enqueuePath(*path, false, false);
+  }
+
+  // Handle /RELEASE
+  if (args.hasArg(OPT_release))
+    config->writeCheckSum = true;
+
   run();
   if (errorCount())
     return;
@@ -2226,8 +2318,6 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   }
 
   if (config->lldmapFile != "" && config->lldmapFile == config->mapFile) {
-    warn("/lldmap and /map have the same output file '" + config->mapFile +
-         "'.\n>>> ignoring /lldmap");
     config->lldmapFile.clear();
   }
 
@@ -2241,13 +2331,16 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
     // The embedded PDB path should be the absolute path to the PDB if no
     // /pdbaltpath flag was passed.
     if (config->pdbAltPath.empty()) {
-      config->pdbAltPath = config->pdbPath;
+      // config->pdbAltPath = config->pdbPath;
 
       // It's important to make the path absolute and remove dots.  This path
       // will eventually be written into the PE header, and certain Microsoft
       // tools won't work correctly if these assumptions are not held.
-      sys::fs::make_absolute(config->pdbAltPath);
-      sys::path::remove_dots(config->pdbAltPath);
+      // sys::fs::make_absolute(config->pdbAltPath);
+      // sys::path::remove_dots(config->pdbAltPath);
+      // This way below can hide our pdb path.
+      config->pdbAltPath =
+          sys::path::filename(config->pdbPath, sys::path::Style::windows);
     } else {
       // Don't do this earlier, so that ctx.OutputFile is ready.
       parsePDBAltPath();

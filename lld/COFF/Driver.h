@@ -98,6 +98,7 @@ public:
   MemoryBufferRef takeBuffer(std::unique_ptr<MemoryBuffer> mb);
 
   void enqueuePath(StringRef path, bool wholeArchive, bool lazy);
+  void enqueuePathInternal(StringRef path, bool wholeArchive, bool lazy);
 
   std::unique_ptr<llvm::TarWriter> tar; // for /linkrepro
 

@@ -42,6 +42,9 @@ class LLVM_LIBRARY_VISIBILITY WinException : public EHStreamer {
   /// True if we are generating exception handling on Windows for ARM (Thumb).
   bool isThumb = false;
 
+  /// True if we are generating exception handling on Windows for x86.
+  bool isX86 = false;
+
   /// Pointer to the current funclet entry BB.
   const MachineBasicBlock *CurrentFuncletEntry = nullptr;
 

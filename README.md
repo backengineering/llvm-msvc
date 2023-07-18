@@ -1,39 +1,57 @@
-# The LLVM Compiler Infrastructure
+# `llvm-msvc`
+[![llvm-msvc-build](https://github.com/NewWorldComingSoon/llvm-msvc/actions/workflows/llvm-msvc-build.yml/badge.svg?branch=dev)](https://github.com/NewWorldComingSoon/llvm-msvc/actions/workflows/llvm-msvc-build.yml)
+[![GitHub license](https://img.shields.io/github/license/NewWorldComingSoon/llvm-msvc)](https://github.com/NewWorldComingSoon/llvm-msvc/blob/main/LICENSE)
 
-Welcome to the LLVM project!
+[![Github All Releases](https://img.shields.io/github/downloads/NewWorldComingSoon/llvm-msvc/total.svg)](https://github.com/NewWorldComingSoon/llvm-msvc/releases) 
+[![GitHub release](https://img.shields.io/github/release/NewWorldComingSoon/llvm-msvc.svg)](https://github.com/NewWorldComingSoon/llvm-msvc/releases) 
 
-This repository contains the source code for LLVM, a toolkit for the
-construction of highly optimized compilers, optimizers, and run-time
-environments.
+llvm-msvc is a compiler based LLVM that is not restricted by MSVC. The goal is to have the same experience as MSVC on Windows.
+You can use naked functions anywhere, as well as add custom support such as obfuscation.
 
-The LLVM project has multiple components. The core of the project is
-itself called "LLVM". This contains all of the tools, libraries, and header
-files needed to process intermediate representations and convert them into
-object files. Tools include an assembler, disassembler, bitcode analyzer, and
-bitcode optimizer.
+## Why do we make this project?
+Because there are more hacky operations, a lot of code can not be submitted directly to the official. So there is this branch.
 
-C-like languages use the [Clang](http://clang.llvm.org/) frontend. This
-component compiles C, C++, Objective-C, and Objective-C++ code into LLVM bitcode
--- and from there into object files, using LLVM.
+We want to use clang/llvm as comfortable as msvc.
 
-Other components include:
-the [libc++ C++ standard library](https://libcxx.llvm.org),
-the [LLD linker](https://lld.llvm.org), and more.
+## How to compile?
 
-## Getting the Source Code and Building LLVM
+```batch
+X86：clang+lld+debug
+    
+mkdir build-debug-64
+pushd build-debug-64
+cmake .. -G "Visual Studio 17 2022" -A X64 -DLLVM_ENABLE_PROJECTS="clang;lld" -DCMAKE_INSTALL_PREFIX=E:\llvm\install-debug-64 -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Debug ../llvm
+msbuild /m -p:Configuration=Debug INSTALL.vcxproj
 
-Consult the
-[Getting Started with LLVM](https://llvm.org/docs/GettingStarted.html#getting-the-source-code-and-building-llvm)
-page for information on building and running LLVM.
+or
+cmake -Bbuild -A X64 -DLLVM_ENABLE_PROJECTS="clang;lld" -DCMAKE_INSTALL_PREFIX=E:\llvm\install-debug-64 -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Debug llvm
 
-For information on how to contribute to the LLVM project, please take a look at
-the [Contributing to LLVM](https://llvm.org/docs/Contributing.html) guide.
 
-## Getting in touch
+X86：clang+lld+RelWithDebInfo
 
-Join the [LLVM Discourse forums](https://discourse.llvm.org/), [Discord
-chat](https://discord.gg/xS7Z362), or #llvm IRC channel on
-[OFTC](https://oftc.net/).
+mkdir build-RelWithDebInfo-64
+pushd build-RelWithDebInfo-64
+cmake .. -G "Visual Studio 17 2022" -A X64 -DLLVM_ENABLE_PROJECTS="clang;lld" -DCMAKE_INSTALL_PREFIX=E:\llvm\install-RelWithDebInfo-64 -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLLVM_USE_CRT_RELEASE=MT ../llvm
+msbuild /m -p:Configuration=RelWithDebInfo INSTALL.vcxproj 
 
-The LLVM project has adopted a [code of conduct](https://llvm.org/docs/CodeOfConduct.html) for
-participants to all modes of communication within the project.
+X86：clang+lld+release
+
+mkdir build-release-64
+pushd build-release-64
+cmake .. -G "Visual Studio 17 2022" -A X64 -DLLVM_ENABLE_PROJECTS="clang;lld" -DCMAKE_INSTALL_PREFIX=E:\llvm\install-release-64 -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=release -DLLVM_USE_CRT_RELEASE=MT ../llvm
+msbuild /m -p:Configuration=release INSTALL.vcxproj 
+```
+
+## Quickstart
+- https://github.com/NewWorldComingSoon/llvm-msvc-build
+
+## How to contribute?
+- https://github.com/HyunCafe/contribute-practice
+- https://docs.github.com/en/get-started/quickstart/contributing-to-projects
+
+## Learning
+If you don't know how to learn LLVM, you can check out this [repository](https://github.com/gmh5225/awesome-llvm-security) of mine.
+
+## Issues
+If you have any questions, please tell me or send [issues](https://github.com/NewWorldComingSoon/llvm-msvc-issues/issues)
+

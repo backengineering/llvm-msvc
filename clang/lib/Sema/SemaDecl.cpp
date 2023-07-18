@@ -12114,8 +12114,9 @@ void Sema::CheckMain(FunctionDecl* FD, const DeclSpec& DS) {
     T = Context.getCanonicalType(FD->getType());
   }
 
-  if (getLangOpts().GNUMode && !getLangOpts().CPlusPlus) {
-    // In C with GNU extensions we allow main() to have non-integer return
+  if ((getLangOpts().GNUMode && !getLangOpts().CPlusPlus) ||
+    getLangOpts().MSVCCompat) {
+    // In C with GNU extensions/MSVC we allow main() to have non-integer return
     // type, but we should warn about the extension, and we disable the
     // implicit-return-zero rule.
 
@@ -14054,31 +14055,6 @@ void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
       var->getType().isDestructedType() == QualType::DK_nontrivial_c_struct)
     setFunctionHasBranchProtectedScope();
 
-  // Warn about externally-visible variables being defined without a
-  // prior declaration.  We only want to do this for global
-  // declarations, but we also specifically need to avoid doing it for
-  // class members because the linkage of an anonymous class can
-  // change if it's later given a typedef name.
-  if (var->isThisDeclarationADefinition() &&
-      var->getDeclContext()->getRedeclContext()->isFileContext() &&
-      var->isExternallyVisible() && var->hasLinkage() &&
-      !var->isInline() && !var->getDescribedVarTemplate() &&
-      !isa<VarTemplatePartialSpecializationDecl>(var) &&
-      !isTemplateInstantiation(var->getTemplateSpecializationKind()) &&
-      !getDiagnostics().isIgnored(diag::warn_missing_variable_declarations,
-                                  var->getLocation())) {
-    // Find a previous declaration that's not a definition.
-    VarDecl *prev = var->getPreviousDecl();
-    while (prev && prev->isThisDeclarationADefinition())
-      prev = prev->getPreviousDecl();
-
-    if (!prev) {
-      Diag(var->getLocation(), diag::warn_missing_variable_declarations) << var;
-      Diag(var->getTypeSpecStartLoc(), diag::note_static_for_internal_linkage)
-          << /* variable */ 0;
-    }
-  }
-
   // Cache the result of checking for constant initialization.
   std::optional<bool> CacheHasConstInit;
   const Expr *CacheCulprit = nullptr;
@@ -14277,6 +14253,8 @@ void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
                                                SectionAttr::Declspec_allocate));
       if (UnifySection(SectionName, SectionFlags, var))
         var->dropAttr<SectionAttr>();
+      // Set 'Volatile' on the variable.
+      var->DeclType.addVolatile();
     }
 
     // Apply the init_seg attribute if this has an initializer.  If the
@@ -17423,7 +17401,8 @@ Sema::ActOnTag(Scope *S, unsigned TagSpec, TagUseKind TUK, SourceLocation KWLoc,
       // found the wrong kind of type on the first
       // (non-redeclaration) lookup.
       if ((TUK == TUK_Reference || TUK == TUK_Friend) &&
-          !Previous.isForRedeclaration()) {
+          !Previous.isForRedeclaration() &&
+          (!dyn_cast<TypedefDecl>(PrevDecl) || !isClassCompatTagKind(Kind))) {
         NonTagKind NTK = getNonTagTypeDeclKind(PrevDecl, Kind);
         Diag(NameLoc, diag::err_tag_reference_non_tag) << PrevDecl << NTK
                                                        << Kind;

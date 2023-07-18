@@ -151,6 +151,7 @@ private:
     IC_RPAREN,
     IC_LPAREN,
     IC_IMM,
+    IC_DOLLAR,
     IC_REGISTER,
     IC_EQ,
     IC_NE,
@@ -420,6 +421,7 @@ private:
     IES_REGISTER,
     IES_INTEGER,
     IES_IDENTIFIER,
+    IES_DOLLOR,
     IES_ERROR
   };
 
@@ -670,6 +672,7 @@ private:
       case IES_RPAREN:
       case IES_REGISTER:
       case IES_OFFSET:
+      case IES_DOLLOR:
         State = IES_PLUS;
         IC.pushOperator(IC_PLUS);
         if (CurrState == IES_REGISTER && PrevState != IES_MULTIPLY) {
@@ -905,6 +908,19 @@ private:
       case IES_RPAREN:
         State = IES_MULTIPLY;
         IC.pushOperator(IC_MULTIPLY);
+        break;
+      }
+    }
+    void onDollor() {
+      PrevState = State;
+      switch (State) {
+      default:
+        State = IES_ERROR;
+        break;
+      case IES_INIT:
+        State = IES_REGISTER;
+        TmpReg = X86::EIP;
+        IC.pushOperand(IC_REGISTER);
         break;
       }
     }
@@ -1911,9 +1927,9 @@ bool X86AsmParser::ParseIntelExpression(IntelExprStateMachine &SM, SMLoc &End) {
       if (!Parser.isParsingMasm()) {
         if ((Done = SM.isValidEndState()))
           break;
-        return Error(Tok.getLoc(), "unknown token in expression");
+        SM.onDollor();
       }
-      [[fallthrough]];
+      break;
     case AsmToken::String: {
       if (Parser.isParsingMasm()) {
         // MASM parsers handle strings in expressions as constants.
@@ -2194,8 +2210,13 @@ void X86AsmParser::RewriteIntelExpression(IntelExprStateMachine &SM,
     BaseRegStr = X86IntelInstPrinter::getRegisterName(SM.getBaseReg());
   if (SM.getIndexReg())
     IndexRegStr = X86IntelInstPrinter::getRegisterName(SM.getIndexReg());
-  if (SM.isOffsetOperator())
+  if (SM.isOffsetOperator()) {
     OffsetNameStr = SM.getSymName();
+    MCSymbolRefExpr *MCSym = (MCSymbolRefExpr *)(SM.getSym());
+    if (MCSym && MCSym->getKind() == MCSymbolRefExpr::VK_INLINEASM_MOV_LABEL)
+      return;
+  }
+    
   // Emit it
   IntelExpr Expr(BaseRegStr, IndexRegStr, SM.getScale(), OffsetNameStr,
                  SM.getImm(), SM.isMemExpr());
@@ -2231,25 +2252,32 @@ bool X86AsmParser::ParseIntelInlineAsmIdentifier(
           Info.isKind(InlineAsmIdentifierInfo::IK_Invalid)) &&
           "frontend claimed part of a token?");
 
+  bool InlineAsmMovLabel = false;
   // If the identifier lookup was unsuccessful, assume that we are dealing with
   // a label.
   if (Info.isKind(InlineAsmIdentifierInfo::IK_Invalid)) {
     StringRef InternalName =
       SemaCallback->LookupInlineAsmLabel(Identifier, getSourceManager(),
                                          Loc, false);
-    assert(InternalName.size() && "We should have an internal name here.");
-    // Push a rewrite for replacing the identifier name with the internal name,
-    // unless we are parsing the operand of an offset operator
-    if (!IsParsingOffsetOperator)
-      InstInfo->AsmRewrites->emplace_back(AOK_Label, Loc, Identifier.size(),
-                                          InternalName);
-    else
-      Identifier = InternalName;
+    //assert(InternalName.size() && "We should have an internal name here.");
+    //// Push a rewrite for replacing the identifier name with the internal name,
+    //// unless we are parsing the operand of an offset operator
+    //if (!IsParsingOffsetOperator)
+    //  InstInfo->AsmRewrites->emplace_back(AOK_Label, Loc, Identifier.size(),
+    //                                      InternalName);
+    //else
+    //  Identifier = InternalName;
+    if (IsParsingOffsetOperator)
+      InlineAsmMovLabel = true;
+    InstInfo->AsmRewrites->emplace_back(AOK_Label, Loc, Identifier.size(),
+                                        InternalName);
   } else if (Info.isKind(InlineAsmIdentifierInfo::IK_EnumVal))
     return false;
   // Create the symbol reference.
   MCSymbol *Sym = getContext().getOrCreateSymbol(Identifier);
   MCSymbolRefExpr::VariantKind Variant = MCSymbolRefExpr::VK_None;
+  if (InlineAsmMovLabel)
+    Variant = MCSymbolRefExpr::VK_INLINEASM_MOV_LABEL;
   Val = MCSymbolRefExpr::create(Sym, Variant, getParser().getContext());
   return false;
 }
@@ -2525,20 +2553,28 @@ bool X86AsmParser::parseIntelOperand(OperandVector &Operands, StringRef Name) {
   if (Tok.is(AsmToken::Identifier) && !parseRegister(RegNo, Start, End)) {
     if (RegNo == X86::RIP)
       return Error(Start, "rip can only be used as a base register");
-    // A Register followed by ':' is considered a segment override
-    if (Tok.isNot(AsmToken::Colon)) {
-      if (PtrInOperand)
-        return Error(Start, "expected memory operand after 'ptr', "
-                            "found register operand instead");
-      Operands.push_back(X86Operand::CreateReg(RegNo, Start, End));
-      return false;
+    if (RegNo == X86::EIP && Tok.is(AsmToken::Plus)) {
+      Operands.push_back(X86Operand::CreateReg(X86::EIP, Start, End));
+      Start = Lex().getLoc();
+    } else {
+      // A Register followed by ':' is considered a segment override
+      if (Tok.isNot(AsmToken::Colon)) {
+        if (PtrInOperand)
+          return Error(Start, "expected memory operand after 'ptr', "
+                              "found register operand instead");
+        Operands.push_back(X86Operand::CreateReg(RegNo, Start, End));
+        return false;
+      }
+      // An alleged segment override. check if we have a valid segment register
+      if (!X86MCRegisterClasses[X86::SEGMENT_REGRegClassID].contains(RegNo))
+        return Error(Start, "invalid segment register");
+      // Eat ':' and update Start location
+      Start = Lex().getLoc();
     }
-    // An alleged segment override. check if we have a valid segment register
-    if (!X86MCRegisterClasses[X86::SEGMENT_REGRegClassID].contains(RegNo))
-      return Error(Start, "invalid segment register");
-    // Eat ':' and update Start location
-    Start = Lex().getLoc();
   }
+
+  if (Tok.is(AsmToken::Dollar))
+    Operands.push_back(X86Operand::CreateReg(X86::EIP, Start, End));
 
   // Immediates and Memory
   IntelExprStateMachine SM;
@@ -2569,6 +2605,20 @@ bool X86AsmParser::parseIntelOperand(OperandVector &Operands, StringRef Name) {
                                                  Info.Var.IsGlobalLV));
         return false;
       }
+      const MCSymbolRefExpr *MCSym = (MCSymbolRefExpr *)SM.getSym();
+      if (MCSym &&
+          MCSym->getKind() != MCSymbolRefExpr::VK_INLINEASM_MOV_LABEL) {
+        Operands.push_back(X86Operand::CreateImm(Disp, Start, End,
+                                                 SM.getSymName(), Info.Var.Decl,
+                                                 Info.Var.IsGlobalLV));
+        return false;
+      }
+      unsigned BaseReg = SM.getBaseReg();
+      unsigned IndexReg = SM.getIndexReg();
+      unsigned Scale = SM.getScale();
+      return CreateMemForMSInlineAsm(RegNo, Disp, BaseReg, IndexReg, Scale,
+                                     Start, End, Size, SM.getSymName(),
+                                     SM.getIdentifierInfo(), Operands);
     }
 
     Operands.push_back(X86Operand::CreateImm(Disp, Start, End));
@@ -2660,6 +2710,16 @@ bool X86AsmParser::parseIntelOperand(OperandVector &Operands, StringRef Name) {
     if (PtrInOperand || SM.isBracketUsed())
       MaybeDirectBranchDest = false;
   }
+  
+  if (isParsingMSInlineAsm())
+    if (SM.getSym() && SM.getSym()->getKind() == MCExpr::ExprKind::SymbolRef)
+      if (Operands.size() >= 1) {
+        X86Operand *Op = (X86Operand *)Operands[Operands.size() - 1].get();
+        if (Op && Op->Kind != X86Operand::Token) {
+          Operands.push_back(X86Operand::CreateImm(Disp, Start, End));
+          return false;
+        }
+      }
 
   if ((BaseReg || IndexReg || RegNo || DefaultBaseReg != X86::NoRegister))
     Operands.push_back(X86Operand::CreateMem(

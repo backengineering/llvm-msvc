@@ -21,6 +21,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/BranchProbabilityInfo.h"
@@ -390,6 +391,39 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
 
   const Function &Fn = mf.getFunction();
   MF = &mf;
+
+  // Restore Options after exiting from this function.
+  auto OldEnableFastISel = TM.Options.EnableFastISel;
+  auto RestoreOptions = llvm::make_scope_exit([this, OldEnableFastISel]() {
+    TM.Options.EnableFastISel = OldEnableFastISel;
+  });
+
+  if (OptLevel == CodeGenOpt::None) {
+    bool HasInline = false;
+    for (auto &BB : MF->getFunction())
+      for (auto &I : BB) {
+        if (I.getOpcode() == Instruction::Call) {
+          CallInst *CallIst = dyn_cast<CallInst>(&I);
+          if (CallIst->isInlineAsm()) {
+            HasInline = true;
+            break;
+          }
+
+        } else if (I.getOpcode() == Instruction::Invoke) {
+          InvokeInst *InvokeIst = dyn_cast<InvokeInst>(&I);
+          if (InvokeIst->isInlineAsm()) {
+            HasInline = true;
+            break;
+          }
+        }
+      }
+
+    if (HasInline)
+      TM.Options.EnableFastISel = false;
+  }
+
+  if (Fn.isFastISelDisabled())
+    TM.Options.EnableFastISel = false;
 
   // Decide what flavour of variable location debug-info will be used, before
   // we change the optimisation level.
@@ -1299,9 +1333,15 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
   llvm::WinEHFuncInfo *EHInfo = MF->getWinEHFuncInfo();
   if (!EHInfo)
     return;
-  for (auto MBBI = MF->begin(), E = MF->end(); MBBI != E; ++MBBI) {
+  for (auto MBBI = MF->begin(); MBBI != MF->end(); ++MBBI) {
     MachineBasicBlock *MBB = &*MBBI;
+    // Filter IPToState when MBB is empty
+    if (MBB->empty())
+      continue;
     const BasicBlock *BB = MBB->getBasicBlock();
+    // Filter IPToState when BB is nullptr
+    if (BB == nullptr)
+      continue;
     int State = EHInfo->BlockToStateMap[BB];
     if (BB->getFirstMayFaultInst()) {
       // Report IP range only for blocks with Faulty inst
@@ -1713,9 +1753,8 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
     ElidedArgCopyInstrs.clear();
   }
 
-  // AsynchEH: Report Block State under -AsynchEH
-  if (Fn.getParent()->getModuleFlag("eh-asynch"))
-    reportIPToStateForBlocks(MF);
+  // Report Block State under
+  reportIPToStateForBlocks(MF);
 
   SP.copyToMachineFrameInfo(MF->getFrameInfo());
 

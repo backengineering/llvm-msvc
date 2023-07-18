@@ -206,10 +206,10 @@ void *EHScopeStack::pushCleanup(CleanupKind Kind, size_t Size) {
   if (IsLifetimeMarker)
     Scope->setLifetimeMarker();
 
-  // With Windows -EHa, Invoke llvm.seh.scope.begin() for EHCleanup
-  if (CGF->getLangOpts().EHAsynch && IsEHCleanup && !IsLifetimeMarker &&
-      CGF->getTarget().getCXXABI().isMicrosoft())
-    CGF->EmitSehCppScopeBegin();
+  // // With Windows -EHa, Invoke llvm.seh.scope.begin() for EHCleanup
+  // if (CGF->getLangOpts().EHAsynch && IsEHCleanup && !IsLifetimeMarker &&
+  //     CGF->getTarget().getCXXABI().isMicrosoft())
+  //   CGF->EmitSehCppScopeBegin();
 
   return Scope->getCleanupBuffer();
 }
@@ -782,10 +782,10 @@ void CodeGenFunction::PopCleanupBlock(bool FallthroughIsBranchThrough) {
   if (!RequiresNormalCleanup) {
     // Mark CPP scope end for passed-by-value Arg temp
     //   per Windows ABI which is "normally" Cleanup in callee
-    if (IsEHa && getInvokeDest() && Builder.GetInsertBlock()) {
-      if (Personality.isMSVCXXPersonality())
-        EmitSehCppScopeEnd();
-    }
+    // if (IsEHa && getInvokeDest()) {
+    //   if (Personality.isMSVCXXPersonality())
+    //     EmitSehCppScopeEnd();
+    // }
     destroyOptimisticNormalEntry(*this, Scope);
     EHStack.popCleanup();
   } else {
@@ -795,12 +795,12 @@ void CodeGenFunction::PopCleanupBlock(bool FallthroughIsBranchThrough) {
         !HasExistingBranches) {
 
       // mark SEH scope end for fall-through flow
-      if (IsEHa && getInvokeDest()) {
-        if (Personality.isMSVCXXPersonality())
-          EmitSehCppScopeEnd();
-        else
-          EmitSehTryScopeEnd();
-      }
+      // if (IsEHa && getInvokeDest()) {
+      //   if (Personality.isMSVCXXPersonality())
+      //     EmitSehCppScopeEnd();
+      //   else
+      //     EmitSehTryScopeEnd();
+      // }
 
       destroyOptimisticNormalEntry(*this, Scope);
       EHStack.popCleanup();
@@ -836,12 +836,12 @@ void CodeGenFunction::PopCleanupBlock(bool FallthroughIsBranchThrough) {
       EmitBlock(NormalEntry);
 
       // intercept normal cleanup to mark SEH scope end
-      if (IsEHa && getInvokeDest()) {
-        if (Personality.isMSVCXXPersonality())
-          EmitSehCppScopeEnd();
-        else
-          EmitSehTryScopeEnd();
-      }
+      // if (IsEHa) {
+      //   if (Personality.isMSVCXXPersonality())
+      //     EmitSehCppScopeEnd();
+      //   else
+      //     EmitSehTryScopeEnd();
+      // }
 
       // III.  Figure out where we're going and build the cleanup
       // epilogue.
@@ -1032,7 +1032,7 @@ void CodeGenFunction::PopCleanupBlock(bool FallthroughIsBranchThrough) {
       EHStack.pushTerminate();
       PushedTerminate = true;
     } else if (IsEHa && getInvokeDest()) {
-      EmitSehCppScopeEnd();
+      // EmitSehCppScopeEnd();
     }
 
     // We only actually emit the cleanup code if the cleanup is either
@@ -1328,57 +1328,59 @@ void CodeGenFunction::EmitCXXTemporary(const CXXTemporary *Temporary,
 
 // Need to set "funclet" in OperandBundle properly for noThrow
 //       intrinsic (see CGCall.cpp)
-static void EmitSehScope(CodeGenFunction &CGF,
-                         llvm::FunctionCallee &SehCppScope) {
+static llvm::InvokeInst *EmitSehScope(CodeGenFunction &CGF,
+                                      llvm::FunctionCallee &SehCppScope) {
   llvm::BasicBlock *InvokeDest = CGF.getInvokeDest();
-  assert(CGF.Builder.GetInsertBlock() && InvokeDest);
+  if (!InvokeDest)
+    return nullptr;
+  if (!(CGF.Builder.GetInsertBlock()))
+    return nullptr; // Not found the insert point.
   llvm::BasicBlock *Cont = CGF.createBasicBlock("invoke.cont");
   SmallVector<llvm::OperandBundleDef, 1> BundleList =
       CGF.getBundlesForFunclet(SehCppScope.getCallee());
   if (CGF.CurrentFuncletPad)
     BundleList.emplace_back("funclet", CGF.CurrentFuncletPad);
-  CGF.Builder.CreateInvoke(SehCppScope, Cont, InvokeDest, std::nullopt,
-                           BundleList);
+  auto InvokeIst = CGF.Builder.CreateInvoke(SehCppScope, Cont, InvokeDest,
+                                            std::nullopt, BundleList);
   CGF.EmitBlock(Cont);
+  return InvokeIst;
 }
 
 // Invoke a llvm.seh.scope.begin at the beginning of a CPP scope for -EHa
-void CodeGenFunction::EmitSehCppScopeBegin() {
+llvm::InvokeInst *CodeGenFunction::EmitSehCppScopeBegin() {
   assert(getLangOpts().EHAsynch);
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
       CGM.CreateRuntimeFunction(FTy, "llvm.seh.scope.begin");
-  EmitSehScope(*this, SehCppScope);
+  return EmitSehScope(*this, SehCppScope);
 }
 
 // Invoke a llvm.seh.scope.end at the end of a CPP scope for -EHa
 //   llvm.seh.scope.end is emitted before popCleanup, so it's "invoked"
-void CodeGenFunction::EmitSehCppScopeEnd() {
+llvm::InvokeInst *CodeGenFunction::EmitSehCppScopeEnd() {
   assert(getLangOpts().EHAsynch);
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
       CGM.CreateRuntimeFunction(FTy, "llvm.seh.scope.end");
-  EmitSehScope(*this, SehCppScope);
+  return EmitSehScope(*this, SehCppScope);
 }
 
 // Invoke a llvm.seh.try.begin at the beginning of a SEH scope for -EHa
-void CodeGenFunction::EmitSehTryScopeBegin() {
-  assert(getLangOpts().EHAsynch);
+llvm::InvokeInst *CodeGenFunction::EmitSehTryScopeBegin() {
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
       CGM.CreateRuntimeFunction(FTy, "llvm.seh.try.begin");
-  EmitSehScope(*this, SehCppScope);
+  return EmitSehScope(*this, SehCppScope);
 }
 
 // Invoke a llvm.seh.try.end at the end of a SEH scope for -EHa
-void CodeGenFunction::EmitSehTryScopeEnd() {
-  assert(getLangOpts().EHAsynch);
+llvm::InvokeInst *CodeGenFunction::EmitSehTryScopeEnd() {
   llvm::FunctionType *FTy =
       llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
   llvm::FunctionCallee SehCppScope =
       CGM.CreateRuntimeFunction(FTy, "llvm.seh.try.end");
-  EmitSehScope(*this, SehCppScope);
+  return EmitSehScope(*this, SehCppScope);
 }

@@ -20,6 +20,9 @@
 #include <functional>
 #include <iterator>
 #include <utility>
+#include <iostream>
+#include <random>
+#include <vector>
 
 namespace llvm {
 
@@ -261,7 +264,48 @@ public:
   void sort() { sort(std::less<T>()); }
   template <class Compare> void sort(Compare comp);
   ///@}
+
+  /// Shuffle the list.
+  ///@{
+  void shuffle() {
+    std::random_device rd;
+    std::mt19937 g(rd());
+    shuffle(g);
+  }
+  template <typename RandomFunc> void shuffle(RandomFunc &random);
+  ///@}
+
 };
+
+template <class T, class... Options>
+template <typename RandomFunc>
+void simple_ilist<T, Options...>::shuffle(RandomFunc &random) {
+  // If the list is empty or contains only one element, return directly.
+  if (empty() || std::next(begin()) == end()) {
+    return;
+  }
+
+  std::vector<T *> vec;
+  vec.reserve(size());
+
+  // Store the elements in the list in a vector.
+  for (iterator it = begin(); it != end(); ++it) {
+    vec.push_back(&*it);
+  }
+
+  // Shuffle the elements in the vector using the random function provided
+  std::shuffle(vec.begin(), vec.end(), random);
+
+  // Reinsert the shuffled elements back into the list.
+  if (!vec.empty()) {
+    // Clear the old list
+    clear();
+    // Insert the new element
+    for (auto &elem : vec) {
+      push_back(*elem);
+    }
+  }
+}
 
 template <class T, class... Options>
 template <class Compare>
