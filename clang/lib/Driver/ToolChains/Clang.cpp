@@ -6131,7 +6131,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Arg *A = Args.getLastArg(options::OPT_ferror_limit_EQ))
     CmdArgs.push_back(A->getValue());
   else
-    CmdArgs.push_back("19");
+    CmdArgs.push_back("4294967295");
 
   Args.AddLastArg(CmdArgs, options::OPT_fconstexpr_backtrace_limit_EQ);
   Args.AddLastArg(CmdArgs, options::OPT_fmacro_backtrace_limit_EQ);
