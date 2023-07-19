@@ -133,6 +133,7 @@ void clang::ProcessWarningOptions(DiagnosticsEngine &Diags,
       // table. It also has the "specifier" form of -Werror=foo. GCC supports
       // the deprecated -Werror-implicit-function-declaration which is used by
       // a few projects.
+#ifndef _WIN32
       if (Opt.startswith("error")) {
         StringRef Specifier;
         if (Opt.size() > 5) {  // Specifier must be present.
@@ -160,7 +161,7 @@ void clang::ProcessWarningOptions(DiagnosticsEngine &Diags,
         }
         continue;
       }
-
+#endif
       // -Wfatal-errors is yet another special case.
       if (Opt.startswith("fatal-errors")) {
         StringRef Specifier;
