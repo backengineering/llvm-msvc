@@ -184,6 +184,8 @@ std::string Driver::GetResourcesPath(StringRef BinaryPath,
     // path of the embedding binary, which for LLVM binaries will be in bin/.
     // ../lib gets us to lib/ in both cases.
     P = llvm::sys::path::parent_path(Dir);
+    // This search path is also created in the COFF driver of lld, so any
+    // changes here also needs to happen in lld/COFF/Driver.cpp
     llvm::sys::path::append(P, CLANG_INSTALL_LIBDIR_BASENAME, "clang",
                             CLANG_VERSION_MAJOR_STRING);
   }
@@ -546,14 +548,15 @@ static llvm::Triple computeTargetTriple(const Driver &D,
   if (Target.isOSBinFormatMachO()) {
     // If an explicit Darwin arch name is given, that trumps all.
     if (!DarwinArchName.empty()) {
-      tools::darwin::setTripleTypeForMachOArchName(Target, DarwinArchName);
+      tools::darwin::setTripleTypeForMachOArchName(Target, DarwinArchName,
+                                                   Args);
       return Target;
     }
 
     // Handle the Darwin '-arch' flag.
     if (Arg *A = Args.getLastArg(options::OPT_arch)) {
       StringRef ArchName = A->getValue();
-      tools::darwin::setTripleTypeForMachOArchName(Target, ArchName);
+      tools::darwin::setTripleTypeForMachOArchName(Target, ArchName, Args);
     }
   }
 
@@ -4143,9 +4146,11 @@ void Driver::BuildActions(Compilation &C, DerivedArgList &Args,
       // Queue linker inputs.
       if (Phase == phases::Link) {
         assert(Phase == PL.back() && "linking must be final compilation step.");
-        // We don't need to generate additional link commands if emitting AMD bitcode
+        // We don't need to generate additional link commands if emitting AMD
+        // bitcode or compiling only for the offload device
         if (!(C.getInputArgs().hasArg(options::OPT_hip_link) &&
-             (C.getInputArgs().hasArg(options::OPT_emit_llvm))))
+              (C.getInputArgs().hasArg(options::OPT_emit_llvm))) &&
+            !offloadDeviceOnly())
           LinkerInputs.push_back(Current);
         Current = nullptr;
         break;
@@ -4729,8 +4734,13 @@ Action *Driver::ConstructPhaseAction(
   }
   case phases::Backend: {
     if (isUsingLTO() && TargetDeviceOffloadKind == Action::OFK_None) {
-      types::ID Output =
-          Args.hasArg(options::OPT_S) ? types::TY_LTO_IR : types::TY_LTO_BC;
+      types::ID Output;
+      if (Args.hasArg(options::OPT_S))
+        Output = types::TY_LTO_IR;
+      else if (Args.hasArg(options::OPT_ffat_lto_objects))
+        Output = types::TY_PP_Asm;
+      else
+        Output = types::TY_LTO_BC;
       return C.MakeAction<BackendJobAction>(Input, Output);
     }
     if (isUsingLTO(/* IsOffload */ true) &&

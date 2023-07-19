@@ -1066,6 +1066,28 @@ parseFunctionSimplificationPipelineOptions(StringRef Params) {
   return *L;
 }
 
+Expected<bool> parseMemorySSAPrinterPassOptions(StringRef Params) {
+  return parseSinglePassOption(Params, "no-ensure-optimized-uses",
+                               "MemorySSAPrinterPass");
+}
+
+Expected<std::string> parseMemProfUsePassOptions(StringRef Params) {
+  std::string Result;
+  while (!Params.empty()) {
+    StringRef ParamName;
+    std::tie(ParamName, Params) = Params.split(';');
+
+    if (ParamName.consume_front("profile-filename=")) {
+      Result = ParamName.str();
+    } else {
+      return make_error<StringError>(
+          formatv("invalid MemProfUse pass parameter '{0}' ", ParamName).str(),
+          inconvertibleErrorCode());
+    }
+  }
+  return Result;
+}
+
 } // namespace
 
 /// Tests whether a pass name starts with a valid prefix for a default pipeline
@@ -1379,7 +1401,13 @@ Error PassBuilder::parseModulePass(ModulePassManager &MPM,
     } else if (Matches[1] == "thinlto") {
       MPM.addPass(buildThinLTODefaultPipeline(L, nullptr));
     } else if (Matches[1] == "lto-pre-link") {
-      MPM.addPass(buildLTOPreLinkDefaultPipeline(L));
+      if (PTO.UnifiedLTO)
+        // When UnifiedLTO is enabled, use the ThinLTO pre-link pipeline. This
+        // avoids compile-time performance regressions and keeps the pre-link
+        // LTO pipeline "unified" for both LTO modes.
+        MPM.addPass(buildThinLTOPreLinkDefaultPipeline(L));
+      else
+        MPM.addPass(buildLTOPreLinkDefaultPipeline(L));
     } else {
       assert(Matches[1] == "lto" && "Not one of the matched options!");
       MPM.addPass(buildLTODefaultPipeline(L, nullptr));

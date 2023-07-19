@@ -11,7 +11,6 @@
 #define _LIBCPP___FORMAT_FORMAT_FUNCTIONS
 
 #include <__algorithm/clamp.h>
-#include <__availability>
 #include <__concepts/convertible_to.h>
 #include <__concepts/same_as.h>
 #include <__config>

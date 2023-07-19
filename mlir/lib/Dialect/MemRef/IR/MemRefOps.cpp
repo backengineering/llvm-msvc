@@ -9,7 +9,6 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -1355,14 +1354,11 @@ void ExtractAlignedPointerAsIndexOp::getAsmResultNames(
 
 /// The number and type of the results are inferred from the
 /// shape of the source.
-LogicalResult ExtractStridedMetadataOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+LogicalResult ExtractStridedMetadataOp::inferReturnTypesAdaptor(
+    MLIRContext *context, std::optional<Location> location,
+    ExtractStridedMetadataOp::Adaptor adaptor,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  ExtractStridedMetadataOpAdaptor extractAdaptor(operands, attributes,
-                                                 properties);
-  auto sourceType =
-      llvm::dyn_cast<MemRefType>(extractAdaptor.getSource().getType());
+  auto sourceType = llvm::dyn_cast<MemRefType>(adaptor.getSource().getType());
   if (!sourceType)
     return failure();
 

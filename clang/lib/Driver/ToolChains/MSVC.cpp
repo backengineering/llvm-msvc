@@ -277,10 +277,17 @@ void visualstudio::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   else if (Linker.equals_insensitive("lld"))
     Linker = "lld-link";
 
-  if (Linker == "lld-link")
+  if (Linker == "lld-link") {
     for (Arg *A : Args.filtered(options::OPT_vfsoverlay))
       CmdArgs.push_back(
           Args.MakeArgString(std::string("/vfsoverlay:") + A->getValue()));
+
+    if (C.getDriver().isUsingLTO() &&
+        Args.hasFlag(options::OPT_gsplit_dwarf, options::OPT_gno_split_dwarf,
+                     false))
+      CmdArgs.push_back(Args.MakeArgString(Twine("/dwodir:") +
+                                           Output.getFilename() + "_dwo"));
+  }
 
   // Add filenames, libraries, and other linker inputs.
   for (const auto &Input : Inputs) {
@@ -454,10 +461,6 @@ Tool *MSVCToolChain::buildAssembler() const {
     return new tools::darwin::Assembler(*this);
   getDriver().Diag(clang::diag::err_no_external_assembler);
   return nullptr;
-}
-
-bool MSVCToolChain::IsIntegratedAssemblerDefault() const {
-  return true;
 }
 
 ToolChain::UnwindTableLevel

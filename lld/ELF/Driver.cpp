@@ -107,6 +107,14 @@ void Ctx::reset() {
   needsTlsLd.store(false, std::memory_order_relaxed);
 }
 
+llvm::raw_fd_ostream Ctx::openAuxiliaryFile(llvm::StringRef filename,
+                                            std::error_code &ec) {
+  using namespace llvm::sys::fs;
+  OpenFlags flags =
+      auxiliaryFiles.insert(filename).second ? OF_None : OF_Append;
+  return {filename, ec, flags};
+}
+
 namespace lld {
 namespace elf {
 bool link(ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
@@ -344,6 +352,22 @@ static void checkOptions() {
   // table which is a relatively new feature.
   if (config->emachine == EM_MIPS && config->gnuHash)
     error("the .gnu.hash section is not compatible with the MIPS target");
+
+  if (config->emachine == EM_ARM) {
+    if (!config->cmseImplib) {
+      if (!config->cmseInputLib.empty())
+        error("--in-implib may not be used without --cmse-implib");
+      if (!config->cmseOutputLib.empty())
+        error("--out-implib may not be used without --cmse-implib");
+    }
+  } else {
+    if (config->cmseImplib)
+      error("--cmse-implib is only supported on ARM targets");
+    if (!config->cmseInputLib.empty())
+      error("--in-implib is only supported on ARM targets");
+    if (!config->cmseOutputLib.empty())
+      error("--out-implib is only supported on ARM targets");
+  }
 
   if (config->fixCortexA53Errata843419 && config->emachine != EM_AARCH64)
     error("--fix-cortex-a53-843419 is only supported on AArch64 targets");
@@ -997,21 +1021,19 @@ template <class ELFT> static void readCallGraphsFromObjectFiles() {
   }
 }
 
-static DebugCompressionType getCompressDebugSections(opt::InputArgList &args) {
-  StringRef s = args.getLastArgValue(OPT_compress_debug_sections, "none");
-  if (s == "zlib") {
-    if (!compression::zlib::isAvailable())
-      error("--compress-debug-sections: zlib is not available");
-    return DebugCompressionType::Zlib;
+static DebugCompressionType getCompressionType(StringRef s, StringRef option) {
+  DebugCompressionType type = StringSwitch<DebugCompressionType>(s)
+                                  .Case("zlib", DebugCompressionType::Zlib)
+                                  .Case("zstd", DebugCompressionType::Zstd)
+                                  .Default(DebugCompressionType::None);
+  if (type == DebugCompressionType::None) {
+    if (s != "none")
+      error("unknown " + option + " value: " + s);
+  } else if (const char *reason = compression::getReasonIfUnsupported(
+                 compression::formatFor(type))) {
+    error(option + ": " + reason);
   }
-  if (s == "zstd") {
-    if (!compression::zstd::isAvailable())
-      error("--compress-debug-sections: zstd is not available");
-    return DebugCompressionType::Zstd;
-  }
-  if (s != "none")
-    error("unknown --compress-debug-sections value: " + s);
-  return DebugCompressionType::None;
+  return type;
 }
 
 static StringRef getAliasSpelling(opt::Arg *arg) {
@@ -1132,7 +1154,9 @@ static void readConfigs(opt::InputArgList &args) {
   config->checkSections =
       args.hasFlag(OPT_check_sections, OPT_no_check_sections, true);
   config->chroot = args.getLastArgValue(OPT_chroot);
-  config->compressDebugSections = getCompressDebugSections(args);
+  config->compressDebugSections = getCompressionType(
+      args.getLastArgValue(OPT_compress_debug_sections, "none"),
+      "--compress-debug-sections");
   config->cref = args.hasArg(OPT_cref);
   config->optimizeBBJumps =
       args.hasFlag(OPT_optimize_bb_jumps, OPT_no_optimize_bb_jumps, false);
@@ -1165,6 +1189,9 @@ static void readConfigs(opt::InputArgList &args) {
   config->fini = args.getLastArgValue(OPT_fini, "_fini");
   config->fixCortexA53Errata843419 = args.hasArg(OPT_fix_cortex_a53_843419) &&
                                      !args.hasArg(OPT_relocatable);
+  config->cmseImplib = args.hasArg(OPT_cmse_implib);
+  config->cmseInputLib = args.getLastArgValue(OPT_in_implib);
+  config->cmseOutputLib = args.getLastArgValue(OPT_out_implib);
   config->fixCortexA8 =
       args.hasArg(OPT_fix_cortex_a8) && !args.hasArg(OPT_relocatable);
   config->fortranCommon =
@@ -1742,6 +1769,12 @@ void LinkerDriver::createFiles(opt::InputArgList &args) {
         files.back()->justSymbols = true;
       }
       break;
+    case OPT_in_implib:
+      if (armCmseImpLib)
+        error("multiple CMSE import libraries not supported");
+      else if (std::optional<MemoryBufferRef> mb = readFile(arg->getValue()))
+        armCmseImpLib = createObjFile(*mb);
+      break;
     case OPT_start_group:
       if (InputFile::isInGroup)
         error("nested --start-group");
@@ -1957,7 +1990,7 @@ static void writeArchiveStats() {
     return;
 
   std::error_code ec;
-  raw_fd_ostream os(config->printArchiveStats, ec, sys::fs::OF_None);
+  raw_fd_ostream os = ctx.openAuxiliaryFile(config->printArchiveStats, ec);
   if (ec) {
     error("--print-archive-stats=: cannot open " + config->printArchiveStats +
           ": " + ec.message());
@@ -1987,7 +2020,7 @@ static void writeWhyExtract() {
     return;
 
   std::error_code ec;
-  raw_fd_ostream os(config->whyExtract, ec, sys::fs::OF_None);
+  raw_fd_ostream os = ctx.openAuxiliaryFile(config->whyExtract, ec);
   if (ec) {
     error("cannot open --why-extract= file " + config->whyExtract + ": " +
           ec.message());
@@ -2046,7 +2079,7 @@ static void reportBackrefs() {
 // easily.
 static void writeDependencyFile() {
   std::error_code ec;
-  raw_fd_ostream os(config->dependencyFile, ec, sys::fs::OF_None);
+  raw_fd_ostream os = ctx.openAuxiliaryFile(config->dependencyFile, ec);
   if (ec) {
     error("cannot open " + config->dependencyFile + ": " + ec.message());
     return;
@@ -2621,6 +2654,8 @@ void LinkerDriver::link(opt::InputArgList &args) {
       llvm::TimeTraceScope timeScope("Parse input files", files[i]->getName());
       parseFile(files[i]);
     }
+    if (armCmseImpLib)
+      parseArmCMSEImportLib(*armCmseImpLib);
   }
 
   // Now that we have every file, we can decide if we will need a
@@ -2784,6 +2819,9 @@ void LinkerDriver::link(opt::InputArgList &args) {
   // versionId set by scanVersionScript().
   if (args.hasArg(OPT_exclude_libs))
     excludeLibs(args);
+
+  // Record [__acle_se_<sym>, <sym>] pairs for later processing.
+  processArmCmseSymbols();
 
   // Apply symbol renames for --wrap and combine foo@v1 and foo@@v1.
   redirectSymbols(wrapped);

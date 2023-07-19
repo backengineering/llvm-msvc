@@ -354,9 +354,6 @@ def Vector_MultiDimReductionOp :
                    "ArrayRef<bool>":$reductionMask, "CombiningKind":$kind)>
   ];
   let extraClassDeclaration = [{
-    static StringRef getKindAttrStrName() { return "kind"; }
-    static StringRef getReductionDimsAttrStrName() { return "reduction_dims"; }
-
     VectorType getSourceVectorType() {
       return ::llvm::cast<VectorType>(getSource().getType());
     }
@@ -510,7 +507,6 @@ def Vector_ShuffleOp :
   let hasFolder = 1;
   let hasCanonicalizer = 1;
   let extraClassDeclaration = [{
-    static StringRef getMaskAttrStrName() { return "mask"; }
     VectorType getV1VectorType() {
       return ::llvm::cast<VectorType>(getV1().getType());
     }
@@ -577,18 +573,19 @@ def Vector_ExtractOp :
      PredOpTrait<"operand and result have same element type",
                  TCresVTEtIsSameAsOpBase<0, 0>>,
      DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
-    Arguments<(ins AnyVector:$vector, I64ArrayAttr:$position)>,
+    Arguments<(ins AnyVectorOfAnyRank:$vector, I64ArrayAttr:$position)>,
     Results<(outs AnyType)> {
   let summary = "extract operation";
   let description = [{
     Takes an n-D vector and a k-D position and extracts the (n-k)-D vector at
-    the proper position. Degenerates to an element type in the 0-D case.
+    the proper position. Degenerates to an element type if n-k is zero.
 
     Example:
 
     ```mlir
     %1 = vector.extract %0[3]: vector<4x8x16xf32>
     %2 = vector.extract %0[3, 3, 3]: vector<4x8x16xf32>
+    %3 = vector.extract %1[]: vector<f32>
     ```
   }];
   let builders = [
@@ -598,7 +595,6 @@ def Vector_ExtractOp :
     OpBuilder<(ins "Value":$source, "ValueRange":$position)>
   ];
   let extraClassDeclaration = [{
-    static StringRef getPositionAttrStrName() { return "position"; }
     VectorType getSourceVectorType() {
       return ::llvm::cast<VectorType>(getVector().getType());
     }
@@ -694,19 +690,21 @@ def Vector_InsertOp :
      PredOpTrait<"source operand and result have same element type",
                  TCresVTEtIsSameAsOpBase<0, 0>>,
      AllTypesMatch<["dest", "res"]>]>,
-     Arguments<(ins AnyType:$source, AnyVector:$dest, I64ArrayAttr:$position)>,
-     Results<(outs AnyVector:$res)> {
+     Arguments<(ins AnyType:$source, AnyVectorOfAnyRank:$dest, I64ArrayAttr:$position)>,
+     Results<(outs AnyVectorOfAnyRank:$res)> {
   let summary = "insert operation";
   let description = [{
     Takes an n-D source vector, an (n+k)-D destination vector and a k-D position
     and inserts the n-D source into the (n+k)-D destination at the proper
-    position. Degenerates to a scalar source type when n = 0.
+    position. Degenerates to a scalar or a 0-d vector source type when n = 0.
 
     Example:
 
     ```mlir
     %2 = vector.insert %0, %1[3] : vector<8x16xf32> into vector<4x8x16xf32>
     %5 = vector.insert %3, %4[3, 3, 3] : f32 into vector<4x8x16xf32>
+    %8 = vector.insert %6, %7[] : f32 into vector<f32>
+    %11 = vector.insert %9, %10[3, 3, 3] : vector<f32> into vector<4x8x16xf32>
     ```
   }];
   let assemblyFormat = [{
@@ -720,7 +718,6 @@ def Vector_InsertOp :
     OpBuilder<(ins "Value":$source, "Value":$dest, "ValueRange":$position)>
   ];
   let extraClassDeclaration = [{
-    static StringRef getPositionAttrStrName() { return "position"; }
     Type getSourceType() { return getSource().getType(); }
     VectorType getDestVectorType() {
       return ::llvm::cast<VectorType>(getDest().getType());
@@ -879,8 +876,6 @@ def Vector_InsertStridedSliceOp :
       "ArrayRef<int64_t>":$offsets, "ArrayRef<int64_t>":$strides)>
   ];
   let extraClassDeclaration = [{
-    static StringRef getOffsetsAttrStrName() { return "offsets"; }
-    static StringRef getStridesAttrStrName() { return "strides"; }
     VectorType getSourceVectorType() {
       return ::llvm::cast<VectorType>(getSource().getType());
     }
@@ -977,9 +972,6 @@ def Vector_OuterProductOp :
     }
     VectorType getResultVectorType() {
       return ::llvm::cast<VectorType>(getResult().getType());
-    }
-    static constexpr StringRef getKindAttrStrName() {
-      return "kind";
     }
     static CombiningKind getDefaultKind() {
       return CombiningKind::ADD;
@@ -1096,12 +1088,6 @@ def Vector_ReshapeOp :
     int64_t getNumOutputShapeSizes() { return getOutputShape().size(); }
 
     void getFixedVectorSizes(SmallVectorImpl<int64_t> &results);
-
-    static StringRef getFixedVectorSizesAttrStrName() {
-      return "fixed_vector_sizes";
-    }
-    static StringRef getInputShapeAttrStrName() { return "input_shape"; }
-    static StringRef getOutputShapeAttrStrName() { return "output_shape"; }
   }];
 
   let assemblyFormat = [{
@@ -1148,9 +1134,6 @@ def Vector_ExtractStridedSliceOp :
       "ArrayRef<int64_t>":$sizes, "ArrayRef<int64_t>":$strides)>
   ];
   let extraClassDeclaration = [{
-    static StringRef getOffsetsAttrStrName() { return "offsets"; }
-    static StringRef getSizesAttrStrName() { return "sizes"; }
-    static StringRef getStridesAttrStrName() { return "strides"; }
     VectorType getSourceVectorType() {
       return ::llvm::cast<VectorType>(getVector().getType());
     }
@@ -1175,7 +1158,8 @@ def Vector_TransferReadOp :
       DeclareOpInterfaceMethods<VectorUnrollOpInterface, ["getShapeForUnroll"]>,
       DeclareOpInterfaceMethods<MaskableOpInterface>,
       DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-      AttrSizedOperandSegments
+      AttrSizedOperandSegments,
+      DestinationStyleOpInterface
     ]>,
     Arguments<(ins AnyShaped:$source,
                    Variadic<Index>:$indices,
@@ -1397,6 +1381,10 @@ def Vector_TransferReadOp :
   let extraClassDeclaration = [{
     // MaskableOpInterface methods.
     bool supportsPassthru() { return true; }
+
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
+      return {0, 0};  // empty range (no init operands)
+    }
   }];
 
   let hasCanonicalizer = 1;
@@ -2280,9 +2268,6 @@ def Vector_ConstantMaskOp :
     ```
   }];
 
-  let extraClassDeclaration = [{
-    static StringRef getMaskDimSizesAttrStrName() { return "mask_dim_sizes"; }
-  }];
   let assemblyFormat = "$mask_dim_sizes attr-dict `:` type(results)";
   let hasVerifier = 1;
 }
@@ -2465,7 +2450,6 @@ def Vector_TransposeOp :
       return ::llvm::cast<VectorType>(getResult().getType());
     }
     void getTransp(SmallVectorImpl<int64_t> &results);
-    static StringRef getTranspAttrStrName() { return "transp"; }
   }];
   let assemblyFormat = [{
     $vector `,` $transp attr-dict `:` type($vector) `to` type($result)
@@ -2730,8 +2714,6 @@ def Vector_ScanOp :
                    CArg<"bool", "true">:$inclusive)>
   ];
   let extraClassDeclaration = [{
-    static StringRef getKindAttrStrName() { return "kind"; }
-    static StringRef getReductionDimAttrStrName() { return "reduction_dim"; }
     VectorType getSourceType() {
       return ::llvm::cast<VectorType>(getSource().getType());
     }

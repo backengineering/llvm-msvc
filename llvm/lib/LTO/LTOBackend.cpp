@@ -236,20 +236,21 @@ static void runNewPMPasses(const Config &Conf, Module &Mod, TargetMachine *TM,
   auto FS = vfs::getRealFileSystem();
   std::optional<PGOOptions> PGOOpt;
   if (!Conf.SampleProfile.empty())
-    PGOOpt = PGOOptions(Conf.SampleProfile, "", Conf.ProfileRemapping, FS,
-                        PGOOptions::SampleUse, PGOOptions::NoCSAction, true);
+    PGOOpt = PGOOptions(Conf.SampleProfile, "", Conf.ProfileRemapping,
+                        /*MemoryProfile=*/"", FS, PGOOptions::SampleUse,
+                        PGOOptions::NoCSAction, true);
   else if (Conf.RunCSIRInstr) {
-    PGOOpt = PGOOptions("", Conf.CSIRProfile, Conf.ProfileRemapping, FS,
-                        PGOOptions::IRUse, PGOOptions::CSIRInstr,
-                        Conf.AddFSDiscriminator);
+    PGOOpt = PGOOptions("", Conf.CSIRProfile, Conf.ProfileRemapping,
+                        /*MemoryProfile=*/"", FS, PGOOptions::IRUse,
+                        PGOOptions::CSIRInstr, Conf.AddFSDiscriminator);
   } else if (!Conf.CSIRProfile.empty()) {
-    PGOOpt = PGOOptions(Conf.CSIRProfile, "", Conf.ProfileRemapping, FS,
-                        PGOOptions::IRUse, PGOOptions::CSIRUse,
-                        Conf.AddFSDiscriminator);
+    PGOOpt = PGOOptions(Conf.CSIRProfile, "", Conf.ProfileRemapping,
+                        /*MemoryProfile=*/"", FS, PGOOptions::IRUse,
+                        PGOOptions::CSIRUse, Conf.AddFSDiscriminator);
     NoPGOWarnMismatch = !Conf.PGOWarnMismatch;
   } else if (Conf.AddFSDiscriminator) {
-    PGOOpt = PGOOptions("", "", "", nullptr, PGOOptions::NoAction,
-                        PGOOptions::NoCSAction, true);
+    PGOOpt = PGOOptions("", "", "", /*MemoryProfile=*/"", nullptr,
+                        PGOOptions::NoAction, PGOOptions::NoCSAction, true);
   }
   TM->setPGOOption(PGOOpt);
 
@@ -504,6 +505,7 @@ Error lto::backend(const Config &C, AddStreamFn AddStream,
 
   std::unique_ptr<TargetMachine> TM = createTargetMachine(C, *TOrErr, Mod);
 
+  LLVM_DEBUG(dbgs() << "Running regular LTO\n");
   if (!C.CodeGenOnly) {
     if (!opt(C, TM.get(), 0, Mod, /*IsThinLTO=*/false,
              /*ExportSummary=*/&CombinedIndex, /*ImportSummary=*/nullptr,
@@ -566,6 +568,7 @@ Error lto::thinBackend(const Config &Conf, unsigned Task, AddStreamFn AddStream,
   // the module, if applicable.
   Mod.setPartialSampleProfileRatio(CombinedIndex);
 
+  LLVM_DEBUG(dbgs() << "Running ThinLTO\n");
   if (Conf.CodeGenOnly) {
     codegen(Conf, TM.get(), AddStream, Task, Mod, CombinedIndex);
     return finalizeOptimizationRemarks(std::move(DiagnosticOutputFile));

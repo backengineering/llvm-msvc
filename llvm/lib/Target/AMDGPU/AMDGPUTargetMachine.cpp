@@ -364,6 +364,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAMDGPUTarget() {
   initializeAMDGPUDAGToDAGISelPass(*PR);
   initializeGCNDPPCombinePass(*PR);
   initializeSILowerI1CopiesPass(*PR);
+  initializeSILowerWWMCopiesPass(*PR);
   initializeSILowerSGPRSpillsPass(*PR);
   initializeSIFixSGPRCopiesPass(*PR);
   initializeSIFixVGPRCopiesPass(*PR);
@@ -1296,6 +1297,7 @@ void GCNPassConfig::addOptimizedRegAlloc() {
 }
 
 bool GCNPassConfig::addPreRewrite() {
+  addPass(&SILowerWWMCopiesID);
   if (EnableRegReassign)
     addPass(&GCNNSAReassignID);
   return true;
@@ -1350,6 +1352,8 @@ bool GCNPassConfig::addRegAssignAndRewriteFast() {
   addPass(&SILowerSGPRSpillsID);
 
   addPass(createVGPRAllocPass(false));
+
+  addPass(&SILowerWWMCopiesID);
   return true;
 }
 
@@ -1427,6 +1431,12 @@ TargetPassConfig *GCNTargetMachine::createPassConfig(PassManagerBase &PM) {
   return new GCNPassConfig(*this, PM);
 }
 
+void GCNTargetMachine::registerMachineRegisterInfoCallback(
+    MachineFunction &MF) const {
+  SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
+  MF.getRegInfo().addDelegate(MFI);
+}
+
 MachineFunctionInfo *GCNTargetMachine::createMachineFunctionInfo(
     BumpPtrAllocator &Allocator, const Function &F,
     const TargetSubtargetInfo *STI) const {
@@ -1479,6 +1489,9 @@ bool GCNTargetMachine::parseMachineFunctionInfo(
   };
 
   if (parseOptionalRegister(YamlMFI.VGPRForAGPRCopy, MFI->VGPRForAGPRCopy))
+    return true;
+
+  if (parseOptionalRegister(YamlMFI.SGPRForEXECCopy, MFI->SGPRForEXECCopy))
     return true;
 
   if (parseOptionalRegister(YamlMFI.LongBranchReservedReg,

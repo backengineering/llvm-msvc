@@ -473,7 +473,7 @@ void CodeGenModule::createOpenMPRuntime() {
   case llvm::Triple::nvptx:
   case llvm::Triple::nvptx64:
   case llvm::Triple::amdgcn:
-    assert(getLangOpts().OpenMPIsDevice &&
+    assert(getLangOpts().OpenMPIsTargetDevice &&
            "OpenMP AMDGPU/NVPTX is only prepared to deal with device code.");
     OpenMPRuntime.reset(new CGOpenMPRuntimeGPU(*this));
     break;
@@ -1092,7 +1092,7 @@ void CodeGenModule::Release() {
   // Indicate whether this Module was compiled with -fopenmp
   if (getLangOpts().OpenMP && !getLangOpts().OpenMPSimd)
     getModule().addModuleFlag(llvm::Module::Max, "openmp", LangOpts.OpenMP);
-  if (getLangOpts().OpenMPIsDevice)
+  if (getLangOpts().OpenMPIsTargetDevice)
     getModule().addModuleFlag(llvm::Module::Max, "openmp-device",
                               LangOpts.OpenMP);
 
@@ -2389,8 +2389,8 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
   // functions. If the current target's C++ ABI requires this and this is a
   // member function, set its alignment accordingly.
   if (getTarget().getCXXABI().areMemberFunctionsAligned()) {
-    if (F->getAlignment() < 2 && isa<CXXMethodDecl>(D))
-      F->setAlignment(llvm::Align(2));
+    if (F->getPointerAlignment(getDataLayout()) < 2 && isa<CXXMethodDecl>(D))
+      F->setAlignment(std::max(llvm::Align(2), F->getAlign().valueOrOne()));
   }
 
   // In the cross-dso CFI mode with canonical jump tables, we want !type
@@ -2419,15 +2419,6 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
   }
 }
 
-void CodeGenModule::setLLVMFunctionFEnvAttributes(const FunctionDecl *D,
-                                                  llvm::Function *F) {
-  if (D->hasAttr<StrictFPAttr>()) {
-    llvm::AttrBuilder FuncAttrs(F->getContext());
-    FuncAttrs.addAttribute("strictfp");
-    F->addFnAttrs(FuncAttrs);
-  }
-}
-
 void CodeGenModule::SetCommonAttributes(GlobalDecl GD, llvm::GlobalValue *GV) {
   const Decl *D = GD.getDecl();
   if (isa_and_nonnull<NamedDecl>(D))
@@ -2438,12 +2429,14 @@ void CodeGenModule::SetCommonAttributes(GlobalDecl GD, llvm::GlobalValue *GV) {
   if (D && D->hasAttr<UsedAttr>())
     addUsedOrCompilerUsedGlobal(GV);
 
-  if (CodeGenOpts.KeepStaticConsts && D && isa<VarDecl>(D)) {
-    const auto *VD = cast<VarDecl>(D);
-    if (VD->getType().isConstQualified() &&
-        VD->getStorageDuration() == SD_Static)
-      addUsedOrCompilerUsedGlobal(GV);
-  }
+  if (const auto *VD = dyn_cast_if_present<VarDecl>(D);
+      VD &&
+      ((CodeGenOpts.KeepPersistentStorageVariables &&
+        (VD->getStorageDuration() == SD_Static ||
+         VD->getStorageDuration() == SD_Thread)) ||
+       (CodeGenOpts.KeepStaticConsts && VD->getStorageDuration() == SD_Static &&
+        VD->getType().isConstQualified())))
+    addUsedOrCompilerUsedGlobal(GV);
 }
 
 bool CodeGenModule::GetCPUAndFeaturesAttributes(GlobalDecl GD,
@@ -2613,9 +2606,6 @@ void CodeGenModule::CreateFunctionTypeMetadataForIcall(const FunctionDecl *FD,
 }
 
 void CodeGenModule::setKCFIType(const FunctionDecl *FD, llvm::Function *F) {
-  if (isa<CXXMethodDecl>(FD) && !cast<CXXMethodDecl>(FD)->isStatic())
-    return;
-
   llvm::LLVMContext &Ctx = F->getContext();
   llvm::MDBuilder MDB(Ctx);
   F->setMetadata(llvm::LLVMContext::MD_kcfi_type,
@@ -3327,12 +3317,14 @@ bool CodeGenModule::MustBeEmitted(const ValueDecl *Global) {
   if (LangOpts.EmitAllDecls)
     return true;
 
-  if (CodeGenOpts.KeepStaticConsts) {
-    const auto *VD = dyn_cast<VarDecl>(Global);
-    if (VD && VD->getType().isConstQualified() &&
-        VD->getStorageDuration() == SD_Static)
-      return true;
-  }
+  const auto *VD = dyn_cast<VarDecl>(Global);
+  if (VD &&
+      ((CodeGenOpts.KeepPersistentStorageVariables &&
+        (VD->getStorageDuration() == SD_Static ||
+         VD->getStorageDuration() == SD_Thread)) ||
+       (CodeGenOpts.KeepStaticConsts && VD->getStorageDuration() == SD_Static &&
+        VD->getType().isConstQualified())))
+    return true;
 
   return getContext().DeclMustBeEmitted(Global);
 }
@@ -4272,7 +4264,7 @@ llvm::Constant *CodeGenModule::GetOrCreateLLVMFunction(
   // the iFunc instead. Name Mangling will handle the rest of the changes.
   if (const FunctionDecl *FD = cast_or_null<FunctionDecl>(D)) {
     // For the device mark the function as one that should be emitted.
-    if (getLangOpts().OpenMPIsDevice && OpenMPRuntime &&
+    if (getLangOpts().OpenMPIsTargetDevice && OpenMPRuntime &&
         !OpenMPRuntime->markAsGlobalTarget(GD) && FD->isDefined() &&
         !DontDefer && !IsForDefinition) {
       if (const FunctionDecl *FDDef = FD->getDefinition()) {
@@ -4780,7 +4772,8 @@ CodeGenModule::GetOrCreateLLVMGlobal(StringRef MangledName, llvm::Type *Ty,
     }
   }
 
-  if (GV->isDeclaration()) {
+  if (D &&
+      D->isThisDeclarationADefinition(Context) == VarDecl::DeclarationOnly) {
     getTargetCodeGenInfo().setTargetAttributes(D, GV, *this);
     // External HIP managed variables needed to be recorded for transformation
     // in both device and host compilations.
@@ -5096,7 +5089,7 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
 
   // If this is OpenMP device, check if it is legal to emit this global
   // normally.
-  if (LangOpts.OpenMPIsDevice && OpenMPRuntime &&
+  if (LangOpts.OpenMPIsTargetDevice && OpenMPRuntime &&
       OpenMPRuntime->emitTargetGlobalVariable(D))
     return;
 
@@ -5666,9 +5659,6 @@ void CodeGenModule::EmitGlobalFunctionDefinition(GlobalDecl GD,
   MaybeHandleStaticInExternC(D, Fn);
 
   maybeSetTrivialComdat(*D, *Fn);
-
-  // Set CodeGen attributes that represent floating point environment.
-  setLLVMFunctionFEnvAttributes(D, Fn);
 
   CodeGenFunction(*this).GenerateCode(GD, Fn, FI);
 
@@ -6735,7 +6725,7 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     if (LangOpts.CUDA && LangOpts.CUDAIsDevice)
       break;
     // File-scope asm is ignored during device-side OpenMP compilation.
-    if (LangOpts.OpenMPIsDevice)
+    if (LangOpts.OpenMPIsTargetDevice)
       break;
     // File-scope asm is ignored during device-side SYCL compilation.
     if (LangOpts.SYCLIsDevice)
@@ -7166,7 +7156,7 @@ llvm::Constant *CodeGenModule::GetAddrOfRTTIDescriptor(QualType Ty,
   // FIXME: should we even be calling this method if RTTI is disabled
   // and it's not for EH?
   if ((!ForEH && !getLangOpts().RTTI) || getLangOpts().CUDAIsDevice ||
-      (getLangOpts().OpenMP && getLangOpts().OpenMPIsDevice &&
+      (getLangOpts().OpenMP && getLangOpts().OpenMPIsTargetDevice &&
        getTriple().isNVPTX()))
     return llvm::Constant::getNullValue(Int8PtrTy);
 

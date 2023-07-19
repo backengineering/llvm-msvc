@@ -1229,8 +1229,8 @@ void PrettyPrintedRegionOp::print(OpAsmPrinter &p) {
   // Assuming that region has a single non-terminator inner-op, if the inner-op
   // meets some criteria (which in this case is a simple one  based on the name
   // of inner-op), then we can print the entire region in a succinct way.
-  // Here we assume that the prototype of "test.special.op" can be trivially derived
-  // while parsing it back.
+  // Here we assume that the prototype of "test.special.op" can be trivially
+  // derived while parsing it back.
   if (innerOp.getName().getStringRef().equals("test.special.op")) {
     p << " start test.special.op end";
   } else {
@@ -1788,7 +1788,9 @@ LogicalResult TestVerifiersOp::verify() {
   if (definingOp && failed(mlir::verify(definingOp)))
     return emitOpError("operand hasn't been verified");
 
-  emitRemark("success run of verifier");
+  // Avoid using `emitRemark(msg)` since that will trigger an infinite verifier
+  // loop.
+  mlir::emitRemark(getLoc(), "success run of verifier");
 
   return success();
 }
@@ -1802,7 +1804,9 @@ LogicalResult TestVerifiersOp::verifyRegions() {
       if (failed(mlir::verify(&op)))
         return emitOpError("nested op hasn't been verified");
 
-  emitRemark("success run of region verifier");
+  // Avoid using `emitRemark(msg)` since that will trigger an infinite verifier
+  // loop.
+  mlir::emitRemark(getLoc(), "success run of region verifier");
 
   return success();
 }
@@ -1927,6 +1931,46 @@ static ParseResult customParseProperties(OpAsmParser &parser,
     return failure();
   prop.label = std::make_shared<std::string>(std::move(label));
   return success();
+}
+
+static bool parseUsingPropertyInCustom(OpAsmParser &parser, int64_t value[3]) {
+  return parser.parseLSquare() || parser.parseInteger(value[0]) ||
+         parser.parseComma() || parser.parseInteger(value[1]) ||
+         parser.parseComma() || parser.parseInteger(value[2]) ||
+         parser.parseRSquare();
+}
+
+static void printUsingPropertyInCustom(OpAsmPrinter &printer, Operation *op,
+                                       ArrayRef<int64_t> value) {
+  printer << '[' << value << ']';
+}
+
+static bool parseIntProperty(OpAsmParser &parser, int64_t &value) {
+  return failed(parser.parseInteger(value));
+}
+
+static void printIntProperty(OpAsmPrinter &printer, Operation *op,
+                             int64_t value) {
+  printer << value;
+}
+
+static bool parseSumProperty(OpAsmParser &parser, int64_t &second,
+                             int64_t first) {
+  int64_t sum;
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseInteger(second) || parser.parseEqual() ||
+      parser.parseInteger(sum))
+    return true;
+  if (sum != second + first) {
+    parser.emitError(loc, "Expected sum to equal first + second");
+    return true;
+  }
+  return false;
+}
+
+static void printSumProperty(OpAsmPrinter &printer, Operation *op,
+                             int64_t second, int64_t first) {
+  printer << second << " = " << (second + first);
 }
 
 #include "TestOpEnums.cpp.inc"

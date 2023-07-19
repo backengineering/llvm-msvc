@@ -1,11 +1,15 @@
-#TODO(michaelrj): split out the implementations from memory_utils
+# TODO(michaelrj): split out the implementations from memory_utils
 add_header_library(
   memory_utils
   HDRS
+    aarch64/bcmp_implementations.h
     aarch64/memcmp_implementations.h
     aarch64/memcpy_implementations.h
+    aarch64/memset_implementations.h
     bcmp_implementations.h
     bzero_implementations.h
+    generic/aligned_access.h
+    generic/byte_per_byte.h
     memcmp_implementations.h
     memcpy_implementations.h
     memmove_implementations.h
@@ -14,9 +18,15 @@ add_header_library(
     op_builtin.h
     op_generic.h
     op_x86.h
+    riscv/bcmp_implementations.h
+    riscv/memcmp_implementations.h
+    riscv/memcpy_implementations.h
+    riscv/memset_implementations.h
     utils.h
+    x86_64/bcmp_implementations.h
     x86_64/memcmp_implementations.h
     x86_64/memcpy_implementations.h
+    x86_64/memset_implementations.h
   DEPS
     libc.src.__support.common
     libc.src.__support.CPP.bit

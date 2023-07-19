@@ -19,7 +19,7 @@ define i32 @test0-range-check(ptr %p) {
 ; TUNIT: Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 ; TUNIT-LABEL: define {{[^@]+}}@test0-range-check
 ; TUNIT-SAME: (ptr nocapture nofree readonly align 4 [[P:%.*]]) #[[ATTR0]] {
-; TUNIT-NEXT:    [[A:%.*]] = tail call i32 @test0(ptr nocapture nofree readonly align 4 [[P]]) #[[ATTR3:[0-9]+]], !range [[RNG0]]
+; TUNIT-NEXT:    [[A:%.*]] = tail call i32 @test0(ptr nocapture nofree noundef readonly align 4 [[P]]) #[[ATTR3:[0-9]+]], !range [[RNG0]]
 ; TUNIT-NEXT:    ret i32 [[A]]
 ;
 ; CGSCC: Function Attrs: mustprogress nofree nosync nounwind willreturn memory(argmem: read)
@@ -48,7 +48,7 @@ define void @test0-icmp-check(ptr %p){
   ; ret = [0, 10)
 ; TUNIT-LABEL: define {{[^@]+}}@test0-icmp-check
 ; TUNIT-SAME: (ptr nocapture nofree readonly align 4 [[P:%.*]]) {
-; TUNIT-NEXT:    [[RET:%.*]] = tail call i32 @test0(ptr nocapture nofree readonly align 4 [[P]]) #[[ATTR3]], !range [[RNG0]]
+; TUNIT-NEXT:    [[RET:%.*]] = tail call i32 @test0(ptr nocapture nofree noundef readonly align 4 [[P]]) #[[ATTR3]], !range [[RNG0]]
 ; TUNIT-NEXT:    [[CMP_EQ_1:%.*]] = icmp eq i32 [[RET]], 10
 ; TUNIT-NEXT:    [[CMP_EQ_2:%.*]] = icmp eq i32 [[RET]], 9
 ; TUNIT-NEXT:    [[CMP_EQ_3:%.*]] = icmp eq i32 [[RET]], 8
@@ -288,7 +288,7 @@ define i1 @test1-check(ptr %p) {
 ; TUNIT: Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 ; TUNIT-LABEL: define {{[^@]+}}@test1-check
 ; TUNIT-SAME: (ptr nocapture nofree readonly align 4 [[P:%.*]]) #[[ATTR0]] {
-; TUNIT-NEXT:    [[RES:%.*]] = tail call i32 @test1(ptr nocapture nofree readonly align 4 [[P]]) #[[ATTR3]], !range [[RNG2:![0-9]+]]
+; TUNIT-NEXT:    [[RES:%.*]] = tail call i32 @test1(ptr nocapture nofree noundef readonly align 4 [[P]]) #[[ATTR3]], !range [[RNG2:![0-9]+]]
 ; TUNIT-NEXT:    [[CMP:%.*]] = icmp eq i32 [[RES]], 500
 ; TUNIT-NEXT:    ret i1 [[CMP]]
 ;
@@ -338,7 +338,7 @@ define i32 @test2_check(ptr %p) {
 ; TUNIT-LABEL: define {{[^@]+}}@test2_check
 ; TUNIT-SAME: (ptr nocapture nofree readonly align 4 [[P:%.*]]) #[[ATTR0]] {
 ; TUNIT-NEXT:  entry:
-; TUNIT-NEXT:    [[CALL:%.*]] = tail call i32 @test2(ptr nocapture nofree readonly align 4 [[P]]) #[[ATTR3]]
+; TUNIT-NEXT:    [[CALL:%.*]] = tail call i32 @test2(ptr nocapture nofree noundef readonly align 4 [[P]]) #[[ATTR3]]
 ; TUNIT-NEXT:    [[CMP:%.*]] = icmp slt i32 [[CALL]], 5
 ; TUNIT-NEXT:    br i1 [[CMP]], label [[IF_THEN:%.*]], label [[IF_END:%.*]]
 ; TUNIT:       if.then:
@@ -730,18 +730,18 @@ define dso_local zeroext i1 @phi(i32 %arg) {
 ; TUNIT-NEXT:    br label [[BB3]]
 ; TUNIT:       bb3:
 ; TUNIT-NEXT:    [[DOT02:%.*]] = phi i32 [ 1, [[BB1]] ], [ 2, [[BB2]] ]
-; TUNIT-NEXT:    [[TMP4:%.*]] = icmp sgt i32 [[ARG]], 10
-; TUNIT-NEXT:    br i1 [[TMP4]], label [[BB5:%.*]], label [[BB7:%.*]]
+; TUNIT-NEXT:    [[TRUETMP4:%.*]] = icmp sgt i32 [[ARG]], 10
+; TUNIT-NEXT:    br i1 [[TRUETMP4]], label [[BB5:%.*]], label [[BB7:%.*]]
 ; TUNIT:       bb5:
-; TUNIT-NEXT:    [[TMP6:%.*]] = add nsw i32 [[DOT02]], 1
+; TUNIT-NEXT:    [[TRUETMP6:%.*]] = add nsw i32 [[DOT02]], 1
 ; TUNIT-NEXT:    br label [[BB9:%.*]]
 ; TUNIT:       bb7:
-; TUNIT-NEXT:    [[TMP8:%.*]] = add nsw i32 [[DOT02]], 2
+; TUNIT-NEXT:    [[TRUETMP8:%.*]] = add nsw i32 [[DOT02]], 2
 ; TUNIT-NEXT:    br label [[BB9]]
 ; TUNIT:       bb9:
-; TUNIT-NEXT:    [[DOT01:%.*]] = phi i32 [ [[TMP6]], [[BB5]] ], [ [[TMP8]], [[BB7]] ]
-; TUNIT-NEXT:    [[TMP10:%.*]] = icmp eq i32 [[DOT01]], 5
-; TUNIT-NEXT:    br i1 [[TMP10]], label [[BB11:%.*]], label [[BB12:%.*]]
+; TUNIT-NEXT:    [[DOT01:%.*]] = phi i32 [ [[TRUETMP6]], [[BB5]] ], [ [[TRUETMP8]], [[BB7]] ]
+; TUNIT-NEXT:    [[TRUETMP10:%.*]] = icmp eq i32 [[DOT01]], 5
+; TUNIT-NEXT:    br i1 [[TRUETMP10]], label [[BB11:%.*]], label [[BB12:%.*]]
 ; TUNIT:       bb11:
 ; TUNIT-NEXT:    br label [[BB13:%.*]]
 ; TUNIT:       bb12:
@@ -762,18 +762,18 @@ define dso_local zeroext i1 @phi(i32 %arg) {
 ; CGSCC-NEXT:    br label [[BB3]]
 ; CGSCC:       bb3:
 ; CGSCC-NEXT:    [[DOT02:%.*]] = phi i32 [ 1, [[BB1]] ], [ 2, [[BB2]] ]
-; CGSCC-NEXT:    [[TMP4:%.*]] = icmp sgt i32 [[ARG]], 10
-; CGSCC-NEXT:    br i1 [[TMP4]], label [[BB5:%.*]], label [[BB7:%.*]]
+; CGSCC-NEXT:    [[TRUETMP4:%.*]] = icmp sgt i32 [[ARG]], 10
+; CGSCC-NEXT:    br i1 [[TRUETMP4]], label [[BB5:%.*]], label [[BB7:%.*]]
 ; CGSCC:       bb5:
-; CGSCC-NEXT:    [[TMP6:%.*]] = add nsw i32 [[DOT02]], 1
+; CGSCC-NEXT:    [[TRUETMP6:%.*]] = add nsw i32 [[DOT02]], 1
 ; CGSCC-NEXT:    br label [[BB9:%.*]]
 ; CGSCC:       bb7:
-; CGSCC-NEXT:    [[TMP8:%.*]] = add nsw i32 [[DOT02]], 2
+; CGSCC-NEXT:    [[TRUETMP8:%.*]] = add nsw i32 [[DOT02]], 2
 ; CGSCC-NEXT:    br label [[BB9]]
 ; CGSCC:       bb9:
-; CGSCC-NEXT:    [[DOT01:%.*]] = phi i32 [ [[TMP6]], [[BB5]] ], [ [[TMP8]], [[BB7]] ]
-; CGSCC-NEXT:    [[TMP10:%.*]] = icmp eq i32 [[DOT01]], 5
-; CGSCC-NEXT:    br i1 [[TMP10]], label [[BB11:%.*]], label [[BB12:%.*]]
+; CGSCC-NEXT:    [[DOT01:%.*]] = phi i32 [ [[TRUETMP6]], [[BB5]] ], [ [[TRUETMP8]], [[BB7]] ]
+; CGSCC-NEXT:    [[TRUETMP10:%.*]] = icmp eq i32 [[DOT01]], 5
+; CGSCC-NEXT:    br i1 [[TRUETMP10]], label [[BB11:%.*]], label [[BB12:%.*]]
 ; CGSCC:       bb11:
 ; CGSCC-NEXT:    br label [[BB13:%.*]]
 ; CGSCC:       bb12:
@@ -826,25 +826,13 @@ define dso_local i1 @select(i32 %a) local_unnamed_addr #0 {
 ; TUNIT-LABEL: define {{[^@]+}}@select
 ; TUNIT-SAME: (i32 [[A:%.*]]) local_unnamed_addr #[[ATTR1]] {
 ; TUNIT-NEXT:  entry:
-; TUNIT-NEXT:    [[CMP:%.*]] = icmp sgt i32 [[A]], 5
-; TUNIT-NEXT:    [[DOT:%.*]] = select i1 [[CMP]], i32 1, i32 2
-; TUNIT-NEXT:    [[CMP1:%.*]] = icmp sgt i32 [[A]], 10
-; TUNIT-NEXT:    [[Y_0_V:%.*]] = select i1 [[CMP1]], i32 1, i32 2
-; TUNIT-NEXT:    [[Y_0:%.*]] = add nuw nsw i32 [[DOT]], [[Y_0_V]]
-; TUNIT-NEXT:    [[CMP6:%.*]] = icmp eq i32 [[Y_0]], 5
-; TUNIT-NEXT:    ret i1 [[CMP6]]
+; TUNIT-NEXT:    ret i1 false
 ;
 ; CGSCC: Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 ; CGSCC-LABEL: define {{[^@]+}}@select
 ; CGSCC-SAME: (i32 [[A:%.*]]) local_unnamed_addr #[[ATTR2]] {
 ; CGSCC-NEXT:  entry:
-; CGSCC-NEXT:    [[CMP:%.*]] = icmp sgt i32 [[A]], 5
-; CGSCC-NEXT:    [[DOT:%.*]] = select i1 [[CMP]], i32 1, i32 2
-; CGSCC-NEXT:    [[CMP1:%.*]] = icmp sgt i32 [[A]], 10
-; CGSCC-NEXT:    [[Y_0_V:%.*]] = select i1 [[CMP1]], i32 1, i32 2
-; CGSCC-NEXT:    [[Y_0:%.*]] = add nuw nsw i32 [[DOT]], [[Y_0_V]]
-; CGSCC-NEXT:    [[CMP6:%.*]] = icmp eq i32 [[Y_0]], 5
-; CGSCC-NEXT:    ret i1 [[CMP6]]
+; CGSCC-NEXT:    ret i1 false
 ;
 entry:
   %cmp = icmp sgt i32 %a, 5
@@ -861,27 +849,13 @@ define dso_local i32 @select_zext(i32 %a) local_unnamed_addr #0 {
 ; TUNIT-LABEL: define {{[^@]+}}@select_zext
 ; TUNIT-SAME: (i32 [[A:%.*]]) local_unnamed_addr #[[ATTR1]] {
 ; TUNIT-NEXT:  entry:
-; TUNIT-NEXT:    [[CMP:%.*]] = icmp sgt i32 [[A]], 5
-; TUNIT-NEXT:    [[DOT:%.*]] = select i1 [[CMP]], i32 1, i32 2
-; TUNIT-NEXT:    [[CMP1:%.*]] = icmp sgt i32 [[A]], 10
-; TUNIT-NEXT:    [[Y_0_V:%.*]] = select i1 [[CMP1]], i32 1, i32 2
-; TUNIT-NEXT:    [[Y_0:%.*]] = add nuw nsw i32 [[DOT]], [[Y_0_V]]
-; TUNIT-NEXT:    [[CMP6:%.*]] = icmp eq i32 [[Y_0]], 5
-; TUNIT-NEXT:    [[DOT13:%.*]] = zext i1 [[CMP6]] to i32
-; TUNIT-NEXT:    ret i32 [[DOT13]]
+; TUNIT-NEXT:    ret i32 0
 ;
 ; CGSCC: Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 ; CGSCC-LABEL: define {{[^@]+}}@select_zext
 ; CGSCC-SAME: (i32 [[A:%.*]]) local_unnamed_addr #[[ATTR2]] {
 ; CGSCC-NEXT:  entry:
-; CGSCC-NEXT:    [[CMP:%.*]] = icmp sgt i32 [[A]], 5
-; CGSCC-NEXT:    [[DOT:%.*]] = select i1 [[CMP]], i32 1, i32 2
-; CGSCC-NEXT:    [[CMP1:%.*]] = icmp sgt i32 [[A]], 10
-; CGSCC-NEXT:    [[Y_0_V:%.*]] = select i1 [[CMP1]], i32 1, i32 2
-; CGSCC-NEXT:    [[Y_0:%.*]] = add nuw nsw i32 [[DOT]], [[Y_0_V]]
-; CGSCC-NEXT:    [[CMP6:%.*]] = icmp eq i32 [[Y_0]], 5
-; CGSCC-NEXT:    [[DOT13:%.*]] = zext i1 [[CMP6]] to i32
-; CGSCC-NEXT:    ret i32 [[DOT13]]
+; CGSCC-NEXT:    ret i32 0
 ;
 entry:
   %cmp = icmp sgt i32 %a, 5
@@ -1616,7 +1590,7 @@ define i1 @propagate_range2(i32 %c) {
 ; TUNIT-SAME: (i32 [[C:%.*]]) #[[ATTR1]] {
 ; TUNIT-NEXT:    [[CSRET1:%.*]] = call noundef i32 @less_than_100_2(i32 noundef 0) #[[ATTR4]]
 ; TUNIT-NEXT:    [[TRUE1:%.*]] = call i1 @is_less_than_100_2(i32 noundef [[CSRET1]]) #[[ATTR4]]
-; TUNIT-NEXT:    [[CSRET2:%.*]] = call noundef i32 @less_than_100_2(i32 [[C]]) #[[ATTR4]]
+; TUNIT-NEXT:    [[CSRET2:%.*]] = call noundef i32 @less_than_100_2(i32 noundef [[C]]) #[[ATTR4]]
 ; TUNIT-NEXT:    [[TRUE2:%.*]] = call i1 @is_less_than_100_2(i32 noundef [[CSRET2]]) #[[ATTR4]]
 ; TUNIT-NEXT:    [[TRUE:%.*]] = and i1 [[TRUE1]], [[TRUE2]]
 ; TUNIT-NEXT:    ret i1 [[TRUE]]
@@ -1649,8 +1623,7 @@ define internal i1 @non_zero(i8 %v) {
 ; CGSCC: Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 ; CGSCC-LABEL: define {{[^@]+}}@non_zero
 ; CGSCC-SAME: (i8 [[V:%.*]]) #[[ATTR2]] {
-; CGSCC-NEXT:    [[R:%.*]] = icmp ne i8 [[V]], 0
-; CGSCC-NEXT:    ret i1 [[R]]
+; CGSCC-NEXT:    ret i1 true
 ;
   %r = icmp ne i8 %v, 0
   ret i1 %r
@@ -1677,7 +1650,7 @@ define i1 @context(ptr %p) {
 ; CGSCC-NEXT:    [[C:%.*]] = icmp slt i8 0, [[L]]
 ; CGSCC-NEXT:    br i1 [[C]], label [[T:%.*]], label [[F:%.*]]
 ; CGSCC:       t:
-; CGSCC-NEXT:    [[R:%.*]] = call i1 @non_zero(i8 [[L]]) #[[ATTR6]]
+; CGSCC-NEXT:    [[R:%.*]] = call noundef i1 @non_zero(i8 [[L]]) #[[ATTR6]]
 ; CGSCC-NEXT:    ret i1 [[R]]
 ; CGSCC:       f:
 ; CGSCC-NEXT:    ret i1 false
@@ -1698,8 +1671,8 @@ define void @spam(ptr %arg, ptr %arg1) {
 ; CHECK-SAME: (ptr nocapture nofree noundef nonnull readonly align 8 dereferenceable(4) [[ARG:%.*]], ptr nocapture nofree readnone [[ARG1:%.*]]) {
 ; CHECK-NEXT:  bb:
 ; CHECK-NEXT:    [[TMP:%.*]] = load i32, ptr [[ARG]], align 8
-; CHECK-NEXT:    [[TMP2:%.*]] = icmp ult i32 [[TMP]], 4
-; CHECK-NEXT:    br i1 [[TMP2]], label [[BB3:%.*]], label [[BB4:%.*]]
+; CHECK-NEXT:    [[TRUETMP2:%.*]] = icmp ult i32 [[TMP]], 4
+; CHECK-NEXT:    br i1 [[TRUETMP2]], label [[BB3:%.*]], label [[BB4:%.*]]
 ; CHECK:       bb3:
 ; CHECK-NEXT:    call fastcc void @wobble(i32 signext [[TMP]])
 ; CHECK-NEXT:    br label [[BB5:%.*]]

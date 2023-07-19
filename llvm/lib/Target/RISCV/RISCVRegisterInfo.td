@@ -115,9 +115,9 @@ let RegAltNameIndices = [ABIRegAltName] in {
 
 def XLenVT : ValueTypeByHwMode<[RV32, RV64],
                                [i32,  i64]>;
-// Floating point class with XLen bits.
-def XLenFVT : ValueTypeByHwMode<[RV32, RV64],
-                                [f32,  f64]>;
+// Allow f64 in GPR for ZDINX on RV64.
+def XLenFVT : ValueTypeByHwMode<[RV64],
+                                [f64]>;
 def XLenRI : RegInfoByHwMode<
       [RV32,              RV64],
       [RegInfo<32,32,32>, RegInfo<64,64,64>]>;
@@ -164,6 +164,15 @@ def SP : GPRRegisterClass<(add X2)>;
 // Saved Registers from s0 to s7, for C.MVA01S07 instruction in Zcmp extension
 def SR07 : GPRRegisterClass<(add (sequence "X%u", 8, 9),
                                  (sequence "X%u", 18, 23))>;
+
+// Registers saveable by PUSH/POP instruction in Zcmp extension
+def PGPR : RegisterClass<"RISCV", [XLenVT], 32, (add
+    (sequence "X%u", 8, 9),
+    (sequence "X%u", 18, 27),
+    X1
+  )> {
+  let RegInfos = XLenRI;
+}
 
 // Floating point registers
 let RegAltNameIndices = [ABIRegAltName] in {
@@ -215,7 +224,7 @@ let RegAltNameIndices = [ABIRegAltName] in {
 // meaning caller-save regs are listed before callee-save.
 // We start by allocating argument registers in reverse order since they are
 // compressible.
-def FPR16 : RegisterClass<"RISCV", [f16], 16, (add
+def FPR16 : RegisterClass<"RISCV", [f16, bf16], 16, (add
     (sequence "F%u_H", 15, 10), // fa5-fa0
     (sequence "F%u_H", 0, 7),   // ft0-f7
     (sequence "F%u_H", 16, 17), // fa6-fa7

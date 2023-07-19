@@ -162,7 +162,6 @@ static omp::ScheduleKind getSchedKind(omp::OMPScheduleType SchedType) {
 class OpenMPIRBuilderTest : public testing::Test {
 protected:
   void SetUp() override {
-    Ctx.setOpaquePointers(true);
     M.reset(new Module("MyModule", Ctx));
     FunctionType *FTy =
         FunctionType::get(Type::getVoidTy(Ctx), {Type::getInt32Ty(Ctx)},
@@ -4918,7 +4917,7 @@ TEST_F(OpenMPIRBuilderTest, TargetEnterData) {
       /*RequiresDevicePointerInfo=*/false,
       /*SeparateBeginEndCalls=*/true);
 
-  OMPBuilder.Config.setIsTargetCodegen(true);
+  OMPBuilder.Config.setIsGPU(true);
 
   llvm::omp::RuntimeFunction RTLFunc = OMPRTL___tgt_target_data_begin_mapper;
   Builder.restoreIP(OMPBuilder.createTargetData(
@@ -4975,7 +4974,7 @@ TEST_F(OpenMPIRBuilderTest, TargetExitData) {
       /*RequiresDevicePointerInfo=*/false,
       /*SeparateBeginEndCalls=*/true);
 
-  OMPBuilder.Config.setIsTargetCodegen(true);
+  OMPBuilder.Config.setIsGPU(true);
 
   llvm::omp::RuntimeFunction RTLFunc = OMPRTL___tgt_target_data_end_mapper;
   Builder.restoreIP(OMPBuilder.createTargetData(
@@ -5032,7 +5031,7 @@ TEST_F(OpenMPIRBuilderTest, TargetDataRegion) {
       /*RequiresDevicePointerInfo=*/false,
       /*SeparateBeginEndCalls=*/true);
 
-  OMPBuilder.Config.setIsTargetCodegen(true);
+  OMPBuilder.Config.setIsGPU(true);
 
   auto BodyCB = [&](InsertPointTy CodeGenIP, int BodyGenType) {
     if (BodyGenType == 3) {

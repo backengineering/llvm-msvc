@@ -490,6 +490,20 @@ Every processor supports every OS ABI (see :ref:`amdgpu-os`) with the following 
                                                                         work-item                       Add product
                                                                         IDs                             names.
 
+     ``gfx1150``                 ``amdgcn``   APU   - cumode          - Architected                   *TBA*
+                                                    - wavefrontsize64   flat
+                                                                        scratch                       .. TODO::
+                                                                      - Packed
+                                                                        work-item                       Add product
+                                                                        IDs                             names.
+
+     ``gfx1151``                 ``amdgcn``   APU   - cumode          - Architected                   *TBA*
+                                                    - wavefrontsize64   flat
+                                                                        scratch                       .. TODO::
+                                                                      - Packed
+                                                                        work-item                       Add product
+                                                                        IDs                             names.
+
      =========== =============== ============ ===== ================= =============== =============== ======================
 
 .. _amdgpu-target-features:
@@ -957,6 +971,8 @@ The AMDGPU backend implements the following LLVM IR intrinsics.
   llvm.amdgcn.exp2                           Provides direct access to v_exp_f32 and v_exp_f16
                                              (on targets with half support). Performs exp2 function.
 
+  :ref:`llvm.frexp <int_frexp>`              Implemented for half, float and double.
+
   :ref:`llvm.log2 <int_log2>`                Implemented for float and half (and vectors of float or
                                              half). Not implemented for double. Hardware provides
                                              1ULP accuracy for float, and 0.51ULP for half. Float
@@ -964,7 +980,18 @@ The AMDGPU backend implements the following LLVM IR intrinsics.
                                              inputs. Backend will optimize out denormal scaling if
                                              marked with the :ref:`afn <fastmath_afn>` flag.
 
-  :ref:`llvm.frexp <int_frexp>`              Implemented for half, float and double.
+  :ref:`llvm.log <int_log>`                  Implemented for float and half (and vectors).
+
+  :ref:`llvm.exp <int_exp>`                  Implemented for float and half (and vectors).
+
+  :ref:`llvm.log10 <int_log10>`              Implemented for float and half (and vectors).
+
+  :ref:`llvm.exp2 <int_exp2>`                Implemented for float and half (and vectors of float or
+                                             half). Not implemented for double. Hardware provides
+                                             1ULP accuracy for float, and 0.51ULP for half. Float
+                                             instruction does not natively support denormal
+                                             inputs. Backend will optimize out denormal scaling if
+                                             marked with the :ref:`afn <fastmath_afn>` flag.
 
   =========================================  ==========================================================
 
@@ -986,7 +1013,12 @@ The AMDGPU backend supports the following LLVM IR attributes.
      "amdgpu-flat-work-group-size"="min,max" Specify the minimum and maximum flat work group sizes that
                                              will be specified when the kernel is dispatched. Generated
                                              by the ``amdgpu_flat_work_group_size`` CLANG attribute [CLANG-ATTR]_.
-                                             The implied default value is 1,1024.
+                                             The IR implied default value is 1,1024. Clang may emit this attribute
+                                             with more restrictive bounds depending on language defaults.
+                                             If the actual block or workgroup size exceeds the limit at any point during
+                                             the execution, the behavior is undefined. For example, even if there is
+                                             only one active thread but the thread local id exceeds the limit, the
+                                             behavior is undefined.
 
      "amdgpu-implicitarg-num-bytes"="n"      Number of kernel argument bytes to add to the kernel
                                              argument block size for the implicit arguments. This
@@ -1071,6 +1103,14 @@ The AMDGPU backend supports the following LLVM IR attributes.
      "amdgpu-no-completion-action"           Similar to amdgpu-no-implicitarg-ptr, except specific to the implicit
                                              kernel argument that holds the completion action pointer. If this
                                              attribute is absent, then the amdgpu-no-implicitarg-ptr is also removed.
+
+     "amdgpu-lds-size"="min[,max]"           Min is the minimum number of bytes that will be allocated in the Local
+                                             Data Store at address zero. Variables are allocated within this frame
+                                             using absolute symbol metadata, primarily by the AMDGPULowerModuleLDS
+                                             pass. Optional max is the maximum number of bytes that will be allocated.
+                                             Note that min==max indicates that no further variables can be added to
+                                             the frame. This is an internal detail of how LDS variables are lowered,
+                                             language front ends should not set this attribute.
 
      ======================================= ==========================================================
 
@@ -1463,14 +1503,14 @@ The AMDGPU backend uses the following ELF header:
      ``EF_AMDGPU_MACH_AMDGCN_GFX940``     0x040      ``gfx940``
      ``EF_AMDGPU_MACH_AMDGCN_GFX1100``    0x041      ``gfx1100``
      ``EF_AMDGPU_MACH_AMDGCN_GFX1013``    0x042      ``gfx1013``
-     *reserved*                           0x043      Reserved.
+     ``EF_AMDGPU_MACH_AMDGCN_GFX1150``    0x043      ``gfx1150``
      ``EF_AMDGPU_MACH_AMDGCN_GFX1103``    0x044      ``gfx1103``
      ``EF_AMDGPU_MACH_AMDGCN_GFX1036``    0x045      ``gfx1036``
      ``EF_AMDGPU_MACH_AMDGCN_GFX1101``    0x046      ``gfx1101``
      ``EF_AMDGPU_MACH_AMDGCN_GFX1102``    0x047      ``gfx1102``
      *reserved*                           0x048      Reserved.
      *reserved*                           0x049      Reserved.
-     *reserved*                           0x04a      Reserved.
+     ``EF_AMDGPU_MACH_AMDGCN_GFX1151``    0x04a      ``gfx1151``
      ``EF_AMDGPU_MACH_AMDGCN_GFX941``     0x04b      ``gfx941``
      ``EF_AMDGPU_MACH_AMDGCN_GFX942``     0x04c      ``gfx942``
      ==================================== ========== =============================

@@ -886,8 +886,9 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
         // If the source type is not legal, see if there is a legal extload to
         // an intermediate type that we can then extend further.
         EVT LoadVT = TLI.getRegisterType(SrcVT.getSimpleVT());
-        if (TLI.isTypeLegal(SrcVT) || // Same as SrcVT == LoadVT?
-            TLI.isLoadExtLegal(ExtType, LoadVT, SrcVT)) {
+        if ((LoadVT.isFloatingPoint() == SrcVT.isFloatingPoint()) &&
+            (TLI.isTypeLegal(SrcVT) || // Same as SrcVT == LoadVT?
+             TLI.isLoadExtLegal(ExtType, LoadVT, SrcVT))) {
           // If we are loading a legal type, this is a non-extload followed by a
           // full extend.
           ISD::LoadExtType MidExtType =
@@ -2123,16 +2124,18 @@ void SelectionDAGLegalize::ExpandFrexpLibCall(
   RTLIB::Libcall LC = RTLIB::getFREXP(VT);
   auto [Call, Chain] = ExpandLibCall(LC, Node, std::move(Args), false);
 
-  Results.push_back(Call);
-
   // FIXME: Get type of int for libcall declaration and cast
 
   int FrameIdx = cast<FrameIndexSDNode>(StackSlot)->getIndex();
   auto PtrInfo =
       MachinePointerInfo::getFixedStack(DAG.getMachineFunction(), FrameIdx);
 
-  SDValue LoadExp =
-      DAG.getLoad(ExpVT, dl, Chain, StackSlot, PtrInfo);
+  SDValue LoadExp = DAG.getLoad(ExpVT, dl, Chain, StackSlot, PtrInfo);
+  SDValue OutputChain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
+                                    LoadExp.getValue(1), DAG.getRoot());
+  DAG.setRoot(OutputChain);
+
+  Results.push_back(Call);
   Results.push_back(LoadExp);
 }
 

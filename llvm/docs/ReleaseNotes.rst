@@ -55,8 +55,9 @@ The new requirements are as follows:
 Changes to the LLVM IR
 ----------------------
 
-* Typed pointers are no longer supported. See the `opaque pointers
-  <OpaquePointers.html>`__ documentation for migration instructions.
+* Typed pointers are no longer supported and the ``-opaque-pointers`` option
+  has been removed. See the `opaque pointers <OpaquePointers.html>`__
+  documentation for migration instructions.
 
 * The ``nofpclass`` attribute was introduced. This allows more
   optimizations around special floating point value comparisons.
@@ -69,6 +70,10 @@ Changes to the LLVM IR
   removed:
 
   * ``select``
+
+* Introduced a set of experimental `convergence control intrinsics
+  <ConvergentOperations.html>`__ to explicitly define the semantics of convergent
+  operations.
 
 Changes to LLVM infrastructure
 ------------------------------
@@ -151,8 +156,12 @@ Changes to the AMDGPU Backend
 * Added llvm.amdgcn.exp2.f32 intrinsic. This provides direct access to
   v_exp_f32.
 
-* llvm.log2.f32 is now lowered accurately. Use llvm.amdgcn.log.f32 to
-  access the old behavior.
+* llvm.log2.f32, llvm.log10.f32, and llvm.log.f32 are now lowered
+  accurately. Use llvm.amdgcn.log.f32 to access the old behavior for
+  llvm.log2.f32.
+
+* llvm.exp2.f32 and llvm.exp.f32 are now lowered accurately. Use
+  llvm.amdgcn.exp2.f32 to access the old behavior for llvm.exp2.f32.
 
 Changes to the ARM Backend
 --------------------------
@@ -249,11 +258,16 @@ Changes to the RISC-V Backend
 * Assembly support was added for the experimental Zfbfmin (scalar BF16
   conversions), Zvfbfmin (vector BF16 conversions), and Zvfbfwma (vector BF16
   widening mul-add) extensions.
+* Added assembler/disassembler support for the experimental Zacas (atomic
+  compare-and-swap) extension.
 
 Changes to the WebAssembly Backend
 ----------------------------------
 
-* ...
+* Function annotations (``__attribute__((annotate(<name>)))``)
+  now generate custom sections in the Wasm output file. A custom section
+  for each unique name will be created that contains each function
+  index the annotation applies to.
 
 Changes to the Windows Target
 -----------------------------

@@ -47,9 +47,6 @@ mlir::LogicalResult hlfir::AssignOp::verify() {
         hlfir::getFortranElementType(lhsType).isa<fir::CharacterType>()))
     return emitOpError("`realloc` must be set and lhs must be a character "
                        "allocatable when `keep_lhs_length_if_realloc` is set");
-  if (mustKeepLhsLengthInAllocatableAssignment() && isTemporaryLHS())
-    return emitOpError("`keep_lhs_length_if_realloc` does not make sense "
-                       "for `temporary_lhs` assignments");
   return mlir::success();
 }
 
@@ -1499,6 +1496,26 @@ void hlfir::CharExtremumOp::build(mlir::OpBuilder &builder,
       false);
 
   build(builder, result, resultType, predicate, strings);
+}
+
+//===----------------------------------------------------------------------===//
+// GetLength
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult
+hlfir::GetLengthOp::canonicalize(GetLengthOp getLength,
+                                 mlir::PatternRewriter &rewriter) {
+  mlir::Location loc = getLength.getLoc();
+  auto exprTy = mlir::cast<hlfir::ExprType>(getLength.getExpr().getType());
+  auto charTy = mlir::cast<fir::CharacterType>(exprTy.getElementType());
+  if (!charTy.hasConstantLen())
+    return mlir::failure();
+
+  mlir::Type indexTy = rewriter.getIndexType();
+  auto cstLen = rewriter.create<mlir::arith::ConstantOp>(
+      loc, indexTy, mlir::IntegerAttr::get(indexTy, charTy.getLen()));
+  rewriter.replaceOp(getLength, cstLen);
+  return mlir::success();
 }
 
 #include "flang/Optimizer/HLFIR/HLFIROpInterfaces.cpp.inc"

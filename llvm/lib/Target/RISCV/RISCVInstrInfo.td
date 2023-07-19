@@ -1241,7 +1241,6 @@ class binop_oneuse<SDPatternOperator operator>
 }]>;
 
 def and_oneuse : binop_oneuse<and>;
-def add_oneuse : binop_oneuse<add>;
 def mul_oneuse : binop_oneuse<mul>;
 
 def mul_const_oneuse : PatFrag<(ops node:$A, node:$B),
@@ -1943,6 +1942,8 @@ include "RISCVInstrInfoZb.td"
 include "RISCVInstrInfoZc.td"
 include "RISCVInstrInfoZk.td"
 include "RISCVInstrInfoV.td"
+include "RISCVInstrInfoZvfbf.td"
+include "RISCVInstrInfoZvk.td"
 include "RISCVInstrInfoZfa.td"
 include "RISCVInstrInfoZfbfmin.td"
 include "RISCVInstrInfoZfh.td"

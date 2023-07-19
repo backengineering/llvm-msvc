@@ -107,7 +107,7 @@ public:
     size_t __n = __str.size();
 
     __flush_on_overflow(__n);
-    if (__n <= __capacity_) {
+    if (__n < __capacity_) { //  push_back requires the buffer to have room for at least one character (so use <).
       _VSTD::copy_n(__str.data(), __n, _VSTD::addressof(__ptr_[__size_]));
       __size_ += __n;
       return;
@@ -136,7 +136,7 @@ public:
 
     size_t __n = static_cast<size_t>(__last - __first);
     __flush_on_overflow(__n);
-    if (__n <= __capacity_) {
+    if (__n < __capacity_) { //  push_back requires the buffer to have room for at least one character (so use <).
       _VSTD::transform(__first, __last, _VSTD::addressof(__ptr_[__size_]), _VSTD::move(__operation));
       __size_ += __n;
       return;
@@ -158,7 +158,7 @@ public:
   /// A \c fill_n wrapper.
   _LIBCPP_HIDE_FROM_ABI void __fill(size_t __n, _CharT __value) {
     __flush_on_overflow(__n);
-    if (__n <= __capacity_) {
+    if (__n < __capacity_) { //  push_back requires the buffer to have room for at least one character (so use <).
       _VSTD::fill_n(_VSTD::addressof(__ptr_[__size_]), __n, __value);
       __size_ += __n;
       return;
@@ -616,7 +616,7 @@ private:
     auto __guard  = std::__make_exception_guard([&] {
       allocator_traits<_Alloc>::deallocate(__alloc_, __result.ptr, __result.count);
     });
-    // This shouldn't throw, but just to be safe. Not that at -O1 this
+    // This shouldn't throw, but just to be safe. Note that at -O1 this
     // guard is optimized away so there is no runtime overhead.
     std::uninitialized_move_n(__ptr_, __size_, __result.ptr);
     __guard.__complete();

@@ -1092,11 +1092,55 @@ static void test_valid_values() {
 }
 
 template <class CharT>
+static void test_pr62082() {
+  // Examples in https://llvm.org/PR62082
+  check(SV("39.223300"), SV("{:%S}"), std::chrono::duration<int, std::ratio<101, 103>>{40});
+  check(SV("01.4755859375"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 1024>>{1511});
+
+  // Test with all possible number of decimals [0, 18]. When it does not
+  // fit in 18 decimals it uses 6.
+  check(SV("05"), SV("{:%S}"), std::chrono::duration<float, std::ratio<1, 1>>{5}); // 0
+
+  check(SV("05.0"), SV("{:%S}"), std::chrono::duration<float, std::ratio<1, 2>>{10}); // 1
+  check(SV("05.5"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 2>>{11});   // 1
+
+  check(SV("01.00"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 4>>{4});         // 2
+  check(SV("01.50"), SV("{:%S}"), std::chrono::duration<double, std::ratio<1, 4>>{6});      // 2
+  check(SV("01.75"), SV("{:%S}"), std::chrono::duration<long double, std::ratio<1, 4>>{7}); // 2
+
+  check(SV("01.000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 8>>{8});                          // 3
+  check(SV("01.0000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 16>>{16});                       // 4
+  check(SV("01.00000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 32>>{32});                      // 5
+  check(SV("01.000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 64>>{64});                     // 6
+  check(SV("01.0000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 128>>{128});                  // 7
+  check(SV("01.00000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 256>>{256});                 // 8
+  check(SV("01.000000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 512>>{512});                // 9
+  check(SV("01.0000000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 1024>>{1024});             // 10
+  check(SV("01.00000000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 2048>>{2048});            // 11
+  check(SV("01.000000000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 4096>>{4096});           // 12
+  check(SV("01.0000000000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 8192>>{8192});          // 13
+  check(SV("01.00000000000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 16384>>{16384});       // 14
+  check(SV("01.000000000000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 32768>>{32768});      // 15
+  check(SV("01.0000000000000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 65536>>{65536});     // 16
+  check(SV("01.00000000000000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 131072>>{131072});  // 17
+  check(SV("01.000000000000000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 262144>>{262144}); // 18
+  check(SV("01.000000"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 524288>>{524288});             // 19 -> 6
+
+  // Infinite number of decimals will use 6 decimals.
+  check(SV("00.111111"), SV("{:%S}"), std::chrono::duration<int, std::ratio<1, 9>>{1});
+  check(SV("00.111111"), SV("{:%S}"), std::chrono::duration<float, std::ratio<1, 9>>{1});
+  check(SV("00.111111"), SV("{:%S}"), std::chrono::duration<double, std::ratio<1, 9>>{1});
+  check(SV("00.111111"), SV("{:%S}"), std::chrono::duration<long double, std::ratio<1, 9>>{1});
+}
+
+template <class CharT>
 static void test() {
   using namespace std::literals::chrono_literals;
 
   test_no_chrono_specs<CharT>();
   test_valid_values<CharT>();
+  test_pr62082<CharT>();
+
   check_invalid_types<CharT>(
       {SV("H"), SV("I"), SV("j"), SV("M"), SV("n"), SV("O"),  SV("p"),  SV("q"),  SV("Q"),  SV("r"),
        SV("R"), SV("S"), SV("t"), SV("T"), SV("X"), SV("EX"), SV("OH"), SV("OI"), SV("OM"), SV("OS")},
@@ -1107,6 +1151,22 @@ static void test() {
   check_exception("End of input while parsing the modifier chrono conversion-spec", SV("{:%"), 0ms);
   check_exception("End of input while parsing the modifier E", SV("{:%E"), 0ms);
   check_exception("End of input while parsing the modifier O", SV("{:%O"), 0ms);
+
+  // Make sure the the required values work, based on their minimum number of required bits per [time.syn].
+  check(SV("23:47:16.854775807"),
+        SV("{:%T}"),
+        std::chrono::nanoseconds{0x7fff'ffff'ffff'ffffll}); // 64 bit signed value max
+  check(SV("23:35:09.481983"),
+        SV("{:%T}"),
+        std::chrono::microseconds{0x003f'ffff'ffff'ffffll});                                 // 55 bit signed value max
+  check(SV("06:20:44.415"), SV("{:%T}"), std::chrono::milliseconds{0x0000'fff'ffff'ffffll}); // 45 bit signed value max
+  check(SV("01:53:03"), SV("{:%T}"), std::chrono::seconds{0x0000'0003'ffff'ffffll});         // 35 bit signed value max
+  check(SV("12:15:00"), SV("{:%T}"), std::chrono::minutes{0x0fff'ffff});                     // 29 bit signed value max
+  check(SV("15:00:00"), SV("{:%T}"), std::chrono::hours{0x003f'ffff});                       // 23 bit signed value max
+  check(SV("00:00:00"), SV("{:%T}"), std::chrono::days{0x0ff'ffff});                         // 25 bit signed value max
+  check(SV("00:00:00"), SV("{:%T}"), std::chrono::weeks{0x003f'ffff});                       // 22 bit signed value max
+  check(SV("21:11:42"), SV("{:%T}"), std::chrono::months{0x0007'ffff});                      // 20 bit signed value max
+  check(SV("05:42:00"), SV("{:%T}"), std::chrono::years{0xffff});                            // 17 bit signed value max
 
   // Precision not allowed
   check_exception("Expected '%' or '}' in the chrono format-string", SV("{:.3}"), 0ms);

@@ -344,6 +344,9 @@ module std [system] {
       module pstl_backends_cpu_backends_for_each {
         private header "__algorithm/pstl_backends/cpu_backends/for_each.h"
       }
+      module pstl_backends_cpu_backends_libdispatch {
+        private header "__algorithm/pstl_backends/cpu_backends/libdispatch.h"
+      }
       module pstl_backends_cpu_backends_merge {
         private header "__algorithm/pstl_backends/cpu_backends/merge.h"
       }
@@ -1015,6 +1018,7 @@ module std [system] {
       module range_formatter                 { private header "__format/range_formatter.h" }
       module unicode                         { private header "__format/unicode.h" }
       module width_estimation_table          { private header "__format/width_estimation_table.h" }
+      module write_escaped                   { private header "__format/write_escaped.h" }
     }
   }
   module forward_list {
@@ -1235,6 +1239,7 @@ module std [system] {
     export *
 
     module __mdspan {
+      module default_accessor                { private header "__mdspan/default_accessor.h" }
       module extents                         {
         private header "__mdspan/extents.h"
         export array
@@ -1365,6 +1370,10 @@ module std [system] {
     @requires_LIBCXX_ENABLE_LOCALIZATION@
     header "ostream"
     // FIXME: should re-export ios, streambuf?
+    export *
+  }
+  module print {
+    header "print"
     export *
   }
   module queue {
@@ -1618,6 +1627,7 @@ module std [system] {
 
     module __thread {
       module formatter            { private header "__thread/formatter.h" }
+      module id                   { private header "__thread/id.h" }
       module poll_with_backoff    { private header "__thread/poll_with_backoff.h" }
       module this_thread          { private header "__thread/this_thread.h" }
       module thread               { private header "__thread/thread.h" }

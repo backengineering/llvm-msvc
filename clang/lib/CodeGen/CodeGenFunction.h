@@ -318,10 +318,10 @@ public:
 
   /// CurFuncDecl - Holds the Decl for the current outermost
   /// non-closure context.
-  const Decl *CurFuncDecl;
+  const Decl *CurFuncDecl = nullptr;
   /// CurCodeDecl - This is the inner-most code context, which includes blocks.
-  const Decl *CurCodeDecl;
-  const CGFunctionInfo *CurFnInfo;
+  const Decl *CurCodeDecl = nullptr;
+  const CGFunctionInfo *CurFnInfo = nullptr;
   QualType FnRetTy;
   llvm::Function *CurFn = nullptr;
 
@@ -748,11 +748,11 @@ public:
 
     /// An i1 variable indicating whether or not the @finally is
     /// running for an exception.
-    llvm::AllocaInst *ForEHVar;
+    llvm::AllocaInst *ForEHVar = nullptr;
 
     /// An i8* variable into which the exception pointer to rethrow
     /// has been saved.
-    llvm::AllocaInst *SavedExnVar;
+    llvm::AllocaInst *SavedExnVar = nullptr;
 
   public:
     void enter(CodeGenFunction &CGF, const Stmt *Finally,
@@ -2065,6 +2065,8 @@ public:
                                    llvm::Value *CompletePtr,
                                    QualType ElementType);
   void pushStackRestore(CleanupKind kind, Address SPMem);
+  void pushKmpcAllocFree(CleanupKind Kind,
+                         std::pair<llvm::Value *, llvm::Value *> AddrSizePair);
   void emitDestroy(Address addr, QualType type, Destroyer *destroyer,
                    bool useEHCleanupForArray);
   llvm::Function *generateDestroyHelper(Address addr, QualType type,
@@ -3401,10 +3403,12 @@ public:
                             OMPPrivateScope &PrivateScope);
   void EmitOMPUseDevicePtrClause(
       const OMPUseDevicePtrClause &C, OMPPrivateScope &PrivateScope,
-      const llvm::DenseMap<const ValueDecl *, Address> &CaptureDeviceAddrMap);
+      const llvm::DenseMap<const ValueDecl *, llvm::Value *>
+          CaptureDeviceAddrMap);
   void EmitOMPUseDeviceAddrClause(
       const OMPUseDeviceAddrClause &C, OMPPrivateScope &PrivateScope,
-      const llvm::DenseMap<const ValueDecl *, Address> &CaptureDeviceAddrMap);
+      const llvm::DenseMap<const ValueDecl *, llvm::Value *>
+          CaptureDeviceAddrMap);
   /// Emit code for copyin clause in \a D directive. The next code is
   /// generated at the start of outlined functions for directives:
   /// \code
@@ -4703,6 +4707,14 @@ public:
   /// SetFPAccuracy - Set the minimum required accuracy of the given floating
   /// point operation, expressed as the maximum relative error in ulp.
   void SetFPAccuracy(llvm::Value *Val, float Accuracy);
+
+  /// Set the minimum required accuracy of the given sqrt operation
+  /// based on CodeGenOpts.
+  void SetSqrtFPAccuracy(llvm::Value *Val);
+
+  /// Set the minimum required accuracy of the given sqrt operation based on
+  /// CodeGenOpts.
+  void SetDivFPAccuracy(llvm::Value *Val);
 
   /// Set the codegen fast-math flags.
   void SetFastMathFlags(FPOptions FPFeatures);

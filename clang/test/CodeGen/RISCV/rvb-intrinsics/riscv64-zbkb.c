@@ -2,7 +2,22 @@
 // RUN: %clang_cc1 -triple riscv64 -target-feature +zbkb -emit-llvm %s -o - \
 // RUN:     | FileCheck %s  -check-prefix=RV64ZBKB
 
-// RV64ZBKB-LABEL: @brev8(
+#include <stdint.h>
+
+// RV64ZBKB-LABEL: @brev8_32(
+// RV64ZBKB-NEXT:  entry:
+// RV64ZBKB-NEXT:    [[RS1_ADDR:%.*]] = alloca i32, align 4
+// RV64ZBKB-NEXT:    store i32 [[RS1:%.*]], ptr [[RS1_ADDR]], align 4
+// RV64ZBKB-NEXT:    [[TMP0:%.*]] = load i32, ptr [[RS1_ADDR]], align 4
+// RV64ZBKB-NEXT:    [[TMP1:%.*]] = call i32 @llvm.riscv.brev8.i32(i32 [[TMP0]])
+// RV64ZBKB-NEXT:    ret i32 [[TMP1]]
+//
+uint32_t brev8_32(uint32_t rs1)
+{
+  return __builtin_riscv_brev8_32(rs1);
+}
+
+// RV64ZBKB-LABEL: @brev8_64(
 // RV64ZBKB-NEXT:  entry:
 // RV64ZBKB-NEXT:    [[RS1_ADDR:%.*]] = alloca i64, align 8
 // RV64ZBKB-NEXT:    store i64 [[RS1:%.*]], ptr [[RS1_ADDR]], align 8
@@ -10,7 +25,7 @@
 // RV64ZBKB-NEXT:    [[TMP1:%.*]] = call i64 @llvm.riscv.brev8.i64(i64 [[TMP0]])
 // RV64ZBKB-NEXT:    ret i64 [[TMP1]]
 //
-long brev8(long rs1)
+uint64_t brev8_64(uint64_t rs1)
 {
-  return __builtin_riscv_brev8(rs1);
+  return __builtin_riscv_brev8_64(rs1);
 }

@@ -688,7 +688,26 @@ public:
           SizeEmitter);
 
   /// Returns true if the current target is a GPU.
-  virtual bool isTargetCodegen() const { return false; }
+  virtual bool isGPU() const { return false; }
+
+  /// Check if the variable length declaration is delayed:
+  virtual bool isDelayedVariableLengthDecl(CodeGenFunction &CGF,
+                                           const VarDecl *VD) const {
+    return false;
+  };
+
+  /// Get call to __kmpc_alloc_shared
+  virtual std::pair<llvm::Value *, llvm::Value *>
+  getKmpcAllocShared(CodeGenFunction &CGF, const VarDecl *VD) {
+    llvm_unreachable("not implemented");
+  }
+
+  /// Get call to __kmpc_free_shared
+  virtual void getKmpcFreeShared(
+      CodeGenFunction &CGF,
+      const std::pair<llvm::Value *, llvm::Value *> &AddrSizePair) {
+    llvm_unreachable("not implemented");
+  }
 
   /// Emits code for OpenMP 'if' clause using specified \a CodeGen
   /// function. Here is the logic:
@@ -1439,9 +1458,9 @@ public:
                             bool SeparateBeginEndCalls)
         : llvm::OpenMPIRBuilder::TargetDataInfo(RequiresDevicePointerInfo,
                                                 SeparateBeginEndCalls) {}
-    /// Map between the a declaration of a capture and the corresponding base
-    /// pointer address where the runtime returns the device pointers.
-    llvm::DenseMap<const ValueDecl *, Address> CaptureDeviceAddrMap;
+    /// Map between the a declaration of a capture and the corresponding new
+    /// llvm address where the runtime returns the device pointers.
+    llvm::DenseMap<const ValueDecl *, llvm::Value *> CaptureDeviceAddrMap;
   };
 
   /// Emit the target data mapping code associated with \a D.
@@ -2291,10 +2310,12 @@ public:
 template <> class OMPDoacrossKind<OMPDoacrossClause> {
 public:
   bool isSource(const OMPDoacrossClause *C) {
-    return (C->getDependenceType() == OMPC_DOACROSS_source);
+    return C->getDependenceType() == OMPC_DOACROSS_source ||
+           C->getDependenceType() == OMPC_DOACROSS_source_omp_cur_iteration;
   }
   bool isSink(const OMPDoacrossClause *C) {
-    return (C->getDependenceType() == OMPC_DOACROSS_sink);
+    return C->getDependenceType() == OMPC_DOACROSS_sink ||
+           C->getDependenceType() == OMPC_DOACROSS_sink_omp_cur_iteration;
   }
 };
 } // namespace

@@ -775,11 +775,6 @@ private:
       llvm::ArrayRef<mlir::Value> resultExtents) {
     fir::FirOpBuilder &builder = getBuilder();
     mlir::Value shape = builder.genShape(loc, resultExtents);
-    // For polymorphic entities, it will be needed to add a mold on the
-    // hlfir.elemental_addr/hlfir.elemental so that we are able to create
-    // temporary storage for it.
-    if (partInfo.base && partInfo.base->isPolymorphic())
-      TODO(loc, "vector subscripted polymorphic entity in HLFIR");
     // The type parameters to be added on the hlfir.elemental_addr are the ones
     // of the whole designator (not the ones of the vector subscripted part).
     // These are not yet known and will be added when finalizing the designator
@@ -827,6 +822,15 @@ private:
                              hlfir::EntityWithAttributes elementAddr) {
     fir::FirOpBuilder &builder = getBuilder();
     builder.setInsertionPointToEnd(&elementalAddrOp.getBody().front());
+    // For polymorphic entities, it will be needed to add a mold on the
+    // hlfir.elemental so that we are able to create temporary storage
+    // for it using the dynamic type. It seems that a reference to the mold
+    // entity can be created by evaluating the hlfir.elemental_addr
+    // for a single index. The evaluation should be legal as long as
+    // the hlfir.elemental_addr has no side effects, otherwise,
+    // it is not clear how to get the mold reference.
+    if (elementAddr.isPolymorphic())
+      TODO(loc, "vector subscripted polymorphic entity in HLFIR");
     builder.create<hlfir::YieldOp>(loc, elementAddr);
     builder.setInsertionPointAfter(elementalAddrOp);
   }
@@ -1637,19 +1641,6 @@ private:
   // StructureConstructor. The initialization of the temporary entity
   // is done component by component with the help of HLFIR operations
   // ParentComponentOp, DesignateOp and AssignOp.
-  //
-  // FIXME: in general, AssignOp cannot be used for initializing
-  // compiler generated temporaries. The lowered AssignOp may trigger
-  // finalizations for the LHS, which is not expected and may be detected
-  // in user programs using impure final subprograms. This is a problem
-  // not only here, but also in HLFIR-to-FIR conversion, for example,
-  // when we generate AssignOp during bufferizing AsExprOp.
-  // We could add some flag for AssignOp that would indicate that the LHS
-  // is a compiler generated temporary, so that the further lowering
-  // may disable the finalizations. This flag may also be used to automatically
-  // initialize the LHS temporary (e.g. AssignTemporary() runtime already
-  // doing the implicit initialization), so that we can avoid explicit
-  // initialization for the temporaries here and at other places.
   hlfir::EntityWithAttributes
   gen(const Fortran::evaluate::StructureConstructor &ctor) {
     mlir::Location loc = getLoc();
@@ -1748,7 +1739,6 @@ private:
           attrs &&
           bitEnumContainsAny(attrs.getFlags(),
                              fir::FortranVariableFlagsEnum::allocatable);
-      hlfir::Entity rhs = gen(expr);
       // If the component is allocatable, then we have to check
       // whether the RHS value is allocatable or not.
       // If it is not allocatable, then AssignOp can be used directly.
@@ -1756,10 +1746,63 @@ private:
       // will cause illegal dereference. When an unallocated allocatable
       // value is used to construct an allocatable component, the component
       // must just stay unallocated.
+
+      // If the component is allocatable and RHS is NULL() expression, then
+      // we can just skip it: the LHS must remain unallocated with its
+      // defined rank.
+      if (allowRealloc &&
+          Fortran::evaluate::UnwrapExpr<Fortran::evaluate::NullPointer>(expr))
+        continue;
+
+      // Handle special case when the initializer expression is
+      // '{%SET_LENGTH(x,const_kind)}'. In structure constructor,
+      // SET_LENGTH is used for initializers of character allocatable
+      // components with *explicit* length, because they have to keep
+      // their length regardless of the initializer expression's length.
+      // We cannot just lower SET_LENGTH into hlfir.set_length in case
+      // when 'x' is allocatable: if 'x' is unallocated, it is not clear
+      // what hlfir.expr should be produced by hlfir.set_length.
+      // So whenever the initializer expression is SET_LENGTH we
+      // recognize it as the directive to keep the explicit length
+      // of the LHS component, and we completely ignore 'const_kind'
+      // operand assuming that it matches the LHS component's explicit
+      // length. Note that in case when LHS component has deferred length,
+      // the FE does not produce SET_LENGTH expression.
+      //
+      // When SET_LENGTH is recognized, we use 'x' as the initializer
+      // for the LHS component. If 'x' is allocatable, the dynamic
+      // isAllocated check will guard the assign operation as usual.
+      bool keepLhsLength = false;
+      hlfir::Entity rhs = std::visit(
+          [&](const auto &x) -> hlfir::Entity {
+            using T = std::decay_t<decltype(x)>;
+            if constexpr (Fortran::common::HasMember<
+                              T, Fortran::lower::CategoryExpression>) {
+              if constexpr (T::Result::category ==
+                            Fortran::common::TypeCategory::Character) {
+                return std::visit(
+                    [&](const auto &someKind) -> hlfir::Entity {
+                      using T = std::decay_t<decltype(someKind)>;
+                      if (const auto *setLength = std::get_if<
+                              Fortran::evaluate::SetLength<T::Result::kind>>(
+                              &someKind.u)) {
+                        keepLhsLength = true;
+                        return gen(setLength->left());
+                      }
+
+                      return gen(someKind);
+                    },
+                    x.u);
+              }
+            }
+            return gen(x);
+          },
+          expr.u);
+
       if (!allowRealloc || !rhs.isMutableBox()) {
         rhs = hlfir::loadTrivialScalar(loc, builder, rhs);
         builder.create<hlfir::AssignOp>(loc, rhs, lhs, allowRealloc,
-                                        /*keep_lhs_length_if_realloc=*/false,
+                                        allowRealloc ? keepLhsLength : false,
                                         /*temporary_lhs=*/true);
         continue;
       }
@@ -1776,10 +1819,9 @@ private:
       builder.genIfThen(loc, isAlloc)
           .genThen([&]() {
             rhs = hlfir::loadTrivialScalar(loc, builder, rhs);
-            builder.create<hlfir::AssignOp>(
-                loc, rhs, lhs, allowRealloc,
-                /*keep_lhs_length_if_realloc=*/false,
-                /*temporary_lhs=*/true);
+            builder.create<hlfir::AssignOp>(loc, rhs, lhs, allowRealloc,
+                                            keepLhsLength,
+                                            /*temporary_lhs=*/true);
           })
           .end();
     }

@@ -47,7 +47,7 @@ Function Name  Available  RPC Required
 bcmp           |check|
 bzero          |check|
 memccpy        |check|
-memchr         |check|
+memchr         
 memcmp         |check|
 memcpy         |check|
 memmove        |check|
@@ -57,7 +57,7 @@ memset         |check|
 stpcpy         |check|
 stpncpy        |check|
 strcat         |check|
-strchr         |check|
+strchr         
 strcmp         |check|
 strcpy         |check|
 strcspn        |check|
@@ -68,10 +68,10 @@ strncat        |check|
 strncmp        |check|
 strncpy        |check|
 strnlen        |check|
-strpbrk        |check|
-strrchr        |check|
+strpbrk        
+strrchr        
 strspn         |check|
-strstr         |check|
+strstr         
 strtok         |check|
 strtok_r       |check|
 strdup
@@ -104,6 +104,18 @@ strtoul        |check|
 strtoull       |check|
 =============  =========  ============
 
+inttypes.h
+--------
+
+=============  =========  ============
+Function Name  Available  RPC Required
+=============  =========  ============
+imaxabs        |check|
+imaxdiv        |check|
+strtoimax      |check|
+strtoumax      |check|
+=============  =========  ============
+
 stdio.h
 --------
 
@@ -112,4 +124,6 @@ Function Name  Available  RPC Required
 =============  =========  ============
 puts           |check|    |check|
 fputs          |check|    |check|
+fclose         |check|    |check|
+fopen          |check|    |check|
 =============  =========  ============

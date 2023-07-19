@@ -130,15 +130,6 @@ static bool isSupportedCombiningKind(CombiningKind combiningKind,
   return false;
 }
 
-/// Return true if the last dimension of the MemRefType has unit stride. Also
-/// return true for memrefs with no strides.
-bool mlir::vector::isLastMemrefDimUnitStride(MemRefType type) {
-  int64_t offset;
-  SmallVector<int64_t> strides;
-  auto successStrides = getStridesAndOffset(type, strides, offset);
-  return succeeded(successStrides) && (strides.empty() || strides.back() == 1);
-}
-
 AffineMap mlir::vector::getTransferMinorIdentityMap(ShapedType shapedType,
                                                     VectorType vectorType) {
   int64_t elementVectorRank = 0;
@@ -1163,8 +1154,7 @@ ExtractOp::inferReturnTypes(MLIRContext *, std::optional<Location>,
   if (static_cast<int64_t>(op.getPosition().size()) == vectorType.getRank()) {
     inferredReturnTypes.push_back(vectorType.getElementType());
   } else {
-    auto n =
-        std::min<size_t>(op.getPosition().size(), vectorType.getRank() - 1);
+    auto n = std::min<size_t>(op.getPosition().size(), vectorType.getRank());
     inferredReturnTypes.push_back(VectorType::get(
         vectorType.getShape().drop_front(n), vectorType.getElementType()));
   }
@@ -1189,7 +1179,7 @@ LogicalResult vector::ExtractOp::verify() {
   if (positionAttr.size() >
       static_cast<unsigned>(getSourceVectorType().getRank()))
     return emitOpError(
-        "expected position attribute of rank smaller than vector rank");
+        "expected position attribute of rank no greater than vector rank");
   for (const auto &en : llvm::enumerate(positionAttr)) {
     auto attr = llvm::dyn_cast<IntegerAttr>(en.value());
     if (!attr || attr.getInt() < 0 ||
@@ -1228,8 +1218,7 @@ static LogicalResult foldExtractOpFromExtractChain(ExtractOp extractOp) {
   // OpBuilder is only used as a helper to build an I64ArrayAttr.
   OpBuilder b(extractOp.getContext());
   std::reverse(globalPosition.begin(), globalPosition.end());
-  extractOp->setAttr(ExtractOp::getPositionAttrStrName(),
-                     b.getI64ArrayAttr(globalPosition));
+  extractOp.setPositionAttr(b.getI64ArrayAttr(globalPosition));
   return success();
 }
 
@@ -1509,8 +1498,7 @@ static Value foldExtractFromBroadcast(ExtractOp extractOp) {
   // OpBuilder is only used as a helper to build an I64ArrayAttr.
   OpBuilder b(extractOp.getContext());
   extractOp.setOperand(source);
-  extractOp->setAttr(ExtractOp::getPositionAttrStrName(),
-                     b.getI64ArrayAttr(extractPos));
+  extractOp.setPositionAttr(b.getI64ArrayAttr(extractPos));
   return extractOp.getResult();
 }
 
@@ -1575,8 +1563,7 @@ static Value foldExtractFromShapeCast(ExtractOp extractOp) {
   SmallVector<int64_t, 4> newPosition = delinearize(position, newStrides);
   // OpBuilder is only used as a helper to build an I64ArrayAttr.
   OpBuilder b(extractOp.getContext());
-  extractOp->setAttr(ExtractOp::getPositionAttrStrName(),
-                     b.getI64ArrayAttr(newPosition));
+  extractOp.setPositionAttr(b.getI64ArrayAttr(newPosition));
   extractOp.setOperand(shapeCastOp.getSource());
   return extractOp.getResult();
 }
@@ -1623,8 +1610,7 @@ static Value foldExtractFromExtractStrided(ExtractOp extractOp) {
   extractOp.getVectorMutable().assign(extractStridedSliceOp.getVector());
   // OpBuilder is only used as a helper to build an I64ArrayAttr.
   OpBuilder b(extractOp.getContext());
-  extractOp->setAttr(ExtractOp::getPositionAttrStrName(),
-                     b.getI64ArrayAttr(extractedPos));
+  extractOp.setPositionAttr(b.getI64ArrayAttr(extractedPos));
   return extractOp.getResult();
 }
 
@@ -1689,8 +1675,7 @@ static Value foldExtractStridedOpFromInsertChain(ExtractOp extractOp) {
       extractOp.getVectorMutable().assign(insertOp.getSource());
       // OpBuilder is only used as a helper to build an I64ArrayAttr.
       OpBuilder b(extractOp.getContext());
-      extractOp->setAttr(ExtractOp::getPositionAttrStrName(),
-                         b.getI64ArrayAttr(offsetDiffs));
+      extractOp.setPositionAttr(b.getI64ArrayAttr(offsetDiffs));
       return extractOp.getResult();
     }
     // If the chunk extracted is disjoint from the chunk inserted, keep
@@ -2310,7 +2295,7 @@ void InsertOp::build(OpBuilder &builder, OperationState &result, Value source,
   result.addOperands({source, dest});
   auto positionAttr = getVectorSubscriptAttr(builder, position);
   result.addTypes(dest.getType());
-  result.addAttribute(getPositionAttrStrName(), positionAttr);
+  result.addAttribute(InsertOp::getPositionAttrName(result.name), positionAttr);
 }
 
 // Convenience builder which assumes the values are constant indices.
@@ -2328,7 +2313,7 @@ LogicalResult InsertOp::verify() {
   auto destVectorType = getDestVectorType();
   if (positionAttr.size() > static_cast<unsigned>(destVectorType.getRank()))
     return emitOpError(
-        "expected position attribute of rank smaller than dest vector rank");
+        "expected position attribute of rank no greater than dest vector rank");
   auto srcVectorType = llvm::dyn_cast<VectorType>(getSourceType());
   if (srcVectorType &&
       (static_cast<unsigned>(srcVectorType.getRank()) + positionAttr.size() !=
@@ -2477,8 +2462,10 @@ void InsertStridedSliceOp::build(OpBuilder &builder, OperationState &result,
   auto offsetsAttr = getVectorSubscriptAttr(builder, offsets);
   auto stridesAttr = getVectorSubscriptAttr(builder, strides);
   result.addTypes(dest.getType());
-  result.addAttribute(getOffsetsAttrStrName(), offsetsAttr);
-  result.addAttribute(getStridesAttrStrName(), stridesAttr);
+  result.addAttribute(InsertStridedSliceOp::getOffsetsAttrName(result.name),
+                      offsetsAttr);
+  result.addAttribute(InsertStridedSliceOp::getStridesAttrName(result.name),
+                      stridesAttr);
 }
 
 // TODO: Should be moved to Tablegen ConfinedAttr attributes.
@@ -2489,7 +2476,7 @@ static LogicalResult isIntegerArrayAttrSmallerThanShape(OpType op,
                                                         StringRef attrName) {
   if (arrayAttr.size() > shape.size())
     return op.emitOpError("expected ")
-           << attrName << " attribute of rank smaller than vector rank";
+           << attrName << " attribute of rank no greater than vector rank";
   return success();
 }
 
@@ -2580,7 +2567,7 @@ LogicalResult InsertStridedSliceOp::verify() {
     return emitOpError("expected strides of same size as source vector rank");
   if (sourceVectorType.getRank() > destVectorType.getRank())
     return emitOpError(
-        "expected source rank to be smaller than destination rank");
+        "expected source rank to be no greater than destination rank");
 
   auto sourceShape = sourceVectorType.getShape();
   auto destShape = destVectorType.getShape();
@@ -2800,9 +2787,9 @@ ParseResult OuterProductOp::parse(OpAsmParser &parser, OperationState &result) {
                               scalableDimsRes);
   }
 
-  if (!result.attributes.get(OuterProductOp::getKindAttrStrName())) {
+  if (!result.attributes.get(OuterProductOp::getKindAttrName(result.name))) {
     result.attributes.append(
-        OuterProductOp::getKindAttrStrName(),
+        OuterProductOp::getKindAttrName(result.name),
         CombiningKindAttr::get(result.getContext(),
                                OuterProductOp::getDefaultKind()));
   }
@@ -2961,9 +2948,12 @@ void ExtractStridedSliceOp::build(OpBuilder &builder, OperationState &result,
   result.addTypes(
       inferStridedSliceOpResultType(llvm::cast<VectorType>(source.getType()),
                                     offsetsAttr, sizesAttr, stridesAttr));
-  result.addAttribute(getOffsetsAttrStrName(), offsetsAttr);
-  result.addAttribute(getSizesAttrStrName(), sizesAttr);
-  result.addAttribute(getStridesAttrStrName(), stridesAttr);
+  result.addAttribute(ExtractStridedSliceOp::getOffsetsAttrName(result.name),
+                      offsetsAttr);
+  result.addAttribute(ExtractStridedSliceOp::getSizesAttrName(result.name),
+                      sizesAttr);
+  result.addAttribute(ExtractStridedSliceOp::getStridesAttrName(result.name),
+                      stridesAttr);
 }
 
 LogicalResult ExtractStridedSliceOp::verify() {
@@ -3056,8 +3046,7 @@ foldExtractStridedOpFromInsertChain(ExtractStridedSliceOp op) {
       op.setOperand(insertOp.getSource());
       // OpBuilder is only used as a helper to build an I64ArrayAttr.
       OpBuilder b(op.getContext());
-      op->setAttr(ExtractStridedSliceOp::getOffsetsAttrStrName(),
-                  b.getI64ArrayAttr(offsetDiffs));
+      op.setOffsetsAttr(b.getI64ArrayAttr(offsetDiffs));
       return success();
     }
     // If the chunk extracted is disjoint from the chunk inserted, keep looking
@@ -3482,18 +3471,10 @@ verifyTransferOp(VectorTransferOpInterface op, ShapedType shapedType,
 static void printTransferAttrs(OpAsmPrinter &p, VectorTransferOpInterface op) {
   SmallVector<StringRef, 3> elidedAttrs;
   elidedAttrs.push_back(TransferReadOp::getOperandSegmentSizeAttr());
-  if (op.permutation_map().isMinorIdentity())
+  if (op.getPermutationMap().isMinorIdentity())
     elidedAttrs.push_back(op.getPermutationMapAttrStrName());
-  bool elideInBounds = true;
-  if (auto inBounds = op.in_bounds()) {
-    for (auto attr : *inBounds) {
-      if (llvm::cast<BoolAttr>(attr).getValue()) {
-        elideInBounds = false;
-        break;
-      }
-    }
-  }
-  if (elideInBounds)
+  // Elide in_bounds attribute if all dims are out-of-bounds.
+  if (llvm::none_of(op.getInBoundsValues(), [](bool b) { return b; }))
     elidedAttrs.push_back(op.getInBoundsAttrStrName());
   p.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
 }
@@ -4244,11 +4225,8 @@ public:
     }
 
     // Swap the tensor::ExtractSliceOp in front of the vector::TransferWriteOp.
-    SmallVector<int64_t> newResultShape = applyPermutationMap(
-        transferOp.getPermutationMap(), insertOp.getSourceType().getShape());
-    SmallVector<bool> newInBounds;
-    for (const auto &en : enumerate(newResultShape))
-      newInBounds.push_back(en.value() == vectorShape[en.index()]);
+    // Set all in_bounds to false and let the folder infer them.
+    SmallVector<bool> newInBounds(vectorShape.size(), false);
     auto newExtractOp = rewriter.create<tensor::ExtractSliceOp>(
         extractOp.getLoc(), insertOp.getSourceType(), insertOp.getDest(),
         insertOp.getMixedOffsets(), insertOp.getMixedSizes(),
@@ -4994,7 +4972,8 @@ void vector::TransposeOp::build(OpBuilder &builder, OperationState &result,
 
   result.addOperands(vector);
   result.addTypes(VectorType::get(transposedShape, vt.getElementType()));
-  result.addAttribute(getTranspAttrStrName(), builder.getI64ArrayAttr(transp));
+  result.addAttribute(TransposeOp::getTranspAttrName(result.name),
+                      builder.getI64ArrayAttr(transp));
 }
 
 OpFoldResult vector::TransposeOp::fold(FoldAdaptor adaptor) {

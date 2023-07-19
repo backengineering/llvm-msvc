@@ -22,11 +22,13 @@
 #include "clang/Analysis/FlowSensitive/ControlFlowContext.h"
 #include "clang/Analysis/FlowSensitive/DataflowAnalysisContext.h"
 #include "clang/Analysis/FlowSensitive/DataflowLattice.h"
+#include "clang/Analysis/FlowSensitive/Formula.h"
 #include "clang/Analysis/FlowSensitive/Logger.h"
 #include "clang/Analysis/FlowSensitive/StorageLocation.h"
 #include "clang/Analysis/FlowSensitive/Value.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <memory>
@@ -387,10 +389,42 @@ public:
   /// necessary storage locations and values for indirections until it finds a
   /// non-pointer/non-reference type.
   ///
+  /// If `Type` is one of the following types, this function will always return
+  /// a non-null pointer:
+  /// - `bool`
+  /// - Any integer type
+  /// - Any class, struct, or union type
+  ///
   /// Requirements:
   ///
   ///  `Type` must not be null.
   Value *createValue(QualType Type);
+
+  /// Creates an object (i.e. a storage location with an associated value) of
+  /// type `Ty`. If `InitExpr` is non-null and has a value associated with it,
+  /// initializes the object with this value. Otherwise, initializes the object
+  /// with a value created using `createValue()`.
+  StorageLocation &createObject(QualType Ty, const Expr *InitExpr = nullptr) {
+    return createObjectInternal(nullptr, Ty, InitExpr);
+  }
+
+  /// Creates an object for the variable declaration `D`. If `D` has an
+  /// initializer and this initializer is associated with a value, initializes
+  /// the object with this value.  Otherwise, initializes the object with a
+  /// value created using `createValue()`. Uses the storage location returned by
+  /// `DataflowAnalysisContext::getStableStorageLocation(D)`.
+  StorageLocation &createObject(const VarDecl &D) {
+    return createObjectInternal(&D, D.getType(), D.getInit());
+  }
+
+  /// Creates an object for the variable declaration `D`. If `InitExpr` is
+  /// non-null and has a value associated with it, initializes the object with
+  /// this value. Otherwise, initializes the object with a value created using
+  /// `createValue()`.  Uses the storage location returned by
+  /// `DataflowAnalysisContext::getStableStorageLocation(D)`.
+  StorageLocation &createObject(const VarDecl &D, const Expr *InitExpr) {
+    return createObjectInternal(&D, D.getType(), InitExpr);
+  }
 
   /// Assigns `Val` as the value of `Loc` in the environment.
   void setValue(const StorageLocation &Loc, Value &Val);
@@ -456,29 +490,30 @@ public:
   template <typename T, typename... Args>
   std::enable_if_t<std::is_base_of<Value, T>::value, T &>
   create(Args &&...args) {
-    return DACtx->arena().create<T>(std::forward<Args>(args)...);
+    return arena().create<T>(std::forward<Args>(args)...);
   }
 
   /// Returns a symbolic integer value that models an integer literal equal to
   /// `Value`
   IntegerValue &getIntLiteralValue(llvm::APInt Value) const {
-    return DACtx->arena().makeIntLiteral(Value);
+    return arena().makeIntLiteral(Value);
   }
 
   /// Returns a symbolic boolean value that models a boolean literal equal to
   /// `Value`
   AtomicBoolValue &getBoolLiteralValue(bool Value) const {
-    return DACtx->arena().makeLiteral(Value);
+    return cast<AtomicBoolValue>(
+        arena().makeBoolValue(arena().makeLiteral(Value)));
   }
 
   /// Returns an atomic boolean value.
   BoolValue &makeAtomicBoolValue() const {
-    return DACtx->arena().create<AtomicBoolValue>();
+    return arena().makeAtomValue();
   }
 
   /// Returns a unique instance of boolean Top.
   BoolValue &makeTopBoolValue() const {
-    return DACtx->arena().create<TopBoolValue>();
+    return arena().makeTopValue();
   }
 
   /// Returns a boolean value that represents the conjunction of `LHS` and
@@ -486,7 +521,8 @@ public:
   /// order, will return the same result. If the given boolean values represent
   /// the same value, the result will be the value itself.
   BoolValue &makeAnd(BoolValue &LHS, BoolValue &RHS) const {
-    return DACtx->arena().makeAnd(LHS, RHS);
+    return arena().makeBoolValue(
+        arena().makeAnd(LHS.formula(), RHS.formula()));
   }
 
   /// Returns a boolean value that represents the disjunction of `LHS` and
@@ -494,13 +530,14 @@ public:
   /// order, will return the same result. If the given boolean values represent
   /// the same value, the result will be the value itself.
   BoolValue &makeOr(BoolValue &LHS, BoolValue &RHS) const {
-    return DACtx->arena().makeOr(LHS, RHS);
+    return arena().makeBoolValue(
+        arena().makeOr(LHS.formula(), RHS.formula()));
   }
 
   /// Returns a boolean value that represents the negation of `Val`. Subsequent
   /// calls with the same argument will return the same result.
   BoolValue &makeNot(BoolValue &Val) const {
-    return DACtx->arena().makeNot(Val);
+    return arena().makeBoolValue(arena().makeNot(Val.formula()));
   }
 
   /// Returns a boolean value represents `LHS` => `RHS`. Subsequent calls with
@@ -508,7 +545,8 @@ public:
   /// values represent the same value, the result will be a value that
   /// represents the true boolean literal.
   BoolValue &makeImplication(BoolValue &LHS, BoolValue &RHS) const {
-    return DACtx->arena().makeImplies(LHS, RHS);
+    return arena().makeBoolValue(
+        arena().makeImplies(LHS.formula(), RHS.formula()));
   }
 
   /// Returns a boolean value represents `LHS` <=> `RHS`. Subsequent calls with
@@ -516,18 +554,33 @@ public:
   /// result. If the given boolean values represent the same value, the result
   /// will be a value that represents the true boolean literal.
   BoolValue &makeIff(BoolValue &LHS, BoolValue &RHS) const {
-    return DACtx->arena().makeEquals(LHS, RHS);
+    return arena().makeBoolValue(
+        arena().makeEquals(LHS.formula(), RHS.formula()));
   }
 
-  /// Returns the token that identifies the flow condition of the environment.
-  AtomicBoolValue &getFlowConditionToken() const { return *FlowConditionToken; }
+  /// Returns a boolean variable that identifies the flow condition (FC).
+  ///
+  /// The flow condition is a set of facts that are necessarily true when the
+  /// program reaches the current point, expressed as boolean formulas.
+  /// The flow condition token is equivalent to the AND of these facts.
+  ///
+  /// These may e.g. constrain the value of certain variables. A pointer
+  /// variable may have a consistent modeled PointerValue throughout, but at a
+  /// given point the Environment may tell us that the value must be non-null.
+  ///
+  /// The FC is necessary but not sufficient for this point to be reachable.
+  /// In particular, where the FC token appears in flow conditions of successor
+  /// environments, it means "point X may have been reached", not
+  /// "point X was reached".
+  Atom getFlowConditionToken() const { return FlowConditionToken; }
 
-  /// Adds `Val` to the set of clauses that constitute the flow condition.
-  void addToFlowCondition(BoolValue &Val);
+  /// Record a fact that must be true if this point in the program is reached.
+  void addToFlowCondition(const Formula &);
 
-  /// Returns true if and only if the clauses that constitute the flow condition
-  /// imply that `Val` is true.
-  bool flowConditionImplies(BoolValue &Val) const;
+  /// Returns true if the formula is always true when this point is reached.
+  /// Returns false if the formula may be false, or if the flow condition isn't
+  /// sufficiently precise to prove that it is true.
+  bool flowConditionImplies(const Formula &) const;
 
   /// Returns the `DeclContext` of the block being analysed, if any. Otherwise,
   /// returns null.
@@ -546,6 +599,8 @@ public:
 
   /// Returns the `DataflowAnalysisContext` used by the environment.
   DataflowAnalysisContext &getDataflowAnalysisContext() const { return *DACtx; }
+
+  Arena &arena() const { return DACtx->arena(); }
 
   LLVM_DUMP_METHOD void dump() const;
   LLVM_DUMP_METHOD void dump(raw_ostream &OS) const;
@@ -568,6 +623,11 @@ private:
   Value *createValueUnlessSelfReferential(QualType Type,
                                           llvm::DenseSet<QualType> &Visited,
                                           int Depth, int &CreatedValuesCount);
+
+  /// Shared implementation of `createObject()` overloads.
+  /// `D` and `InitExpr` may be null.
+  StorageLocation &createObjectInternal(const VarDecl *D, QualType Ty,
+                                        const Expr *InitExpr);
 
   StorageLocation &skip(StorageLocation &Loc, SkipPast SP) const;
   const StorageLocation &skip(const StorageLocation &Loc, SkipPast SP) const;
@@ -608,8 +668,9 @@ private:
   // block.
   llvm::DenseMap<const ValueDecl *, StorageLocation *> DeclToLoc;
   llvm::DenseMap<const Expr *, StorageLocation *> ExprToLoc;
-
-  llvm::DenseMap<const StorageLocation *, Value *> LocToVal;
+  // We preserve insertion order so that join/widen process values in
+  // deterministic sequence. This in turn produces deterministic SAT formulas.
+  llvm::MapVector<const StorageLocation *, Value *> LocToVal;
 
   // Maps locations of struct members to symbolic values of the structs that own
   // them and the decls of the struct members.
@@ -617,7 +678,7 @@ private:
                  std::pair<StructValue *, const ValueDecl *>>
       MemberLocToStruct;
 
-  AtomicBoolValue *FlowConditionToken;
+  Atom FlowConditionToken;
 };
 
 /// Returns the storage location for the implicit object of a
@@ -632,6 +693,28 @@ getImplicitObjectLocation(const CXXMemberCallExpr &MCE, const Environment &Env);
 /// member expression was written using `->`.
 AggregateStorageLocation *getBaseObjectLocation(const MemberExpr &ME,
                                                 const Environment &Env);
+
+/// Returns the fields of `RD` that are initialized by an `InitListExpr`, in the
+/// order in which they appear in `InitListExpr::inits()`.
+std::vector<FieldDecl *> getFieldsForInitListExpr(const RecordDecl *RD);
+
+/// Associates a new `StructValue` with `Loc` and returns the new value.
+/// It is not defined whether the field values remain the same or not.
+///
+/// This function is primarily intended for use by checks that set custom
+/// properties on `StructValue`s to model the state of these values. Such checks
+/// should avoid modifying the properties of an existing `StructValue` because
+/// these changes would be visible to other `Environment`s that share the same
+/// `StructValue`. Instead, call `refreshStructValue()`, then set the properties
+/// on the new `StructValue` that it returns. Typical usage:
+///
+///   refreshStructValue(Loc, Env).setProperty("my_prop", MyPropValue);
+StructValue &refreshStructValue(AggregateStorageLocation &Loc,
+                                Environment &Env);
+
+/// Associates a new `StructValue` with `Expr` and returns the new value.
+/// See also documentation for the overload above.
+StructValue &refreshStructValue(const Expr &Expr, Environment &Env);
 
 } // namespace dataflow
 } // namespace clang
