@@ -325,7 +325,7 @@ bool Preprocessor::CheckMacroName(Token &MacroNameTok, MacroUse isDefineUndef,
 
   IdentifierInfo *II = MacroNameTok.getIdentifierInfo();
   if (!II)
-    return Diag(MacroNameTok, diag::err_pp_macro_not_identifier);
+    return true;
 
   if (II->isCPlusPlusOperatorKeyword()) {
     // C++ 2.5p2: Alternative tokens behave the same as its primary token
