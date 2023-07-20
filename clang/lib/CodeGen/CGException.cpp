@@ -608,6 +608,22 @@ void CodeGenFunction::EmitEndEHSpec(const Decl *D) {
   }
 }
 
+void CodeGenFunction::FixSEHEnd(llvm::InvokeInst *InvokeIst) {
+  assert(InvokeIst);
+  auto UnwindDestBB = InvokeIst->getUnwindDest();
+  if (!UnwindDestBB)
+    return;
+  auto OldIP = Builder.saveIP();
+  Builder.SetInsertPoint(CurFn->back().getLastInstruction());
+  if (auto BrInst = dyn_cast<llvm::BranchInst>(&*Builder.GetInsertPoint())) {
+    if (BrInst->isUnconditional()) {
+      auto BrDestBB = BrInst->getSuccessor(0);
+      Builder.CreateInvoke(getSehTryEndFn(CGM), BrDestBB, UnwindDestBB);
+    }
+  }
+  Builder.restoreIP(OldIP);
+}
+
 void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
   EnterCXXTryStmt(S);
   {
@@ -652,15 +668,9 @@ void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
 
       // Emit an invoke _seh_try_end() to mark end of FT flow
       if (HaveInsertPoint()) {
-        Builder.CreateCall(getSehTryEndFn(CGM));
+        EmitRuntimeCallOrInvoke(getSehTryEndFn(CGM));
       } else {
-        if (InvokeIst)
-          if (auto LastInst = InvokeIst->getNormalDest()->getTerminator()) {
-            auto OldIP = Builder.saveIP();
-            Builder.SetInsertPoint(LastInst);
-            Builder.CreateCall(getSehTryEndFn(CGM));
-            Builder.restoreIP(OldIP);
-          }
+        FixSEHEnd(InvokeIst);
       }
 
       // Volatilize all blocks in Try, till current insert point
@@ -1722,15 +1732,10 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
 
     // Emit an invoke _seh_try_end() to mark end of FT flow
     if (HaveInsertPoint()) {
-      Builder.CreateCall(getSehTryEndFn(CGM));
+      EmitRuntimeCallOrInvoke(getSehTryEndFn(CGM));
     } else {
       if (auto InvokeIst = dyn_cast<llvm::InvokeInst>(Inst)) {
-        if (auto LastInst = InvokeIst->getNormalDest()->getTerminator()) {
-          auto OldIP = Builder.saveIP();
-          Builder.SetInsertPoint(LastInst);
-          Builder.CreateCall(getSehTryEndFn(CGM));
-          Builder.restoreIP(OldIP);
-        }
+          FixSEHEnd(InvokeIst);
       }
     }
 
