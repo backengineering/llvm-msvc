@@ -616,9 +616,12 @@ void CodeGenFunction::FixSEHEnd(llvm::InvokeInst *InvokeIst) {
   auto OldIP = Builder.saveIP();
   Builder.SetInsertPoint(CurFn->back().getLastInstruction());
   if (auto BrInst = dyn_cast<llvm::BranchInst>(&*Builder.GetInsertPoint())) {
-    if (BrInst->isUnconditional()) {
-      auto BrDestBB = BrInst->getSuccessor(0);
-      Builder.CreateInvoke(getSehTryEndFn(CGM), BrDestBB, UnwindDestBB);
+    for (unsigned int I = 0; I < BrInst->getNumSuccessors(); ++I) {
+      auto BrDestBB = BrInst->getSuccessor(I);
+      auto TrampolineBB = createBasicBlock("TrampolineBB", CurFn);
+      llvm::IRBuilder<> IRB(TrampolineBB);
+      IRB.CreateInvoke(getSehTryEndFn(CGM), BrDestBB, UnwindDestBB);
+      BrInst->setSuccessor(I, TrampolineBB);
     }
   }
   Builder.restoreIP(OldIP);
