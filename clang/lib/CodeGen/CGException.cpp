@@ -610,17 +610,15 @@ void CodeGenFunction::EmitEndEHSpec(const Decl *D) {
 
 void CodeGenFunction::FixSEHEnd(llvm::InvokeInst *InvokeIst) {
   assert(InvokeIst);
-  auto UnwindDestBB = InvokeIst->getUnwindDest();
-  if (!UnwindDestBB)
-    return;
+
   auto OldIP = Builder.saveIP();
   Builder.SetInsertPoint(CurFn->back().getLastInstruction());
   if (auto BrInst = dyn_cast<llvm::BranchInst>(&*Builder.GetInsertPoint())) {
     for (unsigned int I = 0; I < BrInst->getNumSuccessors(); ++I) {
-      auto BrDestBB = BrInst->getSuccessor(I);
       auto TrampolineBB = createBasicBlock("TrampolineBB", CurFn);
       llvm::IRBuilder<> IRB(TrampolineBB);
-      IRB.CreateInvoke(getSehTryEndFn(CGM), BrDestBB, UnwindDestBB);
+      IRB.CreateInvoke(getSehTryEndFn(CGM), BrInst->getSuccessor(I),
+                       InvokeIst->getUnwindDest());
       BrInst->setSuccessor(I, TrampolineBB);
     }
   }
