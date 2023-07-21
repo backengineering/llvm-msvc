@@ -1347,25 +1347,29 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
       // Report IP range only for blocks with Faulty inst
       auto MBBb = MBB->getFirstNonPHI();
       MachineInstr *MIb = &*MBBb;
-      if (MIb->isTerminator())
-        continue;
-
+      bool MIbIsTerminator = MIb->isTerminator();
       // Insert EH Labels
       MCSymbol *BeginLabel = MMI.getContext().createTempSymbol();
       MCSymbol *EndLabel = MMI.getContext().createTempSymbol();
-      EHInfo->addIPToStateRange(State, BeginLabel, EndLabel);
+      if (MIbIsTerminator)
+        EHInfo->addIPToStateRange(State, BeginLabel, BeginLabel);
+      else
+        EHInfo->addIPToStateRange(State, BeginLabel, EndLabel);
       BuildMI(*MBB, MBBb, SDB->getCurDebugLoc(),
               TII->get(TargetOpcode::EH_LABEL))
           .addSym(BeginLabel);
-      auto MBBe = MBB->instr_end();
-      MachineInstr *MIe = &*(--MBBe);
-      // insert before (possible multiple) terminators
-      while (MIe->isTerminator())
-        MIe = &*(--MBBe);
-      ++MBBe;
-      BuildMI(*MBB, MBBe, SDB->getCurDebugLoc(),
-              TII->get(TargetOpcode::EH_LABEL))
-          .addSym(EndLabel);
+
+      if (!MIbIsTerminator) {
+        auto MBBe = MBB->instr_end();
+        MachineInstr *MIe = &*(--MBBe);
+        // insert before (possible multiple) terminators
+        while (MIe->isTerminator())
+          MIe = &*(--MBBe);
+        ++MBBe;
+        BuildMI(*MBB, MBBe, SDB->getCurDebugLoc(),
+                TII->get(TargetOpcode::EH_LABEL))
+            .addSym(EndLabel);
+      }
     }
   }
 }
