@@ -17474,6 +17474,7 @@ CreateNewDecl:
       StdAlignValT = cast<EnumDecl>(New);
 
     // If this is an undefined enum, warn.
+#ifndef _WIN32
     if (TUK != TUK_Definition && !Invalid) {
       TagDecl *Def;
       if (IsFixed && cast<EnumDecl>(New)->isFixed()) {
@@ -17493,6 +17494,7 @@ CreateNewDecl:
         Diag(Loc, DiagID);
       }
     }
+#endif
 
     if (EnumUnderlying) {
       EnumDecl *ED = cast<EnumDecl>(New);
