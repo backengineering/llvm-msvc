@@ -1735,9 +1735,8 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
     if (HaveInsertPoint()) {
       EmitRuntimeCallOrInvoke(getSehTryEndFn(CGM));
     } else {
-      if (auto InvokeIst = dyn_cast<llvm::InvokeInst>(Inst)) {
+      if (auto InvokeIst = dyn_cast<llvm::InvokeInst>(Inst))
           FixSEHEnd(InvokeIst);
-      }
     }
 
     // Volatilize all blocks in Try, till current insert point
