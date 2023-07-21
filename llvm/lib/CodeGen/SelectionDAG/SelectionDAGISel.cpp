@@ -1350,11 +1350,13 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
       bool MIbIsTerminator = MIb->isTerminator();
       // Insert EH Labels
       MCSymbol *BeginLabel = MMI.getContext().createTempSymbol();
-      MCSymbol *EndLabel = MMI.getContext().createTempSymbol();
+      MCSymbol *EndLabel = nullptr;
       if (MIbIsTerminator)
         EHInfo->addIPToStateRange(State, BeginLabel, BeginLabel);
-      else
+      else {
+        EndLabel = MMI.getContext().createTempSymbol();
         EHInfo->addIPToStateRange(State, BeginLabel, EndLabel);
+      }
       BuildMI(*MBB, MBBb, SDB->getCurDebugLoc(),
               TII->get(TargetOpcode::EH_LABEL))
           .addSym(BeginLabel);
