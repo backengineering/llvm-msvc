@@ -1347,11 +1347,11 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
       // Report IP range only for blocks with Faulty inst
       auto MBBb = MBB->getFirstNonPHI();
       MachineInstr *MIb = &*MBBb;
-      bool MIbIsTerminator = MIb->isTerminator();
+
       // Insert EH Labels
       MCSymbol *BeginLabel = MMI.getContext().createTempSymbol();
       MCSymbol *EndLabel = nullptr;
-      if (MIbIsTerminator)
+      if (MIb->isTerminator())
         EHInfo->addIPToStateRange(State, BeginLabel, BeginLabel);
       else {
         EndLabel = MMI.getContext().createTempSymbol();
@@ -1361,7 +1361,7 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
               TII->get(TargetOpcode::EH_LABEL))
           .addSym(BeginLabel);
 
-      if (!MIbIsTerminator) {
+      if (EndLabel) {
         auto MBBe = MBB->instr_end();
         MachineInstr *MIe = &*(--MBBe);
         // insert before (possible multiple) terminators
