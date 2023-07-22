@@ -2170,6 +2170,7 @@ static void checkIntToPointerCast(bool CStyle, const SourceRange &OpRange,
   // Not warning on reinterpret_cast, boolean, constant expressions, etc
   // are not explicit design choices, but consistent with GCC's behavior.
   // Feel free to modify them if you've reason/evidence for an alternative.
+#ifndef _WIN32
   if (CStyle && SrcType->isIntegralType(Self.Context)
       && !SrcType->isBooleanType()
       && !SrcType->isEnumeralType()
@@ -2186,6 +2187,7 @@ static void checkIntToPointerCast(bool CStyle, const SourceRange &OpRange,
                     : diag::warn_int_to_pointer_cast;
     Self.Diag(OpRange.getBegin(), Diag) << SrcType << DestType << OpRange;
   }
+#endif
 }
 
 static bool fixOverloadedReinterpretCastExpr(Sema &Self, QualType DestType,
