@@ -14668,9 +14668,9 @@ static QualType CheckCommaOperands(Sema &S, ExprResult &LHS, ExprResult &RHS,
   LHS = S.IgnoredValueConversions(LHS.get());
   if (LHS.isInvalid())
     return QualType();
-
+#ifndef _WIN32
   S.DiagnoseUnusedExprResult(LHS.get(), diag::warn_unused_comma_left_operand);
-
+#endif
   if (!S.getLangOpts().CPlusPlus) {
     RHS = S.DefaultFunctionArrayLvalueConversion(RHS.get());
     if (RHS.isInvalid())
