@@ -3158,7 +3158,7 @@ bool Sema::CheckPointerConversion(Expr *From, QualType ToType,
         // The conversion was successful.
         Kind = CK_DerivedToBase;
       }
-
+#ifndef _WIN32
       if (Diagnose && !IsCStyleOrFunctionalCast &&
           FromPointeeType->isFunctionType() && ToPointeeType->isVoidType()) {
         assert(getLangOpts().MSVCCompat &&
@@ -3166,6 +3166,7 @@ bool Sema::CheckPointerConversion(Expr *From, QualType ToType,
         Diag(From->getExprLoc(), diag::ext_ms_impcast_fn_obj)
             << From->getSourceRange();
       }
+#endif
     }
   } else if (const ObjCObjectPointerType *ToPtrType =
                ToType->getAs<ObjCObjectPointerType>()) {
