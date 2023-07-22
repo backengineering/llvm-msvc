@@ -953,6 +953,7 @@ void JumpScopeChecker::CheckJump(Stmt *From, Stmt *To, SourceLocation DiagLoc,
   }
 
   // Handle warnings.
+#ifndef _WIN32
   if (!ToScopesWarning.empty()) {
     S.Diag(DiagLoc, JumpDiagWarning);
     NoteJumpIntoScopes(ToScopesWarning);
@@ -960,18 +961,21 @@ void JumpScopeChecker::CheckJump(Stmt *From, Stmt *To, SourceLocation DiagLoc,
     LabelStmt *Label = cast<LabelStmt>(To);
     Label->setSideEntry(true);
   }
+#endif
 
   // Handle errors.
   if (!ToScopesError.empty()) {
     S.Diag(DiagLoc, JumpDiagError);
     NoteJumpIntoScopes(ToScopesError);
   }
-
+  
+#ifndef _WIN32
   // Handle -Wc++98-compat warnings if the jump is well-formed.
   if (ToScopesError.empty() && !ToScopesCXX98Compat.empty()) {
     S.Diag(DiagLoc, JumpDiagCXX98Compat);
     NoteJumpIntoScopes(ToScopesCXX98Compat);
   }
+#endif
 }
 
 void JumpScopeChecker::CheckGotoStmt(GotoStmt *GS) {
