@@ -2150,7 +2150,11 @@ void Sema::DiagnoseUnusedDecl(const NamedDecl *D, DiagReceiverTy DiagReceiver) {
   else if (isa<LabelDecl>(D))
     DiagID = diag::warn_unused_label;
   else
+#ifdef _WIN32
+    return;
+#else
     DiagID = diag::warn_unused_variable;
+#endif
 
   SourceLocation DiagLoc = D->getLocation();
   DiagReceiver(DiagLoc, PDiag(DiagID) << D << Hint << SourceRange(DiagLoc));
@@ -2201,9 +2205,11 @@ void Sema::DiagnoseUnusedButSetDecl(const VarDecl *VD,
          "Found a negative number of references to a VarDecl");
   if (iter->getSecond() != 0)
     return;
+#ifndef _WIN32
   unsigned DiagID = isa<ParmVarDecl>(VD) ? diag::warn_unused_but_set_parameter
                                          : diag::warn_unused_but_set_variable;
   DiagReceiver(VD->getLocation(), PDiag(DiagID) << VD);
+#endif
 }
 
 static void CheckPoppedLabel(LabelDecl *L, Sema &S,
