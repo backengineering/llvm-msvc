@@ -1139,7 +1139,7 @@ void InitListChecker::CheckImplicitInitList(const InitializedEntity &Entity,
         = ParentIList->getInit(EndIndex)->getSourceRange().getEnd();
       StructuredSubobjectInitList->setRBraceLoc(EndLoc);
     }
-
+#ifndef _WIN32
     // Complain about missing braces.
     if (!VerifyOnly && (T->isArrayType() || T->isRecordType()) &&
         !ParentIList->isIdiomaticZeroInitializer(SemaRef.getLangOpts()) &&
@@ -1154,7 +1154,7 @@ void InitListChecker::CheckImplicitInitList(const InitializedEntity &Entity,
                      StructuredSubobjectInitList->getEndLoc()),
                  "}");
     }
-
+#endif
     // Warn if this type won't be an aggregate in future versions of C++.
     auto *CXXRD = T->getAsCXXRecordDecl();
     if (!VerifyOnly && CXXRD && CXXRD->hasUserDeclaredConstructor()) {
