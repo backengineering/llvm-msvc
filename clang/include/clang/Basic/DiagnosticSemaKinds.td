@@ -713,7 +713,7 @@ def ext_implicit_lib_function_decl : ExtWarn<
 def ext_implicit_lib_function_decl_c99 : ExtWarn<
   "call to undeclared library function '%0' with type %1; ISO C99 and later "
   "do not support implicit function declarations">,
-  InGroup<ImplicitFunctionDeclare>, DefaultError;
+  InGroup<ImplicitFunctionDeclare>;
 def note_include_header_or_declare : Note<
   "include the header <%0> or explicitly provide a declaration for '%1'">;
 def note_previous_builtin_declaration : Note<"%0 is a builtin with type %1">;
