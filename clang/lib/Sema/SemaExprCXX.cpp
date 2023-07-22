@@ -4740,7 +4740,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
     From = ImpCastExprToType(From, ToType.getNonLValueExprType(Context), CK, VK,
                              /*BasePath=*/nullptr, CCK)
                .get();
-
+#ifndef _WIN32
     if (SCS.DeprecatedStringLiteralToCharPtr &&
         !getLangOpts().WritableStrings) {
       Diag(From->getBeginLoc(),
@@ -4749,7 +4749,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
                : diag::warn_deprecated_string_literal_conversion)
           << ToType.getNonReferenceType();
     }
-
+#endif
     break;
   }
 
