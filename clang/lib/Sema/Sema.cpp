@@ -1332,6 +1332,7 @@ void Sema::ActOnEndOfTranslationUnit() {
   // noise. Don't warn for a use from a module: either we should warn on all
   // file-scope declarations in modules or not at all, but whether the
   // declaration is used is immaterial.
+#ifndef _WIN32
   if (!Diags.hasErrorOccurred() && TUKind != TU_Module) {
     // Output warning for unused file scoped decls.
     for (UnusedFileScopedDeclsType::iterator
@@ -1408,6 +1409,7 @@ void Sema::ActOnEndOfTranslationUnit() {
 
     emitAndClearUnusedLocalTypedefWarnings();
   }
+#endif
 
   if (!Diags.isIgnored(diag::warn_unused_private_field, SourceLocation())) {
     // FIXME: Load additional unused private field candidates from the external
