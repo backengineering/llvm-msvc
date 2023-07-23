@@ -16413,14 +16413,14 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::FunctionType *FTy = llvm::FunctionType::get(
         llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}),
         {SizeTy, VoidPtrTy}, false);
-    llvm::InlineAsm *IA =
-        llvm::InlineAsm::get(FTy,
-                             "vmread $2, ($3)\n"
-                             "setz $0\n"
-                             "setb $1\n"
-                             "adc $1, $0\n",
-                             "=r,=r,r,r,~{memory},~{cc},~{dirflag},~{fpsr},~{flags}",
-                             /*hasSideEffects=*/true);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy,
+        "vmread $2, ($3)\n"
+        "setz $0\n"
+        "setb $1\n"
+        "adc $1, $0\n",
+        "=r,=r,r,r,~{memory},~{cc},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1]});
     return Builder.CreateExtractValue(CI, 0);
   }
@@ -16450,14 +16450,14 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::FunctionType *FTy = llvm::FunctionType::get(
         llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}), {VoidPtrTy},
         false);
-    llvm::InlineAsm *IA =
-        llvm::InlineAsm::get(FTy,
-                             "vmclear ($2)\n"
-                             "setz $0\n"
-                             "setb $1\n"
-                             "adc $1, $0\n",
-                             "=r,=r,r,~{memory},~{cc},~{dirflag},~{fpsr},~{flags}",
-                             /*hasSideEffects=*/true);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy,
+        "vmclear ($2)\n"
+        "setz $0\n"
+        "setb $1\n"
+        "adc $1, $0\n",
+        "=r,=r,r,~{memory},~{cc},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return Builder.CreateExtractValue(CI, 0);
   }
@@ -16465,23 +16465,23 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::FunctionType *FTy = llvm::FunctionType::get(
         llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}), {VoidPtrTy},
         false);
-    llvm::InlineAsm *IA =
-        llvm::InlineAsm::get(FTy,
-                             "vmptrld ($2)\n"
-                             "setz $0\n"
-                             "setb $1\n"
-                             "adc $1, $0\n",
-                             "=r,=r,r,~{memory},~{cc},~{dirflag},~{fpsr},~{flags}",
-                             /*hasSideEffects=*/true);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy,
+        "vmptrld ($2)\n"
+        "setz $0\n"
+        "setb $1\n"
+        "adc $1, $0\n",
+        "=r,=r,r,~{memory},~{cc},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return Builder.CreateExtractValue(CI, 0);
   }
   case X86::BI__vmx_vmptrst: {
     llvm::FunctionType *FTy =
         llvm::FunctionType::get(VoidTy, {VoidPtrTy}, false);
-    llvm::InlineAsm *IA = llvm::InlineAsm::get(FTy, "vmptrst ($0)\n",
-                                               "r,~{memory},~{dirflag},~{fpsr},~{flags}",
-                                               /*hasSideEffects=*/true);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "vmptrst ($0)", "r,~{memory},~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return CI;
   }
