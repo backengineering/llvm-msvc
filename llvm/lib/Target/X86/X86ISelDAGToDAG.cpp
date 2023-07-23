@@ -189,6 +189,7 @@ namespace {
              "OptForMinSize implies OptForSize");
 
       SelectionDAGISel::runOnMachineFunction(MF);
+      forceRealign(MF);
       return true;
     }
 
@@ -203,6 +204,7 @@ namespace {
 #include "X86GenDAGISel.inc"
 
   private:
+    void forceRealign(MachineFunction &MF);
     void Select(SDNode *N) override;
 
     bool foldOffsetIntoAddress(uint64_t Offset, X86ISelAddressMode &AM);
@@ -578,6 +580,93 @@ namespace {
 char X86DAGToDAGISel::ID = 0;
 
 INITIALIZE_PASS(X86DAGToDAGISel, DEBUG_TYPE, PASS_NAME, false, false)
+
+void X86DAGToDAGISel::forceRealign(MachineFunction &MF) {
+    auto HasMovAlignInst = [](unsigned int OpCode) -> bool {
+      if (OpCode == X86::MOVAPSmr)
+        return true;
+      if (OpCode == X86::VMOVAPSmr)
+        return true;
+      if (OpCode == X86::VMOVAPSZ128mr)
+        return true;
+      if (OpCode == X86::MOVAPDmr)
+        return true;
+      if (OpCode == X86::VMOVAPDmr)
+        return true;
+      if (OpCode == X86::VMOVAPDZ128mr)
+        return true;
+      if (OpCode == X86::MOVNTPSmr)
+        return true;
+      if (OpCode == X86::VMOVNTPSmr)
+        return true;
+      if (OpCode == X86::VMOVNTPSZ128mr)
+        return true;
+      if (OpCode == X86::MOVNTPDmr)
+        return true;
+      if (OpCode == X86::VMOVNTPDmr)
+        return true;
+      if (OpCode == X86::VMOVNTPDZ128mr)
+        return true;
+      if (OpCode == X86::MOVNTDQmr)
+        return true;
+      if (OpCode == X86::VMOVNTDQmr)
+        return true;
+      if (OpCode == X86::VMOVNTDQZ128mr)
+        return true;
+      if (OpCode == X86::MOVDQAmr)
+        return true;
+      if (OpCode == X86::VMOVDQAmr)
+        return true;
+      if (OpCode == X86::VMOVDQA64Z128mr)
+        return true;
+      if (OpCode == X86::VMOVNTPSYmr)
+        return true;
+      if (OpCode == X86::VMOVNTPSZ256mr)
+        return true;
+      if (OpCode == X86::VMOVAPSYmr)
+        return true;
+      if (OpCode == X86::VMOVAPSZ256mr)
+        return true;
+      if (OpCode == X86::VMOVNTPDYmr)
+        return true;
+      if (OpCode == X86::VMOVNTPDZ256mr)
+        return true;
+      if (OpCode == X86::VMOVAPDYmr)
+        return true;
+      if (OpCode == X86::VMOVAPDZ256mr)
+        return true;
+      if (OpCode == X86::VMOVNTDQYmr)
+        return true;
+      if (OpCode == X86::VMOVNTDQZ256mr)
+        return true;
+      if (OpCode == X86::VMOVDQAYmr)
+        return true;
+      if (OpCode == X86::VMOVDQA64Z256mr)
+        return true;
+      if (OpCode == X86::VMOVAPSZmr)
+        return true;
+      if (OpCode == X86::VMOVNTPSZmr)
+        return true;
+      if (OpCode == X86::VMOVAPDZmr)
+        return true;
+      if (OpCode == X86::VMOVNTPDZmr)
+        return true;
+      if (OpCode == X86::VMOVDQA64Zmr)
+        return true;
+      if (OpCode == X86::VMOVNTDQZmr)
+        return true;
+      return false;
+    };
+
+    for (auto &MBB : MF) {
+      for (auto &MI : MBB) {
+        if (HasMovAlignInst(MI.getOpcode())) {
+          MF.getFunction().addFnAttr("stackrealign");
+          return;
+        }
+      }
+    }
+}
 
 // Returns true if this masked compare can be implemented legally with this
 // type.
