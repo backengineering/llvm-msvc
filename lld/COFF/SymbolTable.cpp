@@ -658,6 +658,7 @@ static std::string getSourceLocation(InputFile *file, SectionChunk *sc,
 void SymbolTable::reportDuplicate(Symbol *existing, InputFile *newFile,
                                   SectionChunk *newSc,
                                   uint32_t newSectionOffset) {
+  return;
   std::string msg;
   llvm::raw_string_ostream os(msg);
   os << "duplicate symbol: " << toString(ctx, *existing);
