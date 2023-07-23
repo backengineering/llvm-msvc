@@ -658,6 +658,11 @@ void X86DAGToDAGISel::forceRealign(MachineFunction &MF) {
       return false;
     };
 
+    // Filter out exception functions
+    llvm::WinEHFuncInfo *EHInfo = MF.getWinEHFuncInfo();
+    if (EHInfo)
+      return;
+
     for (auto &MBB : MF) {
       for (auto &MI : MBB) {
         if (HasMovAlignInst(MI.getOpcode())) {
