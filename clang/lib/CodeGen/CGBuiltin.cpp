@@ -16279,21 +16279,15 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     return CI;
   }
   case X86::BI__readpmc: {
-    llvm::FunctionType *FTy = llvm::FunctionType::get(Int64Ty, Int32Ty, false);
-    llvm::InlineAsm *IA = llvm::InlineAsm::get(
-        FTy, "rdpmc", "=A,{cx},~{dirflag},~{fpsr},~{flags}",
-        /*hasSideEffects=*/true);
-    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
+    auto CI =
+        Builder.CreateCall(CGM.getIntrinsic(Intrinsic::x86_rdpmc), {Ops[0]});
     return CI;
   }
   case X86::BI__rdtscp: {
-    auto CI =
-        Builder.CreateIntrinsic(Int64Ty, llvm::Intrinsic::x86_rdtscp, {Ops[0]});
+    auto CI = Builder.CreateCall(CGM.getIntrinsic(Intrinsic::x86_rdtscp));
     auto Aux = Builder.CreateExtractValue(CI, {1});
-    auto Tsc = Builder.CreateExtractValue(CI, {0});
-    Builder.CreateStore(
-        Aux, Address(Ops[0], Ops[0]->getType(), CharUnits::fromQuantity(4)));
-    return Tsc;
+    Builder.CreateDefaultAlignedStore(Aux, Ops[0]);
+    return Builder.CreateExtractValue(CI, {0});
   }
   case X86::BI_disable: {
     llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, false);
@@ -16410,7 +16404,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "={dl},={al},r,r,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "={dl},={al},r,rm,~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1]});
     return Builder.CreateExtractValue(CI, 0);
@@ -16418,14 +16412,14 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__vmx_vmread: {
     llvm::FunctionType *FTy = llvm::FunctionType::get(
         llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}),
-        {SizeTy, VoidTy}, false);
+        {SizeTy, VoidPtrTy}, false);
     llvm::InlineAsm *IA = llvm::InlineAsm::get(
         FTy,
         "vmread $2, $3\n"
         "setz $0\n"
         "setb $1\n"
         "adc $1, $0\n",
-        "={dl},={al},r,+m,~{cc},~{dirflag},~{fpsr},~{flags}",
+        "={dl},={al},r,rm,~{cc},~{dirflag},~{fpsr},~{flags}",
         /*hasSideEffects=*/true);
     CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
                                                : CharUnits::fromQuantity(8);
@@ -16466,7 +16460,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "={dl},={al},+m,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "={dl},={al},rm,~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
     CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
                                                : CharUnits::fromQuantity(8);
@@ -16484,7 +16478,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "={dl},={al},+m,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "={dl},={al},rm,~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
     CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
                                                : CharUnits::fromQuantity(8);
@@ -16496,7 +16490,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::FunctionType *FTy =
         llvm::FunctionType::get(VoidTy, {VoidPtrTy}, false);
     llvm::InlineAsm *IA = llvm::InlineAsm::get(FTy, "vmptrst $0",
-                                               "+m,~{dirflag},~{fpsr},~{flags}",
+                                               "rm,~{dirflag},~{fpsr},~{flags}",
                                                /*hasSideEffects=*/true);
     CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
                                                : CharUnits::fromQuantity(8);
@@ -16528,7 +16522,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "={dl},={al},+m,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "={dl},={al},rm,~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
     CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
                                                : CharUnits::fromQuantity(8);
