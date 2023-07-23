@@ -16419,7 +16419,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "=r,=r,r,r,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "=r,=r,r,r,~{memory},~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1]});
     return Builder.CreateExtractValue(CI, 0);
@@ -16456,7 +16456,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "=r,=r,r,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "=r,=r,r,~{memory},~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return Builder.CreateExtractValue(CI, 0);
@@ -16471,7 +16471,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "=r,=r,r,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "=r,=r,r,~{memory},~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return Builder.CreateExtractValue(CI, 0);
@@ -16509,7 +16509,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "=r,=r,r,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "=r,=r,r,~{memory},~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return Builder.CreateExtractValue(CI, 0);
