@@ -16404,7 +16404,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "={dl},={al},r,rm,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "=r,=r,r,r,~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1]});
     return Builder.CreateExtractValue(CI, 0);
@@ -16413,19 +16413,15 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::FunctionType *FTy = llvm::FunctionType::get(
         llvm::StructType::get(getLLVMContext(), {Int8Ty, Int8Ty}),
         {SizeTy, VoidPtrTy}, false);
-    llvm::InlineAsm *IA = llvm::InlineAsm::get(
-        FTy,
-        "vmread $2, $3\n"
-        "setz $0\n"
-        "setb $1\n"
-        "adc $1, $0\n",
-        "={dl},={al},r,rm,~{cc},~{dirflag},~{fpsr},~{flags}",
-        /*hasSideEffects=*/true);
-    CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
-                                               : CharUnits::fromQuantity(8);
-    llvm::CallInst *CI = Builder.CreateCall(
-        IA,
-        {Ops[0], Builder.CreateLoad(Address(Ops[1], Ops[1]->getType(), CU))});
+    llvm::InlineAsm *IA =
+        llvm::InlineAsm::get(FTy,
+                             "vmread $2, ($3)\n"
+                             "setz $0\n"
+                             "setb $1\n"
+                             "adc $1, $0\n",
+                             "=r,=r,r,r,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1]});
     return Builder.CreateExtractValue(CI, 0);
   }
   case X86::BI__vmx_vmlaunch: {
@@ -16437,7 +16433,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "={dl},={al},~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "=r,=r,~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA);
     return Builder.CreateExtractValue(CI, 0);
@@ -16456,16 +16452,13 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
         false);
     llvm::InlineAsm *IA =
         llvm::InlineAsm::get(FTy,
-                             "vmclear $2\n"
+                             "vmclear ($2)\n"
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "={dl},={al},rm,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "=r,=r,r,~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
-    CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
-                                               : CharUnits::fromQuantity(8);
-    llvm::CallInst *CI = Builder.CreateCall(
-        IA, {Builder.CreateLoad(Address(Ops[0], Ops[0]->getType(), CU))});
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return Builder.CreateExtractValue(CI, 0);
   }
   case X86::BI__vmx_vmptrld: {
@@ -16474,28 +16467,22 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
         false);
     llvm::InlineAsm *IA =
         llvm::InlineAsm::get(FTy,
-                             "vmptrld $2\n"
+                             "vmptrld ($2)\n"
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "={dl},={al},rm,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "=r,=r,r,~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
-    CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
-                                               : CharUnits::fromQuantity(8);
-    llvm::CallInst *CI = Builder.CreateCall(
-        IA, {Builder.CreateLoad(Address(Ops[0], Ops[0]->getType(), CU))});
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return Builder.CreateExtractValue(CI, 0);
   }
   case X86::BI__vmx_vmptrst: {
     llvm::FunctionType *FTy =
         llvm::FunctionType::get(VoidTy, {VoidPtrTy}, false);
-    llvm::InlineAsm *IA = llvm::InlineAsm::get(FTy, "vmptrst $0",
-                                               "rm,~{dirflag},~{fpsr},~{flags}",
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(FTy, "vmptrst ($0)\n",
+                                               "r,~{memory},~{dirflag},~{fpsr},~{flags}",
                                                /*hasSideEffects=*/true);
-    CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
-                                               : CharUnits::fromQuantity(8);
-    llvm::CallInst *CI = Builder.CreateCall(
-        IA, {Builder.CreateLoad(Address(Ops[0], Ops[0]->getType(), CU))});
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return CI;
   }
   case X86::BI__vmx_vmresume: {
@@ -16507,7 +16494,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "={dl},={al},~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "=r,=r,~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA);
     return Builder.CreateExtractValue(CI, 0);
@@ -16518,16 +16505,13 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
         false);
     llvm::InlineAsm *IA =
         llvm::InlineAsm::get(FTy,
-                             "vmxon $2\n"
+                             "vmxon ($2)\n"
                              "setz $0\n"
                              "setb $1\n"
                              "adc $1, $0\n",
-                             "={dl},={al},rm,~{cc},~{dirflag},~{fpsr},~{flags}",
+                             "=r,=r,r,~{cc},~{dirflag},~{fpsr},~{flags}",
                              /*hasSideEffects=*/true);
-    CharUnits CU = SizeTy->getBitWidth() == 32 ? CharUnits::fromQuantity(4)
-                                               : CharUnits::fromQuantity(8);
-    llvm::CallInst *CI = Builder.CreateCall(
-        IA, {Builder.CreateLoad(Address(Ops[0], Ops[0]->getType(), CU))});
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
     return Builder.CreateExtractValue(CI, 0);
   }
   case X86::BI__builtin_ia32_encodekey128_u32: {
