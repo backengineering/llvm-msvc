@@ -78,6 +78,8 @@ private:
   AttributeList AttributeSets;            ///< Parameter attributes
   bool IsVolatileFunction : 1;            ///< Is this a volatile function?
   bool IsFastISelDisabled : 1;            ///< Is fast-isel for this function disabled?
+  bool IsSEHFilterFunction : 1;           ///< Is SEHFilterFunction?
+  bool IsSEHFinallyFunction : 1;          ///< Is SEHFinallyFunction?
 
   /*
    * Value::SubclassData
@@ -187,6 +189,18 @@ public:
   /// If the value is a volatile function, we will preserve it.
   bool isVolatile() const { return IsVolatileFunction; }
   void setVolatile(bool Volatile = true) { IsVolatileFunction = Volatile; }
+
+  /// Is SEHFilterFunction?
+  bool isSEHFilterFunction() const { return IsSEHFilterFunction; }
+  void setSEHFilterFunction(bool SEHFilterFunction = true) {
+    IsSEHFilterFunction = SEHFilterFunction;
+  }
+
+  /// Is SEHFinallyFunction?
+  bool isSEHFinallyFunction() const { return IsSEHFinallyFunction; }
+  void setSEHFinallyFunction(bool SEHFinallyFunction = true) {
+    IsSEHFinallyFunction = SEHFinallyFunction;
+  }
 
   /// Indicate that whether we should disable fast-isel for this function.
   bool isFastISelDisabled() const { return IsFastISelDisabled; }
@@ -539,6 +553,11 @@ public:
   }
   void setDoesNotReturn() {
     addFnAttr(Attribute::NoReturn);
+  }
+
+  /// Return true if the function should remove r15
+  bool doesRemoveR15() const {
+    return hasFnAttribute(Attribute::RemoveR15) || hasFnAttribute("remove_r15");
   }
 
   /// Determine if the function should not perform indirect branch tracking.
