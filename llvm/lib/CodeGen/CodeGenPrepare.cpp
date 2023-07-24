@@ -426,6 +426,7 @@ private:
 
   void removeAllAssertingVHReferences(Value *V);
   bool eliminateAssumptions(Function &F);
+  bool hoistCatchPadAlloca(Function &F);
   bool eliminateFallThrough(Function &F, DominatorTree *DT = nullptr);
   bool eliminateMostlyEmptyBlocks(Function &F);
   BasicBlock *findDestBlockOfMergeableEmptyBlock(BasicBlock *BB);
@@ -565,7 +566,9 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
   // blocks, since there might be blocks that only contain @llvm.assume calls
   // (plus arguments that we can get rid of).
   EverMadeChange |= eliminateAssumptions(F);
-
+  // The frame allocator requires catchpad args to be allocated in the entry
+  // block.
+  EverMadeChange |= hoistCatchPadAlloca(F);
   // Eliminate blocks that contain only PHI nodes and an
   // unconditional branch.
   EverMadeChange |= eliminateMostlyEmptyBlocks(F);
@@ -716,6 +719,44 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
 #endif
 
   return EverMadeChange;
+}
+
+// If a catchpad has a local allocated arg which is not allocated in the
+// entry block, hoist it to the entry block.
+bool CodeGenPrepare::hoistCatchPadAlloca(Function &F) {
+  if (!F.hasPersonalityFn())
+    return false;
+  bool MadeChange = false;
+  auto *EntryBlock = &(F.getEntryBlock());
+
+  auto MoveAllocInst = [EntryBlock](AllocaInst *AI) {
+    if (AI->getParent() != EntryBlock) {
+      AI->removeFromParent();
+      AI->insertBefore(&*(EntryBlock->getFirstInsertionPt()));
+    }
+  };
+
+  for (BasicBlock &BB : F) {
+    CurInstIterator = BB.begin();
+    while (CurInstIterator != BB.end()) {
+      Instruction *I = &*(CurInstIterator++);
+      if (auto *CatchPad = dyn_cast<CatchPadInst>(I)) {
+        for (auto &Arg : CatchPad->arg_operands()) {
+          if (auto *AI = dyn_cast<AllocaInst>(&Arg)) {
+            MoveAllocInst(AI);
+            MadeChange = true;
+          }
+        }
+      } else if (auto *AI = dyn_cast<AllocaInst>(I)) {
+        // _alloca
+        if (AI->getAlign() == 16) {
+          MoveAllocInst(AI);
+          MadeChange = true;
+        }
+      }
+    }
+  }
+  return MadeChange;
 }
 
 bool CodeGenPrepare::eliminateAssumptions(Function &F) {
