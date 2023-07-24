@@ -583,17 +583,17 @@ INITIALIZE_PASS(X86DAGToDAGISel, DEBUG_TYPE, PASS_NAME, false, false)
 
 void X86DAGToDAGISel::forceRealign(MachineFunction &MF) {
     auto HasMovAlignInst = [](unsigned int OpCode) -> bool {
-      if (OpCode == X86::MOVAPSmr)
+      if (OpCode == X86::MOVAPSmr || OpCode == X86::MOVAPSrm)
         return true;
-      if (OpCode == X86::VMOVAPSmr)
+      if (OpCode == X86::VMOVAPSmr || OpCode == X86::VMOVAPSrm)
         return true;
-      if (OpCode == X86::VMOVAPSZ128mr)
+      if (OpCode == X86::VMOVAPSZ128mr || OpCode == X86::VMOVAPSZ128rm)
         return true;
-      if (OpCode == X86::MOVAPDmr)
+      if (OpCode == X86::MOVAPDmr || OpCode == X86::MOVAPDrm)
         return true;
-      if (OpCode == X86::VMOVAPDmr)
+      if (OpCode == X86::VMOVAPDmr || OpCode == X86::VMOVAPDrm)
         return true;
-      if (OpCode == X86::VMOVAPDZ128mr)
+      if (OpCode == X86::VMOVAPDZ128mr || OpCode == X86::VMOVAPDZ128rm)
         return true;
       if (OpCode == X86::MOVNTPSmr)
         return true;
@@ -613,9 +613,9 @@ void X86DAGToDAGISel::forceRealign(MachineFunction &MF) {
         return true;
       if (OpCode == X86::VMOVNTDQZ128mr)
         return true;
-      if (OpCode == X86::MOVDQAmr)
+      if (OpCode == X86::MOVDQAmr || OpCode == X86::MOVDQArm)
         return true;
-      if (OpCode == X86::VMOVDQAmr)
+      if (OpCode == X86::VMOVDQAmr || OpCode == X86::VMOVDQArm)
         return true;
       if (OpCode == X86::VMOVDQA64Z128mr)
         return true;
@@ -623,35 +623,35 @@ void X86DAGToDAGISel::forceRealign(MachineFunction &MF) {
         return true;
       if (OpCode == X86::VMOVNTPSZ256mr)
         return true;
-      if (OpCode == X86::VMOVAPSYmr)
+      if (OpCode == X86::VMOVAPSYmr || OpCode == X86::VMOVAPSYrm)
         return true;
-      if (OpCode == X86::VMOVAPSZ256mr)
+      if (OpCode == X86::VMOVAPSZ256mr || OpCode == X86::VMOVAPSZ256rm)
         return true;
       if (OpCode == X86::VMOVNTPDYmr)
         return true;
       if (OpCode == X86::VMOVNTPDZ256mr)
         return true;
-      if (OpCode == X86::VMOVAPDYmr)
+      if (OpCode == X86::VMOVAPDYmr || OpCode == X86::VMOVAPDYrm)
         return true;
-      if (OpCode == X86::VMOVAPDZ256mr)
+      if (OpCode == X86::VMOVAPDZ256mr || OpCode == X86::VMOVAPDZ256rm)
         return true;
       if (OpCode == X86::VMOVNTDQYmr)
         return true;
       if (OpCode == X86::VMOVNTDQZ256mr)
         return true;
-      if (OpCode == X86::VMOVDQAYmr)
+      if (OpCode == X86::VMOVDQAYmr || OpCode == X86::VMOVDQAYrm)
         return true;
-      if (OpCode == X86::VMOVDQA64Z256mr)
+      if (OpCode == X86::VMOVDQA64Z256mr || OpCode == X86::VMOVDQA64Z256rm)
         return true;
-      if (OpCode == X86::VMOVAPSZmr)
+      if (OpCode == X86::VMOVAPSZmr || OpCode == X86::VMOVAPSZrm)
         return true;
       if (OpCode == X86::VMOVNTPSZmr)
         return true;
-      if (OpCode == X86::VMOVAPDZmr)
+      if (OpCode == X86::VMOVAPDZmr || OpCode == X86::VMOVAPDZrm)
         return true;
       if (OpCode == X86::VMOVNTPDZmr)
         return true;
-      if (OpCode == X86::VMOVDQA64Zmr)
+      if (OpCode == X86::VMOVDQA64Zmr || OpCode == X86::VMOVDQA64Zrm)
         return true;
       if (OpCode == X86::VMOVNTDQZmr)
         return true;
