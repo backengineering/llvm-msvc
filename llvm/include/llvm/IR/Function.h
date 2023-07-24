@@ -555,11 +555,6 @@ public:
     addFnAttr(Attribute::NoReturn);
   }
 
-  /// Return true if the function should remove r15
-  bool doesRemoveR15() const {
-    return hasFnAttribute(Attribute::RemoveR15) || hasFnAttribute("remove_r15");
-  }
-
   /// Determine if the function should not perform indirect branch tracking.
   bool doesNoCfCheck() const { return hasFnAttribute(Attribute::NoCfCheck); }
 
