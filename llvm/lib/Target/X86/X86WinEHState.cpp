@@ -668,7 +668,9 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
       auto *Call = dyn_cast<CallBase>(&I);
       if (!Call || !isStateStoreNeeded(Personality, *Call))
         continue;
-
+      if ((!Call->getCalledFunction() ||
+           Call->getCalledFunction()->isIntrinsic()))
+        continue;
       int State = getStateForCall(BlockColors, FuncInfo, *Call);
       if (InitialState == OverdefinedState)
         InitialState = State;
