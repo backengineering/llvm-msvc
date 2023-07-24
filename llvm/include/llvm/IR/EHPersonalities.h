@@ -59,6 +59,22 @@ inline bool isAsynchronousEHPersonality(EHPersonality Pers) {
   llvm_unreachable("invalid enum");
 }
 
+/// Returns true if this personality function catches asynchronous
+/// exceptions.
+inline bool isAsynchronousEHPersonality2(EHPersonality Pers) {
+  // The two SEH personality functions can catch asynch exceptions. We assume
+  // unknown personalities don't catch asynch exceptions.
+  switch (Pers) {
+  case EHPersonality::MSVC_X86SEH:
+  case EHPersonality::MSVC_TableSEH:
+  case EHPersonality::MSVC_CXX:
+    return true;
+  default:
+    return false;
+  }
+  llvm_unreachable("invalid enum");
+}
+
 /// Returns true if this is a personality function that invokes
 /// handler funclets (which must return to it).
 inline bool isFuncletEHPersonality(EHPersonality Pers) {
