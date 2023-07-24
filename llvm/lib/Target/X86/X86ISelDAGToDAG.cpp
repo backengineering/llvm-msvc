@@ -658,9 +658,9 @@ void X86DAGToDAGISel::forceRealign(MachineFunction &MF) {
       return false;
     };
 
-    // Filter out exception functions
-    llvm::WinEHFuncInfo *EHInfo = MF.getWinEHFuncInfo();
-    if (EHInfo)
+    // Filter out SEH filter/finally functions
+    if (MF.getFunction().isSEHFilterFunction() ||
+        MF.getFunction().isSEHFinallyFunction())
       return;
 
     for (auto &MBB : MF) {
