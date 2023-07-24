@@ -504,6 +504,8 @@ FunctionPass *llvm::createCodeGenPreparePass() { return new CodeGenPrepare(); }
 bool CodeGenPrepare::runOnFunction(Function &F) {
   if (skipFunction(F))
     return false;
+  if (F.doesDisableCodeGenPreparePass())
+    return false;
 
   DL = &F.getParent()->getDataLayout();
 

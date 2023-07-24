@@ -80,6 +80,7 @@ private:
   bool IsFastISelDisabled : 1;            ///< Is fast-isel for this function disabled?
   bool IsSEHFilterFunction : 1;           ///< Is SEHFilterFunction?
   bool IsSEHFinallyFunction : 1;          ///< Is SEHFinallyFunction?
+  bool DisableCodeGenPreparePass : 1;     ///< Disable CodeGenPreparePass?
 
   /*
    * Value::SubclassData
@@ -200,6 +201,14 @@ public:
   bool isSEHFinallyFunction() const { return IsSEHFinallyFunction; }
   void setSEHFinallyFunction(bool SEHFinallyFunction = true) {
     IsSEHFinallyFunction = SEHFinallyFunction;
+  }
+
+  /// Disable CodeGenPreparePass?
+  bool doesDisableCodeGenPreparePass() const {
+    return DisableCodeGenPreparePass;
+  }
+  void setDisableCodeGenPreparePass(bool Disable = true) {
+    DisableCodeGenPreparePass = Disable;
   }
 
   /// Indicate that whether we should disable fast-isel for this function.
