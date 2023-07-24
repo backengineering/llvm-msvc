@@ -2159,6 +2159,7 @@ CodeGenFunction::GenerateSEHFilterFunction(CodeGenFunction &ParentCGF,
 
   FinishFunction(FilterExpr->getEndLoc());
 
+  CurFn->setSEHFilterFunction();
   return CurFn;
 }
 
@@ -2173,6 +2174,7 @@ CodeGenFunction::GenerateSEHFinallyFunction(CodeGenFunction &ParentCGF,
 
   FinishFunction(FinallyBlock->getEndLoc());
 
+  CurFn->setSEHFinallyFunction();
   return CurFn;
 }
 
