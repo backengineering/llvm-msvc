@@ -627,6 +627,7 @@ void CodeGenFunction::FixSEHEnd(llvm::InvokeInst *InvokeIst) {
 
 void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
   EnterCXXTryStmt(S);
+  bool NeedInsertSEH = false;
   {
     // Under async exceptions, catch(...) need to catch HW exception too
     // Mark scope with SehTryBegin as a SEH __try scope
@@ -646,7 +647,7 @@ void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
     llvm::BasicBlock *TryBB = nullptr;
     JumpDest TryLeave;
     llvm::InvokeInst *InvokeIst = nullptr;
-    bool NeedInsertSEH = (CatchAllStmt != nullptr) && CXXEHWithEha;
+    NeedInsertSEH = (CatchAllStmt != nullptr) && CXXEHWithEha;
     if (NeedInsertSEH) {
       // __leave block
       TryLeave = getJumpDestInCurrentScope("__try.__leave.CatchAll");
@@ -692,6 +693,8 @@ void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
     }
   }
   ExitCXXTryStmt(S);
+  if (NeedInsertSEH)
+    CreateSEHEndCall();
 }
 
 void CodeGenFunction::EnterCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
@@ -1754,6 +1757,30 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
       delete TryLeave.getBlock();
   }
   ExitSEHTryStmt(S);
+  
+  // Emit the SEHEndCall
+  CreateSEHEndCall();
+}
+
+void CodeGenFunction::CreateSEHEndCall() {
+  if (SizeTy->getBitWidth() != 32)
+    return;
+
+  llvm::Function *F = cast<llvm::Function>(
+      CGM.getModule()
+          .getOrInsertFunction("llvm_msvc_SEHEndCall",
+                               llvm::FunctionType::get(VoidTy, false))
+          .getCallee());
+  if (F->size() == 0) {
+    F->addFnAttr(llvm::Attribute::AttrKind::NoInline);
+    F->addFnAttr(llvm::Attribute::AttrKind::OptimizeNone);
+    F->addFnAttr("SEHEndCall");
+    F->setLinkage(llvm::GlobalValue::InternalLinkage);
+    llvm::BasicBlock *EntryBlock = createBasicBlock("EntryBlock", F);
+    llvm::IRBuilder<> IRB(EntryBlock);
+    IRB.CreateRetVoid();
+  }
+  Builder.CreateCall(F);
 }
 
 //  Recursively walk through blocks in a _try
