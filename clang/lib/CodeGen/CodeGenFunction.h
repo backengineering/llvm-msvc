@@ -3287,6 +3287,7 @@ public:
   void EmitSEHLeaveStmt(const SEHLeaveStmt &S);
   void EnterSEHTryStmt(const SEHTryStmt &S);
   void ExitSEHTryStmt(const SEHTryStmt &S);
+  void CreateSEHEndCall();
   void VolatilizeTryBlocks(llvm::BasicBlock *BB,
                            llvm::SmallPtrSet<llvm::BasicBlock *, 10> &V);
 
