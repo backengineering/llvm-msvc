@@ -614,6 +614,10 @@ static int getSuccState(DenseMap<BasicBlock *, int> &InitialStates, Function &F,
 
 bool WinEHStatePass::isStateStoreNeeded(EHPersonality Personality,
                                         CallBase &Call) {
+  // If the function is marked as 'SEHEndCall', it needs a state store.
+  if (Call.hasFnAttr("SEHEndCall"))
+	return true;
+
   // If the function is an invoke with cxx exception.
   // it does not need a state store.
   if (Personality == EHPersonality::MSVC_CXX)
