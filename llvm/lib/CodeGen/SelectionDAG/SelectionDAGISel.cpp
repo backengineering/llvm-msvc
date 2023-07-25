@@ -1327,13 +1327,6 @@ bool SelectionDAGISel::PrepareEHLandingPad() {
 
 // Remove empty instructions from the function.
 void SelectionDAGISel::removeEmptyInsts(MachineFunction *Fn) {
-  MachineModuleInfo &MMI = MF->getMMI();
-  llvm::WinEHFuncInfo *EHInfo = MF->getWinEHFuncInfo();
-  if (!EHInfo)
-    return;
-  if (MMI.getModule()->getDataLayout().getPointerSizeInBits() != 32)
-    return;
-
   // Collect empty Insts
   llvm::SmallVector<MachineInstr *, 32> EmptyInsts;
   for (auto &MBB : *Fn) {
