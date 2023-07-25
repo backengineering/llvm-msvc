@@ -340,6 +340,9 @@ private:
   // Mark and Report IPToState for each Block under AsynchEH
   void reportIPToStateForBlocks(MachineFunction *Fn);
 
+  // Fix seh end call
+  void fixSEHEndCall(MachineFunction *Fn);
+
   /// Perform instruction selection on all basic blocks in the function.
   void SelectAllBasicBlocks(const Function &Fn);
 
