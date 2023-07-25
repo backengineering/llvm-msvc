@@ -1331,6 +1331,9 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
   llvm::WinEHFuncInfo *EHInfo = MF->getWinEHFuncInfo();
   if (!EHInfo)
     return;
+  if (classifyEHPersonality(MF->getFunction().getPersonalityFn()) ==
+      EHPersonality::MSVC_X86SEH)
+    return;
   for (auto MBBI = MF->begin(); MBBI != MF->end(); ++MBBI) {
     MachineBasicBlock *MBB = &*MBBI;
     // Filter IPToState when MBB is empty
