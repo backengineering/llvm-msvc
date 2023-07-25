@@ -1325,6 +1325,37 @@ bool SelectionDAGISel::PrepareEHLandingPad() {
   return true;
 }
 
+// Fix seh end call
+void SelectionDAGISel::fixSEHEndCall(MachineFunction *Fn) {
+  MachineModuleInfo &MMI = MF->getMMI();
+  llvm::WinEHFuncInfo *EHInfo = MF->getWinEHFuncInfo();
+  if (!EHInfo)
+    return;
+  if (MMI.getModule()->getDataLayout().getPointerSizeInBits() != 32)
+    return;
+
+  // Collect SEHEndCall Insts
+  llvm::SmallVector<MachineInstr *, 32> SEHEndCallInsts;
+  for (auto &MBB : *Fn) {
+    for (auto &MI : MBB) {
+      if (!MI.isCall())
+        continue;
+      const MachineOperand &MO = MI.getOperand(0);
+      if (!MO.isGlobal())
+        continue;
+      const Function *F = dyn_cast<Function>(MO.getGlobal());
+      if (!F)
+        continue;
+      if (F->hasFnAttribute("SEHEndCall"))
+        SEHEndCallInsts.push_back(&MI);
+    }
+  }
+
+  // Remove SEHEndCall Insts
+  for (auto *MI : SEHEndCallInsts)
+    MI->removeFromParent();
+}
+
 // Mark and Report IPToState for each Block under IsEHa
 void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
   MachineModuleInfo &MMI = MF->getMMI();
@@ -1761,6 +1792,9 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
 
   // Report Block State under
   reportIPToStateForBlocks(MF);
+
+  // Fix seh end call
+  fixSEHEndCall(MF);
 
   SP.copyToMachineFrameInfo(MF->getFrameInfo());
 
