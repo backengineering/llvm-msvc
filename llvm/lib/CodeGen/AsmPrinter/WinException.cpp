@@ -619,6 +619,17 @@ void WinException::emitCSpecificHandlerTable(const MachineFunction *MF) {
     LastStartLabel = StateChange.NewStartLabel;
     LastEHState = StateChange.NewState;
   }
+  for (auto Entry : FuncInfo.SEHUnwindMap) {
+    if (!Entry.IsFinally && Entry.ToState != -1) {
+      // Mark up the destination of _local_unwind so it doesn't unwind
+      // too far.
+      //
+      // FIXME: Can this overlap with the EH_LABEL for an invoke?
+      auto *Handler = Entry.Handler.get<MachineBasicBlock *>();
+      const MCSymbol *Begin = Handler->getSymbol();
+      emitSEHActionsForRange(FuncInfo, Begin, Begin, Entry.ToState);
+    }
+  }
 
   OS.emitLabel(TableEnd);
 }
