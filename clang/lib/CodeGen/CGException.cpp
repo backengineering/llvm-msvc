@@ -1714,7 +1714,8 @@ llvm::BasicBlock *CodeGenFunction::getEHResumeBlock(bool isCleanup) {
 }
 
 void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
-  EnterSEHTryStmt(S);
+  bool ContainsRetStmt = false;
+  EnterSEHTryStmt(S, ContainsRetStmt);
   {
     // __leave block
     JumpDest TryLeave = getJumpDestInCurrentScope("__try.__leave");
@@ -1756,7 +1757,7 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
     else
       delete TryLeave.getBlock();
   }
-  ExitSEHTryStmt(S);
+  ExitSEHTryStmt(S, ContainsRetStmt);
   
   // Emit the SEHEndCall
   CreateSEHEndCall();
@@ -1816,8 +1817,9 @@ void CodeGenFunction::VolatilizeTryBlocks(
 namespace {
 struct PerformSEHFinally final : EHScopeStack::Cleanup {
   llvm::Function *OutlinedFinally;
-  PerformSEHFinally(llvm::Function *OutlinedFinally)
-      : OutlinedFinally(OutlinedFinally) {}
+  bool RetFromFinally;
+  PerformSEHFinally(llvm::Function *OutlinedFinally, bool RetFromFinally)
+      : OutlinedFinally(OutlinedFinally), RetFromFinally(RetFromFinally) {}
 
   void Emit(CodeGenFunction &CGF, Flags F) override {
     ASTContext &Context = CGF.getContext();
@@ -1861,6 +1863,21 @@ struct PerformSEHFinally final : EHScopeStack::Cleanup {
 
     auto Callee = CGCallee::forDirect(OutlinedFinally);
     CGF.EmitCall(FnInfo, Callee, ReturnValueSlot(), Args);
+
+    if (F.isForEHCleanup() && RetFromFinally) {
+      llvm::BasicBlock *AbnormalCont = CGF.createBasicBlock("if.then");
+      llvm::BasicBlock *NormalCont = CGF.createBasicBlock("if.end");
+      llvm::Value *ShouldRetLoad =
+          CGF.Builder.CreateLoad(CGF.SEHRetNowStack.back());
+      llvm::Value *ShouldRet = CGF.Builder.CreateIsNotNull(ShouldRetLoad);
+
+      CGF.Builder.CreateCondBr(ShouldRet, AbnormalCont, NormalCont);
+      CGF.EmitBlock(AbnormalCont);
+      CGF.EmitSEHLocalUnwind();
+      CGF.Builder.CreateUnreachable();
+
+      CGF.EmitBlock(NormalCont);
+    }
   }
 };
 } // end anonymous namespace
@@ -1872,12 +1889,13 @@ struct CaptureFinder : ConstStmtVisitor<CaptureFinder> {
   const VarDecl *ParentThis;
   llvm::SmallSetVector<const VarDecl *, 4> Captures;
   Address SEHCodeSlot = Address::invalid();
+  bool ContainsRetStmt = false;
   CaptureFinder(CodeGenFunction &ParentCGF, const VarDecl *ParentThis)
       : ParentCGF(ParentCGF), ParentThis(ParentThis) {}
 
   // Return true if we need to do any capturing work.
   bool foundCaptures() {
-    return !Captures.empty() || SEHCodeSlot.isValid();
+    return !Captures.empty() || SEHCodeSlot.isValid() || ContainsRetStmt;
   }
 
   void Visit(const Stmt *S) {
@@ -1919,6 +1937,25 @@ struct CaptureFinder : ConstStmtVisitor<CaptureFinder> {
       break;
     }
   }
+
+  void VisitReturnStmt(const ReturnStmt *) { ContainsRetStmt = true; }
+};
+} // end anonymous namespace
+
+namespace {
+/// Find all local variable captures in the statement.
+struct ReturnStmtFinder : ConstStmtVisitor<ReturnStmtFinder> {
+  bool ContainsRetStmt = false;
+
+  void Visit(const Stmt *S) {
+    // See if this is a capture, then recurse.
+    ConstStmtVisitor::Visit(S);
+    for (const Stmt *Child : S->children())
+      if (Child)
+        Visit(Child);
+  }
+
+  void VisitReturnStmt(const ReturnStmt *) { ContainsRetStmt = true; }
 };
 } // end anonymous namespace
 
@@ -1967,7 +2004,8 @@ void CodeGenFunction::EmitCapturedLocals(CodeGenFunction &ParentCGF,
                                          bool IsFilter) {
   // Find all captures in the Stmt.
   CaptureFinder Finder(ParentCGF, ParentCGF.CXXABIThisDecl);
-  Finder.Visit(OutlinedStmt);
+  if (OutlinedStmt)
+    Finder.Visit(OutlinedStmt);
 
   // We can exit early on x86_64 when there are no captures. We just have to
   // save the exception code in filters so that __exception_code() works.
@@ -2107,6 +2145,16 @@ void CodeGenFunction::EmitCapturedLocals(CodeGenFunction &ParentCGF,
 
   if (IsFilter)
     EmitSEHExceptionCodeSave(ParentCGF, ParentFP, EntryFP);
+
+  if (Finder.ContainsRetStmt) {
+    SEHRetNowParent = recoverAddrOfEscapedLocal(
+        ParentCGF, ParentCGF.SEHRetNowStack.back(), ParentFP);
+    Address ParentSEHRetVal =
+        ParentCGF.ParentCGF ? ParentCGF.SEHReturnValue : ParentCGF.ReturnValue;
+    if (ParentSEHRetVal.isValid())
+      SEHReturnValue =
+          recoverAddrOfEscapedLocal(ParentCGF, ParentSEHRetVal, ParentFP);
+  }
 }
 
 /// Arrange a function prototype that can be called by Windows exception
@@ -2266,19 +2314,93 @@ llvm::Value *CodeGenFunction::EmitSEHAbnormalTermination() {
 
 void CodeGenFunction::pushSEHCleanup(CleanupKind Kind,
                                      llvm::Function *FinallyFunc) {
-  EHStack.pushCleanup<PerformSEHFinally>(Kind, FinallyFunc);
+  EHStack.pushCleanup<PerformSEHFinally>(Kind, FinallyFunc, false);
 }
 
-void CodeGenFunction::EnterSEHTryStmt(const SEHTryStmt &S) {
+void CodeGenFunction::EnterSEHTryStmt(const SEHTryStmt &S,
+                                      bool &ContainsRetStmt) {
   CodeGenFunction HelperCGF(CGM, /*suppressNewContext=*/true);
   HelperCGF.ParentCGF = this;
   if (const SEHFinallyStmt *Finally = S.getFinallyHandler()) {
+    ReturnStmtFinder Finder;
+    Finder.Visit(Finally);
+    ContainsRetStmt = Finder.ContainsRetStmt;
+    if (ContainsRetStmt) {
+      // Suppose we have something like:
+      // __try {
+      //   f1();
+      // } __finally {
+      //   f2();
+      //   if (z)
+      //     return;
+      //   f3();
+      // }
+      //
+      // We want to generate code something like this, where "StopUnwinding()"
+      // refers to the operation of aborting the unwind, and jumping back
+      // to normal code.
+      //
+      //  int immediate_return = 0;
+      //  __try {
+      //    f1();
+      //  } __finally {
+      //    f2();
+      //    if (z) {
+      //      immediate_return = 1;
+      //      goto end_of_finally;
+      //    }
+      //    f3();
+      //    end_of_finally:
+      //    if (_abnormal_termination())
+      //      StopUnwinding();
+      //  }
+      //  if (immediate_return) {
+      //    return;
+      //  }
+      //
+      // To handle the non-unwind case, we need to synthesize the
+      // "immediate_return" variable, and use it to change control flow
+      // after the finally block.
+      //
+      // To make "StopUnwinding()" work, we use _local_unwind.  This function
+      // tells the SEH unwinder to recompute the unwind action: instead of
+      // using the __except handler that was already computed, stop unwinding
+      // when the unwinder reaches the current function.  (The mechanism used
+      // here is unofficially called a "collided unwind".)
+      //
+      // We represent the destination of _local_unwind with a fake CatchPad:
+      // when the backend sees a filter named "__IsLocalUnwind", it arranges
+      // the unwind tables so that _local_unwind stops at that CatchPad, but
+      // other unwinding ignores it.
+      //
+      // Note that this construct could itself be inside an __try or __finally
+      // block.
+      //
+      // If it's inside the __try of a __try/__finally, the outer __finally
+      // executes before the function returns.
+      //
+      // If it's inside a __finally, we need to jump out of that __finally
+      // in a similar way.
+
+      // Initialize the variable controlling the exception filter.
+      SEHRetNowStack.push_back(
+          CreateTempAlloca(CGM.Int8Ty, CharUnits::fromQuantity(1), "retnow"));
+      Builder.CreateStore(Builder.getInt8(0), SEHRetNowStack.back());
+
+      // Create the exception filter.
+      EHCatchScope *CatchScope = EHStack.pushCatch(1);
+      llvm::Function *FilterFunc = GenerateSEHIsLocalUnwindFunction();
+      llvm::Constant *OpaqueFunc =
+          llvm::ConstantExpr::getBitCast(FilterFunc, Int8PtrTy);
+      CatchScope->setHandler(0, OpaqueFunc, createBasicBlock("__except.ret"));
+    }
     // Outline the finally block.
     llvm::Function *FinallyFunc =
         HelperCGF.GenerateSEHFinallyFunction(*this, *Finally);
 
     // Push a cleanup for __finally blocks.
-    EHStack.pushCleanup<PerformSEHFinally>(NormalAndEHCleanup, FinallyFunc);
+    EHStack.pushCleanup<PerformSEHFinally>(NormalAndEHCleanup, FinallyFunc,
+                                           ContainsRetStmt);
     return;
   }
 
@@ -2310,10 +2432,73 @@ void CodeGenFunction::EnterSEHTryStmt(const SEHTryStmt &S) {
   CatchScope->setHandler(0, OpaqueFunc, createBasicBlock("__except.ret"));
 }
 
-void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S) {
+llvm::Function *CodeGenFunction::GenerateSEHIsLocalUnwindFunction() {
+  // IsLocalUnwind is a void dummy func just for readability.
+  if (llvm::Function *F = CGM.getModule().getFunction("__IsLocalUnwind"))
+    return F;
+
+  llvm::LLVMContext &Ctx = getLLVMContext();
+  llvm::Type *ArgTys[] = {llvm::Type::getInt8PtrTy(Ctx),
+                          llvm::Type::getInt8PtrTy(Ctx)};
+  return llvm::Function::Create(
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Ctx), ArgTys, false),
+      llvm::GlobalVariable::ExternalWeakLinkage, "__IsLocalUnwind",
+      &CGM.getModule());
+}
+
+void CodeGenFunction::EmitSEHLocalUnwind() {
+  if (CGM.getTarget().getTriple().getArch() != llvm::Triple::x86)
+    EmitRuntimeCallOrInvoke(CGM.getIntrinsic(llvm::Intrinsic::seh_localunwind));
+}
+
+void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S,
+                                     bool ContainsRetStmt) {
   // Just pop the cleanup if it's a __finally block.
   if (S.getFinallyHandler()) {
     PopCleanupBlock();
+    if (ContainsRetStmt) {
+      // Create __except block and control flow handling for return from
+      // __finally. See comment in EnterSEHTryStmt.
+      //
+      // First, create the point where we check for a return
+      // from the __finally.
+      llvm::BasicBlock *ContBB = createBasicBlock("__finally.cont");
+      if (HaveInsertPoint())
+        Builder.CreateBr(ContBB);
+
+      EmitBlock(ContBB);
+
+      // On the normal path, check if we have a return-from-finally.
+      llvm::BasicBlock *AbnormalCont = createBasicBlock("if.then");
+      llvm::BasicBlock *NormalCont = createBasicBlock("if.end");
+      llvm::Value *ShouldRetLoad = Builder.CreateLoad(SEHRetNowStack.back());
+      llvm::Value *ShouldRet = Builder.CreateIsNotNull(ShouldRetLoad);
+
+      Builder.CreateCondBr(ShouldRet, AbnormalCont, NormalCont);
+
+      // Check if our filter function returned true.
+      EHCatchScope &CatchScope = cast<EHCatchScope>(*EHStack.begin());
+      emitCatchDispatchBlock(*this, CatchScope);
+
+      // Grab the block before we pop the handler.
+      llvm::BasicBlock *CatchPadBB = CatchScope.getHandler(0).Block;
+      EHStack.popCatch();
+
+      // The catch block only catches return-from-finally.
+      EmitBlockAfterUses(CatchPadBB);
+      llvm::CatchPadInst *CPI =
+          cast<llvm::CatchPadInst>(CatchPadBB->getFirstNonPHI());
+      Builder.CreateCatchRet(CPI, AbnormalCont);
+      EmitBlock(AbnormalCont);
+
+      // If the try block is nested inside a finally block, forward the
+      // return from __finally to the parent function.
+      if (SEHRetNowParent.isValid())
+        Builder.CreateStore(Builder.getInt8(1), SEHRetNowParent);
+      EmitBranchThroughCleanup(ReturnBlock);
+
+      EmitBlock(NormalCont);
+    }
     return;
   }
 
