@@ -1774,6 +1774,7 @@ void CodeGenFunction::CreateSEHEndCall() {
   if (F->size() == 0) {
     F->addFnAttr(llvm::Attribute::AttrKind::NoInline);
     F->addFnAttr(llvm::Attribute::AttrKind::OptimizeNone);
+    F->addFnAttr("EmptyInst");
     F->addFnAttr("SEHEndCall");
     F->setLinkage(llvm::GlobalValue::InternalLinkage);
     llvm::BasicBlock *EntryBlock = createBasicBlock("EntryBlock", F);
