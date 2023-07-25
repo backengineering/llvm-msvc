@@ -3056,6 +3056,43 @@ void SelectionDAGBuilder::visitInvoke(const InvokeInst &I) {
       DAG.setRoot(DAG.getNode(ISD::INTRINSIC_VOID, getCurSDLoc(), VTs, Ops));
       break;
     }
+    case Intrinsic::seh_localunwind: {
+      if (!isa<CatchSwitchInst>(EHPadBB->getTerminator())) {
+          report_fatal_error("localunwind doesn't point to catchswitch");
+      }
+      auto *CatchSwitch = cast<CatchSwitchInst>(EHPadBB->getTerminator());
+      if (CatchSwitch->getNumHandlers() == 0) {
+          report_fatal_error("catchswitch with no handler");
+      }
+
+      const TargetLowering &TLI = DAG.getTargetLoweringInfo();
+      TargetLowering::ArgListEntry SP, DestBB;
+      Type *PtrTy = PointerType::getInt8PtrTy(*DAG.getContext());
+      EVT PtrVT = TLI.getPointerTy(DAG.getDataLayout());
+      SP.Node = DAG.getNode(ISD::FRAMEADDR, getCurSDLoc(), PtrVT,
+                            DAG.getIntPtrConstant(0, getCurSDLoc()));
+      SP.Ty = PtrTy;
+      // FIXME: Using a BlockAddress here is messy, but there isn't any
+      // node that directly represents taking the address of an MBB.
+      BasicBlock *HandlerBB =
+          const_cast<BasicBlock *>(*CatchSwitch->handler_begin());
+      MachineBasicBlock *HandlerMBB = FuncInfo.MBBMap[HandlerBB];
+      HandlerMBB->setMachineBlockAddressTaken();
+      HandlerMBB->setAddressTakenIRBlock(HandlerBB);
+      DestBB.Node = DAG.getBlockAddress(BlockAddress::get(HandlerBB), PtrVT);
+      DestBB.Ty = PtrTy;
+      TargetLowering::ArgListTy Args{SP, DestBB};
+      SDValue Callee = DAG.getExternalSymbol("_local_unwind", PtrVT);
+      TargetLowering::CallLoweringInfo CLI(DAG);
+      CLI.setDebugLoc(getCurSDLoc())
+          .setChain(getRoot())
+          .setCallee(CallingConv::C, Type::getVoidTy(*DAG.getContext()), Callee,
+                     std::move(Args))
+          .setNoReturn();
+      CLI.CB = &I;
+      lowerInvokable(CLI, EHPadBB);
+      break;
+    }
     }
   } else if (I.countOperandBundlesOfType(LLVMContext::OB_deopt)) {
     // Currently we do not lower any intrinsic calls with deopt operand bundles.
