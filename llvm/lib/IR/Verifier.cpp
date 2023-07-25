@@ -4999,6 +4999,7 @@ void Verifier::visitInstruction(Instruction &I) {
                 F->getIntrinsicID() == Intrinsic::experimental_patchpoint_i64 ||
                 F->getIntrinsicID() == Intrinsic::experimental_gc_statepoint ||
                 F->getIntrinsicID() == Intrinsic::wasm_rethrow ||
+                F->getIntrinsicID() == Intrinsic::seh_localunwind ||
                 IsAttachedCallOperand(F, CBI, i),
             "Cannot invoke an intrinsic other than donothing, patchpoint, "
             "statepoint, coro_resume, coro_destroy or clang.arc.attachedcall",
