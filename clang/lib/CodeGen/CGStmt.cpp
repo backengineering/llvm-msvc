@@ -1301,10 +1301,10 @@ void CodeGenFunction::EmitReturnStmt(const ReturnStmt &S) {
                         ReturnLocation);
   }
 
-  // Returning from an outlined SEH helper is UB, and we already warn on it.
+  Address ReturnValue = this->ReturnValue;
   if (IsOutlinedSEHHelper) {
-    Builder.CreateUnreachable();
-    Builder.ClearInsertionPoint();
+    Builder.CreateStore(Builder.getInt8(1), SEHRetNowParent);
+    ReturnValue = SEHReturnValue;
   }
 
   // Emit the result value, even if unused, to evaluate the side effects.
