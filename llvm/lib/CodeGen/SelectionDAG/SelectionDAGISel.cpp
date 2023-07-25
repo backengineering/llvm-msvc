@@ -1325,8 +1325,8 @@ bool SelectionDAGISel::PrepareEHLandingPad() {
   return true;
 }
 
-// Fix seh end call
-void SelectionDAGISel::fixSEHEndCall(MachineFunction *Fn) {
+// Remove empty instructions from the function.
+void SelectionDAGISel::removeEmptyInsts(MachineFunction *Fn) {
   MachineModuleInfo &MMI = MF->getMMI();
   llvm::WinEHFuncInfo *EHInfo = MF->getWinEHFuncInfo();
   if (!EHInfo)
@@ -1334,8 +1334,8 @@ void SelectionDAGISel::fixSEHEndCall(MachineFunction *Fn) {
   if (MMI.getModule()->getDataLayout().getPointerSizeInBits() != 32)
     return;
 
-  // Collect SEHEndCall Insts
-  llvm::SmallVector<MachineInstr *, 32> SEHEndCallInsts;
+  // Collect empty Insts
+  llvm::SmallVector<MachineInstr *, 32> EmptyInsts;
   for (auto &MBB : *Fn) {
     for (auto &MI : MBB) {
       if (!MI.isCall())
@@ -1346,13 +1346,13 @@ void SelectionDAGISel::fixSEHEndCall(MachineFunction *Fn) {
       const Function *F = dyn_cast<Function>(MO.getGlobal());
       if (!F)
         continue;
-      if (F->hasFnAttribute("SEHEndCall"))
-        SEHEndCallInsts.push_back(&MI);
+      if (F->hasFnAttribute("EmptyInst"))
+        EmptyInsts.push_back(&MI);
     }
   }
 
-  // Remove SEHEndCall Insts
-  for (auto *MI : SEHEndCallInsts)
+  // Remove empty Insts
+  for (auto *MI : EmptyInsts)
     MI->removeFromParent();
 }
 
@@ -1793,8 +1793,8 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
   // Report Block State under
   reportIPToStateForBlocks(MF);
 
-  // Fix seh end call
-  fixSEHEndCall(MF);
+  // Remove empty instructions from the function
+  removeEmptyInsts(MF);
 
   SP.copyToMachineFrameInfo(MF->getFrameInfo());
 
