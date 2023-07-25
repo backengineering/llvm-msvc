@@ -6885,6 +6885,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.addOptOutFlag(CmdArgs, options::OPT_fassume_sane_operator_new,
                      options::OPT_fno_assume_sane_operator_new);
 
+  // -fassume-unique-vtables is on by default.
+  Args.addOptOutFlag(CmdArgs, options::OPT_fassume_unique_vtables,
+                     options::OPT_fno_assume_unique_vtables);
+
   // -frelaxed-template-template-args is off by default, as it is a severe
   // breaking change until a corresponding change to template partial ordering
   // is provided.
@@ -7197,7 +7201,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       Args.hasFlag(options::OPT_frecord_command_line,
                    options::OPT_fno_record_command_line, false);
   if (FRecordSwitches && !Triple.isOSBinFormatELF() &&
-      !Triple.isOSBinFormatXCOFF())
+      !Triple.isOSBinFormatXCOFF() && !Triple.isOSBinFormatMachO())
     D.Diag(diag::err_drv_unsupported_opt_for_target)
         << Args.getLastArg(options::OPT_frecord_command_line)->getAsString(Args)
         << TripleStr;

@@ -1265,6 +1265,13 @@ def static_libsan : Flag<["-"], "static-libsan">,
 def : Flag<["-"], "shared-libasan">, Alias<shared_libsan>;
 def fasm : Flag<["-"], "fasm">, Group<f_Group>;
 
+defm assume_unique_vtables : BoolFOption<"assume-unique-vtables",
+  CodeGenOpts<"AssumeUniqueVTables">, DefaultTrue,
+  PosFlag<SetTrue>,
+  NegFlag<SetFalse, [CC1Option],
+          "Disable optimizations based on vtable pointer identity">,
+  BothFlags<[CoreOption]>>;
+
 def fassume_sane_operator_new : Flag<["-"], "fassume-sane-operator-new">, Group<f_Group>;
 def fastcp : Flag<["-"], "fastcp">, Group<f_Group>;
 def fastf : Flag<["-"], "fastf">, Group<f_Group>;
@@ -1272,9 +1279,7 @@ def fast : Flag<["-"], "fast">, Group<f_Group>;
 def fasynchronous_unwind_tables : Flag<["-"], "fasynchronous-unwind-tables">, Group<f_Group>;
 
 defm double_square_bracket_attributes : BoolFOption<"double-square-bracket-attributes",
-  LangOpts<"DoubleSquareBracketAttributes">, Default<!strconcat(cpp11.KeyPath, "||", c2x.KeyPath)>,
-  PosFlag<SetTrue, [], "Enable">, NegFlag<SetFalse, [], "Disable">,
-  BothFlags<[NoXarchOption, CC1Option], " '[[]]' attributes in all C and C++ language modes">>;
+  LangOpts<"DoubleSquareBracketAttributes">, DefaultTrue, PosFlag<SetTrue>, NegFlag<SetFalse>>;
 
 defm autolink : BoolFOption<"autolink",
   CodeGenOpts<"Autolink">, DefaultTrue,
@@ -4972,6 +4977,8 @@ def mavxifma : Flag<["-"], "mavxifma">, Group<m_x86_Features_Group>;
 def mno_avxifma : Flag<["-"], "mno-avxifma">, Group<m_x86_Features_Group>;
 def mavxneconvert : Flag<["-"], "mavxneconvert">, Group<m_x86_Features_Group>;
 def mno_avxneconvert : Flag<["-"], "mno-avxneconvert">, Group<m_x86_Features_Group>;
+def mavxvnniint16 : Flag<["-"], "mavxvnniint16">, Group<m_x86_Features_Group>;
+def mno_avxvnniint16 : Flag<["-"], "mno-avxvnniint16">, Group<m_x86_Features_Group>;
 def mavxvnniint8 : Flag<["-"], "mavxvnniint8">, Group<m_x86_Features_Group>;
 def mno_avxvnniint8 : Flag<["-"], "mno-avxvnniint8">, Group<m_x86_Features_Group>;
 def mavxvnni : Flag<["-"], "mavxvnni">, Group<m_x86_Features_Group>;
@@ -5068,6 +5075,12 @@ def msgx : Flag<["-"], "msgx">, Group<m_x86_Features_Group>;
 def mno_sgx : Flag<["-"], "mno-sgx">, Group<m_x86_Features_Group>;
 def msha : Flag<["-"], "msha">, Group<m_x86_Features_Group>;
 def mno_sha : Flag<["-"], "mno-sha">, Group<m_x86_Features_Group>;
+def msha512 : Flag<["-"], "msha512">, Group<m_x86_Features_Group>;
+def mno_sha512 : Flag<["-"], "mno-sha512">, Group<m_x86_Features_Group>;
+def msm3 : Flag<["-"], "msm3">, Group<m_x86_Features_Group>;
+def mno_sm3 : Flag<["-"], "mno-sm3">, Group<m_x86_Features_Group>;
+def msm4 : Flag<["-"], "msm4">, Group<m_x86_Features_Group>;
+def mno_sm4 : Flag<["-"], "mno-sm4">, Group<m_x86_Features_Group>;
 def mtbm : Flag<["-"], "mtbm">, Group<m_x86_Features_Group>;
 def mno_tbm : Flag<["-"], "mno-tbm">, Group<m_x86_Features_Group>;
 def mtsxldtrk : Flag<["-"], "mtsxldtrk">, Group<m_x86_Features_Group>;
@@ -5383,7 +5396,7 @@ def fopenacc : Flag<["-"], "fopenacc">, Group<f_Group>,
 def fdefault_double_8 : Flag<["-"],"fdefault-double-8">, Group<f_Group>,
   HelpText<"Set the default double precision kind to an 8 byte wide type">;
 def fdefault_integer_8 : Flag<["-"],"fdefault-integer-8">, Group<f_Group>,
-  HelpText<"Set the default integer kind to an 8 byte wide type">;
+  HelpText<"Set the default integer and logical kind to an 8 byte wide type">;
 def fdefault_real_8 : Flag<["-"],"fdefault-real-8">, Group<f_Group>,
   HelpText<"Set the default real kind to an 8 byte wide type">;
 def flarge_sizes : Flag<["-"],"flarge-sizes">, Group<f_Group>,

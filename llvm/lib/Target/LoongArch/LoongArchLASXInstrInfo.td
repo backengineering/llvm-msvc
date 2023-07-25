@@ -15,161 +15,156 @@
 //===----------------------------------------------------------------------===//
 
 class LASX1RI13_XI<bits<32> op, Operand ImmOpnd = simm13>
-    : Fmt1RI13_XI<op, (outs LASX256:$xd), (ins ImmOpnd:$imm13),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $imm13">;
+    : Fmt1RI13_XI<op, (outs LASX256:$xd), (ins ImmOpnd:$imm13), "$xd, $imm13">;
 
 class LASX2R_XX<bits<32> op>
-    : Fmt2R_XX<op, (outs LASX256:$xd), (ins LASX256:$xj),
-                    !tolower(!subst("_", ".", NAME)), "$xd, $xj">;
+    : Fmt2R_XX<op, (outs LASX256:$xd), (ins LASX256:$xj), "$xd, $xj">;
 
 class LASX2R_XR<bits<32> op>
-    : Fmt2R_XR<op, (outs LASX256:$xd), (ins GPR:$rj),
-                    !tolower(!subst("_", ".", NAME)), "$xd, $rj">;
+    : Fmt2R_XR<op, (outs LASX256:$xd), (ins GPR:$rj), "$xd, $rj">;
 
 class LASX2R_CX<bits<32> op>
-    : Fmt2R_CX<op, (outs CFR:$cd), (ins LASX256:$xj),
-                    !tolower(!subst("_", ".", NAME)), "$cd, $xj">;
+    : Fmt2R_CX<op, (outs CFR:$cd), (ins LASX256:$xj), "$cd, $xj">;
 
 class LASX2RI1_XXI<bits<32> op, Operand ImmOpnd = uimm1>
     : Fmt2RI1_XXI<op, (outs LASX256:$xd), (ins LASX256:$xj, ImmOpnd:$imm1),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm1">;
+                  "$xd, $xj, $imm1">;
 
 class LASX2RI2_XXI<bits<32> op, Operand ImmOpnd = uimm2>
     : Fmt2RI2_XXI<op, (outs LASX256:$xd), (ins LASX256:$xj, ImmOpnd:$imm2),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm2">;
+                  "$xd, $xj, $imm2">;
 
 class LASX2RI2_RXI<bits<32> op, Operand ImmOpnd = uimm2>
     : Fmt2RI2_RXI<op, (outs GPR:$rd), (ins LASX256:$xj, ImmOpnd:$imm2),
-                  !tolower(!subst("_", ".", NAME)), "$rd, $xj, $imm2">;
+                  "$rd, $xj, $imm2">;
 
 class LASX2RI3_XXI<bits<32> op, Operand ImmOpnd = uimm3>
     : Fmt2RI3_XXI<op, (outs LASX256:$xd), (ins LASX256:$xj, ImmOpnd:$imm3),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm3">;
+                  "$xd, $xj, $imm3">;
 
 class LASX2RI3_RXI<bits<32> op, Operand ImmOpnd = uimm3>
     : Fmt2RI3_RXI<op, (outs GPR:$rd), (ins LASX256:$xj, ImmOpnd:$imm3),
-                  !tolower(!subst("_", ".", NAME)), "$rd, $xj, $imm3">;
+                  "$rd, $xj, $imm3">;
 
 class LASX2RI4_XXI<bits<32> op, Operand ImmOpnd = uimm4>
     : Fmt2RI4_XXI<op, (outs LASX256:$xd), (ins LASX256:$xj, ImmOpnd:$imm4),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm4">;
+                  "$xd, $xj, $imm4">;
 
 class LASX2RI4_XRI<bits<32> op, Operand ImmOpnd = uimm4>
     : Fmt2RI4_XRI<op, (outs LASX256:$xd), (ins GPR:$rj, ImmOpnd:$imm4),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $rj, $imm4">;
+                  "$xd, $rj, $imm4">;
 
 class LASX2RI4_RXI<bits<32> op, Operand ImmOpnd = uimm4>
     : Fmt2RI4_RXI<op, (outs GPR:$rd), (ins LASX256:$xj, ImmOpnd:$imm4),
-                  !tolower(!subst("_", ".", NAME)), "$rd, $xj, $imm4">;
+                  "$rd, $xj, $imm4">;
 
 class LASX2RI5_XXI<bits<32> op, Operand ImmOpnd = uimm5>
     : Fmt2RI5_XXI<op, (outs LASX256:$xd), (ins LASX256:$xj, ImmOpnd:$imm5),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm5">;
+                  "$xd, $xj, $imm5">;
 
 class LASX2RI6_XXI<bits<32> op, Operand ImmOpnd = uimm6>
     : Fmt2RI6_XXI<op, (outs LASX256:$xd), (ins LASX256:$xj, ImmOpnd:$imm6),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm6">;
+                  "$xd, $xj, $imm6">;
 
 class LASX2RI8_XXI<bits<32> op, Operand ImmOpnd = uimm8>
     : Fmt2RI8_XXI<op, (outs LASX256:$xd), (ins LASX256:$xj, ImmOpnd:$imm8),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm8">;
+                  "$xd, $xj, $imm8">;
 
 class LASX2RI8I2_XRII<bits<32> op, Operand ImmOpnd = simm8,
                      Operand IdxOpnd = uimm2>
-    : Fmt2RI8I2_XRII<op, (outs LASX256:$xd),
-                     (ins GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm2),
-                     !tolower(!subst("_", ".", NAME)),
+    : Fmt2RI8I2_XRII<op, (outs),
+                     (ins LASX256:$xd, GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm2),
                      "$xd, $rj, $imm8, $imm2">;
 class LASX2RI8I3_XRII<bits<32> op, Operand ImmOpnd = simm8,
                      Operand IdxOpnd = uimm3>
-    : Fmt2RI8I3_XRII<op, (outs LASX256:$xd),
-                     (ins GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm3),
-                     !tolower(!subst("_", ".", NAME)),
+    : Fmt2RI8I3_XRII<op, (outs),
+                     (ins LASX256:$xd, GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm3),
                      "$xd, $rj, $imm8, $imm3">;
 class LASX2RI8I4_XRII<bits<32> op, Operand ImmOpnd = simm8,
                      Operand IdxOpnd = uimm4>
-    : Fmt2RI8I4_XRII<op, (outs LASX256:$xd),
-                     (ins GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm4),
-                     !tolower(!subst("_", ".", NAME)),
+    : Fmt2RI8I4_XRII<op, (outs),
+                     (ins LASX256:$xd, GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm4),
                      "$xd, $rj, $imm8, $imm4">;
 class LASX2RI8I5_XRII<bits<32> op, Operand ImmOpnd = simm8,
                      Operand IdxOpnd = uimm5>
-    : Fmt2RI8I5_XRII<op, (outs LASX256:$xd),
-                     (ins GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm5),
-                     !tolower(!subst("_", ".", NAME)),
+    : Fmt2RI8I5_XRII<op, (outs),
+                     (ins LASX256:$xd, GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm5),
                      "$xd, $rj, $imm8, $imm5">;
-
-class LASX2RI9_XRI<bits<32> op, Operand ImmOpnd = simm9_lsl3>
-    : Fmt2RI9_XRI<op, (outs LASX256:$xd), (ins GPR:$rj, ImmOpnd:$imm9),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $rj, $imm9">;
-
-class LASX2RI10_XRI<bits<32> op, Operand ImmOpnd = simm10_lsl2>
-    : Fmt2RI10_XRI<op, (outs LASX256:$xd), (ins GPR:$rj, ImmOpnd:$imm10),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $rj, $imm10">;
-
-class LASX2RI11_XRI<bits<32> op, Operand ImmOpnd = simm11_lsl1>
-    : Fmt2RI11_XRI<op, (outs LASX256:$xd), (ins GPR:$rj, ImmOpnd:$imm11),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $rj, $imm11">;
-
-class LASX2RI12_XRI<bits<32> op, Operand ImmOpnd = simm12>
-    : Fmt2RI12_XRI<op, (outs LASX256:$xd), (ins GPR:$rj, ImmOpnd:$imm12),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $rj, $imm12">;
 
 class LASX3R_XXX<bits<32> op>
     : Fmt3R_XXX<op, (outs LASX256:$xd), (ins LASX256:$xj, LASX256:$xk),
-                !tolower(!subst("_", ".", NAME)), "$xd, $xj, $xk">;
+                "$xd, $xj, $xk">;
 
 class LASX3R_XXR<bits<32> op>
     : Fmt3R_XXR<op, (outs LASX256:$xd), (ins LASX256:$xj, GPR:$rk),
-                !tolower(!subst("_", ".", NAME)), "$xd, $xj, $rk">;
-
-class LASX3R_XRR<bits<32> op>
-    : Fmt3R_XRR<op, (outs LASX256:$xd), (ins GPR:$rj, GPR:$rk),
-                !tolower(!subst("_", ".", NAME)), "$xd, $rj, $rk">;
+                "$xd, $xj, $rk">;
 
 class LASX4R_XXXX<bits<32> op>
     : Fmt4R_XXXX<op, (outs LASX256:$xd),
                  (ins LASX256:$xj, LASX256:$xk, LASX256:$xa),
-                 !tolower(!subst("_", ".", NAME)), "$xd, $xj, $xk, $xa">;
+                 "$xd, $xj, $xk, $xa">;
 
 let Constraints = "$xd = $dst" in {
 
 class LASX2RI2_XXXI<bits<32> op, Operand ImmOpnd = uimm2>
     : Fmt2RI2_XXI<op, (outs LASX256:$dst), (ins LASX256:$xd, LASX256:$xj, ImmOpnd:$imm2),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm2">;
+                  "$xd, $xj, $imm2">;
 class LASX2RI3_XXXI<bits<32> op, Operand ImmOpnd = uimm3>
     : Fmt2RI3_XXI<op, (outs LASX256:$dst), (ins LASX256:$xd, LASX256:$xj, ImmOpnd:$imm3),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm3">;
+                  "$xd, $xj, $imm3">;
 
 class LASX2RI2_XXRI<bits<32> op, Operand ImmOpnd = uimm2>
     : Fmt2RI2_XRI<op, (outs LASX256:$dst), (ins LASX256:$xd, GPR:$rj, ImmOpnd:$imm2),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $rj, $imm2">;
+                  "$xd, $rj, $imm2">;
 class LASX2RI3_XXRI<bits<32> op, Operand ImmOpnd = uimm3>
     : Fmt2RI3_XRI<op, (outs LASX256:$dst), (ins LASX256:$xd, GPR:$rj, ImmOpnd:$imm3),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $rj, $imm3">;
+                  "$xd, $rj, $imm3">;
 
 class LASX2RI4_XXXI<bits<32> op, Operand ImmOpnd = uimm4>
     : Fmt2RI4_XXI<op, (outs LASX256:$dst), (ins LASX256:$xd, LASX256:$xj, ImmOpnd:$imm4),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm4">;
+                  "$xd, $xj, $imm4">;
 class LASX2RI5_XXXI<bits<32> op, Operand ImmOpnd = uimm5>
     : Fmt2RI5_XXI<op, (outs LASX256:$dst), (ins LASX256:$xd, LASX256:$xj, ImmOpnd:$imm5),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm5">;
+                  "$xd, $xj, $imm5">;
 class LASX2RI6_XXXI<bits<32> op, Operand ImmOpnd = uimm6>
     : Fmt2RI6_XXI<op, (outs LASX256:$dst), (ins LASX256:$xd, LASX256:$xj, ImmOpnd:$imm6),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm6">;
+                  "$xd, $xj, $imm6">;
 class LASX2RI7_XXXI<bits<32> op, Operand ImmOpnd = uimm7>
     : Fmt2RI7_XXI<op, (outs LASX256:$dst), (ins LASX256:$xd, LASX256:$xj, ImmOpnd:$imm7),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm7">;
+                  "$xd, $xj, $imm7">;
 
 class LASX2RI8_XXXI<bits<32> op, Operand ImmOpnd = uimm8>
     : Fmt2RI8_XXI<op, (outs LASX256:$dst), (ins LASX256:$xd, LASX256:$xj, ImmOpnd:$imm8),
-                  !tolower(!subst("_", ".", NAME)), "$xd, $xj, $imm8">;
+                  "$xd, $xj, $imm8">;
 
 class LASX3R_XXXX<bits<32> op>
     : Fmt3R_XXX<op, (outs LASX256:$dst), (ins LASX256:$xd, LASX256:$xj, LASX256:$xk),
-                !tolower(!subst("_", ".", NAME)), "$xd, $xj, $xk">;
+                "$xd, $xj, $xk">;
 
 } // Constraints = "$xd = $dst"
+
+class LASX2RI9_Load<bits<32> op, Operand ImmOpnd = simm9_lsl3>
+    : Fmt2RI9_XRI<op, (outs LASX256:$xd), (ins GPR:$rj, ImmOpnd:$imm9),
+                  "$xd, $rj, $imm9">;
+class LASX2RI10_Load<bits<32> op, Operand ImmOpnd = simm10_lsl2>
+    : Fmt2RI10_XRI<op, (outs LASX256:$xd), (ins GPR:$rj, ImmOpnd:$imm10),
+                  "$xd, $rj, $imm10">;
+class LASX2RI11_Load<bits<32> op, Operand ImmOpnd = simm11_lsl1>
+    : Fmt2RI11_XRI<op, (outs LASX256:$xd), (ins GPR:$rj, ImmOpnd:$imm11),
+                  "$xd, $rj, $imm11">;
+class LASX2RI12_Load<bits<32> op, Operand ImmOpnd = simm12>
+    : Fmt2RI12_XRI<op, (outs LASX256:$xd), (ins GPR:$rj, ImmOpnd:$imm12),
+                  "$xd, $rj, $imm12">;
+class LASX2RI12_Store<bits<32> op, Operand ImmOpnd = simm12>
+    : Fmt2RI12_XRI<op, (outs), (ins LASX256:$xd, GPR:$rj, ImmOpnd:$imm12),
+                  "$xd, $rj, $imm12">;
+
+class LASX3R_Load<bits<32> op>
+    : Fmt3R_XRR<op, (outs LASX256:$xd), (ins GPR:$rj, GPR:$rk),
+                "$xd, $rj, $rk">;
+class LASX3R_Store<bits<32> op>
+    : Fmt3R_XRR<op, (outs), (ins LASX256:$xd, GPR:$rj, GPR:$rk),
+                "$xd, $rj, $rk">;
 
 //===----------------------------------------------------------------------===//
 // Instructions
@@ -984,7 +979,7 @@ def XVPERM_W : LASX3R_XXX<0x757d0000>;
 def XVSHUF4I_B : LASX2RI8_XXI<0x77900000>;
 def XVSHUF4I_H : LASX2RI8_XXI<0x77940000>;
 def XVSHUF4I_W : LASX2RI8_XXI<0x77980000>;
-def XVSHUF4I_D : LASX2RI8_XXI<0x779c0000>;
+def XVSHUF4I_D : LASX2RI8_XXXI<0x779c0000>;
 
 def XVPERMI_W : LASX2RI8_XXXI<0x77e40000>;
 def XVPERMI_D : LASX2RI8_XXI<0x77e80000>;
@@ -997,18 +992,18 @@ def XVEXTRINS_B : LASX2RI8_XXXI<0x778c0000>;
 } // mayLoad = 0, mayStore = 0
 
 let mayLoad = 1, mayStore = 0 in {
-def XVLD : LASX2RI12_XRI<0x2c800000>;
-def XVLDX : LASX3R_XRR<0x38480000>;
+def XVLD : LASX2RI12_Load<0x2c800000>;
+def XVLDX : LASX3R_Load<0x38480000>;
 
-def XVLDREPL_B : LASX2RI12_XRI<0x32800000>;
-def XVLDREPL_H : LASX2RI11_XRI<0x32400000>;
-def XVLDREPL_W : LASX2RI10_XRI<0x32200000>;
-def XVLDREPL_D : LASX2RI9_XRI<0x32100000>;
+def XVLDREPL_B : LASX2RI12_Load<0x32800000>;
+def XVLDREPL_H : LASX2RI11_Load<0x32400000>;
+def XVLDREPL_W : LASX2RI10_Load<0x32200000>;
+def XVLDREPL_D : LASX2RI9_Load<0x32100000>;
 } // mayLoad = 1, mayStore = 0
 
 let mayLoad = 0, mayStore = 1 in {
-def XVST : LASX2RI12_XRI<0x2cc00000>;
-def XVSTX : LASX3R_XRR<0x384c0000>;
+def XVST : LASX2RI12_Store<0x2cc00000>;
+def XVSTX : LASX3R_Store<0x384c0000>;
 
 def XVSTELM_B : LASX2RI8I5_XRII<0x33800000>;
 def XVSTELM_H : LASX2RI8I4_XRII<0x33400000, simm8_lsl1>;

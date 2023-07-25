@@ -534,11 +534,16 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST)
   getActionDefinitionsBuilder(G_FPTRUNC)
       .legalFor(
           {{s16, s32}, {s16, s64}, {s32, s64}, {v4s16, v4s32}, {v2s32, v2s64}})
-      .clampMaxNumElements(0, s32, 2);
+      .clampNumElements(0, v4s16, v4s16)
+      .clampNumElements(0, v2s32, v2s32)
+      .scalarize(0);
+
   getActionDefinitionsBuilder(G_FPEXT)
       .legalFor(
           {{s32, s16}, {s64, s16}, {s64, s32}, {v4s32, v4s16}, {v2s64, v2s32}})
-      .clampMaxNumElements(0, s64, 2);
+      .clampNumElements(0, v4s32, v4s32)
+      .clampNumElements(0, v2s64, v2s64)
+      .scalarize(0);
 
   // Conversions
   getActionDefinitionsBuilder({G_FPTOSI, G_FPTOUI})
@@ -699,12 +704,13 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST)
       .clampMaxNumElements(1, p0, 2);
 
   getActionDefinitionsBuilder(G_INSERT_VECTOR_ELT)
-      .legalIf(typeInSet(0, {v16s8, v8s8, v8s16, v4s16, v4s32, v2s32, v2s64}));
+      .legalIf(typeInSet(0, {v16s8, v8s8, v8s16, v4s16, v4s32, v2s32, v2s64}))
+      .clampMinNumElements(0, s16, 4)
+      .clampMaxNumElements(0, s16, 8);
 
   getActionDefinitionsBuilder(G_BUILD_VECTOR)
       .legalFor({{v8s8, s8},
                  {v16s8, s8},
-                 {v2s16, s16},
                  {v4s16, s16},
                  {v8s16, s16},
                  {v2s32, s32},
@@ -714,6 +720,7 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST)
       .clampNumElements(0, v4s32, v4s32)
       .clampNumElements(0, v2s64, v2s64)
       .minScalarOrElt(0, s8)
+      .widenVectorEltsToVectorMinSize(0, 64)
       .minScalarSameAs(1, 0);
 
   getActionDefinitionsBuilder(G_BUILD_VECTOR_TRUNC).lower();

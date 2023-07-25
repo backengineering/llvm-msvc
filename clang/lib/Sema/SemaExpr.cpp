@@ -6084,17 +6084,11 @@ struct ImmediateCallVisitor : public RecursiveASTVisitor<ImmediateCallVisitor> {
   ImmediateCallVisitor(const ASTContext &Ctx) : Context(Ctx) {}
 
   bool HasImmediateCalls = false;
-  bool IsImmediateInvocation = false;
-
   bool shouldVisitImplicitCode() const { return true; }
 
   bool VisitCallExpr(CallExpr *E) {
-    if (const FunctionDecl *FD = E->getDirectCallee()) {
+    if (const FunctionDecl *FD = E->getDirectCallee())
       HasImmediateCalls |= FD->isImmediateFunction();
-      if (FD->isConsteval() && !E->isCXX11ConstantExpr(Context))
-        IsImmediateInvocation = true;
-    }
-
     return RecursiveASTVisitor<ImmediateCallVisitor>::VisitStmt(E);
   }
 
@@ -6224,6 +6218,8 @@ ExprResult Sema::BuildCXXDefaultInitExpr(SourceLocation Loc, FieldDecl *Field) {
   if (Field->isInvalidDecl())
     return ExprError();
 
+  CXXThisScopeRAII This(*this, Field->getParent(), Qualifiers());
+
   auto *ParentRD = cast<CXXRecordDecl>(Field->getParent());
 
   std::optional<ExpressionEvaluationContextRecord::InitializationContext>
@@ -6271,13 +6267,6 @@ ExprResult Sema::BuildCXXDefaultInitExpr(SourceLocation Loc, FieldDecl *Field) {
   if (!NestedDefaultChecking)
     V.TraverseDecl(Field);
   if (V.HasImmediateCalls) {
-    // C++23 [expr.const]/p15
-    // An aggregate initialization is an immediate invocation
-    // if it evaluates a default member initializer that has a subexpression
-    // that is an immediate-escalating expression.
-    ExprEvalContexts.back().InImmediateFunctionContext |=
-        V.IsImmediateInvocation;
-
     ExprEvalContexts.back().DelayedDefaultInitializationContext = {Loc, Field,
                                                                    CurContext};
     ExprEvalContexts.back().IsCurrentlyCheckingDefaultArgumentOrInitializer =
@@ -10926,11 +10915,9 @@ static bool tryGCCVectorConvertAndSplat(Sema &S, ExprResult *Scalar,
     return true;
 
   // Adjust scalar if desired.
-  if (Scalar) {
-    if (ScalarCast != CK_NoOp)
-      *Scalar = S.ImpCastExprToType(Scalar->get(), VectorEltTy, ScalarCast);
-    *Scalar = S.ImpCastExprToType(Scalar->get(), VectorTy, CK_VectorSplat);
-  }
+  if (ScalarCast != CK_NoOp)
+    *Scalar = S.ImpCastExprToType(Scalar->get(), VectorEltTy, ScalarCast);
+  *Scalar = S.ImpCastExprToType(Scalar->get(), VectorTy, CK_VectorSplat);
   return false;
 }
 
@@ -13894,6 +13881,56 @@ inline QualType Sema::CheckBitwiseOperands(ExprResult &LHS, ExprResult &RHS,
   return InvalidOperands(Loc, LHS, RHS);
 }
 
+// Diagnose cases where the user write a logical and/or but probably meant a
+// bitwise one.  We do this when one of the operands is a non-bool integer and
+// the other is a constant.
+void Sema::diagnoseLogicalInsteadOfBitwise(Expr *Op1, Expr *Op2,
+                                           SourceLocation Loc,
+                                           BinaryOperatorKind Opc) {
+  if (Op1->getType()->isIntegerType() && !Op1->getType()->isBooleanType() &&
+      Op2->getType()->isIntegerType() && !Op2->isValueDependent() &&
+      // Don't warn in macros or template instantiations.
+      !Loc.isMacroID() && !inTemplateInstantiation() &&
+      !Op2->getExprLoc().isMacroID() &&
+      !Op1->getExprLoc().isMacroID()) {
+    bool IsOp1InMacro = Op1->getExprLoc().isMacroID();
+    bool IsOp2InMacro = Op2->getExprLoc().isMacroID();
+
+    // Exclude the specific expression from triggering the warning.
+    if (!(IsOp1InMacro && IsOp2InMacro && Op1->getSourceRange() == Op2->getSourceRange())) {
+    // If the RHS can be constant folded, and if it constant folds to something
+    // that isn't 0 or 1 (which indicate a potential logical operation that
+    // happened to fold to true/false) then warn.
+    // Parens on the RHS are ignored.
+    // If the RHS can be constant folded, and if it constant folds to something
+    // that isn't 0 or 1 (which indicate a potential logical operation that
+    // happened to fold to true/false) then warn.
+    // Parens on the RHS are ignored.
+    Expr::EvalResult EVResult;
+    if (Op2->EvaluateAsInt(EVResult, Context)) {
+      llvm::APSInt Result = EVResult.Val.getInt();
+      if ((getLangOpts().Bool && !Op2->getType()->isBooleanType() &&
+           !Op2->getExprLoc().isMacroID()) ||
+          (Result != 0 && Result != 1)) {
+        Diag(Loc, diag::warn_logical_instead_of_bitwise)
+            << Op2->getSourceRange() << (Opc == BO_LAnd ? "&&" : "||");
+        // Suggest replacing the logical operator with the bitwise version
+        Diag(Loc, diag::note_logical_instead_of_bitwise_change_operator)
+            << (Opc == BO_LAnd ? "&" : "|")
+            << FixItHint::CreateReplacement(
+                   SourceRange(Loc, getLocForEndOfToken(Loc)),
+                   Opc == BO_LAnd ? "&" : "|");
+        if (Opc == BO_LAnd)
+          // Suggest replacing "Foo() && kNonZero" with "Foo()"
+          Diag(Loc, diag::note_logical_instead_of_bitwise_remove_constant)
+              << FixItHint::CreateRemoval(SourceRange(
+                     getLocForEndOfToken(Op1->getEndLoc()), Op2->getEndLoc()));
+      }
+    }
+  }
+      }
+}
+
 // C99 6.5.[13,14]
 inline QualType Sema::CheckLogicalOperands(ExprResult &LHS, ExprResult &RHS,
                                            SourceLocation Loc,
@@ -13912,9 +13949,6 @@ inline QualType Sema::CheckLogicalOperands(ExprResult &LHS, ExprResult &RHS,
     }
   }
 
-  if (EnumConstantInBoolContext)
-    Diag(Loc, diag::warn_enum_constant_in_bool_context);
-
   // WebAssembly tables can't be used with logical operators.
   QualType LHSTy = LHS.get()->getType();
   QualType RHSTy = RHS.get()->getType();
@@ -13925,40 +13959,14 @@ inline QualType Sema::CheckLogicalOperands(ExprResult &LHS, ExprResult &RHS,
     return InvalidOperands(Loc, LHS, RHS);
   }
 
-  // Diagnose cases where the user write a logical and/or but probably meant a
-  // bitwise one.  We do this when the LHS is a non-bool integer and the RHS
-  // is a constant.
-  if (!EnumConstantInBoolContext && LHS.get()->getType()->isIntegerType() &&
-      !LHS.get()->getType()->isBooleanType() &&
-      RHS.get()->getType()->isIntegerType() && !RHS.get()->isValueDependent() &&
-      // Don't warn in macros or template instantiations.
-      !Loc.isMacroID() && !inTemplateInstantiation()) {
-    // If the RHS can be constant folded, and if it constant folds to something
-    // that isn't 0 or 1 (which indicate a potential logical operation that
-    // happened to fold to true/false) then warn.
-    // Parens on the RHS are ignored.
-    Expr::EvalResult EVResult;
-    if (RHS.get()->EvaluateAsInt(EVResult, Context)) {
-      llvm::APSInt Result = EVResult.Val.getInt();
-      if ((getLangOpts().Bool && !RHS.get()->getType()->isBooleanType() &&
-           !RHS.get()->getExprLoc().isMacroID()) ||
-          (Result != 0 && Result != 1)) {
-        Diag(Loc, diag::warn_logical_instead_of_bitwise)
-            << RHS.get()->getSourceRange() << (Opc == BO_LAnd ? "&&" : "||");
-        // Suggest replacing the logical operator with the bitwise version
-        Diag(Loc, diag::note_logical_instead_of_bitwise_change_operator)
-            << (Opc == BO_LAnd ? "&" : "|")
-            << FixItHint::CreateReplacement(
-                   SourceRange(Loc, getLocForEndOfToken(Loc)),
-                   Opc == BO_LAnd ? "&" : "|");
-        if (Opc == BO_LAnd)
-          // Suggest replacing "Foo() && kNonZero" with "Foo()"
-          Diag(Loc, diag::note_logical_instead_of_bitwise_remove_constant)
-              << FixItHint::CreateRemoval(
-                     SourceRange(getLocForEndOfToken(LHS.get()->getEndLoc()),
-                                 RHS.get()->getEndLoc()));
-      }
-    }
+  if (EnumConstantInBoolContext) {
+    // Warn when converting the enum constant to a boolean
+    Diag(Loc, diag::warn_enum_constant_in_bool_context);
+  } else {
+    // Diagnose cases where the user write a logical and/or but probably meant a
+    // bitwise one.
+    diagnoseLogicalInsteadOfBitwise(LHS.get(), RHS.get(), Loc, Opc);
+    diagnoseLogicalInsteadOfBitwise(RHS.get(), LHS.get(), Loc, Opc);
   }
 
   if (!Context.getLangOpts().CPlusPlus) {
@@ -16491,6 +16499,8 @@ ExprResult Sema::ActOnAddrLabel(SourceLocation OpLoc, SourceLocation LabLoc,
 
 void Sema::ActOnStartStmtExpr() {
   PushExpressionEvaluationContext(ExprEvalContexts.back().Context);
+  // Make sure we diagnose jumping into a statement expression.
+  setFunctionHasBranchProtectedScope();
 }
 
 void Sema::ActOnStmtExprError() {
@@ -16939,6 +16949,9 @@ void Sema::ActOnBlockArguments(SourceLocation CaretLoc, Declarator &ParamInfo,
 
       PushOnScopeChains(AI, CurBlock->TheScope);
     }
+
+    if (AI->isInvalidDecl())
+      CurBlock->TheDecl->setInvalidDecl();
   }
 }
 
@@ -17139,6 +17152,9 @@ ExprResult Sema::ActOnBlockStmtExpr(SourceLocation CaretLoc,
   if (getCurFunction())
     getCurFunction()->addBlock(BD);
 
+  if (BD->isInvalidDecl())
+    return CreateRecoveryExpr(Result->getBeginLoc(), Result->getEndLoc(),
+                              {Result}, Result->getType());
   return Result;
 }
 
@@ -18419,7 +18435,12 @@ HandleImmediateInvocations(Sema &SemaRef,
     if (!CE.getInt())
       EvaluateAndDiagnoseImmediateInvocation(SemaRef, CE);
   for (auto *DR : Rec.ReferenceToConsteval) {
-    const auto *FD = cast<FunctionDecl>(DR->getDecl());
+    // If the expression is immediate escalating, it is not an error;
+    // The outer context itself becomes immediate and further errors,
+    // if any, will be handled by DiagnoseImmediateEscalatingReason.
+    if (DR->isImmediateEscalating())
+      continue;
+    auto *FD = cast<FunctionDecl>(DR->getDecl());
     const NamedDecl *ND = FD;
     if (const auto *MD = dyn_cast<CXXMethodDecl>(ND);
         MD && (MD->isLambdaStaticInvoker() || isLambdaCallOperator(MD)))
@@ -18444,8 +18465,15 @@ HandleImmediateInvocations(Sema &SemaRef,
       SemaRef.Diag(DR->getBeginLoc(), diag::err_invalid_consteval_take_address)
           << ND << isa<CXXRecordDecl>(ND) << FD->isConsteval();
       SemaRef.Diag(ND->getLocation(), diag::note_declared_at);
+      if (auto Context =
+              SemaRef.InnermostDeclarationWithDelayedImmediateInvocations()) {
+        SemaRef.Diag(Context->Loc, diag::note_invalid_consteval_initializer)
+            << Context->Decl;
+        SemaRef.Diag(Context->Decl->getBeginLoc(), diag::note_declared_at);
+      }
       if (FD->isImmediateEscalating() && !FD->isConsteval())
         SemaRef.DiagnoseImmediateEscalatingReason(FD);
+
     } else {
       SemaRef.MarkExpressionAsImmediateEscalating(DR);
     }
@@ -18894,6 +18922,12 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
   // or of another default member initializer (ie a PotentiallyEvaluatedIfUsed
   // context), its initializers may not be referenced yet.
   if (CXXConstructorDecl *Constructor = dyn_cast<CXXConstructorDecl>(Func)) {
+    EnterExpressionEvaluationContext EvalContext(
+        *this,
+        Constructor->isImmediateFunction()
+            ? ExpressionEvaluationContext::ImmediateFunctionContext
+            : ExpressionEvaluationContext::PotentiallyEvaluated,
+        Constructor);
     for (CXXCtorInitializer *Init : Constructor->inits()) {
       if (Init->isInClassMemberInitializer())
         runWithSufficientStackSpace(Init->getSourceLocation(), [&]() {

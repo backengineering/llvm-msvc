@@ -419,6 +419,13 @@ def LLVM_USHLSat : LLVM_BinarySameArgsIntrOpI<"ushl.sat">;
 def LLVM_AssumeOp
   : LLVM_ZeroResultIntrOp<"assume", []>, Arguments<(ins I1:$cond)>;
 
+def LLVM_SSACopyOp : LLVM_OneResultIntrOp<"ssa.copy", [], [0],
+                                            [Pure, SameOperandsAndResultType]> {
+  let arguments = (ins AnyType:$operand);
+
+  let assemblyFormat = "$operand attr-dict `:` type($operand)";
+}
+
 def LLVM_IsConstantOp : LLVM_IntrOp<"is.constant", [], [0], [Pure], 1> {
   let arguments = (ins LLVM_Type:$val);
   let results = (outs I1:$res);
@@ -711,6 +718,8 @@ def LLVM_vector_reduce_xor : LLVM_VecReductionI<"xor">;
 
 def LLVM_vector_reduce_fmax : LLVM_VecReductionF<"fmax">;
 def LLVM_vector_reduce_fmin : LLVM_VecReductionF<"fmin">;
+def LLVM_vector_reduce_fmaximum : LLVM_VecReductionF<"fmaximum">;
+def LLVM_vector_reduce_fminimum : LLVM_VecReductionF<"fminimum">;
 
 def LLVM_vector_reduce_fadd : LLVM_VecReductionAccF<"fadd">;
 def LLVM_vector_reduce_fmul : LLVM_VecReductionAccF<"fmul">;

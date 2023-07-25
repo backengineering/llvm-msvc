@@ -84,6 +84,7 @@ C++ Language Changes
   directly rather than instantiating the definition from the standard library.
 - Implemented `CWG2518 <https://wg21.link/CWG2518>`_ which allows ``static_assert(false)``
   to not be ill-formed when its condition is evaluated in the context of a template definition.
+- Declaring namespace std to be an inline namespace is now prohibited, `[namespace.std]p7`.
 
 C++20 Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
@@ -137,11 +138,28 @@ C++2c Feature Support
 - Implemented `P2738R1: constexpr cast from void* <https://wg21.link/P2738R1>`_.
 - Partially implemented `P2361R6: Unevaluated strings <https://wg21.link/P2361R6>`_.
   The changes to attributes declarations are not part of this release.
+- Implemented `P2741R3: user-generated static_assert messages  <https://wg21.link/P2741R3>`_.
 
 Resolutions to C++ Defect Reports
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 - Implemented `DR2397 <https://wg21.link/CWG2397>`_ which allows ``auto`` specifier for pointers
   and reference to arrays.
+- Implemented `CWG2521 <https://wg21.link/CWG2521>`_ which reserves using ``__`` in user-defined
+  literal suffixes and deprecates literal operator function declarations using an identifier.
+  Taught ``-Wuser-defined-literals`` for the former, on by default, and added
+  ``-Wdeprecated-literal-operator`` for the latter, off by default for now.
+
+  .. code-block:: c++
+
+    // What follows is warned by -Wuser-defined-literals
+    // albeit "ill-formed, no diagnostic required".
+    // Its behavior is undefined, [reserved.names.general]p2.
+    string operator ""__i18n(const char*, std::size_t);
+
+    // Assume this declaration is not in the global namespace.
+    // -Wdeprecated-literal-operator diagnoses the extra space.
+    string operator "" _i18n(const char*, std::size_t);
+    //                ^ an extra space
 
 C Language Changes
 ------------------
@@ -245,6 +263,7 @@ Non-comprehensive list of changes in this release
 - Added ``__builtin_elementwise_nearbyint`` for floating point
   types. This allows access to ``llvm.nearbyint`` for arbitrary
   floating-point and vector of floating-point types.
+- Clang AST matcher now matches concept declarations with `conceptDecl`.
 
 New Compiler Flags
 ------------------
@@ -255,9 +274,17 @@ New Compiler Flags
 - ``-fcaret-diagnostics-max-lines=`` has been added as a driver options, which
   lets users control the maximum number of source lines printed for a
   caret diagnostic.
+- ``-fkeep-persistent-storage-variables`` has been implemented to keep all
+  variables that have a persistent storage duration—including global, static
+  and thread-local variables—to guarantee that they can be directly addressed.
+  Since this inhibits the merging of the affected variables, the number of
+  individual relocations in the program will generally increase.
 
 Deprecated Compiler Flags
 -------------------------
+
+- ``-fdouble-square-bracket-attributes`` has been deprecated. It is ignored now
+  and will be removed in Clang 18.
 
 Modified Compiler Flags
 -----------------------
@@ -388,6 +415,10 @@ Improvements to Clang's diagnostics
   (`#57081: <https://github.com/llvm/llvm-project/issues/57081>`_)
 - Clang no longer emits inappropriate notes about the loss of ``__unaligned`` qualifier
   on overload resolution, when the actual reason for the failure is loss of other qualifiers.
+- The note emitted when an ``operator==`` was defaulted as deleted used to refer to
+  the lack of a data member's "three-way comparison operator". It now refers correctly
+  to the data member's ``operator==``.
+  (`#63960: <https://github.com/llvm/llvm-project/issues/63960>`_)
 - Clang's notes about unconvertible types in overload resolution failure now covers
   the source range of parameter declaration of the candidate function declaration.
 
@@ -425,6 +456,9 @@ Improvements to Clang's diagnostics
 - ``-Wformat`` will no longer suggest a no-op fix-it for fixing scoped enum format
   warnings. Instead, it will suggest casting the enum object to the type specified
   in the format string.
+- Clang now emits ``-Wconstant-logical-operand`` warning even when constant logical
+  operand is on left side.
+  (`#37919 <https://github.com/llvm/llvm-project/issues/37919>`_)
 
 Bug Fixes in This Version
 -------------------------
@@ -634,6 +668,23 @@ Bug Fixes in This Version
   that construct (`#62133 <https://github.com/llvm/llvm-project/issues/38717>_`).
 - Fix crash caused by PseudoObjectExprBitfields: NumSubExprs overflow.
   (`#63169 <https://github.com/llvm/llvm-project/issues/63169>_`)
+- Fix crash when casting an object to an array type.
+  (`#63758 <https://github.com/llvm/llvm-project/issues/63758>_`)
+- Fixed false positive error diagnostic observed from mixing ``asm goto`` with
+  ``__attribute__((cleanup()))`` variables falsely warning that jumps to
+  non-targets would skip cleanup.
+- Correcly diagnose jumps into statement expressions.
+  This ensures the behavior of Clang is consistent with GCC.
+  (`#63682 <https://github.com/llvm/llvm-project/issues/63682>`_)
+- Invalidate BlockDecl with implicit return type, in case any of the return
+  value exprs is invalid. Propagating the error info up by replacing BlockExpr
+  with a RecoveryExpr. This fixes:
+  (`#63863 <https://github.com/llvm/llvm-project/issues/63863>_`)
+- Invalidate BlockDecl with invalid ParmVarDecl. Remove redundant dump of
+  BlockDecl's ParmVarDecl
+  (`#64005 <https://github.com/llvm/llvm-project/issues/64005>_`)
+- Fix crash on nested templated class with template function call.
+  (`#61159 <https://github.com/llvm/llvm-project/issues/61159>_`)
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -707,6 +758,52 @@ Bug Fixes to C++ Support
 - Fix crash when emitting diagnostic for out of order designated initializers
   in C++.
   (`#63605 <https://github.com/llvm/llvm-project/issues/63605>`_)
+- Fix crash when using standard C++ modules with OpenMP.
+  (`#62359 <https://github.com/llvm/llvm-project/issues/62359>`_)
+- Fix crash when using consteval non static data member initialization in
+  standard C++ modules.
+  (`#60275 <https://github.com/llvm/llvm-project/issues/60275>`_)
+- Fix handling of ADL for dependent expressions in standard C++ modules.
+  (`#60488 <https://github.com/llvm/llvm-project/issues/60488>`_)
+- Fix crash when combining `-ftime-trace` within standard C++ modules.
+  (`#60544 <https://github.com/llvm/llvm-project/issues/60544>`_)
+- Don't generate template specializations when importing standard C++ modules.
+  (`#60693 <https://github.com/llvm/llvm-project/issues/60693>`_)
+- Fix the visibility of `initializer list` in the importer of standard C++
+  modules. This addresses
+  (`#60775 <https://github.com/llvm/llvm-project/issues/60775>`_)
+- Allow the use of constrained friend in standard C++ modules.
+  (`#60890 <https://github.com/llvm/llvm-project/issues/60890>`_)
+- Don't evaluate initializer of used variables in every importer of standard
+  C++ modules.
+  (`#61040 <https://github.com/llvm/llvm-project/issues/61040>`_)
+- Fix the issue that the default `operator==` in standard C++ modules will
+  cause duplicate symbol linker error.
+  (`#61067 <https://github.com/llvm/llvm-project/issues/61067>`_)
+- Fix the false positive ODR check for template names. This addresses the issue
+  that we can't include `<ranges>` in multiple module units.
+  (`#61317 <https://github.com/llvm/llvm-project/issues/61317>`_)
+- Fix crash for inconsistent exported declarations in standard C++ modules.
+  (`#61321 <https://github.com/llvm/llvm-project/issues/61321>`_)
+- Fix ignoring `#pragma comment` and `#pragma detect_mismatch` directives in
+  standard C++ modules.
+  (`#61733 <https://github.com/llvm/llvm-project/issues/61733>`_)
+- Don't generate virtual tables if the class is defined in another module units
+  for Itanium ABI.
+  (`#61940 <https://github.com/llvm/llvm-project/issues/61940>`_)
+- Fix false postive check for constrained satisfaction in standard C++ modules.
+  (`#62589 <https://github.com/llvm/llvm-project/issues/62589>`_)
+- Serialize the evaluated constant values for variable declarations in standard
+  C++ modules.
+  (`#62796 <https://github.com/llvm/llvm-project/issues/62796>`_)
+- Merge lambdas in require expressions in standard C++ modules.
+  (`#63544 <https://github.com/llvm/llvm-project/issues/63544>`_)
+
+- Fix location of default member initialization in parenthesized aggregate
+  initialization.
+  (`#63903 <https://github.com/llvm/llvm-project/issues/63903>`_)
+- Fix constraint checking of non-generic lambdas.
+  (`#63181 <https://github.com/llvm/llvm-project/issues/63181>`_)
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -748,6 +845,21 @@ X86 Support
 
 - Add ISA of ``AMX-COMPLEX`` which supports ``tcmmimfp16ps`` and
   ``tcmmrlfp16ps``.
+- Support ISA of ``SHA512``.
+  * Support intrinsic of ``_mm256_sha512msg1_epi64``.
+  * Support intrinsic of ``_mm256_sha512msg2_epi64``.
+  * Support intrinsic of ``_mm256_sha512rnds2_epi64``.
+- Support ISA of ``SM3``.
+  * Support intrinsic of ``_mm_sm3msg1_epi32``.
+  * Support intrinsic of ``_mm_sm3msg2_epi32``.
+  * Support intrinsic of ``_mm_sm3rnds2_epi32``.
+- Support ISA of ``SM4``.
+  * Support intrinsic of ``_mm(256)_sm4key4_epi32``.
+  * Support intrinsic of ``_mm(256)_sm4rnds4_epi32``.
+- Support ISA of ``AVX-VNNI-INT16``.
+  * Support intrinsic of ``_mm(256)_dpwsud(s)_epi32``.
+  * Support intrinsic of ``_mm(256)_dpwusd(s)_epi32``.
+  * Support intrinsic of ``_mm(256)_dpwuud(s)_epi32``.
 
 Arm and AArch64 Support
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -805,6 +917,9 @@ RISC-V Support
 
 CUDA/HIP Language Changes
 ^^^^^^^^^^^^^^^^^^^^^^^^^
+- Clang has been updated to align its default language standard for CUDA/HIP with
+  that of C++. The standard has now been enhanced to gnu++17, supplanting the
+  previously used c++14.
 
 CUDA Support
 ^^^^^^^^^^^^
@@ -851,6 +966,7 @@ Floating Point Support in Clang
 - Add ``__builtin_elementwise_exp`` builtin for floating point types only.
 - Add ``__builtin_elementwise_exp2`` builtin for floating point types only.
 - Add ``__builtin_set_flt_rounds`` builtin for X86, x86_64, Arm and AArch64 only.
+- Add ``__builtin_elementwise_pow`` builtin for floating point types only.
 
 AST Matchers
 ------------
@@ -859,6 +975,8 @@ AST Matchers
 
 - The ``hasBody`` matcher now matches coroutine body nodes in
   ``CoroutineBodyStmts``.
+
+- Add ``arrayInitIndexExpr`` and ``arrayInitLoopExpr`` matchers.
 
 clang-format
 ------------
@@ -874,6 +992,12 @@ clang-format
   the indentation level of the contents of braced init lists.
 - Add ``KeepEmptyLinesAtEOF`` to keep empty lines at end of file.
 - Add ``RemoveParentheses`` to remove redundant parentheses.
+- Add ``TypeNames`` to treat listed non-keyword identifiers as type names.
+- Add ``AlignConsecutiveShortCaseStatements`` which can be used to align case
+  labels in conjunction with ``AllowShortCaseLabelsOnASingleLine``.
+- Add ``SpacesInParens`` style with ``SpacesInParensOptions`` to replace
+  ``SpacesInConditionalStatement``, ``SpacesInCStyleCastParentheses``,
+  ``SpaceInEmptyParentheses``, and ``SpacesInParentheses``.
 
 libclang
 --------
@@ -899,9 +1023,72 @@ libclang
 
 Static Analyzer
 ---------------
+
 - Fix incorrect alignment attribute on the this parameter of certain
   non-complete destructors when using the Microsoft ABI.
   (`#60465 <https://github.com/llvm/llvm-project/issues/60465>`_)
+
+- Removed the deprecated
+  ``consider-single-element-arrays-as-flexible-array-members`` analyzer option.
+  Any use of this flag will result in an error.
+  Use `-fstrict-flex-arrays=<n>
+  <https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang-fstrict-flex-arrays>`_
+
+- Better modeling of lifetime-extended memory regions. As a result, the
+  ``MoveChecker`` raises more true-positive reports.
+
+- Fixed some bugs (including crashes) around the handling of constant global
+  arrays and their initializer expressions.
+
+- The ``CStringChecker`` will invalidate less if the copy operation is
+  inferable to be bounded. For example, if the arguments of ``strcpy`` are
+  known to be of certain lengths and that are in-bounds.
+
+   .. code-block:: c++
+
+    struct {
+      void *ptr;
+      char arr[4];
+    } x;
+    x.ptr = malloc(1);
+    // extent of 'arr' is 4, and writing "hi\n" (4 characters),
+    // thus no buffer overflow can happen
+    strcpy(x.arr, "hi\n");
+    free(x.ptr); // no longer reports memory leak here
+
+  Similarly, functions like ``strsep`` now won't invalidate the object
+  containing the destination buffer, because it can never overflow.
+  Note that, ``std::copy`` is still not modeled, and as such, it will still
+  invalidate the enclosing object on call.
+  (`#55019 <https://github.com/llvm/llvm-project/issues/55019>`_)
+
+- Implement ``BufferOverlap`` check for ``sprint``/``snprintf``
+  The ``CStringChecker`` checks for buffer overlaps for ``sprintf`` and
+  ``snprintf``.
+
+- Objective-C support was improved around checking ``_Nonnull`` and
+  ``_Nullable`` including block pointers and literal objects.
+
+- Let the ``StreamChecker`` detect ``NULL`` streams instead of by
+  ``StdCLibraryFunctions``.
+  ``StreamChecker`` improved on the ``fseek`` modeling for the ``SEEK_SET``,
+  ``SEEK_END``, ``SEEK_CUR`` arguments.
+
+- ``StdCLibraryFunctionArgs`` was merged into the ``StdCLibraryFunctions``.
+  The diagnostics of the ``StdCLibraryFunctions`` was improved.
+
+- ``QTimer::singleShot`` now doesn't raise false-positives for memory leaks by
+  the ``MallocChecker``.
+  (`#39713 <https://github.com/llvm/llvm-project/issues/39713>`_)
+
+- Fixed the infamous unsigned index false-positives in the
+  ``ArrayBoundCheckerV2`` checker.
+  (`#44493 <https://github.com/llvm/llvm-project/issues/44493>`_)
+
+- Now, taint propagations are tracked further back until the real taint source.
+  This improves all taint-related diagnostics.
+
+- Fixed a null-pointer dereference crash inside the ``MoveChecker``.
 
 .. _release-notes-sanitizers:
 

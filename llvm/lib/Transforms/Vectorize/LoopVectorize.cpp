@@ -5784,7 +5784,7 @@ LoopVectorizationCostModel::selectInterleaveCount(ElementCount VF,
     return 1;
 
   // We used the distance for the interleave count.
-  if (Legal->getMaxSafeDepDistBytes() != -1U)
+  if (!Legal->isSafeForAnyVectorWidth())
     return 1;
 
   auto BestKnownTC = getSmallBestKnownTC(*PSE.getSE(), TheLoop);
@@ -9053,17 +9053,9 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   // bring the VPlan to its final state.
   // ---------------------------------------------------------------------------
 
-  VPlanTransforms::removeRedundantCanonicalIVs(*Plan);
-  VPlanTransforms::removeRedundantInductionCasts(*Plan);
-
   // Adjust the recipes for any inloop reductions.
   adjustRecipesForReductions(cast<VPBasicBlock>(TopRegion->getExiting()), Plan,
                              RecipeBuilder, Range.Start);
-
-  // Sink users of fixed-order recurrence past the recipe defining the previous
-  // value and introduce FirstOrderRecurrenceSplice VPInstructions.
-  if (!VPlanTransforms::adjustFixedOrderRecurrences(*Plan, Builder))
-    return std::nullopt;
 
   // Interleave memory: for each Interleave Group we marked earlier as relevant
   // for this VPlan, replace the Recipes widening its memory instructions with a
@@ -9120,6 +9112,14 @@ std::optional<VPlanPtr> LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(
   // From this point onwards, VPlan-to-VPlan transformations may change the plan
   // in ways that accessing values using original IR values is incorrect.
   Plan->disableValue2VPValue();
+
+  // Sink users of fixed-order recurrence past the recipe defining the previous
+  // value and introduce FirstOrderRecurrenceSplice VPInstructions.
+  if (!VPlanTransforms::adjustFixedOrderRecurrences(*Plan, Builder))
+    return std::nullopt;
+
+  VPlanTransforms::removeRedundantCanonicalIVs(*Plan);
+  VPlanTransforms::removeRedundantInductionCasts(*Plan);
 
   VPlanTransforms::optimizeInductions(*Plan, *PSE.getSE());
   VPlanTransforms::removeDeadRecipes(*Plan);
@@ -9869,6 +9869,9 @@ Value *VPTransformState::get(VPValue *Def, unsigned Part) {
   };
 
   if (!hasScalarValue(Def, {Part, 0})) {
+    assert(Def->isLiveIn() && "expected a live-in");
+    if (Part != 0)
+      return get(Def, 0);
     Value *IRV = Def->getLiveInIRValue();
     Value *B = GetBroadcastInstrs(IRV);
     set(Def, B, Part);

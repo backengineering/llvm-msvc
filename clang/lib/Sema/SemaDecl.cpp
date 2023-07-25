@@ -3702,10 +3702,10 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD, Scope *S,
       !canRedefineFunction(Old, getLangOpts())) {
     if (getLangOpts().MicrosoftExt) {
       Diag(New->getLocation(), diag::ext_static_non_static) << New;
-      Diag(OldLocation, PrevDiag);
+      Diag(OldLocation, PrevDiag) << Old << Old->getType();
     } else {
       Diag(New->getLocation(), diag::err_static_non_static) << New;
-      Diag(OldLocation, PrevDiag);
+      Diag(OldLocation, PrevDiag) << Old << Old->getType();
       return true;
     }
   }
@@ -4392,7 +4392,7 @@ static void diagnoseVarDeclTypeMismatch(Sema &S, VarDecl *New, VarDecl* Old) {
   SourceLocation OldLocation;
   std::tie(PrevDiag, OldLocation)
     = getNoteDiagForInvalidRedeclaration(Old, New);
-  S.Diag(OldLocation, PrevDiag);
+  S.Diag(OldLocation, PrevDiag) << Old << Old->getType();
   New->setInvalidDecl();
 }
 
@@ -15559,8 +15559,7 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
     if (FD) {
       FD->setBody(Body);
       FD->setWillHaveBody(false);
-      CheckImmediateEscalatingFunctionDefinition(
-          FD, FSI->FoundImmediateEscalatingExpression);
+      CheckImmediateEscalatingFunctionDefinition(FD, FSI);
 
       if (getLangOpts().CPlusPlus14) {
         if (!FD->isInvalidDecl() && Body && !FD->isDependentContext() &&

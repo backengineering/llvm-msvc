@@ -259,8 +259,12 @@ namespace mlir {
 namespace OpTrait {
 
 template <typename ConcreteType>
-class InferTypeOpInterfaceAdaptor
-    : public TraitBase<ConcreteType, InferTypeOpInterfaceAdaptor> {};
+class InferTypeOpAdaptor : public TraitBase<ConcreteType, InferTypeOpAdaptor> {
+};
+
+template <typename ConcreteType>
+class InferShapedTypeOpAdaptor
+    : public TraitBase<ConcreteType, InferShapedTypeOpAdaptor> {};
 
 /// Tensor type inference trait that constructs a tensor from the inferred
 /// shape and elemental types.

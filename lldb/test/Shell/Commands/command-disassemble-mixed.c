@@ -1,6 +1,8 @@
 // invalid mixed disassembly line
 
-// RUN: %clang -g %s -o %t
+// XFAIL: system-windows
+
+// RUN: %clang_host -g %s -o %t
 // RUN: %lldb %t -o "dis -m -n main" -o "exit" | FileCheck %s
 
 // CHECK: int main

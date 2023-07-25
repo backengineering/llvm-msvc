@@ -243,6 +243,7 @@ class Property<string storageTypeParam = "", string desc = ""> {
   // Format:
   // - `$_storage` is the storage type value.
   // - `$_writer` is a `DialectBytecodeWriter`.
+  // - `$_ctxt` is a `MLIRContext *`.
   code writeToMlirBytecode = [{
     writeToMlirBytecode($_writer, $_storage)
   }];
@@ -252,6 +253,7 @@ class Property<string storageTypeParam = "", string desc = ""> {
   // Format:
   // - `$_storage` is the storage type value.
   // - `$_reader` is a `DialectBytecodeReader`.
+  // - `$_ctxt` is a `MLIRContext *`.
   code readFromMlirBytecode = [{
     if (::mlir::failed(readFromMlirBytecode($_reader, $_storage)))
       return ::mlir::failure();
@@ -260,6 +262,38 @@ class Property<string storageTypeParam = "", string desc = ""> {
   // Default value for the property.
   string defaultValue = ?;
 }
+
+/// Implementation of the Property class's `readFromMlirBytecode` field using
+/// the default `convertFromAttribute` implementation.
+/// Users not wanting to implement their own `readFromMlirBytecode` and
+/// `writeToMlirBytecode` implementations can opt into using this implementation
+/// by writing:
+///
+/// let writeToMlirBytecode = writeMlirBytecodeWithConvertToAttribute;
+/// let readFromMlirBytecode = readMlirBytecodeUsingConvertFromAttribute;
+///
+/// in their property definition.
+/// Serialization and deserialization is performed using the attributes
+/// returned by `convertFromAttribute` and `convertToAttribute`.
+///
+/// WARNING: This implementation creates a less than optimal encoding.
+/// Users caring about optimal encoding should not use this implementation and
+/// implement `readFromMlirBytecode` and `writeToMlirBytecode` themselves.
+defvar readMlirBytecodeUsingConvertFromAttribute = [{
+  ::mlir::Attribute attr;
+  if (::mlir::failed($_reader.readAttribute(attr)))
+    return ::mlir::failure();
+  if (::mlir::failed(convertFromAttribute($_storage, attr, nullptr)))
+    return ::mlir::failure();
+}];
+
+/// Implementation of the Property class's `writeToMlirBytecode` field using
+/// the default `convertToAttribute` implementation.
+/// See description of `readMlirBytecodeUsingConvertFromAttribute` above for
+/// details.
+defvar writeMlirBytecodeWithConvertToAttribute = [{
+  $_writer.writeAttribute(convertToAttribute($_ctxt, $_storage))
+}];
 
 // Subclass for constraints on an attribute.
 class AttrConstraint<Pred predicate, string summary = ""> :
@@ -307,6 +341,12 @@ def IsFixedVectorTypePred : CPred<[{::llvm::isa<::mlir::VectorType>($_self) &&
 // Whether a type is a scalable VectorType.
 def IsScalableVectorTypePred : CPred<[{::llvm::isa<::mlir::VectorType>($_self) &&
                                    ::llvm::cast<VectorType>($_self).isScalable()}]>;
+
+// Whether a type is a VectorType and all dimensions are scalable.
+def allDimsScalableVectorTypePred : And<[
+  IsVectorTypePred,
+  CPred<[{::llvm::cast<::mlir::VectorType>($_self).allDimsScalable()}]>
+]>;
 
 // Whether a type is a TensorType.
 def IsTensorTypePred : CPred<"::llvm::isa<::mlir::TensorType>($_self)">;
@@ -488,6 +528,7 @@ def I8  : I<8>;
 def I16 : I<16>;
 def I32 : I<32>;
 def I64 : I<64>;
+def I128 : I<128>;
 
 // Any signed integer type irrespective of its width.
 def AnySignedInteger : Type<
@@ -744,6 +785,10 @@ class IsScalableVectorOfLengthPred<list<int> allowedLengths> :
                    CPred<[{::llvm::cast<::mlir::VectorType>($_self).getNumElements()
                            == }]
                          # allowedlength>)>]>;
+
+// Whether the shape of a vector matches the given `shape` list.
+class IsVectorOfShape<list<int> shape>
+  : CPred<"::llvm::cast<::mlir::VectorType>($_self).getShape() == ArrayRef<int64_t>({" # !interleave(shape, ", ") # "})">;
 
 // Any vector where the number of elements is from the given
 // `allowedLengths` list
@@ -1196,6 +1241,7 @@ class ArrayProperty<string storageTypeParam = "", int n, string desc = ""> :
   let interfaceType = "::llvm::ArrayRef<" # storageTypeParam # ">";
   let convertFromStorage = "$_storage";
   let assignToStorage = "::llvm::copy($_value, $_storage)";
+  let hashProperty = "llvm::hash_combine_range(std::begin($_storage), std::end($_storage));";
 }
 
 //===----------------------------------------------------------------------===//

@@ -3017,7 +3017,8 @@ SDValue DAGCombiner::visitADDSAT(SDNode *N) {
   return SDValue();
 }
 
-static SDValue getAsCarry(const TargetLowering &TLI, SDValue V) {
+static SDValue getAsCarry(const TargetLowering &TLI, SDValue V,
+                          bool ForceCarryReconstruction = false) {
   bool Masked = false;
 
   // First, peel away TRUNCATE/ZERO_EXTEND/AND nodes due to legalization.
@@ -3028,10 +3029,16 @@ static SDValue getAsCarry(const TargetLowering &TLI, SDValue V) {
     }
 
     if (V.getOpcode() == ISD::AND && isOneConstant(V.getOperand(1))) {
+      if (ForceCarryReconstruction)
+        return V;
+
       Masked = true;
       V = V.getOperand(0);
       continue;
     }
+
+    if (ForceCarryReconstruction && V.getValueType() == MVT::i1)
+      return V;
 
     break;
   }
@@ -3542,11 +3549,8 @@ static SDValue combineCarryDiamond(SelectionDAG &DAG, const TargetLowering &TLI,
     return SDValue();
 
   // Verify that the carry/borrow in is plausibly a carry/borrow bit.
-  // TODO: make getAsCarry() aware of how partial carries are merged.
-  if (CarryIn.getOpcode() != ISD::ZERO_EXTEND)
-    return SDValue();
-  CarryIn = CarryIn.getOperand(0);
-  if (CarryIn.getValueType() != MVT::i1)
+  CarryIn = getAsCarry(TLI, CarryIn, true);
+  if (!CarryIn)
     return SDValue();
 
   SDLoc DL(N);
@@ -5699,13 +5703,14 @@ SDValue DAGCombiner::hoistLogicOpWithSameOpcodeHands(SDNode *N) {
   // FIXME: We should check number of uses of the operands to not increase
   //        the instruction count for all transforms.
 
-  // Handle size-changing casts.
+  // Handle size-changing casts (or sign_extend_inreg).
   SDValue X = N0.getOperand(0);
   SDValue Y = N1.getOperand(0);
   EVT XVT = X.getValueType();
   SDLoc DL(N);
-  if (HandOpcode == ISD::ANY_EXTEND || HandOpcode == ISD::ZERO_EXTEND ||
-      HandOpcode == ISD::SIGN_EXTEND) {
+  if (ISD::isExtOpcode(HandOpcode) || ISD::isExtVecInRegOpcode(HandOpcode) ||
+      (HandOpcode == ISD::SIGN_EXTEND_INREG &&
+       N0.getOperand(1) == N1.getOperand(1))) {
     // If both operands have other uses, this transform would create extra
     // instructions without eliminating anything.
     if (!N0.hasOneUse() && !N1.hasOneUse())
@@ -5720,11 +5725,14 @@ SDValue DAGCombiner::hoistLogicOpWithSameOpcodeHands(SDNode *N) {
       return SDValue();
     // Avoid infinite looping with PromoteIntBinOp.
     // TODO: Should we apply desirable/legal constraints to all opcodes?
-    if (HandOpcode == ISD::ANY_EXTEND && LegalTypes &&
-        !TLI.isTypeDesirableForOp(LogicOpcode, XVT))
+    if ((HandOpcode == ISD::ANY_EXTEND ||
+         HandOpcode == ISD::ANY_EXTEND_VECTOR_INREG) &&
+        LegalTypes && !TLI.isTypeDesirableForOp(LogicOpcode, XVT))
       return SDValue();
     // logic_op (hand_op X), (hand_op Y) --> hand_op (logic_op X, Y)
     SDValue Logic = DAG.getNode(LogicOpcode, DL, XVT, X, Y);
+    if (HandOpcode == ISD::SIGN_EXTEND_INREG)
+      return DAG.getNode(HandOpcode, DL, VT, Logic, N0.getOperand(1));
     return DAG.getNode(HandOpcode, DL, VT, Logic);
   }
 
@@ -6186,6 +6194,11 @@ SDValue DAGCombiner::visitANDLike(SDValue N0, SDValue N1, SDNode *N) {
 
   if (SDValue V = foldLogicOfSetCCs(true, N0, N1, DL))
     return V;
+
+  // Canonicalize:
+  //   and(x, add) -> and(add, x)
+  if (N1.getOpcode() == ISD::ADD)
+    std::swap(N0, N1);
 
   // TODO: Rewrite this to return a new 'AND' instead of using CombineTo.
   if (N0.getOpcode() == ISD::ADD && N1.getOpcode() == ISD::SRL &&
@@ -21702,8 +21715,7 @@ SDValue DAGCombiner::visitEXTRACT_VECTOR_ELT(SDNode *N) {
   // extract_vector_elt (build_vector x, y), 1 -> y
   if (((IndexC && VecOp.getOpcode() == ISD::BUILD_VECTOR) ||
        VecOp.getOpcode() == ISD::SPLAT_VECTOR) &&
-      TLI.isTypeLegal(VecVT) &&
-      (VecOp.hasOneUse() || TLI.aggressivelyPreferBuildVectorSources(VecVT))) {
+      TLI.isTypeLegal(VecVT)) {
     assert((VecOp.getOpcode() != ISD::BUILD_VECTOR ||
             VecVT.isFixedLengthVector()) &&
            "BUILD_VECTOR used for scalable vectors");
@@ -21712,12 +21724,15 @@ SDValue DAGCombiner::visitEXTRACT_VECTOR_ELT(SDNode *N) {
     SDValue Elt = VecOp.getOperand(IndexVal);
     EVT InEltVT = Elt.getValueType();
 
-    // Sometimes build_vector's scalar input types do not match result type.
-    if (ScalarVT == InEltVT)
-      return Elt;
+    if (VecOp.hasOneUse() || TLI.aggressivelyPreferBuildVectorSources(VecVT) ||
+        isNullConstant(Elt)) {
+      // Sometimes build_vector's scalar input types do not match result type.
+      if (ScalarVT == InEltVT)
+        return Elt;
 
-    // TODO: It may be useful to truncate if free if the build_vector implicitly
-    // converts.
+      // TODO: It may be useful to truncate if free if the build_vector
+      // implicitly converts.
+    }
   }
 
   if (SDValue BO = scalarizeExtractedBinop(N, DAG, LegalOperations))

@@ -30,6 +30,7 @@
 #include "clang/Basic/XRayLists.h"
 #include "clang/Lex/PreprocessorOptions.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringMap.h"
@@ -378,8 +379,7 @@ private:
   /// multiversion function resolvers and ifuncs are defined and emitted.
   std::vector<GlobalDecl> MultiVersionFuncs;
 
-  typedef llvm::StringMap<llvm::TrackingVH<llvm::Constant> > ReplacementsTy;
-  ReplacementsTy Replacements;
+  llvm::MapVector<StringRef, llvm::TrackingVH<llvm::Constant>> Replacements;
 
   /// List of global values to be replaced with something else. Used when we
   /// want to replace a GlobalValue but can't identify it by its mangled name
@@ -925,6 +925,13 @@ public:
 
   // Return the function body address of the given function.
   llvm::Constant *GetFunctionStart(const ValueDecl *Decl);
+
+  // Return whether RTTI information should be emitted for this target.
+  bool shouldEmitRTTI(bool ForEH = false) {
+    return (ForEH || getLangOpts().RTTI) && !getLangOpts().CUDAIsDevice &&
+           !(getLangOpts().OpenMP && getLangOpts().OpenMPIsTargetDevice &&
+             getTriple().isNVPTX());
+  }
 
   /// Get the address of the RTTI descriptor for the given type.
   llvm::Constant *GetAddrOfRTTIDescriptor(QualType Ty, bool ForEH = false);

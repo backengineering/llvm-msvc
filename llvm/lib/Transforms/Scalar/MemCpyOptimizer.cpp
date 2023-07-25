@@ -1522,8 +1522,6 @@ bool MemCpyOptPass::performStackMoveOptzn(Instruction *Load, Instruction *Store,
             FirstUser = UI;
           if (!LastUser || LastUser->comesBefore(UI))
             LastUser = UI;
-          if (UI->hasMetadata(LLVMContext::MD_noalias))
-            NoAliasInstrs.insert(UI);
           if (UI->isLifetimeStartOrEnd()) {
             // We note the locations of these intrinsic calls so that we can
             // delete them later if the optimization succeeds, this is safe
@@ -1536,6 +1534,8 @@ bool MemCpyOptPass::performStackMoveOptzn(Instruction *Load, Instruction *Store,
               continue;
             }
           }
+          if (UI->hasMetadata(LLVMContext::MD_noalias))
+            NoAliasInstrs.insert(UI);
           if (!ModRefCallback(UI))
             return false;
         }
@@ -1612,8 +1612,13 @@ bool MemCpyOptPass::performStackMoveOptzn(Instruction *Load, Instruction *Store,
 
     // Create a new lifetime end marker after the last user of src or alloca
     // users.
-    Builder.SetInsertPoint(LastUser->getParent(), ++LastUser->getIterator());
-    Builder.CreateLifetimeEnd(SrcAlloca, AllocaSize);
+    // FIXME: If the last user is the terminator for the bb, we can insert
+    // lifetime.end marker to the immidiate post-dominator, but currently do
+    // nothing.
+    if (!LastUser->isTerminator()) {
+      Builder.SetInsertPoint(LastUser->getParent(), ++LastUser->getIterator());
+      Builder.CreateLifetimeEnd(SrcAlloca, AllocaSize);
+    }
 
     // Remove all other lifetime markers.
     for (Instruction *I : LifetimeMarkers)

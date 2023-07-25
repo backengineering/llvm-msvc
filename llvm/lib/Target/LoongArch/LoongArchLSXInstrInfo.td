@@ -15,160 +15,155 @@
 //===----------------------------------------------------------------------===//
 
 class LSX1RI13_VI<bits<32> op, Operand ImmOpnd = simm13>
-    : Fmt1RI13_VI<op, (outs LSX128:$vd), (ins ImmOpnd:$imm13),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $imm13">;
+    : Fmt1RI13_VI<op, (outs LSX128:$vd), (ins ImmOpnd:$imm13), "$vd, $imm13">;
 
 class LSX2R_VV<bits<32> op>
-    : Fmt2R_VV<op, (outs LSX128:$vd), (ins LSX128:$vj),
-                    !tolower(!subst("_", ".", NAME)), "$vd, $vj">;
+    : Fmt2R_VV<op, (outs LSX128:$vd), (ins LSX128:$vj), "$vd, $vj">;
 
 class LSX2R_VR<bits<32> op>
-    : Fmt2R_VR<op, (outs LSX128:$vd), (ins GPR:$rj),
-                    !tolower(!subst("_", ".", NAME)), "$vd, $rj">;
+    : Fmt2R_VR<op, (outs LSX128:$vd), (ins GPR:$rj), "$vd, $rj">;
 
 class LSX2R_CV<bits<32> op>
-    : Fmt2R_CV<op, (outs CFR:$cd), (ins LSX128:$vj),
-                    !tolower(!subst("_", ".", NAME)), "$cd, $vj">;
+    : Fmt2R_CV<op, (outs CFR:$cd), (ins LSX128:$vj), "$cd, $vj">;
 
 class LSX2RI1_VVI<bits<32> op, Operand ImmOpnd = uimm1>
     : Fmt2RI1_VVI<op, (outs LSX128:$vd), (ins LSX128:$vj, ImmOpnd:$imm1),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm1">;
+                  "$vd, $vj, $imm1">;
 
 class LSX2RI1_RVI<bits<32> op, Operand ImmOpnd = uimm1>
     : Fmt2RI1_RVI<op, (outs GPR:$rd), (ins LSX128:$vj, ImmOpnd:$imm1),
-                  !tolower(!subst("_", ".", NAME)), "$rd, $vj, $imm1">;
+                  "$rd, $vj, $imm1">;
 
 class LSX2RI2_VVI<bits<32> op, Operand ImmOpnd = uimm2>
     : Fmt2RI2_VVI<op, (outs LSX128:$vd), (ins LSX128:$vj, ImmOpnd:$imm2),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm2">;
+                  "$vd, $vj, $imm2">;
 
 class LSX2RI2_RVI<bits<32> op, Operand ImmOpnd = uimm2>
     : Fmt2RI2_RVI<op, (outs GPR:$rd), (ins LSX128:$vj, ImmOpnd:$imm2),
-                  !tolower(!subst("_", ".", NAME)), "$rd, $vj, $imm2">;
+                  "$rd, $vj, $imm2">;
 
 class LSX2RI3_VVI<bits<32> op, Operand ImmOpnd = uimm3>
     : Fmt2RI3_VVI<op, (outs LSX128:$vd), (ins LSX128:$vj, ImmOpnd:$imm3),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm3">;
+                  "$vd, $vj, $imm3">;
 
 class LSX2RI3_RVI<bits<32> op, Operand ImmOpnd = uimm3>
     : Fmt2RI3_RVI<op, (outs GPR:$rd), (ins LSX128:$vj, ImmOpnd:$imm3),
-                  !tolower(!subst("_", ".", NAME)), "$rd, $vj, $imm3">;
+                  "$rd, $vj, $imm3">;
 
 class LSX2RI4_VVI<bits<32> op, Operand ImmOpnd = uimm4>
     : Fmt2RI4_VVI<op, (outs LSX128:$vd), (ins LSX128:$vj, ImmOpnd:$imm4),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm4">;
+                  "$vd, $vj, $imm4">;
 
 class LSX2RI4_RVI<bits<32> op, Operand ImmOpnd = uimm4>
     : Fmt2RI4_RVI<op, (outs GPR:$rd), (ins LSX128:$vj, ImmOpnd:$imm4),
-                  !tolower(!subst("_", ".", NAME)), "$rd, $vj, $imm4">;
+                  "$rd, $vj, $imm4">;
 
 class LSX2RI5_VVI<bits<32> op, Operand ImmOpnd = uimm5>
     : Fmt2RI5_VVI<op, (outs LSX128:$vd), (ins LSX128:$vj, ImmOpnd:$imm5),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm5">;
+                  "$vd, $vj, $imm5">;
 
 class LSX2RI6_VVI<bits<32> op, Operand ImmOpnd = uimm6>
     : Fmt2RI6_VVI<op, (outs LSX128:$vd), (ins LSX128:$vj, ImmOpnd:$imm6),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm6">;
+                  "$vd, $vj, $imm6">;
 
 class LSX2RI8_VVI<bits<32> op, Operand ImmOpnd = uimm8>
     : Fmt2RI8_VVI<op, (outs LSX128:$vd), (ins LSX128:$vj, ImmOpnd:$imm8),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm8">;
+                  "$vd, $vj, $imm8">;
 
 class LSX2RI8I1_VRII<bits<32> op, Operand ImmOpnd = simm8,
                      Operand IdxOpnd = uimm1>
     : Fmt2RI8I1_VRII<op, (outs),
                      (ins LSX128:$vd, GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm1),
-                     !tolower(!subst("_", ".", NAME)),
                      "$vd, $rj, $imm8, $imm1">;
 class LSX2RI8I2_VRII<bits<32> op, Operand ImmOpnd = simm8,
                      Operand IdxOpnd = uimm2>
     : Fmt2RI8I2_VRII<op, (outs),
                      (ins LSX128:$vd, GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm2),
-                     !tolower(!subst("_", ".", NAME)),
                      "$vd, $rj, $imm8, $imm2">;
 class LSX2RI8I3_VRII<bits<32> op, Operand ImmOpnd = simm8,
                      Operand IdxOpnd = uimm3>
     : Fmt2RI8I3_VRII<op, (outs),
                      (ins LSX128:$vd, GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm3),
-                     !tolower(!subst("_", ".", NAME)),
                      "$vd, $rj, $imm8, $imm3">;
 class LSX2RI8I4_VRII<bits<32> op, Operand ImmOpnd = simm8,
                      Operand IdxOpnd = uimm4>
     : Fmt2RI8I4_VRII<op, (outs),
                      (ins LSX128:$vd, GPR:$rj, ImmOpnd:$imm8, IdxOpnd:$imm4),
-                     !tolower(!subst("_", ".", NAME)),
                      "$vd, $rj, $imm8, $imm4">;
-
-class LSX2RI9_VRI<bits<32> op, Operand ImmOpnd = simm9_lsl3>
-    : Fmt2RI9_VRI<op, (outs LSX128:$vd), (ins GPR:$rj, ImmOpnd:$imm9),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $rj, $imm9">;
-
-class LSX2RI10_VRI<bits<32> op, Operand ImmOpnd = simm10_lsl2>
-    : Fmt2RI10_VRI<op, (outs LSX128:$vd), (ins GPR:$rj, ImmOpnd:$imm10),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $rj, $imm10">;
-
-class LSX2RI11_VRI<bits<32> op, Operand ImmOpnd = simm11_lsl1>
-    : Fmt2RI11_VRI<op, (outs LSX128:$vd), (ins GPR:$rj, ImmOpnd:$imm11),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $rj, $imm11">;
-
-class LSX2RI12_VRI<bits<32> op, Operand ImmOpnd = simm12>
-    : Fmt2RI12_VRI<op, (outs LSX128:$vd), (ins GPR:$rj, ImmOpnd:$imm12),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $rj, $imm12">;
 
 class LSX3R_VVV<bits<32> op>
     : Fmt3R_VVV<op, (outs LSX128:$vd), (ins LSX128:$vj, LSX128:$vk),
-                !tolower(!subst("_", ".", NAME)), "$vd, $vj, $vk">;
+                "$vd, $vj, $vk">;
 
 class LSX3R_VVR<bits<32> op>
     : Fmt3R_VVR<op, (outs LSX128:$vd), (ins LSX128:$vj, GPR:$rk),
-                !tolower(!subst("_", ".", NAME)), "$vd, $vj, $rk">;
-
-class LSX3R_VRR<bits<32> op>
-    : Fmt3R_VRR<op, (outs LSX128:$vd), (ins GPR:$rj, GPR:$rk),
-                !tolower(!subst("_", ".", NAME)), "$vd, $rj, $rk">;
+                "$vd, $vj, $rk">;
 
 class LSX4R_VVVV<bits<32> op>
     : Fmt4R_VVVV<op, (outs LSX128:$vd),
                  (ins LSX128:$vj, LSX128:$vk, LSX128:$va),
-                 !tolower(!subst("_", ".", NAME)), "$vd, $vj, $vk, $va">;
+                 "$vd, $vj, $vk, $va">;
 
 let Constraints = "$vd = $dst" in {
 
 class LSX2RI1_VVRI<bits<32> op, Operand ImmOpnd = uimm1>
     : Fmt2RI1_VRI<op, (outs LSX128:$dst), (ins LSX128:$vd, GPR:$rj, ImmOpnd:$imm1),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $rj, $imm1">;
+                  "$vd, $rj, $imm1">;
 class LSX2RI2_VVRI<bits<32> op, Operand ImmOpnd = uimm2>
     : Fmt2RI2_VRI<op, (outs LSX128:$dst), (ins LSX128:$vd, GPR:$rj, ImmOpnd:$imm2),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $rj, $imm2">;
+                  "$vd, $rj, $imm2">;
 class LSX2RI3_VVRI<bits<32> op, Operand ImmOpnd = uimm3>
     : Fmt2RI3_VRI<op, (outs LSX128:$dst), (ins LSX128:$vd, GPR:$rj, ImmOpnd:$imm3),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $rj, $imm3">;
+                  "$vd, $rj, $imm3">;
 class LSX2RI4_VVRI<bits<32> op, Operand ImmOpnd = uimm4>
     : Fmt2RI4_VRI<op, (outs LSX128:$dst), (ins LSX128:$vd, GPR:$rj, ImmOpnd:$imm4),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $rj, $imm4">;
+                  "$vd, $rj, $imm4">;
 
 class LSX2RI4_VVVI<bits<32> op, Operand ImmOpnd = uimm4>
     : Fmt2RI4_VVI<op, (outs LSX128:$dst), (ins LSX128:$vd, LSX128:$vj, ImmOpnd:$imm4),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm4">;
+                  "$vd, $vj, $imm4">;
 class LSX2RI5_VVVI<bits<32> op, Operand ImmOpnd = uimm5>
     : Fmt2RI5_VVI<op, (outs LSX128:$dst), (ins LSX128:$vd, LSX128:$vj, ImmOpnd:$imm5),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm5">;
+                  "$vd, $vj, $imm5">;
 class LSX2RI6_VVVI<bits<32> op, Operand ImmOpnd = uimm6>
     : Fmt2RI6_VVI<op, (outs LSX128:$dst), (ins LSX128:$vd, LSX128:$vj, ImmOpnd:$imm6),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm6">;
+                  "$vd, $vj, $imm6">;
 class LSX2RI7_VVVI<bits<32> op, Operand ImmOpnd = uimm7>
     : Fmt2RI7_VVI<op, (outs LSX128:$dst), (ins LSX128:$vd, LSX128:$vj, ImmOpnd:$imm7),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm7">;
+                  "$vd, $vj, $imm7">;
 
 class LSX2RI8_VVVI<bits<32> op, Operand ImmOpnd = uimm8>
     : Fmt2RI8_VVI<op, (outs LSX128:$dst), (ins LSX128:$vd, LSX128:$vj, ImmOpnd:$imm8),
-                  !tolower(!subst("_", ".", NAME)), "$vd, $vj, $imm8">;
+                  "$vd, $vj, $imm8">;
 
 class LSX3R_VVVV<bits<32> op>
     : Fmt3R_VVV<op, (outs LSX128:$dst), (ins LSX128:$vd, LSX128:$vj, LSX128:$vk),
-                !tolower(!subst("_", ".", NAME)), "$vd, $vj, $vk">;
+                "$vd, $vj, $vk">;
 
 } // Constraints = "$vd = $dst"
+
+class LSX2RI9_Load<bits<32> op, Operand ImmOpnd = simm9_lsl3>
+    : Fmt2RI9_VRI<op, (outs LSX128:$vd), (ins GPR:$rj, ImmOpnd:$imm9),
+                  "$vd, $rj, $imm9">;
+class LSX2RI10_Load<bits<32> op, Operand ImmOpnd = simm10_lsl2>
+    : Fmt2RI10_VRI<op, (outs LSX128:$vd), (ins GPR:$rj, ImmOpnd:$imm10),
+                  "$vd, $rj, $imm10">;
+class LSX2RI11_Load<bits<32> op, Operand ImmOpnd = simm11_lsl1>
+    : Fmt2RI11_VRI<op, (outs LSX128:$vd), (ins GPR:$rj, ImmOpnd:$imm11),
+                  "$vd, $rj, $imm11">;
+class LSX2RI12_Load<bits<32> op, Operand ImmOpnd = simm12>
+    : Fmt2RI12_VRI<op, (outs LSX128:$vd), (ins GPR:$rj, ImmOpnd:$imm12),
+                  "$vd, $rj, $imm12">;
+class LSX2RI12_Store<bits<32> op, Operand ImmOpnd = simm12>
+    : Fmt2RI12_VRI<op, (outs), (ins LSX128:$vd, GPR:$rj, ImmOpnd:$imm12),
+                  "$vd, $rj, $imm12">;
+
+class LSX3R_Load<bits<32> op>
+    : Fmt3R_VRR<op, (outs LSX128:$vd), (ins GPR:$rj, GPR:$rk),
+                "$vd, $rj, $rk">;
+class LSX3R_Store<bits<32> op>
+    : Fmt3R_VRR<op, (outs), (ins LSX128:$vd, GPR:$rj, GPR:$rk),
+                "$vd, $rj, $rk">;
 
 //===----------------------------------------------------------------------===//
 // Instructions
@@ -958,9 +953,9 @@ def VSHUF_H : LSX3R_VVVV<0x717a8000>;
 def VSHUF_W : LSX3R_VVVV<0x717b0000>;
 def VSHUF_D : LSX3R_VVVV<0x717b8000>;
 
-def VSHUF4I_B : LSX2RI8_VVVI<0x73900000>;
-def VSHUF4I_H : LSX2RI8_VVVI<0x73940000>;
-def VSHUF4I_W : LSX2RI8_VVVI<0x73980000>;
+def VSHUF4I_B : LSX2RI8_VVI<0x73900000>;
+def VSHUF4I_H : LSX2RI8_VVI<0x73940000>;
+def VSHUF4I_W : LSX2RI8_VVI<0x73980000>;
 def VSHUF4I_D : LSX2RI8_VVVI<0x739c0000>;
 
 def VPERMI_W : LSX2RI8_VVVI<0x73e40000>;
@@ -972,18 +967,18 @@ def VEXTRINS_B : LSX2RI8_VVVI<0x738c0000>;
 } // mayLoad = 0, mayStore = 0
 
 let mayLoad = 1, mayStore = 0 in {
-def VLD : LSX2RI12_VRI<0x2c000000>;
-def VLDX : LSX3R_VRR<0x38400000>;
+def VLD : LSX2RI12_Load<0x2c000000>;
+def VLDX : LSX3R_Load<0x38400000>;
 
-def VLDREPL_B : LSX2RI12_VRI<0x30800000>;
-def VLDREPL_H : LSX2RI11_VRI<0x30400000>;
-def VLDREPL_W : LSX2RI10_VRI<0x30200000>;
-def VLDREPL_D : LSX2RI9_VRI<0x30100000>;
+def VLDREPL_B : LSX2RI12_Load<0x30800000>;
+def VLDREPL_H : LSX2RI11_Load<0x30400000>;
+def VLDREPL_W : LSX2RI10_Load<0x30200000>;
+def VLDREPL_D : LSX2RI9_Load<0x30100000>;
 } // mayLoad = 1, mayStore = 0
 
 let mayLoad = 0, mayStore = 1 in {
-def VST : LSX2RI12_VRI<0x2c400000>;
-def VSTX : LSX3R_VRR<0x38440000>;
+def VST : LSX2RI12_Store<0x2c400000>;
+def VSTX : LSX3R_Store<0x38440000>;
 
 def VSTELM_B : LSX2RI8I4_VRII<0x31800000>;
 def VSTELM_H : LSX2RI8I3_VRII<0x31400000, simm8_lsl1>;

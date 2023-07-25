@@ -502,13 +502,16 @@ bool Sema::checkLiteralOperatorId(const CXXScopeSpec &SS,
     IdentifierInfo *II = Name.Identifier;
     ReservedIdentifierStatus Status = II->isReserved(PP.getLangOpts());
     SourceLocation Loc = Name.getEndLoc();
-    if (isReservedInAllContexts(Status) &&
-        !PP.getSourceManager().isInSystemHeader(Loc)) {
-      Diag(Loc, diag::warn_reserved_extern_symbol)
-          << II << static_cast<int>(Status)
-          << FixItHint::CreateReplacement(
-                 Name.getSourceRange(),
-                 (StringRef("operator\"\"") + II->getName()).str());
+    if (!PP.getSourceManager().isInSystemHeader(Loc)) {
+      if (auto Hint = FixItHint::CreateReplacement(
+              Name.getSourceRange(),
+              (StringRef("operator\"\"") + II->getName()).str());
+          isReservedInAllContexts(Status)) {
+        Diag(Loc, diag::warn_reserved_extern_symbol)
+            << II << static_cast<int>(Status) << Hint;
+      } else {
+        Diag(Loc, diag::warn_deprecated_literal_operator_id) << II << Hint;
+      }
     }
   }
 
@@ -2654,11 +2657,10 @@ bool Sema::FindAllocationFunctions(SourceLocation StartLoc, SourceRange Range,
   // FIXME: Should the Sema create the expression and embed it in the syntax
   // tree? Or should the consumer just recalculate the value?
   // FIXME: Using a dummy value will interact poorly with attribute enable_if.
-  IntegerLiteral Size(
-      Context,
-      llvm::APInt::getZero(
-          Context.getTargetInfo().getPointerWidth(LangAS::Default)),
-      Context.getSizeType(), SourceLocation());
+  QualType SizeTy = Context.getSizeType();
+  unsigned SizeTyWidth = Context.getTypeSize(SizeTy);
+  IntegerLiteral Size(Context, llvm::APInt::getZero(SizeTyWidth), SizeTy,
+                      SourceLocation());
   AllocArgs.push_back(&Size);
 
   QualType AlignValT = Context.VoidTy;

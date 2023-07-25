@@ -20,6 +20,7 @@
 #include "GlobalISelMatchTableExecutorEmitter.h"
 #include "SubtargetFeatureInfo.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
@@ -232,6 +233,10 @@ protected:
 
 private:
   unsigned Kind;
+
+  // Note: if this ever changes to a StringRef (e.g. allocated in a pool or
+  // something), CombineRuleBuilder::verify() needs to be updated as well.
+  // It currently checks that the StringRef in the PatternMap references this.
   std::string Name;
 };
 
@@ -453,12 +458,12 @@ struct OperandTableEntry {
 ///   - Creation in a `parse` function
 ///     - The unique_ptr is stored in a variable, and may be destroyed if the
 ///       pattern is found to be semantically invalid.
-///   - Ownership transfer into a `PatternStringMap`
+///   - Ownership transfer into a `PatternMap`
 ///     - Once a pattern is moved into either the map of Match or Apply
 ///       patterns, it is known to be valid and it never moves back.
 class CombineRuleBuilder {
 public:
-  using PatternStringMap = StringMap<std::unique_ptr<Pattern>>;
+  using PatternMap = MapVector<StringRef, std::unique_ptr<Pattern>>;
 
   CombineRuleBuilder(const CodeGenTarget &CGT,
                      SubtargetFeatureInfoMap &SubtargetFeatures,
@@ -546,13 +551,13 @@ private:
 
   /// These maps have ownership of the actual Pattern objects.
   /// They both map a Pattern's name to the Pattern instance.
-  PatternStringMap MatchPats;
-  PatternStringMap ApplyPats;
+  PatternMap MatchPats;
+  PatternMap ApplyPats;
 
   /// Set by findRoots.
   Pattern *MatchRoot = nullptr;
 
-  StringMap<OperandTableEntry> OperandTable;
+  MapVector<StringRef, OperandTableEntry> OperandTable;
   SmallVector<MatchDataInfo, 2> MatchDatas;
 };
 
@@ -613,7 +618,7 @@ void CombineRuleBuilder::print(raw_ostream &OS) const {
     OS << "  )\n";
   }
 
-  const auto DumpPats = [&](StringRef Name, const PatternStringMap &Pats) {
+  const auto DumpPats = [&](StringRef Name, const PatternMap &Pats) {
     OS << "  (" << Name << " ";
     if (Pats.empty()) {
       OS << "<empty>)\n";
@@ -621,12 +626,12 @@ void CombineRuleBuilder::print(raw_ostream &OS) const {
     }
 
     OS << "\n";
-    for (const auto &P : Pats) {
+    for (const auto &[Name, Pat] : Pats) {
       OS << "    ";
-      if (P.getValue().get() == MatchRoot)
+      if (Pat.get() == MatchRoot)
         OS << "<root>";
-      OS << P.getKey() << ":";
-      P.getValue()->print(OS, /*PrintName=*/false);
+      OS << Name << ":";
+      Pat->print(OS, /*PrintName=*/false);
       OS << "\n";
     }
     OS << "  )\n";
@@ -640,9 +645,8 @@ void CombineRuleBuilder::print(raw_ostream &OS) const {
     OS << "<empty>)\n";
   else {
     OS << "\n";
-    for (const auto &Entry : OperandTable) {
-      OS << "    [" << Entry.getKey();
-      auto &Val = Entry.getValue();
+    for (const auto &[Key, Val] : OperandTable) {
+      OS << "    [" << Key;
       if (const auto *P = Val.MatchPat)
         OS << " match_pat:" << P->getName();
       if (const auto *P = Val.ApplyPat)
@@ -658,15 +662,27 @@ void CombineRuleBuilder::print(raw_ostream &OS) const {
 }
 
 void CombineRuleBuilder::verify() const {
-  const auto VerifyPats = [&](const PatternStringMap &Pats) {
-    for (const auto &Entry : Pats) {
-      if (!Entry.getValue())
+  const auto VerifyPats = [&](const PatternMap &Pats) {
+    for (const auto &[Name, Pat] : Pats) {
+      if (!Pat)
         PrintFatalError("null pattern in pattern map!");
 
-      if (Entry.getKey() != Entry.getValue()->getName()) {
-        Entry.getValue()->dump();
-        PrintFatalError("Pattern name mismatch! Map name: " + Entry.getKey() +
-                        ", Pat name: " + Entry.getValue()->getName());
+      if (Name != Pat->getName()) {
+        Pat->dump();
+        PrintFatalError("Pattern name mismatch! Map name: " + Name +
+                        ", Pat name: " + Pat->getName());
+      }
+
+      // As an optimization, the PatternMaps don't re-allocate the PatternName
+      // string. They simply reference the std::string inside Pattern. Ensure
+      // this is the case to avoid memory issues.
+      if (Name.data() != Pat->getName().data()) {
+        dbgs() << "Map StringRef: '" << Name << "' @ "
+               << (const void *)Name.data() << "\n";
+        dbgs() << "Pat String: '" << Pat->getName() << "' @ "
+               << (const void *)Pat->getName().data() << "\n";
+        PrintFatalError("StringRef stored in the PatternMap is not referencing "
+                        "the same string as its Pattern!");
       }
     }
   };
@@ -745,7 +761,7 @@ bool CombineRuleBuilder::findRoots() {
   // Look by pattern name, e.g.
   //    (G_FNEG $x, $y):$root
   if (auto It = MatchPats.find(RootName); It != MatchPats.end()) {
-    MatchRoot = MatchPats[RootName].get();
+    MatchRoot = It->second.get();
     return true;
   }
 
@@ -769,8 +785,8 @@ bool CombineRuleBuilder::findRoots() {
 
 bool CombineRuleBuilder::buildOperandsTable() {
   // Walk each instruction pattern
-  for (auto &P : MatchPats) {
-    auto *IP = dyn_cast<InstructionPattern>(P.getValue().get());
+  for (auto &[_, P] : MatchPats) {
+    auto *IP = dyn_cast<InstructionPattern>(P.get());
     if (!IP)
       continue;
     for (const auto &Operand : IP->operands()) {
@@ -790,8 +806,8 @@ bool CombineRuleBuilder::buildOperandsTable() {
     }
   }
 
-  for (auto &P : ApplyPats) {
-    auto *IP = dyn_cast<InstructionPattern>(P.getValue().get());
+  for (auto &[_, P] : ApplyPats) {
+    auto *IP = dyn_cast<InstructionPattern>(P.get());
     if (!IP)
       continue;
     for (const auto &Operand : IP->operands()) {
@@ -913,7 +929,7 @@ bool CombineRuleBuilder::parseMatch(DagInit &Match) {
         PrintWarning(RuleDef.getLoc(),
                      "'match' C++ code does not seem to return!");
       }
-      MatchPats[Name] = std::move(CXXPat);
+      MatchPats[CXXPat->getName()] = std::move(CXXPat);
       continue;
     }
 
@@ -940,9 +956,9 @@ bool CombineRuleBuilder::parseApply(DagInit &Apply) {
   }
 
   const StringInit *Code = dyn_cast<StringInit>(Apply.getArg(0));
-  const auto PatName = makeAnonPatName("apply");
-  ApplyPats[PatName] =
-      std::make_unique<CXXPattern>(*Code, PatName, /*IsApply*/ true);
+  auto Pat = std::make_unique<CXXPattern>(*Code, makeAnonPatName("apply"),
+                                          /*IsApply*/ true);
+  ApplyPats[Pat->getName()] = std::move(Pat);
   return true;
 }
 
@@ -1003,20 +1019,19 @@ bool CombineRuleBuilder::emitMatchPattern(CodeExpansions &CE,
     return false;
 
   // Emit remaining patterns
-  for (auto &Entry : MatchPats) {
-    Pattern *CurPat = Entry.getValue().get();
-    if (SeenPats.contains(CurPat))
+  for (auto &[_, Pat] : MatchPats) {
+    if (SeenPats.contains(Pat.get()))
       continue;
 
-    switch (CurPat->getKind()) {
+    switch (Pat->getKind()) {
     case Pattern::K_AnyOpcode:
       PrintError("wip_match_opcode can not be used with instruction patterns!");
       return false;
     case Pattern::K_Inst:
-      cast<InstructionPattern>(CurPat)->reportUnreachable(RuleDef.getLoc());
+      cast<InstructionPattern>(Pat.get())->reportUnreachable(RuleDef.getLoc());
       return false;
     case Pattern::K_CXX: {
-      addCXXPredicate(IM, CE, *cast<CXXPattern>(CurPat));
+      addCXXPredicate(IM, CE, *cast<CXXPattern>(Pat.get()));
       continue;
     }
     default:
@@ -1043,20 +1058,20 @@ bool CombineRuleBuilder::emitMatchPattern(CodeExpansions &CE,
     IM.addPredicate<InstructionOpcodeMatcher>(CGI);
 
     // Emit remaining patterns.
-    for (auto &Entry : MatchPats) {
-      Pattern *CurPat = Entry.getValue().get();
-      if (CurPat == &AOP)
+    for (auto &[_, Pat] : MatchPats) {
+      if (Pat.get() == &AOP)
         continue;
 
-      switch (CurPat->getKind()) {
+      switch (Pat->getKind()) {
       case Pattern::K_AnyOpcode:
         PrintError("wip_match_opcode can only be present once!");
         return false;
       case Pattern::K_Inst:
-        cast<InstructionPattern>(CurPat)->reportUnreachable(RuleDef.getLoc());
+        cast<InstructionPattern>(Pat.get())->reportUnreachable(
+            RuleDef.getLoc());
         return false;
       case Pattern::K_CXX: {
-        addCXXPredicate(IM, CE, *cast<CXXPattern>(CurPat));
+        addCXXPredicate(IM, CE, *cast<CXXPattern>(Pat.get()));
         break;
       }
       default:
@@ -1072,14 +1087,13 @@ bool CombineRuleBuilder::emitMatchPattern(CodeExpansions &CE,
 }
 
 bool CombineRuleBuilder::emitApplyPatterns(CodeExpansions &CE, RuleMatcher &M) {
-  for (auto &Entry : ApplyPats) {
-    Pattern *CurPat = Entry.getValue().get();
-    switch (CurPat->getKind()) {
+  for (auto &[_, Pat] : ApplyPats) {
+    switch (Pat->getKind()) {
     case Pattern::K_AnyOpcode:
     case Pattern::K_Inst:
       llvm_unreachable("Unsupported pattern kind in output pattern!");
     case Pattern::K_CXX: {
-      CXXPattern *CXXPat = cast<CXXPattern>(CurPat);
+      CXXPattern *CXXPat = cast<CXXPattern>(Pat.get());
       const auto &ExpandedCode = CXXPat->expandCode(CE, RuleDef.getLoc());
       M.addAction<CustomCXXAction>(
           ExpandedCode.getEnumNameWithPrefix(CXXApplyPrefix));
@@ -1106,7 +1120,7 @@ bool CombineRuleBuilder::emitInstructionMatchPattern(
 
   unsigned OpIdx = 0;
   for (auto &O : P.operands()) {
-    auto &OpTableEntry = OperandTable.at(O.Name);
+    auto &OpTableEntry = OperandTable.find(O.Name)->second;
 
     OperandMatcher &OM =
         IM.addOperand(OpIdx++, O.Name, AllocatedTemporariesBaseID++);

@@ -70,7 +70,6 @@
 #include "clang/Driver/Types.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
@@ -100,6 +99,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <utility>
 #if LLVM_ON_UNIX
 #include <unistd.h> // getpid
@@ -810,6 +810,12 @@ void Driver::CreateOffloadingDeviceToolChains(Compilation &C,
     if (!CudaTC) {
       CudaTC = std::make_unique<toolchains::CudaToolChain>(
           *this, *CudaTriple, *HostTC, C.getInputArgs());
+
+      // Emit a warning if the detected CUDA version is too new.
+      CudaInstallationDetector &CudaInstallation =
+          static_cast<toolchains::CudaToolChain &>(*CudaTC).CudaInstallation;
+      if (CudaInstallation.isValid())
+        CudaInstallation.WarnIfUnsupportedVersion();
     }
     C.addOffloadDeviceToolChain(CudaTC.get(), OFK);
   } else if (IsHIP) {
@@ -852,7 +858,7 @@ void Driver::CreateOffloadingDeviceToolChains(Compilation &C,
 
     llvm::StringMap<llvm::DenseSet<StringRef>> DerivedArchs;
     llvm::StringMap<StringRef> FoundNormalizedTriples;
-    llvm::SmallVector<StringRef, 4> OpenMPTriples;
+    std::multiset<StringRef> OpenMPTriples;
 
     // If the user specified -fopenmp-targets= we create a toolchain for each
     // valid triple. Otherwise, if only --offload-arch= was specified we instead
@@ -864,7 +870,8 @@ void Driver::CreateOffloadingDeviceToolChains(Compilation &C,
             << OpenMPTargets->getAsString(C.getInputArgs());
         return;
       }
-      llvm::copy(OpenMPTargets->getValues(), std::back_inserter(OpenMPTriples));
+      for (StringRef T : OpenMPTargets->getValues())
+        OpenMPTriples.insert(T);
     } else if (C.getInputArgs().hasArg(options::OPT_offload_arch_EQ) &&
                !IsHIP && !IsCuda) {
       const ToolChain *HostTC = C.getSingleOffloadToolChain<Action::OFK_Host>();
@@ -919,7 +926,7 @@ void Driver::CreateOffloadingDeviceToolChains(Compilation &C,
       }
 
       for (const auto &TripleAndArchs : DerivedArchs)
-        OpenMPTriples.push_back(TripleAndArchs.first());
+        OpenMPTriples.insert(TripleAndArchs.first());
     }
 
     for (StringRef Val : OpenMPTriples) {
@@ -4824,8 +4831,6 @@ void Driver::BuildJobs(Compilation &C) const {
   }
 
   const llvm::Triple &RawTriple = C.getDefaultToolChain().getTriple();
-  if (RawTriple.isOSAIX() && LTOMode == LTOK_Thin)
-    Diag(diag::err_drv_clang_unsupported) << "thinLTO on AIX";
 
   // Collect the list of architectures.
   llvm::StringSet<> ArchNames;

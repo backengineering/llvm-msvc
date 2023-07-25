@@ -232,6 +232,9 @@ void RuntimePointerChecking::insert(Loop *Lp, Value *Ptr, const SCEV *PtrExpr,
       ScEnd = SE->getUMaxExpr(AR->getStart(), ScEnd);
     }
   }
+  assert(SE->isLoopInvariant(ScStart, Lp) && "ScStart needs to be invariant");
+  assert(SE->isLoopInvariant(ScEnd, Lp)&& "ScEnd needs to be invariant");
+
   // Add the size of the pointed element to ScEnd.
   auto &DL = Lp->getHeader()->getModule()->getDataLayout();
   Type *IdxTy = DL.getIndexType(Ptr->getType());
@@ -1470,10 +1473,6 @@ std::optional<int> llvm::getPointersDiff(Type *ElemTyA, Value *PtrA,
                                          ScalarEvolution &SE, bool StrictCheck,
                                          bool CheckType) {
   assert(PtrA && PtrB && "Expected non-nullptr pointers.");
-  assert(cast<PointerType>(PtrA->getType())
-             ->isOpaqueOrPointeeTypeMatches(ElemTyA) && "Wrong PtrA type");
-  assert(cast<PointerType>(PtrB->getType())
-             ->isOpaqueOrPointeeTypeMatches(ElemTyB) && "Wrong PtrB type");
 
   // Make sure that A and B are different pointers.
   if (PtrA == PtrB)

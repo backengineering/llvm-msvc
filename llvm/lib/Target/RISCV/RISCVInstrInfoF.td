@@ -51,6 +51,9 @@ def riscv_fcvt_x
 def riscv_fcvt_xu
     : SDNode<"RISCVISD::FCVT_XU", SDT_RISCVFCVT_X>;
 
+def riscv_fmin : SDNode<"RISCVISD::FMIN", SDTFPBinOp>;
+def riscv_fmax : SDNode<"RISCVISD::FMAX", SDTFPBinOp>;
+
 def riscv_strict_fcvt_w_rv64
     : SDNode<"RISCVISD::STRICT_FCVT_W_RV64", SDT_RISCVFCVT_W_RV64,
              [SDNPHasChain]>;
@@ -269,12 +272,12 @@ foreach Ext = FExts in {
   }
 
   let SchedRW = [WriteFAdd32, ReadFAdd32, ReadFAdd32] in {
-    defm FADD_S : FPALU_rr_frm_m<0b0000000, "fadd.s", Ext, /*Commutable*/1>;
+    defm FADD_S : FPALU_rr_frm_m<0b0000000, "fadd.s", Ext, Commutable=1>;
     defm FSUB_S : FPALU_rr_frm_m<0b0000100, "fsub.s", Ext>;
   }
 
   let SchedRW = [WriteFMul32, ReadFMul32, ReadFMul32] in
-  defm FMUL_S : FPALU_rr_frm_m<0b0001000, "fmul.s", Ext, /*Commutable*/1>;
+  defm FMUL_S : FPALU_rr_frm_m<0b0001000, "fmul.s", Ext, Commutable=1>;
 
   let SchedRW = [WriteFDiv32, ReadFDiv32, ReadFDiv32] in
   defm FDIV_S : FPALU_rr_frm_m<0b0001100, "fdiv.s", Ext>;
@@ -291,8 +294,8 @@ foreach Ext = FExts in {
   }
 
   let SchedRW = [WriteFMinMax32, ReadFMinMax32, ReadFMinMax32] in {
-    defm FMIN_S   : FPALU_rr_m<0b0010100, 0b000, "fmin.s", Ext, /*Commutable*/1>;
-    defm FMAX_S   : FPALU_rr_m<0b0010100, 0b001, "fmax.s", Ext, /*Commutable*/1>;
+    defm FMIN_S   : FPALU_rr_m<0b0010100, 0b000, "fmin.s", Ext, Commutable=1>;
+    defm FMAX_S   : FPALU_rr_m<0b0010100, 0b001, "fmax.s", Ext, Commutable=1>;
   }
 
   let IsSignExtendingOpW = 1 in
@@ -306,7 +309,7 @@ foreach Ext = FExts in {
                    Sched<[WriteFCvtF32ToI32, ReadFCvtF32ToI32]>;
 
   let SchedRW = [WriteFCmp32, ReadFCmp32, ReadFCmp32] in {
-  defm FEQ_S : FPCmp_rr_m<0b1010000, 0b010, "feq.s", Ext, /*Commutable*/1>;
+  defm FEQ_S : FPCmp_rr_m<0b1010000, 0b010, "feq.s", Ext, Commutable=1>;
   defm FLT_S : FPCmp_rr_m<0b1010000, 0b001, "flt.s", Ext>;
   defm FLE_S : FPCmp_rr_m<0b1010000, 0b000, "fle.s", Ext>;
   }
@@ -555,6 +558,8 @@ def : Pat<(fneg (any_fma_nsz FPR32INX:$rs1, FPR32INX:$rs2, FPR32INX:$rs3)),
 foreach Ext = FExts in {
   defm : PatFprFpr_m<fminnum, FMIN_S, Ext>;
   defm : PatFprFpr_m<fmaxnum, FMAX_S, Ext>;
+  defm : PatFprFpr_m<riscv_fmin, FMIN_S, Ext>;
+  defm : PatFprFpr_m<riscv_fmax, FMAX_S, Ext>;
 }
 
 /// Setcc

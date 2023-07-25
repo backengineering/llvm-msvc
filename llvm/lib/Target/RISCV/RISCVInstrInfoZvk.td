@@ -11,80 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in {
-multiclass VCLMUL_MV_V_X<string opcodestr, bits<6> funct6> {
-  def V  : VALUVV<funct6, OPMVV, opcodestr # "." # "vv">,
-           Sched<[WriteVIALUV_WorstCase, ReadVIALUV_WorstCase,
-                  ReadVIALUV_WorstCase, ReadVMask]>;
-  def X  : VALUVX<funct6, OPMVX, opcodestr # "." # "vx">,
-           Sched<[WriteVIALUX_WorstCase, ReadVIALUV_WorstCase,
-                  ReadVIALUX_WorstCase, ReadVMask]>;
-}
-
-class RVInstIVI_VROR<bits<6> funct6, dag outs, dag ins, string opcodestr,
-                     string argstr>
-    : RVInst<outs, ins, opcodestr, argstr, [], InstFormatR> {
-  bits<5> vs2;
-  bits<6> imm;
-  bits<5> vd;
-  bit vm;
-
-  let Inst{31-27} = funct6{5-1};
-  let Inst{26} = imm{5};
-  let Inst{25} = vm;
-  let Inst{24-20} = vs2;
-  let Inst{19-15} = imm{4-0};
-  let Inst{14-12} = OPIVI.Value;
-  let Inst{11-7} = vd;
-  let Opcode = OPC_OP_V.Value;
-
-  let Uses = [VTYPE, VL];
-  let RVVConstraint = VMConstraint;
-}
-
-multiclass VROR_IV_V_X_I<string opcodestr, bits<6> funct6,
-                              Operand optype = uimm6, string vw = "v">
-    : VALU_IV_V_X<opcodestr, funct6> {
-  def I : RVInstIVI_VROR<funct6, (outs VR:$vd),
-              (ins VR:$vs2, optype:$imm, VMaskOp:$vm),
-              opcodestr # "." # vw # "i", "$vd, $vs2, $imm$vm">,
-         Sched<[WriteVIALUI_WorstCase, ReadVIALUV_WorstCase,
-                ReadVMask]>;
-}
-
-// op vd, vs2, vs1
-class PALUVVNoVm<bits<6> funct6, RISCVVFormat opv, string opcodestr>
-    : VALUVVNoVm<funct6, opv, opcodestr> {
-  let Opcode = OPC_OP_P.Value;
-}
-
-// op vd, vs2, imm, vm
-class PALUVINoVm<bits<6> funct6, string opcodestr, Operand optype = simm5>
-    : VALUVINoVm<funct6, opcodestr, optype> {
-  let Opcode = OPC_OP_P.Value;
-  let Inst{14-12} = OPMVV.Value;
-}
-
-// op vd, vs2 (use vs1 as instruction encoding)
-class PALUVs2NoVm<bits<6> funct6, bits<5> vs1, RISCVVFormat opv, string opcodestr>
-    : VALUVs2NoVm<funct6, vs1, opv, opcodestr> {
-  let Opcode = OPC_OP_P.Value;
-}
-
-multiclass VAES_MV_V_S<bits<6> funct6_vv, bits<6> funct6_vs, bits<5> vs1,
-                         RISCVVFormat opv, string opcodestr> {
-  def NAME # _VV : PALUVs2NoVm<funct6_vv, vs1, opv, opcodestr # ".vv">;
-  def NAME # _VS : PALUVs2NoVm<funct6_vs, vs1, opv, opcodestr # ".vs">;
-}
-
-// vaeskf1.vi and vaeskf2.vi uses different opcode and format, we need
-// to customize one for them.
-class VAESKF_MV_I<bits<6> funct6, string opcodestr, Operand optype>
-    : VALUVINoVm<funct6, opcodestr, optype> {
-  let Opcode = OPC_OP_P.Value;
-  let Inst{14-12} = OPMVV.Value;
-}
-} // hasSideEffects = 0, mayLoad = 0, mayStore = 0
+//===----------------------------------------------------------------------===//
+// Operand and SDNode transformation definitions.
+//===----------------------------------------------------------------------===//
 
 def RnumArg_0_7 : AsmOperandClass {
   let Name = "RnumArg_0_7";
@@ -127,6 +56,88 @@ def rnum_2_14 : Operand<XLenVT>, ImmLeaf<XLenVT,
   let OperandType = "OPERAND_RVKRNUM_2_14";
   let OperandNamespace = "RISCVOp";
 }
+
+//===----------------------------------------------------------------------===//
+// Instruction class templates
+//===----------------------------------------------------------------------===//
+
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in {
+multiclass VCLMUL_MV_V_X<string opcodestr, bits<6> funct6> {
+  def V  : VALUVV<funct6, OPMVV, opcodestr # "." # "vv">,
+           Sched<[WriteVIALUV_WorstCase, ReadVIALUV_WorstCase,
+                  ReadVIALUV_WorstCase, ReadVMask]>;
+  def X  : VALUVX<funct6, OPMVX, opcodestr # "." # "vx">,
+           Sched<[WriteVIALUX_WorstCase, ReadVIALUV_WorstCase,
+                  ReadVIALUX_WorstCase, ReadVMask]>;
+}
+
+class RVInstIVI_VROR<bits<6> funct6, dag outs, dag ins, string opcodestr,
+                     string argstr>
+    : RVInst<outs, ins, opcodestr, argstr, [], InstFormatR> {
+  bits<5> vs2;
+  bits<6> imm;
+  bits<5> vd;
+  bit vm;
+
+  let Inst{31-27} = funct6{5-1};
+  let Inst{26} = imm{5};
+  let Inst{25} = vm;
+  let Inst{24-20} = vs2;
+  let Inst{19-15} = imm{4-0};
+  let Inst{14-12} = OPIVI.Value;
+  let Inst{11-7} = vd;
+  let Inst{6-0} = OPC_OP_V.Value;
+
+  let Uses = [VTYPE, VL];
+  let RVVConstraint = VMConstraint;
+}
+
+multiclass VROR_IV_V_X_I<string opcodestr, bits<6> funct6>
+    : VALU_IV_V_X<opcodestr, funct6> {
+  def I : RVInstIVI_VROR<funct6, (outs VR:$vd),
+              (ins VR:$vs2, uimm6:$imm, VMaskOp:$vm),
+              opcodestr # ".vi", "$vd, $vs2, $imm$vm">,
+         Sched<[WriteVIALUI_WorstCase, ReadVIALUV_WorstCase,
+                ReadVMask]>;
+}
+
+// op vd, vs2, vs1
+class PALUVVNoVm<bits<6> funct6, RISCVVFormat opv, string opcodestr>
+    : VALUVVNoVm<funct6, opv, opcodestr> {
+  let Inst{6-0} = OPC_OP_P.Value;
+}
+
+// op vd, vs2, imm, vm
+class PALUVINoVm<bits<6> funct6, string opcodestr, Operand optype = simm5>
+    : VALUVINoVm<funct6, opcodestr, optype> {
+  let Inst{6-0} = OPC_OP_P.Value;
+  let Inst{14-12} = OPMVV.Value;
+}
+
+// op vd, vs2 (use vs1 as instruction encoding)
+class PALUVs2NoVm<bits<6> funct6, bits<5> vs1, RISCVVFormat opv, string opcodestr>
+    : VALUVs2NoVm<funct6, vs1, opv, opcodestr> {
+  let Inst{6-0} = OPC_OP_P.Value;
+}
+
+multiclass VAES_MV_V_S<bits<6> funct6_vv, bits<6> funct6_vs, bits<5> vs1,
+                         RISCVVFormat opv, string opcodestr> {
+  def NAME # _VV : PALUVs2NoVm<funct6_vv, vs1, opv, opcodestr # ".vv">;
+  def NAME # _VS : PALUVs2NoVm<funct6_vs, vs1, opv, opcodestr # ".vs">;
+}
+
+// vaeskf1.vi and vaeskf2.vi uses different opcode and format, we need
+// to customize one for them.
+class VAESKF_MV_I<bits<6> funct6, string opcodestr, Operand optype>
+    : VALUVINoVm<funct6, opcodestr, optype> {
+  let Inst{6-0} = OPC_OP_P.Value;
+  let Inst{14-12} = OPMVV.Value;
+}
+} // hasSideEffects = 0, mayLoad = 0, mayStore = 0
+
+//===----------------------------------------------------------------------===//
+// Instructions
+//===----------------------------------------------------------------------===//
 
 let Predicates = [HasStdExtZvbb] in {
   defm VANDN_V  : VALU_IV_V_X<"vandn", 0b000001>;
@@ -182,12 +193,14 @@ let Predicates = [HasStdExtZvksh], RVVConstraint = NoConstraint in {
 // Pseudo instructions
 //===----------------------------------------------------------------------===//
 
+defm PseudoVANDN : VPseudoVALU_VV_VX;
+
 multiclass VPseudoUnaryV_V {
   foreach m = MxList in {
     let VLMul = m.value in {
       def "_V_" # m.MX : VPseudoUnaryNoMask<m.vrclass, m.vrclass>;
       def "_V_" # m.MX # "_MASK" : VPseudoUnaryMask<m.vrclass, m.vrclass>,
-                                   RISCVMaskedPseudo</*MaskOpIdx*/ 2>;
+                                   RISCVMaskedPseudo<MaskIdx=2>;
     }
   }
 }
@@ -197,6 +210,9 @@ defm PseudoVREV8 : VPseudoUnaryV_V;
 defm PseudoVCLZ : VPseudoUnaryV_V;
 defm PseudoVCTZ : VPseudoUnaryV_V;
 defm PseudoVCPOP : VPseudoUnaryV_V;
+
+defm PseudoVROL : VPseudoVALU_VV_VX;
+defm PseudoVROR : VPseudoVALU_VV_VX_VI<uimm6>;
 
 //===----------------------------------------------------------------------===//
 // SDNode patterns
@@ -215,11 +231,62 @@ multiclass VPatUnarySDNode_V<SDPatternOperator op, string instruction_name> {
   }
 }
 
+// Helpers for detecting splats since we preprocess splat_vector to vmv.v.x
+// This should match the logic in RISCVDAGToDAGISel::selectVSplat
+def riscv_splat_vector : PatFrag<(ops node:$rs1),
+                                 (riscv_vmv_v_x_vl undef, node:$rs1, srcvalue)>;
+def riscv_vnot : PatFrag<(ops node:$rs1), (xor node:$rs1,
+                                               (riscv_splat_vector -1))>;
+
+foreach vti = AllIntegerVectors in {
+  let Predicates = !listconcat([HasStdExtZvbb],
+                               GetVTypePredicates<vti>.Predicates) in {
+    def : Pat<(vti.Vector (and (riscv_vnot vti.RegClass:$rs1),
+                               vti.RegClass:$rs2)),
+              (!cast<Instruction>("PseudoVANDN_VV_"#vti.LMul.MX)
+                 (vti.Vector (IMPLICIT_DEF)),
+                 vti.RegClass:$rs2,
+                 vti.RegClass:$rs1,
+                 vti.AVL, vti.Log2SEW, TA_MA)>;
+    def : Pat<(vti.Vector (and (riscv_splat_vector
+                                 (not vti.ScalarRegClass:$rs1)),
+                               vti.RegClass:$rs2)),
+              (!cast<Instruction>("PseudoVANDN_VX_"#vti.LMul.MX)
+                 (vti.Vector (IMPLICIT_DEF)),
+                 vti.RegClass:$rs2,
+                 vti.ScalarRegClass:$rs1,
+                 vti.AVL, vti.Log2SEW, TA_MA)>;
+  }
+}
+
 defm : VPatUnarySDNode_V<bitreverse, "PseudoVBREV">;
 defm : VPatUnarySDNode_V<bswap, "PseudoVREV8">;
 defm : VPatUnarySDNode_V<ctlz, "PseudoVCLZ">;
 defm : VPatUnarySDNode_V<cttz, "PseudoVCTZ">;
 defm : VPatUnarySDNode_V<ctpop, "PseudoVCPOP">;
+
+defm : VPatBinarySDNode_VV_VX<rotl, "PseudoVROL">;
+
+def NegImm64 : SDNodeXForm<imm, [{
+  return CurDAG->getTargetConstant(0x3f & (64 - N->getZExtValue()), SDLoc(N),
+                                   N->getValueType(0));
+}]>;
+
+// Although there is no vrol.vi, an immediate rotate left can be achieved by
+// negating the immediate in vror.vi
+foreach vti = AllIntegerVectors in {
+  let Predicates = !listconcat([HasStdExtZvbb],
+                               GetVTypePredicates<vti>.Predicates) in {
+    def : Pat<(vti.Vector (rotl vti.RegClass:$rs2,
+                                (vti.Vector (SplatPat_uimm6 uimm6:$rs1)))),
+              (!cast<Instruction>("PseudoVROR_VI_"#vti.LMul.MX)
+                 (vti.Vector (IMPLICIT_DEF)),
+                 vti.RegClass:$rs2,
+                 (NegImm64 uimm6:$rs1),
+                 vti.AVL, vti.Log2SEW, TA_MA)>;
+  }
+}
+defm : VPatBinarySDNode_VV_VX_VI<rotr, "PseudoVROR", uimm6>;
 
 //===----------------------------------------------------------------------===//
 // VL patterns
@@ -241,6 +308,45 @@ multiclass VPatUnaryVL_V<SDPatternOperator op, string instruction_name> {
                    vti.Log2SEW,
                    TAIL_AGNOSTIC)>;
     }
+  }
+}
+
+foreach vti = AllIntegerVectors in {
+  let Predicates = !listconcat([HasStdExtZvbb],
+                               GetVTypePredicates<vti>.Predicates) in {
+    def : Pat<(vti.Vector (riscv_and_vl (riscv_xor_vl
+                                           (vti.Vector vti.RegClass:$rs1),
+                                           (riscv_splat_vector -1),
+                                           (vti.Vector vti.RegClass:$merge),
+                                           (vti.Mask V0),
+                                           VLOpFrag),
+                                        (vti.Vector vti.RegClass:$rs2),
+                                        (vti.Vector vti.RegClass:$merge),
+                                        (vti.Mask V0),
+                                        VLOpFrag)),
+              (!cast<Instruction>("PseudoVANDN_VV_"#vti.LMul.MX#"_MASK")
+                 vti.RegClass:$merge,
+                 vti.RegClass:$rs2,
+                 vti.RegClass:$rs1,
+                 (vti.Mask V0),
+                 GPR:$vl,
+                 vti.Log2SEW,
+                 TAIL_AGNOSTIC)>;
+
+    def : Pat<(vti.Vector (riscv_and_vl (riscv_splat_vector
+                                           (not vti.ScalarRegClass:$rs1)),
+                                        (vti.Vector vti.RegClass:$rs2),
+                                        (vti.Vector vti.RegClass:$merge),
+                                        (vti.Mask V0),
+                                        VLOpFrag)),
+              (!cast<Instruction>("PseudoVANDN_VX_"#vti.LMul.MX#"_MASK")
+                 vti.RegClass:$merge,
+                 vti.RegClass:$rs2,
+                 vti.ScalarRegClass:$rs1,
+                 (vti.Mask V0),
+                 GPR:$vl,
+                 vti.Log2SEW,
+                 TAIL_AGNOSTIC)>;
   }
 }
 

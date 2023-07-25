@@ -2657,6 +2657,22 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
       return ExprError();
     break;
   }
+
+  // These builtins restrict the element type to floating point
+  // types only, and take in two arguments.
+  case Builtin::BI__builtin_elementwise_pow: {
+    if (SemaBuiltinElementwiseMath(TheCall))
+      return ExprError();
+
+    QualType ArgTy = TheCall->getArg(0)->getType();
+    if (checkFPMathBuiltinElementType(*this, TheCall->getArg(0)->getBeginLoc(),
+                                      ArgTy, 1) ||
+        checkFPMathBuiltinElementType(*this, TheCall->getArg(1)->getBeginLoc(),
+                                      ArgTy, 2))
+      return ExprError();
+    break;
+  }
+
   // These builtins restrict the element type to integer
   // types only.
   case Builtin::BI__builtin_elementwise_add_sat:
@@ -3001,6 +3017,10 @@ bool Sema::CheckSVEBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
       break;
     case SVETypeFlags::ImmCheck0_15:
       if (SemaBuiltinConstantArgRange(TheCall, ArgNum, 0, 15))
+        HasError = true;
+      break;
+    case SVETypeFlags::ImmCheck0_255:
+      if (SemaBuiltinConstantArgRange(TheCall, ArgNum, 0, 255))
         HasError = true;
       break;
     }
@@ -4527,6 +4547,73 @@ bool Sema::CheckRISCVBuiltinFunctionCall(const TargetInfo &TI,
   if (FeatureMissing)
     return true;
 
+  // vmulh.vv, vmulh.vx, vmulhu.vv, vmulhu.vx, vmulhsu.vv, vmulhsu.vx,
+  // vsmul.vv, vsmul.vx are not included for EEW=64 in Zve64*.
+  switch (BuiltinID) {
+  default:
+    break;
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vv:
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vx:
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vv_tu:
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vx_tu:
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vv_m:
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vx_m:
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vv_mu:
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vx_mu:
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vv_tum:
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vx_tum:
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vv_tumu:
+  case RISCVVector::BI__builtin_rvv_vmulhsu_vx_tumu:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vv:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vx:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vv_tu:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vx_tu:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vv_m:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vx_m:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vv_mu:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vx_mu:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vv_tum:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vx_tum:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vv_tumu:
+  case RISCVVector::BI__builtin_rvv_vmulhu_vx_tumu:
+  case RISCVVector::BI__builtin_rvv_vmulh_vv:
+  case RISCVVector::BI__builtin_rvv_vmulh_vx:
+  case RISCVVector::BI__builtin_rvv_vmulh_vv_tu:
+  case RISCVVector::BI__builtin_rvv_vmulh_vx_tu:
+  case RISCVVector::BI__builtin_rvv_vmulh_vv_m:
+  case RISCVVector::BI__builtin_rvv_vmulh_vx_m:
+  case RISCVVector::BI__builtin_rvv_vmulh_vv_mu:
+  case RISCVVector::BI__builtin_rvv_vmulh_vx_mu:
+  case RISCVVector::BI__builtin_rvv_vmulh_vv_tum:
+  case RISCVVector::BI__builtin_rvv_vmulh_vx_tum:
+  case RISCVVector::BI__builtin_rvv_vmulh_vv_tumu:
+  case RISCVVector::BI__builtin_rvv_vmulh_vx_tumu:
+  case RISCVVector::BI__builtin_rvv_vsmul_vv:
+  case RISCVVector::BI__builtin_rvv_vsmul_vx:
+  case RISCVVector::BI__builtin_rvv_vsmul_vv_tu:
+  case RISCVVector::BI__builtin_rvv_vsmul_vx_tu:
+  case RISCVVector::BI__builtin_rvv_vsmul_vv_m:
+  case RISCVVector::BI__builtin_rvv_vsmul_vx_m:
+  case RISCVVector::BI__builtin_rvv_vsmul_vv_mu:
+  case RISCVVector::BI__builtin_rvv_vsmul_vx_mu:
+  case RISCVVector::BI__builtin_rvv_vsmul_vv_tum:
+  case RISCVVector::BI__builtin_rvv_vsmul_vx_tum:
+  case RISCVVector::BI__builtin_rvv_vsmul_vv_tumu:
+  case RISCVVector::BI__builtin_rvv_vsmul_vx_tumu: {
+    bool RequireV = false;
+    for (unsigned ArgNum = 0; ArgNum < TheCall->getNumArgs(); ++ArgNum)
+      RequireV |= TheCall->getArg(ArgNum)->getType()->isRVVType(
+          /* Bitwidth */ 64, /* IsFloat */ false);
+
+    if (RequireV && !TI.hasFeature("v"))
+      return Diag(TheCall->getBeginLoc(),
+                  diag::err_riscv_builtin_requires_extension)
+             << /* IsExtension */ false << TheCall->getSourceRange() << "v";
+
+    break;
+  }
+  }
+
   switch (BuiltinID) {
   case RISCVVector::BI__builtin_rvv_vsetvli:
     return SemaBuiltinConstantArgRange(TheCall, 1, 0, 3) ||
@@ -4686,15 +4773,15 @@ bool Sema::CheckRISCVBuiltinFunctionCall(const TargetInfo &TI,
     // bit_26, vs2, fs1
     return SemaBuiltinConstantArgRange(TheCall, 0, 0, 1);
   // Check if byteselect is in [0, 3]
-  case RISCV::BI__builtin_riscv_aes32dsi_32:
-  case RISCV::BI__builtin_riscv_aes32dsmi_32:
-  case RISCV::BI__builtin_riscv_aes32esi_32:
-  case RISCV::BI__builtin_riscv_aes32esmi_32:
+  case RISCV::BI__builtin_riscv_aes32dsi:
+  case RISCV::BI__builtin_riscv_aes32dsmi:
+  case RISCV::BI__builtin_riscv_aes32esi:
+  case RISCV::BI__builtin_riscv_aes32esmi:
   case RISCV::BI__builtin_riscv_sm4ks:
   case RISCV::BI__builtin_riscv_sm4ed:
     return SemaBuiltinConstantArgRange(TheCall, 2, 0, 3);
   // Check if rnum is in [0, 10]
-  case RISCV::BI__builtin_riscv_aes64ks1i_64:
+  case RISCV::BI__builtin_riscv_aes64ks1i:
     return SemaBuiltinConstantArgRange(TheCall, 1, 0, 10);
   // Check if value range for vxrm is in [0, 3]
   case RISCVVector::BI__builtin_rvv_vaaddu_vv:
@@ -5331,11 +5418,14 @@ bool Sema::CheckWebAssemblyBuiltinFunctionCall(const TargetInfo &TI,
 
 void Sema::checkRVVTypeSupport(QualType Ty, SourceLocation Loc, ValueDecl *D) {
   const TargetInfo &TI = Context.getTargetInfo();
-  if (Ty->isRVVType(/* Bitwidth */ 64, /* IsFloat */ false) &&
+  // (ELEN, LMUL) pairs of (8, mf8), (16, mf4), (32, mf2), (64, m1) requires at
+  // least zve64x
+  if ((Ty->isRVVType(/* Bitwidth */ 64, /* IsFloat */ false) ||
+       Ty->isRVVType(/* ElementCount */ 1)) &&
       !TI.hasFeature("zve64x"))
     Diag(Loc, diag::err_riscv_type_requires_extension, D) << Ty << "zve64x";
   if (Ty->isRVVType(/* Bitwidth */ 16, /* IsFloat */ true) &&
-      !TI.hasFeature("experimental-zvfh"))
+      !TI.hasFeature("zvfh"))
     Diag(Loc, diag::err_riscv_type_requires_extension, D) << Ty << "zvfh";
   if (Ty->isRVVType(/* Bitwidth */ 32, /* IsFloat */ true) &&
       !TI.hasFeature("zve32f"))
@@ -6226,6 +6316,7 @@ bool Sema::CheckX86BuiltinFunctionCall(const TargetInfo &TI, unsigned BuiltinID,
   case X86::BI__builtin_ia32_pternlogq128_maskz:
   case X86::BI__builtin_ia32_pternlogq256_mask:
   case X86::BI__builtin_ia32_pternlogq256_maskz:
+  case X86::BI__builtin_ia32_vsm3rnds2:
     i = 3; l = 0; u = 255;
     break;
   case X86::BI__builtin_ia32_gatherpfdpd:

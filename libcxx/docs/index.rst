@@ -34,13 +34,13 @@ Getting Started with libc++
 .. toctree::
    :maxdepth: 1
 
-   ReleaseNotes
+   ReleaseNotes/17
    UsingLibcxx
    BuildingLibcxx
    TestingLibcxx
    Contributing
    Modules
-   HardenedMode
+   Hardening
    ReleaseProcedure
    Status/Cxx14
    Status/Cxx17

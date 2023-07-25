@@ -504,6 +504,11 @@ bool TargetLowering::ShrinkDemandedConstant(SDValue Op,
   SDLoc DL(Op);
   unsigned Opcode = Op.getOpcode();
 
+  // Early-out if we've ended up calling an undemanded node, leave this to
+  // constant folding.
+  if (DemandedBits.isZero() || DemandedElts.isZero())
+    return false;
+
   // Do target-specific constant optimization.
   if (targetShrinkDemandedConstant(Op, DemandedBits, DemandedElts, TLO))
     return TLO.New.getNode();
@@ -1903,6 +1908,10 @@ bool TargetLowering::SimplifyDemandedBits(
           return TLO.CombineTo(Op, NewOp);
         }
       }
+    } else {
+      // Use generic knownbits computation as it has support for non-uniform
+      // shift amounts.
+      Known = TLO.DAG.computeKnownBits(Op, DemandedElts, Depth);
     }
     break;
   }
@@ -2575,6 +2584,15 @@ bool TargetLowering::SimplifyDemandedBits(
       if (SimplifyDemandedBits(Src, DemandedSrcBits, DemandedSrcElts,
                                KnownSrcBits, TLO, Depth + 1))
         return true;
+
+      // Attempt to avoid multi-use ops if we don't need anything from them.
+      if (!DemandedSrcBits.isAllOnes() || !DemandedSrcElts.isAllOnes()) {
+        if (SDValue DemandedSrc = SimplifyMultipleUseDemandedBits(
+                Src, DemandedSrcBits, DemandedSrcElts, TLO.DAG, Depth + 1)) {
+          SDValue NewOp = TLO.DAG.getBitcast(VT, DemandedSrc);
+          return TLO.CombineTo(Op, NewOp);
+        }
+      }
     }
 
     // If this is a bitcast, let computeKnownBits handle it.  Only do this on a

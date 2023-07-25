@@ -761,6 +761,12 @@ def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if", [
   let results = (outs AnyTensor);
 }
 
+def OpWithInferTypeAdaptorInterfaceOp : TEST_Op<"op_with_infer_type_adaptor_if", [
+    InferTypeOpAdaptor]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let results = (outs AnyTensor);
+}
+
 def OpWithRefineTypeInterfaceOp : TEST_Op<"op_with_refine_type_if", [
     DeclareOpInterfaceMethods<InferTypeOpInterface,
         ["refineReturnTypes"]>]> {
@@ -772,6 +778,13 @@ def OpWithShapedTypeInferTypeInterfaceOp : TEST_Op<"op_with_shaped_type_infer_ty
       [InferTensorTypeWithReify]> {
   let arguments = (ins AnyTensor, AnyTensor);
   let results = (outs AnyTensor);
+}
+
+def OpWithShapedTypeInferTypeAdaptorInterfaceOp : 
+      TEST_Op<"op_with_shaped_type_infer_type_adaptor_if",
+              [InferTensorTypeAdaptorWithReify]> {
+  let arguments = (ins AnyTensor:$operand1, AnyTensor:$operand2);
+  let results = (outs AnyTensor:$result);
 }
 
 def OpWithResultShapeInterfaceOp : TEST_Op<"op_with_result_shape_interface",
@@ -826,8 +839,7 @@ def AttrSizedOperandOp : TEST_Op<"attr_sized_operands",
     Variadic<I32>:$a,
     Variadic<I32>:$b,
     I32:$c,
-    Variadic<I32>:$d,
-    DenseI32ArrayAttr:$operand_segment_sizes
+    Variadic<I32>:$d
   );
 }
 
@@ -3354,6 +3366,17 @@ def TestOpUsingPropertyRefInCustom : TEST_Op<"using_property_ref_in_custom"> {
   let arguments = (ins IntProperty<"int64_t">:$first, IntProperty<"int64_t">:$second);
 }
 
+def IntPropertyWithWorseBytecode : Property<"int64_t"> {
+  let writeToMlirBytecode = writeMlirBytecodeWithConvertToAttribute;
+
+  let readFromMlirBytecode = readMlirBytecodeUsingConvertFromAttribute;
+}
+
+def TestOpUsingIntPropertyWithWorseBytecode
+    : TEST_Op<"using_int_property_with_worse_bytecode"> {
+  let arguments = (ins IntPropertyWithWorseBytecode:$value);
+}
+
 // Op with a properties struct defined out-of-line. The struct has custom
 // printer/parser.
 
@@ -3419,6 +3442,41 @@ def TestOpWithNiceProperties : TEST_Op<"with_nice_properties"> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Test Dataflow
+//===----------------------------------------------------------------------===//
 
+def TestCallAndStoreOp : TEST_Op<"call_and_store",
+    [DeclareOpInterfaceMethods<CallOpInterface>]> {
+  let arguments = (ins
+    SymbolRefAttr:$callee,
+    Arg<AnyMemRef, "", [MemWrite]>:$address,
+    Variadic<AnyType>:$callee_operands,
+    BoolAttr:$store_before_call
+  );
+  let results = (outs
+    Variadic<AnyType>:$results
+  );
+  let assemblyFormat =
+    "$callee `(` $callee_operands `)` `,` $address attr-dict "
+    "`:` functional-type(operands, results)";
+}
+
+def TestStoreWithARegion : TEST_Op<"store_with_a_region",
+    [DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+     SingleBlock]> {
+  let arguments = (ins 
+    Arg<AnyMemRef, "", [MemWrite]>:$address,
+    BoolAttr:$store_before_region
+  );
+  let regions = (region AnyRegion:$body);
+  let assemblyFormat =
+    "$address attr-dict-with-keyword regions `:` type($address)";
+}
+
+def TestStoreWithARegionTerminator : TEST_Op<"store_with_a_region_terminator",
+    [DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>, Terminator, NoMemoryEffect]> {
+  let assemblyFormat = "attr-dict";
+}
 
 #endif // TEST_OPS

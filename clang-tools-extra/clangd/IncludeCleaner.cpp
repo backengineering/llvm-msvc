@@ -36,10 +36,8 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/GenericUniformityImpl.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -48,16 +46,14 @@
 #include "llvm/Support/Regex.h"
 #include <cassert>
 #include <iterator>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace clang::clangd {
-
-static bool AnalyzeStdlib = false;
-void setIncludeCleanerAnalyzesStdlib(bool B) { AnalyzeStdlib = B; }
-
 namespace {
 
 bool isIgnored(llvm::StringRef HeaderPath, HeaderFilter IgnoreHeaders) {
@@ -71,16 +67,14 @@ bool isIgnored(llvm::StringRef HeaderPath, HeaderFilter IgnoreHeaders) {
   return false;
 }
 
-bool mayConsiderUnused(const Inclusion &Inc, ParsedAST &AST,
-                       const include_cleaner::PragmaIncludes *PI) {
+bool mayConsiderUnused(
+    const Inclusion &Inc, ParsedAST &AST,
+    const include_cleaner::PragmaIncludes *PI) {
   // FIXME(kirillbobyrev): We currently do not support the umbrella headers.
   // System headers are likely to be standard library headers.
   // Until we have good support for umbrella headers, don't warn about them.
-  if (Inc.Written.front() == '<') {
-    if (AnalyzeStdlib && tooling::stdlib::Header::named(Inc.Written))
-      return true;
-    return false;
-  }
+  if (Inc.Written.front() == '<')
+    return tooling::stdlib::Header::named(Inc.Written).has_value();
   assert(Inc.HeaderID);
   auto HID = static_cast<IncludeStructure::HeaderID>(*Inc.HeaderID);
   auto FE = AST.getSourceManager().getFileManager().getFileRef(
@@ -262,7 +256,7 @@ addAllMissingIncludes(llvm::ArrayRef<Diag> MissingIncludeDiags) {
   AddAllMissing.Message = "add all missing includes";
   // A map to deduplicate the edits with the same new text.
   // newText (#include "my_missing_header.h") -> TextEdit.
-  llvm::StringMap<TextEdit> Edits;
+  std::map<std::string, TextEdit> Edits;
   for (const auto &Diag : MissingIncludeDiags) {
     assert(Diag.Fixes.size() == 1 && "Expected exactly one fix.");
     for (const auto &Edit : Diag.Fixes.front().Edits) {
@@ -278,7 +272,7 @@ addAllMissingIncludes(llvm::ArrayRef<Diag> MissingIncludeDiags) {
   unsigned I = 0;
   for (auto &It : Edits) {
     ChangeAnnotationIdentifier ID = AddAllMissingID + std::to_string(I++);
-    AddAllMissing.Edits.push_back(std::move(It.getValue()));
+    AddAllMissing.Edits.push_back(std::move(It.second));
     AddAllMissing.Edits.back().annotationId = ID;
 
     AddAllMissing.Annotations.push_back({ID, Annotation});
@@ -312,7 +306,7 @@ getUnused(ParsedAST &AST,
     auto IncludeID = static_cast<IncludeStructure::HeaderID>(*MFI.HeaderID);
     if (ReferencedFiles.contains(IncludeID))
       continue;
-    if (!mayConsiderUnused(MFI, AST, AST.getPragmaIncludes())) {
+    if (!mayConsiderUnused(MFI, AST, AST.getPragmaIncludes().get())) {
       dlog("{0} was not used, but is not eligible to be diagnosed as unused",
            MFI.Written);
       continue;
@@ -395,7 +389,7 @@ IncludeCleanerFindings computeIncludeCleanerFindings(ParsedAST &AST) {
   trace::Span Tracer("include_cleaner::walkUsed");
   include_cleaner::walkUsed(
       AST.getLocalTopLevelDecls(), /*MacroRefs=*/Macros,
-      AST.getPragmaIncludes(), SM,
+      AST.getPragmaIncludes().get(), SM,
       [&](const include_cleaner::SymbolReference &Ref,
           llvm::ArrayRef<include_cleaner::Header> Providers) {
         bool Satisfied = false;

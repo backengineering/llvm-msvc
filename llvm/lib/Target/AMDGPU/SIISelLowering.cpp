@@ -1388,12 +1388,16 @@ bool SITargetLowering::isLegalAddressingMode(const DataLayout &DL,
       // in 8-bits, it can use a smaller encoding.
       if (!isUInt<32>(AM.BaseOffs / 4))
         return false;
-    } else if (Subtarget->getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS) {
+    } else if (Subtarget->getGeneration() < AMDGPUSubtarget::GFX9) {
       // On VI, these use the SMEM format and the offset is 20-bit in bytes.
       if (!isUInt<20>(AM.BaseOffs))
         return false;
-    } else
-      llvm_unreachable("unhandled generation");
+    } else {
+      // On GFX9 the offset is signed 21-bit in bytes (but must not be negative
+      // for S_BUFFER_* instructions).
+      if (!isInt<21>(AM.BaseOffs))
+        return false;
+    }
 
     if (AM.Scale == 0) // r + i or just i, depending on HasBaseReg.
       return true;
@@ -4063,6 +4067,120 @@ static MachineBasicBlock *emitIndirectDst(MachineInstr &MI,
   return LoopBB;
 }
 
+static MachineBasicBlock *lowerWaveReduce(MachineInstr &MI,
+                                          MachineBasicBlock &BB,
+                                          const GCNSubtarget &ST,
+                                          unsigned Opc) {
+  MachineRegisterInfo &MRI = BB.getParent()->getRegInfo();
+  const SIRegisterInfo *TRI = ST.getRegisterInfo();
+  const DebugLoc &DL = MI.getDebugLoc();
+  const SIInstrInfo *TII = ST.getInstrInfo();
+
+  // Reduction operations depend on whether the input operand is SGPR or VGPR.
+  Register SrcReg = MI.getOperand(1).getReg();
+  bool isSGPR = TRI->isSGPRClass(MRI.getRegClass(SrcReg));
+  Register DstReg = MI.getOperand(0).getReg();
+  MachineBasicBlock *RetBB = nullptr;
+  if (isSGPR) {
+    // These operations with a uniform value i.e. SGPR are idempotent.
+    // Reduced value will be same as given sgpr.
+    BuildMI(BB, MI, DL, TII->get(AMDGPU::S_MOV_B32), DstReg).addReg(SrcReg);
+    RetBB = &BB;
+  } else {
+    // TODO: Implement DPP Strategy and switch based on immediate strategy
+    // operand. For now, for all the cases (default, Iterative and DPP we use
+    // iterative approach by default.)
+
+    // To reduce the VGPR using iterative approach, we need to iterate
+    // over all the active lanes. Lowering consists of ComputeLoop,
+    // which iterate over only active lanes. We use copy of EXEC register
+    // as induction variable and every active lane modifies it using bitset0
+    // so that we will get the next active lane for next iteration.
+    MachineBasicBlock::iterator I = BB.end();
+    Register SrcReg = MI.getOperand(1).getReg();
+
+    // Create Control flow for loop
+    // Split MI's Machine Basic block into For loop
+    auto [ComputeLoop, ComputeEnd] = splitBlockForLoop(MI, BB, true);
+
+    // Create virtual registers required for lowering.
+    const TargetRegisterClass *WaveMaskRegClass = TRI->getWaveMaskRegClass();
+    const TargetRegisterClass *DstRegClass = MRI.getRegClass(DstReg);
+    Register LoopIterator = MRI.createVirtualRegister(WaveMaskRegClass);
+    Register InitalValReg = MRI.createVirtualRegister(DstRegClass);
+
+    Register AccumulatorReg = MRI.createVirtualRegister(DstRegClass);
+    Register ActiveBitsReg = MRI.createVirtualRegister(WaveMaskRegClass);
+    Register NewActiveBitsReg = MRI.createVirtualRegister(WaveMaskRegClass);
+
+    Register FF1Reg = MRI.createVirtualRegister(DstRegClass);
+    Register LaneValueReg = MRI.createVirtualRegister(DstRegClass);
+
+    bool IsWave32 = ST.isWave32();
+    unsigned MovOpc = IsWave32 ? AMDGPU::S_MOV_B32 : AMDGPU::S_MOV_B64;
+    unsigned ExecReg = IsWave32 ? AMDGPU::EXEC_LO : AMDGPU::EXEC;
+
+    // Create initail values of induction variable from Exec, Accumulator and
+    // insert branch instr to newly created ComputeBlockk
+    uint32_t InitalValue =
+        (Opc == AMDGPU::S_MIN_U32) ? std::numeric_limits<uint32_t>::max() : 0;
+    auto TmpSReg =
+        BuildMI(BB, I, DL, TII->get(MovOpc), LoopIterator).addReg(ExecReg);
+    BuildMI(BB, I, DL, TII->get(AMDGPU::S_MOV_B32), InitalValReg)
+        .addImm(InitalValue);
+    BuildMI(BB, I, DL, TII->get(AMDGPU::S_BRANCH)).addMBB(ComputeLoop);
+
+    // Start constructing ComputeLoop
+    I = ComputeLoop->end();
+    auto Accumulator =
+        BuildMI(*ComputeLoop, I, DL, TII->get(AMDGPU::PHI), AccumulatorReg)
+            .addReg(InitalValReg)
+            .addMBB(&BB);
+    auto ActiveBits =
+        BuildMI(*ComputeLoop, I, DL, TII->get(AMDGPU::PHI), ActiveBitsReg)
+            .addReg(TmpSReg->getOperand(0).getReg())
+            .addMBB(&BB);
+
+    // Perform the computations
+    unsigned SFFOpc = IsWave32 ? AMDGPU::S_FF1_I32_B32 : AMDGPU::S_FF1_I32_B64;
+    auto FF1 = BuildMI(*ComputeLoop, I, DL, TII->get(SFFOpc), FF1Reg)
+                   .addReg(ActiveBits->getOperand(0).getReg());
+    auto LaneValue = BuildMI(*ComputeLoop, I, DL,
+                             TII->get(AMDGPU::V_READLANE_B32), LaneValueReg)
+                         .addReg(SrcReg)
+                         .addReg(FF1->getOperand(0).getReg());
+    auto NewAccumulator = BuildMI(*ComputeLoop, I, DL, TII->get(Opc), DstReg)
+                              .addReg(Accumulator->getOperand(0).getReg())
+                              .addReg(LaneValue->getOperand(0).getReg());
+
+    // Manipulate the iterator to get the next active lane
+    unsigned BITSETOpc =
+        IsWave32 ? AMDGPU::S_BITSET0_B32 : AMDGPU::S_BITSET0_B64;
+    auto NewActiveBits =
+        BuildMI(*ComputeLoop, I, DL, TII->get(BITSETOpc), NewActiveBitsReg)
+            .addReg(FF1->getOperand(0).getReg())
+            .addReg(ActiveBits->getOperand(0).getReg());
+
+    // Add phi nodes
+    Accumulator.addReg(NewAccumulator->getOperand(0).getReg())
+        .addMBB(ComputeLoop);
+    ActiveBits.addReg(NewActiveBits->getOperand(0).getReg())
+        .addMBB(ComputeLoop);
+
+    // Creating branching
+    unsigned CMPOpc = IsWave32 ? AMDGPU::S_CMP_LG_U32 : AMDGPU::S_CMP_LG_U64;
+    BuildMI(*ComputeLoop, I, DL, TII->get(CMPOpc))
+        .addReg(NewActiveBits->getOperand(0).getReg())
+        .addImm(0);
+    BuildMI(*ComputeLoop, I, DL, TII->get(AMDGPU::S_CBRANCH_SCC1))
+        .addMBB(ComputeLoop);
+
+    RetBB = ComputeEnd;
+  }
+  MI.eraseFromParent();
+  return RetBB;
+}
+
 MachineBasicBlock *SITargetLowering::EmitInstrWithCustomInserter(
   MachineInstr &MI, MachineBasicBlock *BB) const {
 
@@ -4071,6 +4189,10 @@ MachineBasicBlock *SITargetLowering::EmitInstrWithCustomInserter(
   SIMachineFunctionInfo *MFI = MF->getInfo<SIMachineFunctionInfo>();
 
   switch (MI.getOpcode()) {
+  case AMDGPU::WAVE_REDUCE_UMIN_PSEUDO_U32:
+    return lowerWaveReduce(MI, *BB, *getSubtarget(), AMDGPU::S_MIN_U32);
+  case AMDGPU::WAVE_REDUCE_UMAX_PSEUDO_U32:
+    return lowerWaveReduce(MI, *BB, *getSubtarget(), AMDGPU::S_MAX_U32);
   case AMDGPU::S_UADDO_PSEUDO:
   case AMDGPU::S_USUBO_PSEUDO: {
     const DebugLoc &DL = MI.getDebugLoc();
@@ -9271,11 +9393,12 @@ SDValue SITargetLowering::LowerFDIV16(SDValue Op, SelectionDAG &DAG) const {
 
 // Faster 2.5 ULP division that does not support denormals.
 SDValue SITargetLowering::lowerFDIV_FAST(SDValue Op, SelectionDAG &DAG) const {
+  SDNodeFlags Flags = Op->getFlags();
   SDLoc SL(Op);
   SDValue LHS = Op.getOperand(1);
   SDValue RHS = Op.getOperand(2);
 
-  SDValue r1 = DAG.getNode(ISD::FABS, SL, MVT::f32, RHS);
+  SDValue r1 = DAG.getNode(ISD::FABS, SL, MVT::f32, RHS, Flags);
 
   const APFloat K0Val(0x1p+96f);
   const SDValue K0 = DAG.getConstantFP(K0Val, SL, MVT::f32);
@@ -9290,17 +9413,16 @@ SDValue SITargetLowering::lowerFDIV_FAST(SDValue Op, SelectionDAG &DAG) const {
 
   SDValue r2 = DAG.getSetCC(SL, SetCCVT, r1, K0, ISD::SETOGT);
 
-  SDValue r3 = DAG.getNode(ISD::SELECT, SL, MVT::f32, r2, K1, One);
+  SDValue r3 = DAG.getNode(ISD::SELECT, SL, MVT::f32, r2, K1, One, Flags);
 
-  // TODO: Should this propagate fast-math-flags?
-  r1 = DAG.getNode(ISD::FMUL, SL, MVT::f32, RHS, r3);
+  r1 = DAG.getNode(ISD::FMUL, SL, MVT::f32, RHS, r3, Flags);
 
   // rcp does not support denormals.
-  SDValue r0 = DAG.getNode(AMDGPUISD::RCP, SL, MVT::f32, r1);
+  SDValue r0 = DAG.getNode(AMDGPUISD::RCP, SL, MVT::f32, r1, Flags);
 
-  SDValue Mul = DAG.getNode(ISD::FMUL, SL, MVT::f32, LHS, r0);
+  SDValue Mul = DAG.getNode(ISD::FMUL, SL, MVT::f32, LHS, r0, Flags);
 
-  return DAG.getNode(ISD::FMUL, SL, MVT::f32, r3, Mul);
+  return DAG.getNode(ISD::FMUL, SL, MVT::f32, r3, Mul, Flags);
 }
 
 // Returns immediate value for setting the F32 denorm mode when using the
@@ -14204,7 +14326,6 @@ void SITargetLowering::emitExpandAtomicRMW(AtomicRMWInst *AI) const {
   Value *Val = AI->getValOperand();
   Type *ValTy = Val->getType();
   Value *Addr = AI->getPointerOperand();
-  PointerType *PtrTy = cast<PointerType>(Addr->getType());
 
   auto CreateNewAtomicRMW = [AI](IRBuilder<> &Builder, Value *Addr,
                                  Value *Val) -> Value * {
@@ -14229,8 +14350,7 @@ void SITargetLowering::emitExpandAtomicRMW(AtomicRMWInst *AI) const {
 
   Builder.SetInsertPoint(SharedBB);
   Value *CastToLocal = Builder.CreateAddrSpaceCast(
-      Addr,
-      PointerType::getWithSamePointeeType(PtrTy, AMDGPUAS::LOCAL_ADDRESS));
+      Addr, PointerType::get(Ctx, AMDGPUAS::LOCAL_ADDRESS));
   Value *LoadedShared = CreateNewAtomicRMW(Builder, CastToLocal, Val);
   Builder.CreateBr(PhiBB);
 
@@ -14241,8 +14361,7 @@ void SITargetLowering::emitExpandAtomicRMW(AtomicRMWInst *AI) const {
 
   Builder.SetInsertPoint(PrivateBB);
   Value *CastToPrivate = Builder.CreateAddrSpaceCast(
-      Addr,
-      PointerType::getWithSamePointeeType(PtrTy, AMDGPUAS::PRIVATE_ADDRESS));
+      Addr, PointerType::get(Ctx, AMDGPUAS::PRIVATE_ADDRESS));
   Value *LoadedPrivate =
       Builder.CreateLoad(ValTy, CastToPrivate, "loaded.private");
   Value *NewVal = Builder.CreateFAdd(LoadedPrivate, Val, "val.new");
@@ -14251,8 +14370,7 @@ void SITargetLowering::emitExpandAtomicRMW(AtomicRMWInst *AI) const {
 
   Builder.SetInsertPoint(GlobalBB);
   Value *CastToGlobal = Builder.CreateAddrSpaceCast(
-      Addr,
-      PointerType::getWithSamePointeeType(PtrTy, AMDGPUAS::GLOBAL_ADDRESS));
+      Addr, PointerType::get(Ctx, AMDGPUAS::GLOBAL_ADDRESS));
   Value *LoadedGlobal = CreateNewAtomicRMW(Builder, CastToGlobal, Val);
   Builder.CreateBr(PhiBB);
 

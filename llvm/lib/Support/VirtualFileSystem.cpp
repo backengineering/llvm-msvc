@@ -43,6 +43,7 @@
 #include <cstdint>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -725,7 +726,7 @@ public:
 
 class InMemoryDirectory : public InMemoryNode {
   Status Stat;
-  llvm::StringMap<std::unique_ptr<InMemoryNode>> Entries;
+  std::map<std::string, std::unique_ptr<InMemoryNode>> Entries;
 
 public:
   InMemoryDirectory(Status Stat)
@@ -741,15 +742,14 @@ public:
   UniqueID getUniqueID() const { return Stat.getUniqueID(); }
 
   InMemoryNode *getChild(StringRef Name) const {
-    auto I = Entries.find(Name);
+    auto I = Entries.find(Name.str());
     if (I != Entries.end())
       return I->second.get();
     return nullptr;
   }
 
   InMemoryNode *addChild(StringRef Name, std::unique_ptr<InMemoryNode> Child) {
-    return Entries.insert(make_pair(Name, std::move(Child)))
-        .first->second.get();
+    return Entries.emplace(Name, std::move(Child)).first->second.get();
   }
 
   using const_iterator = decltype(Entries)::const_iterator;

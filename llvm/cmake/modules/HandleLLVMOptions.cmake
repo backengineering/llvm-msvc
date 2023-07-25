@@ -741,7 +741,7 @@ if (LLVM_ENABLE_WARNINGS AND (LLVM_COMPILER_IS_GCC_COMPATIBLE OR CLANG_CL))
   endif()
 
   append("-Wextra -Wno-unused-parameter -Wwrite-strings" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
-  append("-Wcast-qual" CMAKE_CXX_FLAGS)
+  append("-Wcast-qual" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
 
   # Turn off missing field initializer warnings for gcc to avoid noise from
   # false positives with empty {}. Turn them on otherwise (they're off by
@@ -769,6 +769,11 @@ if (LLVM_ENABLE_WARNINGS AND (LLVM_COMPILER_IS_GCC_COMPATIBLE OR CLANG_CL))
   add_flag_if_supported("-Wcovered-switch-default" COVERED_SWITCH_DEFAULT_FLAG)
   append_if(USE_NO_UNINITIALIZED "-Wno-uninitialized" CMAKE_CXX_FLAGS)
   append_if(USE_NO_MAYBE_UNINITIALIZED "-Wno-maybe-uninitialized" CMAKE_CXX_FLAGS)
+
+  # Disable -Wnonnull for GCC warning as it is emitting a lot of false positives.
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    append("-Wno-nonnull" CMAKE_CXX_FLAGS)
+  endif()
 
   # Disable -Wclass-memaccess, a C++-only warning from GCC 8 that fires on
   # LLVM's ADT classes.

@@ -422,6 +422,7 @@ private:
           FormatToken *PrevPrev = Prev->getPreviousNonComment();
           FormatToken *Next = CurrentToken->Next;
           if (PrevPrev && PrevPrev->is(tok::identifier) &&
+              PrevPrev->isNot(TT_TypeName) &&
               Prev->isOneOf(tok::star, tok::amp, tok::ampamp) &&
               CurrentToken->is(tok::identifier) && Next->isNot(tok::equal)) {
             Prev->setType(TT_BinaryOperator);
@@ -2508,6 +2509,8 @@ private:
     const FormatToken *PrevToken = Tok.getPreviousNonComment();
     if (!PrevToken)
       return TT_UnaryOperator;
+    if (PrevToken->is(TT_TypeName))
+      return TT_PointerOrReference;
 
     const FormatToken *NextToken = Tok.getNextNonComment();
 
@@ -3355,7 +3358,9 @@ void TokenAnnotator::calculateFormattingInformation(AnnotatedLine &Line) const {
     if (Current->is(TT_LineComment)) {
       if (Prev->is(BK_BracedInit) && Prev->opensScope()) {
         Current->SpacesRequiredBefore =
-            (Style.Cpp11BracedListStyle && !Style.SpacesInParentheses) ? 0 : 1;
+            (Style.Cpp11BracedListStyle && !Style.SpacesInParensOptions.Other)
+                ? 0
+                : 1;
       } else if (Prev->is(TT_VerilogMultiLineListLParen)) {
         Current->SpacesRequiredBefore = 0;
       } else {
@@ -3769,9 +3774,9 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
   if ((Left.is(tok::l_paren) && Right.is(tok::r_paren)) ||
       (Left.is(tok::l_brace) && Left.isNot(BK_Block) &&
        Right.is(tok::r_brace) && Right.isNot(BK_Block))) {
-    return Style.SpaceInEmptyParentheses;
+    return Style.SpacesInParensOptions.InEmptyParentheses;
   }
-  if (Style.SpacesInConditionalStatement) {
+  if (Style.SpacesInParensOptions.InConditionalStatements) {
     const FormatToken *LeftParen = nullptr;
     if (Left.is(tok::l_paren))
       LeftParen = &Left;
@@ -3810,8 +3815,8 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
   if (Left.is(tok::l_paren) || Right.is(tok::r_paren)) {
     return (Right.is(TT_CastRParen) ||
             (Left.MatchingParen && Left.MatchingParen->is(TT_CastRParen)))
-               ? Style.SpacesInCStyleCastParentheses
-               : Style.SpacesInParentheses;
+               ? Style.SpacesInParensOptions.InCStyleCasts
+               : Style.SpacesInParensOptions.Other;
   }
   if (Right.isOneOf(tok::semi, tok::comma))
     return false;
@@ -4037,7 +4042,8 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
   if ((Left.is(tok::l_brace) && Left.isNot(BK_Block)) ||
       (Right.is(tok::r_brace) && Right.MatchingParen &&
        Right.MatchingParen->isNot(BK_Block))) {
-    return Style.Cpp11BracedListStyle ? Style.SpacesInParentheses : true;
+    return Style.Cpp11BracedListStyle ? Style.SpacesInParensOptions.Other
+                                      : true;
   }
   if (Left.is(TT_BlockComment)) {
     // No whitespace in x(/*foo=*/1), except for JavaScript.
@@ -4699,7 +4705,7 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
            !(Left.isOneOf(tok::l_paren, tok::r_paren, tok::l_square,
                           tok::kw___super, TT_TemplateOpener,
                           TT_TemplateCloser)) ||
-           (Left.is(tok::l_paren) && Style.SpacesInParentheses);
+           (Left.is(tok::l_paren) && Style.SpacesInParensOptions.Other);
   }
   if ((Left.is(TT_TemplateOpener)) != (Right.is(TT_TemplateCloser)))
     return ShouldAddSpacesInAngles();

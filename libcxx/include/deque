@@ -458,9 +458,6 @@ const _DiffType __deque_iterator<_ValueType, _Pointer, _Reference, _MapPointer,
 template <class _Tp, class _Allocator /*= allocator<_Tp>*/>
 class _LIBCPP_TEMPLATE_VIS deque
 {
-private:
-  using __default_allocator_type = allocator<_Tp>;
-
 public:
     // types:
 
@@ -971,7 +968,12 @@ public:
    };
 
 // The following functions are no-ops outside of AddressSanitizer mode.
-// We call annotations only for the default Allocator.
+// We call annotations for every allocator, unless explicitly disabled.
+//
+// To disable annotations for a particular allocator, change value of
+// __asan_annotate_container_with_allocator to false.
+// For more details, see the "Using libc++" documentation page or
+// the documentation for __sanitizer_annotate_contiguous_container.
 #if !defined(_LIBCPP_HAS_NO_ASAN) && _LIBCPP_CLANG_VER >= 1600
     // TODO LLVM18: Remove the special-casing
     _LIBCPP_HIDE_FROM_ABI void __annotate_double_ended_contiguous_container(
@@ -981,7 +983,7 @@ public:
         const void* __old_con_end,
         const void* __new_con_beg,
         const void* __new_con_end) const {
-        if (__beg && is_same<allocator_type, __default_allocator_type>::value)
+        if (__beg != nullptr && __asan_annotate_container_with_allocator<_Allocator>::value)
             __sanitizer_annotate_double_ended_contiguous_container(
                 __beg, __end, __old_con_beg, __old_con_end, __new_con_beg, __new_con_end);
     }
@@ -2600,7 +2602,7 @@ template <class _Tp, class _Allocator>
 void
 deque<_Tp, _Allocator>::pop_back()
 {
-    _LIBCPP_ASSERT_UNCATEGORIZED(!empty(), "deque::pop_back called on an empty deque");
+    _LIBCPP_ASSERT_VALID_ELEMENT_ACCESS(!empty(), "deque::pop_back called on an empty deque");
     size_type __old_sz    = size();
     size_type __old_start = __start_;
     allocator_type& __a = __alloc();

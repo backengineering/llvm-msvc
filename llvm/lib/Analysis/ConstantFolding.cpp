@@ -235,7 +235,8 @@ Constant *FoldBitCast(Constant *C, Type *DestTy, const DataLayout &DL) {
         ShiftAmt += isLittleEndian ? SrcBitSize : -SrcBitSize;
 
         // Mix it in.
-        Elt = ConstantExpr::getOr(Elt, Src);
+        Elt = ConstantFoldBinaryOpOperands(Instruction::Or, Elt, Src, DL);
+        assert(Elt && "Constant folding cannot fail on plain integers");
       }
       Result.push_back(Elt);
     }
@@ -861,18 +862,16 @@ Constant *CastGEPIndices(Type *SrcElemTy, ArrayRef<Constant *> Ops,
 }
 
 /// Strip the pointer casts, but preserve the address space information.
-Constant *StripPtrCastKeepAS(Constant *Ptr) {
+// TODO: This probably doesn't make sense with opaque pointers.
+static Constant *StripPtrCastKeepAS(Constant *Ptr) {
   assert(Ptr->getType()->isPointerTy() && "Not a pointer type");
   auto *OldPtrTy = cast<PointerType>(Ptr->getType());
   Ptr = cast<Constant>(Ptr->stripPointerCasts());
   auto *NewPtrTy = cast<PointerType>(Ptr->getType());
 
   // Preserve the address space number of the pointer.
-  if (NewPtrTy->getAddressSpace() != OldPtrTy->getAddressSpace()) {
-    Ptr = ConstantExpr::getPointerCast(
-        Ptr, PointerType::getWithSamePointeeType(NewPtrTy,
-                                                 OldPtrTy->getAddressSpace()));
-  }
+  if (NewPtrTy->getAddressSpace() != OldPtrTy->getAddressSpace())
+    Ptr = ConstantExpr::getPointerCast(Ptr, OldPtrTy);
   return Ptr;
 }
 
@@ -1001,18 +1000,8 @@ Constant *SymbolicallyEvaluateGEP(const GEPOperator *GEP,
     }
 
   // Create a GEP.
-  Constant *C = ConstantExpr::getGetElementPtr(SrcElemTy, Ptr, NewIdxs,
-                                               InBounds, InRangeIndex);
-  assert(
-      cast<PointerType>(C->getType())->isOpaqueOrPointeeTypeMatches(ElemTy) &&
-      "Computed GetElementPtr has unexpected type!");
-
-  // If we ended up indexing a member with a type that doesn't match
-  // the type of what the original indices indexed, add a cast.
-  if (C->getType() != ResTy)
-    C = FoldBitCast(C, ResTy, DL);
-
-  return C;
+  return ConstantExpr::getGetElementPtr(SrcElemTy, Ptr, NewIdxs, InBounds,
+                                        InRangeIndex);
 }
 
 /// Attempt to constant fold an instruction with the
@@ -1984,11 +1973,10 @@ static Constant *constantFoldCanonicalize(const Type *Ty, const CallBase *CI,
     DenormalMode DenormMode =
         CI->getFunction()->getDenormalMode(Src.getSemantics());
 
-    // TODO: Should allow folding for pure IEEE.
     if (DenormMode == DenormalMode::getIEEE())
-      return nullptr;
+      return ConstantFP::get(CI->getContext(), Src);
 
-    if (DenormMode == DenormalMode::getDynamic())
+    if (DenormMode.Input == DenormalMode::Dynamic)
       return nullptr;
 
     // If we know if either input or output is flushed, we can fold.

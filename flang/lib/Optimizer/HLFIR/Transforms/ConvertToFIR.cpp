@@ -153,11 +153,18 @@ public:
       else
         fir::runtime::genAssign(builder, loc, toMutableBox, from);
     } else {
+      // TODO: use the type specification to see if IsFinalizable is set,
+      // or propagate IsFinalizable attribute from lowering.
+      bool needFinalization =
+          !assignOp.isTemporaryLHS() &&
+          mlir::isa<fir::RecordType>(fir::getElementTypeOf(lhsExv));
+
       // genScalarAssignment() must take care of potential overlap
       // between LHS and RHS. Note that the overlap is possible
       // also for components of LHS/RHS, and the Assign() runtime
       // must take care of it.
       fir::factory::genScalarAssignment(builder, loc, lhsExv, rhsExv,
+                                        needFinalization,
                                         assignOp.isTemporaryLHS());
     }
     rewriter.eraseOp(assignOp);
@@ -233,8 +240,7 @@ public:
   matchAndRewrite(hlfir::CopyInOp copyInOp,
                   mlir::PatternRewriter &rewriter) const override {
     mlir::Location loc = copyInOp.getLoc();
-    auto module = copyInOp->getParentOfType<mlir::ModuleOp>();
-    fir::FirOpBuilder builder(rewriter, fir::getKindMapping(module));
+    fir::FirOpBuilder builder(rewriter, copyInOp.getOperation());
     CopyInResult result = copyInOp.getVarIsPresent()
                               ? genOptionalCopyIn(loc, builder, copyInOp)
                               : genNonOptionalCopyIn(loc, builder, copyInOp);
@@ -252,8 +258,7 @@ public:
   matchAndRewrite(hlfir::CopyOutOp copyOutOp,
                   mlir::PatternRewriter &rewriter) const override {
     mlir::Location loc = copyOutOp.getLoc();
-    auto module = copyOutOp->getParentOfType<mlir::ModuleOp>();
-    fir::FirOpBuilder builder(rewriter, fir::getKindMapping(module));
+    fir::FirOpBuilder builder(rewriter, copyOutOp.getOperation());
 
     builder.genIfThen(loc, copyOutOp.getWasCopied())
         .genThen([&]() {
@@ -316,8 +321,7 @@ public:
     mlir::Value hlfirBase;
     mlir::Type hlfirBaseType = declareOp.getBase().getType();
     if (hlfirBaseType.isa<fir::BaseBoxType>()) {
-      auto module = declareOp->getParentOfType<mlir::ModuleOp>();
-      fir::FirOpBuilder builder(rewriter, fir::getKindMapping(module));
+      fir::FirOpBuilder builder(rewriter, declareOp.getOperation());
       // Helper to generate the hlfir fir.box with the local lower bounds and
       // type parameters.
       auto genHlfirBox = [&]() -> mlir::Value {
@@ -416,8 +420,7 @@ public:
   matchAndRewrite(hlfir::DesignateOp designate,
                   mlir::PatternRewriter &rewriter) const override {
     mlir::Location loc = designate.getLoc();
-    auto module = designate->getParentOfType<mlir::ModuleOp>();
-    fir::FirOpBuilder builder(rewriter, fir::getKindMapping(module));
+    fir::FirOpBuilder builder(rewriter, designate.getOperation());
 
     hlfir::Entity baseEntity(designate.getMemref());
 

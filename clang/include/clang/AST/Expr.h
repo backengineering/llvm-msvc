@@ -762,6 +762,11 @@ public:
   /// strlen, false otherwise.
   bool tryEvaluateStrLen(uint64_t &Result, ASTContext &Ctx) const;
 
+  bool EvaluateCharRangeAsString(std::string &Result,
+                                 const Expr *SizeExpression,
+                                 const Expr *PtrExpression, ASTContext &Ctx,
+                                 EvalResult &Status) const;
+
   /// Enumeration used to describe the kind of Null pointer constant
   /// returned from \c isNullPointerConstant().
   enum NullPointerConstantKind {
@@ -6356,11 +6361,11 @@ public:
     return getSubExprsBuffer() + getNumSubExprs();
   }
 
-  llvm::iterator_range<semantics_iterator> semantics() {
-    return llvm::make_range(semantics_begin(), semantics_end());
+  ArrayRef<Expr*> semantics() {
+    return ArrayRef(semantics_begin(), semantics_end());
   }
-  llvm::iterator_range<const_semantics_iterator> semantics() const {
-    return llvm::make_range(semantics_begin(), semantics_end());
+  ArrayRef<const Expr*> semantics() const {
+    return ArrayRef(semantics_begin(), semantics_end());
   }
 
   Expr *getSemanticExpr(unsigned index) {
