@@ -501,6 +501,20 @@ static void calculateSEHStateNumbers(WinEHFuncInfo &FuncInfo,
     const Function *Filter = dyn_cast<Function>(FilterOrNull);
     assert((Filter || FilterOrNull->isNullValue()) &&
            "unexpected filter value");
+    // Filters named __IsLocalUnwind are treated specially: we want to catch
+    // unwinds from _local_unwind, but not catchrets in the same funclet.
+    // (They both need to point at the same catchswitch to pass the verifier
+    // checks for nesting.) To make this work, we mess with the state
+    // numbering: the "parent" of any cleanupret pointing to this catchpad is
+    // actually this catchpad's parent.
+    //
+    // Note that _local_unwind looks for unwind table entries for the
+    // catchpad; if there aren't any, it assumes the catchpad doesn't have a
+    // parent.
+    bool IsLocalUnwind =
+        Filter && Filter->getName().startswith("__IsLocalUnwind");
+    if (IsLocalUnwind)
+      Filter = nullptr;
     int TryState = addSEHExcept(FuncInfo, ParentState, Filter, CatchPadBB);
 
     // Everything in the __try block uses TryState as its parent state.
@@ -512,7 +526,7 @@ static void calculateSEHStateNumbers(WinEHFuncInfo &FuncInfo,
       if ((PredBlock = getEHPadFromPredecessor(PredBlock,
                                                CatchSwitch->getParentPad())))
         calculateSEHStateNumbers(FuncInfo, PredBlock->getFirstNonPHI(),
-                                 TryState);
+                                 IsLocalUnwind ? ParentState : TryState);
 
     // Everything in the __except block unwinds to ParentState, just like code
     // outside the __try.
