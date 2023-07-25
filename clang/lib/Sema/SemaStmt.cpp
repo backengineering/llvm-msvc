@@ -3905,7 +3905,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp,
 
   CurScope->updateNRVOCandidate(VD);
 
-  CheckJumpOutOfSEHFinally(*this, ReturnLoc, *CurScope->getFnParent());
+  // CheckJumpOutOfSEHFinally(*this, ReturnLoc, *CurScope->getFnParent());
 
   return R;
 }
