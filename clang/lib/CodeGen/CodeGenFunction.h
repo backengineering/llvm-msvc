@@ -678,6 +678,16 @@ public:
   /// a value from the top of the stack.
   SmallVector<Address, 1> SEHCodeSlotStack;
 
+  /// Variable that indicates abnormal termination from the a child finally
+  /// block.
+  SmallVector<Address, 1> SEHRetNowStack;
+
+  /// Ponter to the parent function's SEHRetNow variable.
+  Address SEHRetNowParent = Address::invalid();
+
+  /// Ponter to the root function's ReturnValue variable.
+  Address SEHReturnValue = Address::invalid();
+
   /// Value returned by __exception_info intrinsic.
   llvm::Value *SEHInfo = nullptr;
 
@@ -3285,11 +3295,13 @@ public:
   void EmitSEHTryStmt(const SEHTryStmt &S);
   void FixSEHEnd(llvm::InvokeInst *InvokeIst);
   void EmitSEHLeaveStmt(const SEHLeaveStmt &S);
-  void EnterSEHTryStmt(const SEHTryStmt &S);
-  void ExitSEHTryStmt(const SEHTryStmt &S);
+  void EnterSEHTryStmt(const SEHTryStmt &S, bool &ContainsRetStmt);
+  void ExitSEHTryStmt(const SEHTryStmt &S, bool ContainsRetStmt);
   void CreateSEHEndCall();
   void VolatilizeTryBlocks(llvm::BasicBlock *BB,
                            llvm::SmallPtrSet<llvm::BasicBlock *, 10> &V);
+  void EmitSEHLocalUnwind();
+  llvm::Function *GenerateSEHIsLocalUnwindFunction();
 
   void pushSEHCleanup(CleanupKind kind,
                       llvm::Function *FinallyFunc);
