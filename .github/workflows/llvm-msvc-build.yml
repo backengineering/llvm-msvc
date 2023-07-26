@@ -16,7 +16,7 @@ jobs:
       matrix:
         os: [windows-latest]
     env:
-      BUILD_TYPE: Release
+      BUILD_TYPE: RelWithDebInfo
     steps:
 
     - name: Install ninja-build tool
@@ -31,11 +31,11 @@ jobs:
     - name: Build llvm
       run: |
         cmake -Bbuild -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_ZLIB=OFF -DCMAKE_BUILD_TYPE=release -DLLVM_USE_CRT_RELEASE=MT -DCPACK_GENERATOR=ZIP "-DCMAKE_INSTALL_PREFIX=$pwd\\prefix" -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" -DLLVM_ENABLE_PROJECTS="clang;lld" llvm-msvc\\llvm
-        cmake --build build --config Release
+        cmake --build build --config ${{ env.BUILD_TYPE }}
 
     - name: Package llvm
       run: |
-        cmake --build build --target package --config Release
+        cmake --build build --target package --config ${{ env.BUILD_TYPE }}
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
