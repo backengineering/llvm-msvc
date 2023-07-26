@@ -91,10 +91,13 @@ public:
   bool VisitPointerCompoundAssignOperator(const CompoundAssignOperator *E);
   bool VisitExprWithCleanups(const ExprWithCleanups *E);
   bool VisitMaterializeTemporaryExpr(const MaterializeTemporaryExpr *E);
+  bool VisitCXXBindTemporaryExpr(const CXXBindTemporaryExpr *E);
+  bool VisitCXXTemporaryObjectExpr(const CXXTemporaryObjectExpr *E);
   bool VisitCompoundLiteralExpr(const CompoundLiteralExpr *E);
   bool VisitTypeTraitExpr(const TypeTraitExpr *E);
   bool VisitLambdaExpr(const LambdaExpr *E);
   bool VisitPredefinedExpr(const PredefinedExpr *E);
+  bool VisitCXXThrowExpr(const CXXThrowExpr *E);
 
 protected:
   bool visitExpr(const Expr *E) override;

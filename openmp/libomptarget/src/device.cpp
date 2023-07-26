@@ -25,7 +25,9 @@
 #include <string>
 #include <thread>
 
+#ifdef OMPT_SUPPORT
 using namespace llvm::omp::target::ompt;
+#endif
 
 int HostDataToTargetTy::addEventIfNecessary(DeviceTy &Device,
                                             AsyncInfoTy &AsyncInfo) const {
@@ -559,20 +561,20 @@ __tgt_target_table *DeviceTy::loadBinary(void *Img) {
 
 void *DeviceTy::allocData(int64_t Size, void *HstPtr, int32_t Kind) {
   /// RAII to establish tool anchors before and after data allocation
-  InterfaceRAII TargetDataAllocRAII(
-      RegionInterface.getCallbacks<ompt_target_data_alloc>(), RTLDeviceID,
-      HstPtr, Size,
-      /* CodePtr */ OMPT_GET_RETURN_ADDRESS(0));
+  OMPT_IF_BUILT(InterfaceRAII TargetDataAllocRAII(
+                    RegionInterface.getCallbacks<ompt_target_data_alloc>(),
+                    RTLDeviceID, HstPtr, Size,
+                    /* CodePtr */ OMPT_GET_RETURN_ADDRESS(0));)
 
   return RTL->data_alloc(RTLDeviceID, Size, HstPtr, Kind);
 }
 
 int32_t DeviceTy::deleteData(void *TgtAllocBegin, int32_t Kind) {
   /// RAII to establish tool anchors before and after data deletion
-  InterfaceRAII TargetDataDeleteRAII(
-      RegionInterface.getCallbacks<ompt_target_data_delete>(), RTLDeviceID,
-      TgtAllocBegin,
-      /* CodePtr */ OMPT_GET_RETURN_ADDRESS(0));
+  OMPT_IF_BUILT(InterfaceRAII TargetDataDeleteRAII(
+                    RegionInterface.getCallbacks<ompt_target_data_delete>(),
+                    RTLDeviceID, TgtAllocBegin,
+                    /* CodePtr */ OMPT_GET_RETURN_ADDRESS(0));)
 
   return RTL->data_delete(RTLDeviceID, TgtAllocBegin, Kind);
 }
@@ -606,10 +608,11 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
   }
 
   /// RAII to establish tool anchors before and after data submit
-  InterfaceRAII TargetDataSubmitRAII(
-      RegionInterface.getCallbacks<ompt_target_data_transfer_to_device>(),
-      RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size,
-      /* CodePtr */ OMPT_GET_RETURN_ADDRESS(0));
+  OMPT_IF_BUILT(
+      InterfaceRAII TargetDataSubmitRAII(
+          RegionInterface.getCallbacks<ompt_target_data_transfer_to_device>(),
+          RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size,
+          /* CodePtr */ OMPT_GET_RETURN_ADDRESS(0));)
 
   if (!AsyncInfo || !RTL->data_submit_async || !RTL->synchronize)
     return RTL->data_submit(RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size);
@@ -633,10 +636,11 @@ int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
   }
 
   /// RAII to establish tool anchors before and after data retrieval
-  InterfaceRAII TargetDataRetrieveRAII(
-      RegionInterface.getCallbacks<ompt_target_data_transfer_from_device>(),
-      RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size,
-      /* CodePtr */ OMPT_GET_RETURN_ADDRESS(0));
+  OMPT_IF_BUILT(
+      InterfaceRAII TargetDataRetrieveRAII(
+          RegionInterface.getCallbacks<ompt_target_data_transfer_from_device>(),
+          RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size,
+          /* CodePtr */ OMPT_GET_RETURN_ADDRESS(0));)
 
   if (!RTL->data_retrieve_async || !RTL->synchronize)
     return RTL->data_retrieve(RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size);

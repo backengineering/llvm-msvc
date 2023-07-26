@@ -177,13 +177,12 @@ enum class ArithOp { Add, Sub };
 // Returning values
 //===----------------------------------------------------------------------===//
 
-template <PrimType Name, bool Builtin = false,
-          class T = typename PrimConv<Name>::T>
+template <PrimType Name, class T = typename PrimConv<Name>::T>
 bool Ret(InterpState &S, CodePtr &PC, APValue &Result) {
   const T &Ret = S.Stk.pop<T>();
 
   assert(S.Current->getFrameOffset() == S.Stk.size() && "Invalid frame");
-  if (Builtin || !S.checkingPotentialConstantExpression())
+  if (!S.checkingPotentialConstantExpression() || S.Current->Caller)
     S.Current->popArgs();
 
   if (InterpFrame *Caller = S.Current->Caller) {
@@ -200,10 +199,9 @@ bool Ret(InterpState &S, CodePtr &PC, APValue &Result) {
   return true;
 }
 
-template <bool Builtin = false>
 inline bool RetVoid(InterpState &S, CodePtr &PC, APValue &Result) {
   assert(S.Current->getFrameOffset() == S.Stk.size() && "Invalid frame");
-  if (Builtin || !S.checkingPotentialConstantExpression())
+  if (!S.checkingPotentialConstantExpression() || S.Current->Caller)
     S.Current->popArgs();
 
   if (InterpFrame *Caller = S.Current->Caller) {
@@ -1632,8 +1630,16 @@ inline bool Call(InterpState &S, CodePtr OpPC, const Function *Func) {
 
     const Pointer &ThisPtr = S.Stk.peek<Pointer>(ThisOffset);
 
-    if (!CheckInvoke(S, OpPC, ThisPtr))
-      return false;
+    // If the current function is a lambda static invoker and
+    // the function we're about to call is a lambda call operator,
+    // skip the CheckInvoke, since the ThisPtr is a null pointer
+    // anyway.
+    if (!(S.Current->getFunction() &&
+          S.Current->getFunction()->isLambdaStaticInvoker() &&
+          Func->isLambdaCallOperator())) {
+      if (!CheckInvoke(S, OpPC, ThisPtr))
+        return false;
+    }
 
     if (S.checkingPotentialConstantExpression())
       return false;
@@ -1716,6 +1722,9 @@ inline bool CallPtr(InterpState &S, CodePtr OpPC) {
   if (!F || !F->isConstexpr())
     return false;
 
+  if (F->isVirtual())
+    return CallVirt(S, OpPC, F);
+
   return Call(S, OpPC, F);
 }
 
@@ -1723,6 +1732,15 @@ inline bool GetFnPtr(InterpState &S, CodePtr OpPC, const Function *Func) {
   assert(Func);
   S.Stk.push<FunctionPointer>(Func);
   return true;
+}
+
+/// Just emit a diagnostic. The expression that caused emission of this
+/// op is not valid in a constant context.
+inline bool Invalid(InterpState &S, CodePtr OpPC) {
+  const SourceLocation &Loc = S.Current->getLocation(OpPC);
+  S.FFDiag(Loc, diag::note_invalid_subexpr_in_const_expr)
+      << S.Current->getRange(OpPC);
+  return false;
 }
 
 //===----------------------------------------------------------------------===//

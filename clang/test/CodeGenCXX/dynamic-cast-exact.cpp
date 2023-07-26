@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -I%S %s -triple x86_64-apple-darwin10 -emit-llvm -fcxx-exceptions -fexceptions -std=c++11 -o - | FileCheck %s --implicit-check-not='call {{.*}} @__dynamic_cast'
+// RUN: %clang_cc1 -I%S %s -triple x86_64-apple-darwin10 -emit-llvm -fcxx-exceptions -fexceptions -std=c++11 -o - -O1 -disable-llvm-passes | FileCheck %s --implicit-check-not='call {{.*}} @__dynamic_cast'
 struct Offset { virtual ~Offset(); };
 struct A { virtual ~A(); };
 struct B final : Offset, A { };
@@ -75,4 +75,13 @@ H *exact_multi(A *a) {
   // CHECK: [[LABEL_END]]:
   // CHECK: phi ptr [ %[[RESULT]], %[[LABEL_NOTNULL]] ], [ null, %[[LABEL_FAILED]] ]
   return dynamic_cast<H*>(a);
+}
+
+namespace GH64088 {
+  // Ensure we mark the B vtable as used here, because we're going to emit a
+  // reference to it.
+  // CHECK: define {{.*}} @_ZN7GH640881BD0
+  struct A { virtual ~A(); };
+  struct B final : A { virtual ~B() = default; };
+  B *cast(A *p) { return dynamic_cast<B*>(p); }
 }

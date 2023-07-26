@@ -13,6 +13,8 @@
 #ifndef _OMPTARGET_OMPTINTERFACE_H
 #define _OMPTARGET_OMPTINTERFACE_H
 
+// Only provide functionality if target OMPT support is enabled
+#ifdef OMPT_SUPPORT
 #include <functional>
 #include <tuple>
 
@@ -21,13 +23,7 @@
 
 #include "llvm/Support/ErrorHandling.h"
 
-// If target OMPT support is compiled in
-#ifdef OMPT_SUPPORT
 #define OMPT_IF_BUILT(stmt) stmt
-#else
-#define OMPT_IF_BUILT(stmt)
-#endif
-
 #define OMPT_GET_RETURN_ADDRESS(level) __builtin_return_address(level)
 
 /// Callbacks for target regions require task_data representing the
@@ -260,5 +256,8 @@ InterfaceRAII(CallbackPairTy Callbacks, ArgsTy... Args)
 } // namespace target
 } // namespace omp
 } // namespace llvm
+#else
+#define OMPT_IF_BUILT(stmt)
+#endif
 
 #endif // _OMPTARGET_OMPTINTERFACE_H
