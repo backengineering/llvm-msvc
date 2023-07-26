@@ -1542,12 +1542,21 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   ArgParser parser(ctx);
   opt::InputArgList args = parser.parse(argsArr);
   
-  // Print linker arguments
-  llvm::outs() << "llvm-msvc linker arguments: ";
+  bool hasPrintArgs = false;
   for (auto arg : args) {
-    llvm::outs() << arg->getAsString(args) << " ";
+    if (StringRef(arg->getAsString(args)).compare("-fprint-arguments") == 0) {
+      hasPrintArgs = true;
+      break;
+    }
   }
-  llvm::outs() << "\n";
+
+  // Print linker arguments
+  if (hasPrintArgs) {
+    llvm::outs() << "llvm-msvc linker arguments: \n";
+    for (auto arg : args) {
+      llvm::outs() << "\"" << arg->getAsString(args) << "\",\n";
+    }
+  }
           
   // Parse and evaluate -mllvm options.
   std::vector<const char *> v;
