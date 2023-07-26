@@ -2146,7 +2146,7 @@ void CodeGenFunction::EmitCapturedLocals(CodeGenFunction &ParentCGF,
   if (IsFilter)
     EmitSEHExceptionCodeSave(ParentCGF, ParentFP, EntryFP);
 
-  if (Finder.ContainsRetStmt) {
+  if (!IsFilter && Finder.ContainsRetStmt) {
     SEHRetNowParent = recoverAddrOfEscapedLocal(
         ParentCGF, ParentCGF.SEHRetNowStack.back(), ParentFP);
     Address ParentSEHRetVal =
@@ -2319,6 +2319,7 @@ void CodeGenFunction::pushSEHCleanup(CleanupKind Kind,
 
 void CodeGenFunction::EnterSEHTryStmt(const SEHTryStmt &S,
                                       bool &ContainsRetStmt) {
+  ContainsRetStmt = false;
   CodeGenFunction HelperCGF(CGM, /*suppressNewContext=*/true);
   HelperCGF.ParentCGF = this;
   if (const SEHFinallyStmt *Finally = S.getFinallyHandler()) {
