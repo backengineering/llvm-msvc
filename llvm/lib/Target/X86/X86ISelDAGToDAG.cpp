@@ -664,8 +664,8 @@ void X86DAGToDAGISel::forceRealign(MachineFunction &MF) {
       return;
 
     // Naked functions don't need stack realignment.
-    if(MF.getFunction().hasFnAttribute(llvm::Attribute::Naked))
-	  return;
+    if (MF.getFunction().hasFnAttribute(llvm::Attribute::Naked))
+      return;
 
     for (auto &MBB : MF) {
       for (auto &MI : MBB) {
