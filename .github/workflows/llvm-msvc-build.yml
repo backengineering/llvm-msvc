@@ -16,7 +16,7 @@ jobs:
       matrix:
         os: [windows-latest]
     env:
-      BUILD_TYPE: RelWithDebInfo
+      BUILD_TYPE: Release
     steps:
 
     - name: Install ninja-build tool
