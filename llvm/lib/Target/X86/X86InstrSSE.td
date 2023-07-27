@@ -609,14 +609,6 @@ let Predicates = [HasAVX, NoVLX] in {
 // The instructions selected below are then converted to MOVDQA/MOVDQU
 // during the SSE domain pass.
 let Predicates = [UseSSE1] in {
-  def : Pat<(alignedloadv2i64 addr:$src),
-            (MOVAPSrm addr:$src)>;
-  def : Pat<(alignedloadv4i32 addr:$src),
-            (MOVAPSrm addr:$src)>;
-  def : Pat<(alignedloadv8i16 addr:$src),
-            (MOVAPSrm addr:$src)>;
-  def : Pat<(alignedloadv16i8 addr:$src),
-            (MOVAPSrm addr:$src)>;
   def : Pat<(loadv2i64 addr:$src),
             (MOVUPSrm addr:$src)>;
   def : Pat<(loadv4i32 addr:$src),
@@ -626,14 +618,6 @@ let Predicates = [UseSSE1] in {
   def : Pat<(loadv16i8 addr:$src),
             (MOVUPSrm addr:$src)>;
 
-  def : Pat<(alignedstore (v2i64 VR128:$src), addr:$dst),
-            (MOVAPSmr addr:$dst, VR128:$src)>;
-  def : Pat<(alignedstore (v4i32 VR128:$src), addr:$dst),
-            (MOVAPSmr addr:$dst, VR128:$src)>;
-  def : Pat<(alignedstore (v8i16 VR128:$src), addr:$dst),
-            (MOVAPSmr addr:$dst, VR128:$src)>;
-  def : Pat<(alignedstore (v16i8 VR128:$src), addr:$dst),
-            (MOVAPSmr addr:$dst, VR128:$src)>;
   def : Pat<(store (v2i64 VR128:$src), addr:$dst),
             (MOVUPSmr addr:$dst, VR128:$src)>;
   def : Pat<(store (v4i32 VR128:$src), addr:$dst),
@@ -645,12 +629,8 @@ let Predicates = [UseSSE1] in {
 }
 
 let Predicates = [UseSSE2] in {
-  def : Pat<(alignedloadv8f16 addr:$src),
-            (MOVAPSrm addr:$src)>;
   def : Pat<(loadv8f16 addr:$src),
             (MOVUPSrm addr:$src)>;
-  def : Pat<(alignedstore (v8f16 VR128:$src), addr:$dst),
-            (MOVAPSmr addr:$dst, VR128:$src)>;
   def : Pat<(store (v8f16 VR128:$src), addr:$dst),
             (MOVUPSmr addr:$dst, VR128:$src)>;
 }

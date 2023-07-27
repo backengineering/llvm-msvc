@@ -376,13 +376,9 @@ let Predicates = [HasBWI] in {
 
 // movaps is shorter than movdqa. movaps is in SSE and movdqa is in SSE2.
 let Predicates = [NoAVX] in {
-def : Pat<(alignedstore (f128 VR128:$src), addr:$dst),
-          (MOVAPSmr addr:$dst, VR128:$src)>;
 def : Pat<(store (f128 VR128:$src), addr:$dst),
           (MOVUPSmr addr:$dst, VR128:$src)>;
 
-def : Pat<(alignedloadf128 addr:$src),
-          (MOVAPSrm addr:$src)>;
 def : Pat<(loadf128 addr:$src),
           (MOVUPSrm addr:$src)>;
 }
