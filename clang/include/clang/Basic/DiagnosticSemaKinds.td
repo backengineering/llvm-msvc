@@ -666,9 +666,8 @@ def err_thread_unsupported : Error<
 def warn_maybe_falloff_nonvoid_function : Warning<
   "non-void function does not return a value in all control paths">,
   InGroup<ReturnType>;
-def warn_falloff_nonvoid_function : Warning<
-  "non-void function does not return a value">,
-  InGroup<ReturnType>;
+def err_falloff_nonvoid_function : Error<
+  "non-void function does not return a value">;
 def err_maybe_falloff_nonvoid_block : Error<
   "non-void block does not return a value in all control paths">;
 def err_falloff_nonvoid_block : Error<
