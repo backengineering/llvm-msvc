@@ -7831,9 +7831,11 @@ NamedDecl *Sema::ActOnVariableDeclarator(
       !NewVD->getType().isConstQualified()) {
     FunctionDecl *CurFD = getCurFunctionDecl();
     if (CurFD && isFunctionDefinitionDiscarded(*this, CurFD)) {
+#ifndef _WIN32
       Diag(D.getDeclSpec().getStorageClassSpecLoc(),
            diag::warn_static_local_in_extern_inline);
       MaybeSuggestAddingStaticToDecl(CurFD);
+#endif
     }
   }
 
