@@ -156,6 +156,9 @@ static bool hasAnyExplicitStorageClass(const FunctionDecl *D) {
 static void diagnoseUseOfInternalDeclInInlineFunction(Sema &S,
                                                       const NamedDecl *D,
                                                       SourceLocation Loc) {
+#ifdef _WIN32
+  return;
+#endif
   // This is disabled under C++; there are too many ways for this to fire in
   // contexts where the warning is a false positive, or where it is technically
   // correct but benign.
@@ -203,8 +206,10 @@ void Sema::MaybeSuggestAddingStaticToDecl(const FunctionDecl *Cur) {
   // Suggest "static" on the function, if possible.
   if (!hasAnyExplicitStorageClass(First)) {
     SourceLocation DeclBegin = First->getSourceRange().getBegin();
+#ifndef _WIN32
     Diag(DeclBegin, diag::note_convert_inline_to_static)
       << Cur << FixItHint::CreateInsertion(DeclBegin, "static ");
+#endif
   }
 }
 
