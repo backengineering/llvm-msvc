@@ -8294,10 +8294,10 @@ def err_typecheck_convert_incompatible_function_pointer : Error<
   "; remove &}3">;
 def ext_typecheck_convert_incompatible_function_pointer : ExtWarn<
   err_typecheck_convert_incompatible_function_pointer.Summary>,
-  InGroup<IncompatibleFunctionPointerTypes>, DefaultError;
+  InGroup<IncompatibleFunctionPointerTypes>;
 def warn_typecheck_convert_incompatible_function_pointer_strict : Warning<
   err_typecheck_convert_incompatible_function_pointer.Summary>,
-  InGroup<DiagGroup<"incompatible-function-pointer-types-strict">>, DefaultIgnore;
+  InGroup<DiagGroup<"incompatible-function-pointer-types-strict">>;
 def ext_typecheck_convert_discards_qualifiers : ExtWarn<
   "%select{%diff{assigning to $ from $|assigning to different types}0,1"
   "|%diff{passing $ to parameter of type $|"
