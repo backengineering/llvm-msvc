@@ -108,8 +108,19 @@ Improvements to clang-tidy
   functionality using the newly added command line option
   `--enable-module-headers-parsing`.
 
+- Remove configuration option `AnalyzeTemporaryDestructors`, which was deprecated since
+  :program:`clang-tidy` 16.
+
+- Improved `--dump-config` to print check options in alphabetical order.
+
 New checks
 ^^^^^^^^^^
+
+- New :doc:`bugprone-multi-level-implicit-pointer-conversion
+  <clang-tidy/checks/bugprone/multi-level-implicit-pointer-conversion>` check.
+
+  Detects implicit conversions between pointers of different levels of
+  indirection.
 
 - New :doc:`performance-enum-size
   <clang-tidy/checks/performance/enum-size>` check.

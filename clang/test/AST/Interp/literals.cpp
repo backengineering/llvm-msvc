@@ -6,6 +6,8 @@
 #define INT_MIN (~__INT_MAX__)
 #define INT_MAX __INT_MAX__
 
+typedef __INTPTR_TYPE__ intptr_t;
+
 
 static_assert(true, "");
 static_assert(false, ""); // expected-error{{failed}} ref-error{{failed}}
@@ -909,4 +911,38 @@ namespace PredefinedExprs {
   static_assert(heh(1) == 'e', "");
   static_assert(heh(2) == 'h', "");
 #endif
+}
+
+namespace NE {
+  constexpr int foo() noexcept {
+    return 1;
+  }
+  static_assert(noexcept(foo()), "");
+  constexpr int foo2() {
+    return 1;
+  }
+  static_assert(!noexcept(foo2()), "");
+
+#if __cplusplus > 201402L
+  constexpr int a() {
+    int b = 0;
+    (void)noexcept(++b); // expected-warning {{expression with side effects has no effect in an unevaluated context}} \
+                         // ref-warning {{expression with side effects has no effect in an unevaluated context}}
+
+    return b;
+  }
+  static_assert(a() == 0, "");
+#endif
+}
+
+namespace PointerCasts {
+  constexpr int M = 10;
+  constexpr const int *P = &M;
+  constexpr intptr_t A = (intptr_t)P; // ref-error {{must be initialized by a constant expression}} \
+                                      // ref-note {{cast that performs the conversions of a reinterpret_cast}} \
+                                      // expected-error {{must be initialized by a constant expression}} \
+                                      // expected-note {{cast that performs the conversions of a reinterpret_cast}}
+
+  int array[(intptr_t)(char*)0]; // ref-warning {{variable length array folded to constant array}} \
+                                 // expected-warning {{variable length array folded to constant array}}
 }

@@ -98,6 +98,8 @@ public:
   bool VisitLambdaExpr(const LambdaExpr *E);
   bool VisitPredefinedExpr(const PredefinedExpr *E);
   bool VisitCXXThrowExpr(const CXXThrowExpr *E);
+  bool VisitCXXReinterpretCastExpr(const CXXReinterpretCastExpr *E);
+  bool VisitCXXNoexceptExpr(const CXXNoexceptExpr *E);
 
 protected:
   bool visitExpr(const Expr *E) override;

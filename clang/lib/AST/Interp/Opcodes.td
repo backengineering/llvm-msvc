@@ -51,6 +51,7 @@ def ArgRecordField : ArgType { let Name = "const Record::Field *"; }
 def ArgFltSemantics : ArgType { let Name = "const llvm::fltSemantics *"; }
 def ArgRoundingMode : ArgType { let Name = "llvm::RoundingMode"; }
 def ArgLETD: ArgType { let Name = "const LifetimeExtendedTemporaryDecl *"; }
+def ArgCastKind : ArgType { let Name = "CastKind"; }
 
 //===----------------------------------------------------------------------===//
 // Classes of types instructions operate on.
@@ -564,6 +565,12 @@ def CastFloatingIntegral : Opcode {
   let HasGroup = 1;
 }
 
+def CastPointerIntegral : Opcode {
+  let Types = [AluTypeClass];
+  let Args = [];
+  let HasGroup = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Comparison opcodes.
 //===----------------------------------------------------------------------===//
@@ -604,3 +611,6 @@ def Dup : Opcode {
 
 // [] -> []
 def Invalid : Opcode {}
+def InvalidCast : Opcode {
+  let Args = [ArgCastKind];
+}

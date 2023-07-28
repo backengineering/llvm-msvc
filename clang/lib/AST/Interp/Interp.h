@@ -104,6 +104,10 @@ bool CheckPure(InterpState &S, CodePtr OpPC, const CXXMethodDecl *MD);
 /// Checks that all fields are initialized after a constructor call.
 bool CheckCtorCall(InterpState &S, CodePtr OpPC, const Pointer &This);
 
+/// Checks if reinterpret casts are legal in the current context.
+bool CheckPotentialReinterpretCast(InterpState &S, CodePtr OpPC,
+                                   const Pointer &Ptr);
+
 /// Checks if the shift operation is legal.
 template <typename LT, typename RT>
 bool CheckShift(InterpState &S, CodePtr OpPC, const LT &LHS, const RT &RHS,
@@ -180,6 +184,17 @@ enum class ArithOp { Add, Sub };
 template <PrimType Name, class T = typename PrimConv<Name>::T>
 bool Ret(InterpState &S, CodePtr &PC, APValue &Result) {
   const T &Ret = S.Stk.pop<T>();
+
+  // Make sure returned pointers are live. We might be trying to return a
+  // pointer or reference to a local variable.
+  // Just return false, since a diagnostic has already been emitted in Sema.
+  if constexpr (std::is_same_v<T, Pointer>) {
+    // FIXME: We could be calling isLive() here, but the emitted diagnostics
+    // seem a little weird, at least if the returned expression is of
+    // pointer type.
+    if (!Ret.isLive())
+      return false;
+  }
 
   assert(S.Current->getFrameOffset() == S.Stk.size() && "Invalid frame");
   if (!S.checkingPotentialConstantExpression() || S.Current->Caller)
@@ -1482,6 +1497,17 @@ bool CastFloatingIntegral(InterpState &S, CodePtr OpPC) {
   }
 }
 
+template <PrimType Name, class T = typename PrimConv<Name>::T>
+bool CastPointerIntegral(InterpState &S, CodePtr OpPC) {
+  const Pointer &Ptr = S.Stk.pop<Pointer>();
+
+  if (!CheckPotentialReinterpretCast(S, OpPC, Ptr))
+    return false;
+
+  S.Stk.push<T>(T::from(Ptr.getIntegerRepresentation()));
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // Zero, Nullptr
 //===----------------------------------------------------------------------===//
@@ -1740,6 +1766,14 @@ inline bool Invalid(InterpState &S, CodePtr OpPC) {
   const SourceLocation &Loc = S.Current->getLocation(OpPC);
   S.FFDiag(Loc, diag::note_invalid_subexpr_in_const_expr)
       << S.Current->getRange(OpPC);
+  return false;
+}
+
+/// Same here, but only for casts.
+inline bool InvalidCast(InterpState &S, CodePtr OpPC, CastKind Kind) {
+  const SourceLocation &Loc = S.Current->getLocation(OpPC);
+  S.FFDiag(Loc, diag::note_constexpr_invalid_cast)
+      << static_cast<uint8_t>(Kind) << S.Current->getRange(OpPC);
   return false;
 }
 
