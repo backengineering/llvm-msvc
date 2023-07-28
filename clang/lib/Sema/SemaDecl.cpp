@@ -2465,7 +2465,7 @@ NamedDecl *Sema::LazilyCreateBuiltin(IdentifierInfo *II, unsigned ID,
         << Context.BuiltinInfo.getName(ID);
     return nullptr;
   }
-
+#ifndef _WIN32
   if (!ForRedeclaration &&
       (Context.BuiltinInfo.isPredefinedLibFunction(ID) ||
        Context.BuiltinInfo.isHeaderDependentFunction(ID))) {
@@ -2476,7 +2476,7 @@ NamedDecl *Sema::LazilyCreateBuiltin(IdentifierInfo *II, unsigned ID,
       Diag(Loc, diag::note_include_header_or_declare)
           << Header << Context.BuiltinInfo.getName(ID);
   }
-
+#endif
   if (R.isNull())
     return nullptr;
 
