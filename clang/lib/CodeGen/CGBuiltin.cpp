@@ -16196,7 +16196,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
         CGM.getModule().getOrInsertFunction("__writedr", FTy).getCallee());
     if (F->size() == 0) {
       F->addFnAttr(Attribute::AttrKind::AlwaysInline);
-      F->setLinkage(GlobalValue::LinkOnceAnyLinkage);
+      F->setLinkage(GlobalValue::InternalLinkage);
       BasicBlock *EntryBlock = createBasicBlock("EntryBlock", F);
       IRBuilder<> IRB(EntryBlock);
       BasicBlock *BB0 = createBasicBlock("BB0", F);
