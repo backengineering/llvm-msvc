@@ -3763,11 +3763,11 @@ static unsigned getLoadStoreRegOpcode(Register Reg,
           (HasVLX    ? X86::VMOVAPSZ128rm :
            HasAVX512 ? X86::VMOVAPSZ128rm_NOVLX :
            HasAVX    ? X86::VMOVAPSrm :
-                       X86::MOVAPSrm):
+                       X86::MOVUPSrm): // MOVAPSrm
           (HasVLX    ? X86::VMOVAPSZ128mr :
            HasAVX512 ? X86::VMOVAPSZ128mr_NOVLX :
            HasAVX    ? X86::VMOVAPSmr :
-                       X86::MOVAPSmr);
+                       X86::MOVUPSmr); // MOVAPS
       else
         return Load ?
           (HasVLX    ? X86::VMOVUPSZ128rm :
