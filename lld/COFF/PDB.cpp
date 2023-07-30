@@ -823,7 +823,7 @@ void DebugSHandler::handleDebugS(SectionChunk *debugChunk) {
       break;
 
     default:
-      warn("ignoring unknown debug$S subsection kind 0x" +
+      message("ignoring unknown debug$S subsection kind 0x" +
            utohexstr(uint32_t(ss.kind())) + " in file " + toString(&file));
       break;
     }
