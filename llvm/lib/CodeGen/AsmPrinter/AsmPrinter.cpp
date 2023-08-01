@@ -1625,7 +1625,14 @@ void AsmPrinter::emitFunctionBody() {
   bool HasAnyRealCode = false;
   int NumInstsInFunction = 0;
   bool IsEHa = MMI->getModule()->getModuleFlag("eh-asynch");
-
+  auto PersonalityFn = MF->getFunction().getPersonalityFn();
+  bool IsCXXEH = PersonalityFn ? classifyEHPersonality(PersonalityFn) ==
+                                     EHPersonality::MSVC_CXX
+                               : false;
+  bool IsX64SEH = PersonalityFn ? classifyEHPersonality(PersonalityFn) ==
+                                      EHPersonality::MSVC_TableSEH
+                                : false;
+  bool IsCXXEHWithEHa = IsCXXEH && IsEHa;
   bool CanDoExtraAnalysis = ORE->allowExtraAnalysis(DEBUG_TYPE);
   for (auto &MBB : *MF) {
     // Print a label for the basic block.
@@ -1672,6 +1679,7 @@ void AsmPrinter::emitFunctionBody() {
         //   Or the exception won't be caught.
         //   (see MCConstantExpr::create(1,..) in WinException.cpp)
         {
+          // TODO: reduce redundant nops 
           emitNops(1);
         }
         break;
