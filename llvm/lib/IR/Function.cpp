@@ -1842,7 +1842,10 @@ bool Function::callsFunctionThatReturnsTwice() const {
 }
 
 Constant *Function::getPersonalityFn() const {
-  assert(hasPersonalityFn() && getNumOperands());
+  if (!hasPersonalityFn())
+    return nullptr;
+  if (!getNumOperands())
+    return nullptr;
   return cast<Constant>(Op<0>());
 }
 
