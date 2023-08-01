@@ -63,6 +63,10 @@ private:
 
   InstListType InstList;
   Function *Parent;
+  bool IsSEHTryBeginBlock = false;
+  bool IsSEHTryEndBlock = false;
+  bool IsSEHExceptExitBlock = false;
+  bool IsSEHExceptEnterBlock = false;
 
   void setParent(Function *parent);
 
@@ -79,6 +83,18 @@ public:
   BasicBlock(const BasicBlock &) = delete;
   BasicBlock &operator=(const BasicBlock &) = delete;
   ~BasicBlock();
+
+  bool isSEHTryBeginBlock() const { return IsSEHTryBeginBlock; }
+  void setItisSEHTryBeginBlock(bool Set) { IsSEHTryBeginBlock = Set; }
+
+  bool isSEHTryEndBlock() const { return IsSEHTryEndBlock; }
+  void setItisSEHTryEndBlock(bool Set) { IsSEHTryEndBlock = Set; }
+
+  bool isSEHExceptExitBlock() const { return IsSEHExceptExitBlock; }
+  void setItisSEHExceptExitBlock(bool Set) { IsSEHExceptExitBlock = Set; }
+
+  bool isSEHExceptEnterBlock() const { return IsSEHExceptEnterBlock; }
+  void setItisSEHExceptEnterBlock(bool Set) { IsSEHExceptEnterBlock = Set; }
 
   /// Get the context in which this basic block lives.
   LLVMContext &getContext() const;
