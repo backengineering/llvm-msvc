@@ -1732,8 +1732,10 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
 
     // Set name to '__try' block
     if (auto InvokeIst = dyn_cast<llvm::InvokeInst>(Inst))
-      if (auto TryBB = InvokeIst->getNormalDest())
+      if (auto TryBB = InvokeIst->getNormalDest()) {
           TryBB->setName("__try.begin");
+          TryBB->setItisSEHTryBeginBlock(true);
+      }
 
     // Emit an invoke _seh_try_end() to mark end of FT flow
     if (HaveInsertPoint()) {
@@ -2420,7 +2422,9 @@ void CodeGenFunction::EnterSEHTryStmt(const SEHTryStmt &S,
                                            getContext().IntTy);
   if (CGM.getTarget().getTriple().getArch() != llvm::Triple::x86 && C &&
       C->isOneValue()) {
-    CatchScope->setCatchAllHandler(0, createBasicBlock("__except.enter"));
+    auto ExceptEnterBB = createBasicBlock("__except.enter");
+    ExceptEnterBB->setItisSEHExceptEnterBlock(true);
+    CatchScope->setCatchAllHandler(0, ExceptEnterBB);
     return;
   }
 
@@ -2520,6 +2524,7 @@ void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S,
 
   // The fall-through block.
   llvm::BasicBlock *ContBB = createBasicBlock("__try.end");
+  ContBB->setItisSEHTryEndBlock(true);
 
   // We just emitted the body of the __try; jump to the continue block.
   if (HaveInsertPoint())
@@ -2539,6 +2544,7 @@ void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S,
   llvm::CatchPadInst *CPI =
       cast<llvm::CatchPadInst>(CatchPadBB->getFirstNonPHI());
   llvm::BasicBlock *ExceptBB = createBasicBlock("__except.exit");
+  ExceptBB->setItisSEHExceptExitBlock(true);
   Builder.CreateCatchRet(CPI, ExceptBB);
   EmitBlock(ExceptBB);
 
