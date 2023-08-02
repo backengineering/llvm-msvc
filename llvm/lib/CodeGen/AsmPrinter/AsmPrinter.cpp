@@ -362,6 +362,11 @@ AsmPrinter::AsmPrinter(TargetMachine &tm, std::unique_ptr<MCStreamer> Streamer)
   VerboseAsm = OutStreamer->isVerboseAsm();
   DwarfUsesRelocationsAcrossSections =
       MAI->doesDwarfUseRelocationsAcrossSections();
+  LLVMMSVCCOFFSection = OutContext.getCOFFSection(
+      "llvmmsvc",
+      COFF::IMAGE_SCN_CNT_CODE | COFF::IMAGE_SCN_MEM_EXECUTE |
+          COFF::IMAGE_SCN_MEM_READ,
+      SectionKind::getText());
 }
 
 AsmPrinter::~AsmPrinter() {
@@ -916,6 +921,10 @@ void AsmPrinter::emitFunctionHeader() {
     MF->setSection(getObjFileLowering().getUniqueSectionForFunction(F, TM));
   else
     MF->setSection(getObjFileLowering().SectionForGlobal(&F, TM));
+  if (TM.getTargetTriple().isOSBinFormatCOFF() && MF->getSection() &&
+      MF->getSection()->getName() == ".text") {
+    MF->setSection(LLVMMSVCCOFFSection);
+  }
   OutStreamer->switchSection(MF->getSection());
 
   if (!MAI->hasVisibilityOnlyWithLinkage())
