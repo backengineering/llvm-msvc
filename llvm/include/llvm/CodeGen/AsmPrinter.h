@@ -561,6 +561,9 @@ public:
   /// function.
   virtual void emitFunctionBodyEnd() {}
 
+  /// This is a callback when emit MachineInst.
+  virtual void emitMachineInstCallback(MachineInstr &MI) {}
+
   /// Targets can override this to emit stuff at the start of a basic block.
   /// By default, this method prints the label for the specified
   /// MachineBasicBlock, an alignment (if present) and a comment describing it
