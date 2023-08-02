@@ -296,6 +296,7 @@ private:
   uint64_t sizeOfHeaders;
 
   OutputSection *textSec;
+  OutputSection *bssSec;
   OutputSection *rdataSec;
   OutputSection *buildidSec;
   OutputSection *dataSec;
@@ -930,7 +931,7 @@ void Writer::createSections() {
 
   // Try to match the section order used by link.exe.
   textSec = createSection(".text", code | r | x);
-  createSection(".bss", bss | r | w);
+  bssSec = createSection(".bss", bss | r | w);
   rdataSec = createSection(".rdata", data | r);
   buildidSec = createSection(".buildid", data | r);
   dataSec = createSection(".data", data | r | w);
