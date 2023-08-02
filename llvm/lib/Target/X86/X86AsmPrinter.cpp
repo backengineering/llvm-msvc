@@ -114,6 +114,10 @@ void X86AsmPrinter::emitFunctionBodyEnd() {
   }
 }
 
+void X86AsmPrinter::emitMachineInstCallback(MachineInstr &MI) {
+  // TODO
+}
+
 uint32_t X86AsmPrinter::MaskKCFIType(uint32_t Value) {
   // If the type hash matches an invalid pattern, mask the value.
   const uint32_t InvalidValues[] = {
