@@ -95,7 +95,7 @@ int lld_main(int argc, char **argv, const llvm::ToolContext &) {
     return r;
   }
 
-  std::optional<int> mainRet;
+  std::optional<int> mainRet = 0;
   CrashRecoveryContext::Enable();
 
   for (unsigned i = inTestVerbosity(); i > 0; --i) {
