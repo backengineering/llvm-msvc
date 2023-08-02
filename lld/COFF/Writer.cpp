@@ -296,6 +296,7 @@ private:
   uint64_t sizeOfHeaders;
 
   OutputSection *textSec;
+  OutputSection *bssSec;
   OutputSection *rdataSec;
   OutputSection *buildidSec;
   OutputSection *dataSec;
@@ -916,8 +917,9 @@ void Writer::createSections() {
   auto createSection = [&](StringRef name, uint32_t outChars) {
     // If the user specified /driver, then we need to set the nonpaged attribute
     // for the specific sections.
-    if (ctx.config.driver && (name == ".text" || name == ".data" ||
-                              name == ".rdata" || name == ".pdata"))
+    if (ctx.config.driver &&
+        (name == ".text" || name == "llvmmsvc" || name == ".data" ||
+         name == ".rdata" || name == ".pdata"))
       outChars |= nonpaged;
     OutputSection *&sec = sections[{name, outChars}];
     if (!sec) {
@@ -929,7 +931,7 @@ void Writer::createSections() {
 
   // Try to match the section order used by link.exe.
   textSec = createSection(".text", code | r | x);
-  createSection(".bss", bss | r | w);
+  bssSec = createSection(".bss", bss | r | w);
   rdataSec = createSection(".rdata", data | r);
   buildidSec = createSection(".buildid", data | r);
   dataSec = createSection(".data", data | r | w);
