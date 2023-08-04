@@ -1769,11 +1769,9 @@ void CodeGenFunction::CreateSEHEndCall() {
   if (SizeTy->getBitWidth() != 32)
     return;
 
-  llvm::Function *F = cast<llvm::Function>(
-      CGM.getModule()
-          .getOrInsertFunction("llvm_msvc_SEHEndCall",
-                               llvm::FunctionType::get(VoidTy, false))
-          .getCallee());
+  llvm::Function *F = llvm::Function::Create(
+      llvm::FunctionType::get(VoidTy, false), llvm::Function::InternalLinkage,
+      "llvm_msvc_SEHEndCall", &CGM.getModule());
   if (F->size() == 0) {
     F->addFnAttr(llvm::Attribute::AttrKind::NoInline);
     F->addFnAttr(llvm::Attribute::AttrKind::OptimizeNone);
