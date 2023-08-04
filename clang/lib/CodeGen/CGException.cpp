@@ -665,8 +665,10 @@ void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
     if (NeedInsertSEH) {
       // Set name to '__try' block
       if (InvokeIst)
-        if (auto TryBegin = InvokeIst->getNormalDest())
+        if (auto TryBegin = InvokeIst->getNormalDest()) {
           TryBegin->setName("__try.begin.CatchAll");
+          TryBegin->setItisCXXSEHTryBeginBlock(true);
+        }
 
       // Emit an invoke _seh_try_end() to mark end of FT flow
       if (HaveInsertPoint()) {
@@ -690,11 +692,13 @@ void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
         else
           delete TryLeave.getBlock();
       }
+
+      // Set 'noinline' to this function.
+      CurFn->removeFnAttr(llvm::Attribute::AlwaysInline);
+      CurFn->addFnAttr(llvm::Attribute::NoInline);
     }
   }
   ExitCXXTryStmt(S);
-  if (NeedInsertSEH)
-    CreateSEHEndCall();
 }
 
 void CodeGenFunction::EnterCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
@@ -1287,6 +1291,7 @@ void CodeGenFunction::ExitCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
 
   // The fall-through block.
   llvm::BasicBlock *ContBB = createBasicBlock("try.cont");
+  ContBB->setItisCXXSEHTryEndBlock(true);
 
   // We just emitted the body of the try; jump to the continue block.
   if (HaveInsertPoint())
@@ -1758,31 +1763,12 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
       EmitBlock(TryLeave.getBlock(), /*IsFinished=*/true);
     else
       delete TryLeave.getBlock();
+
+    // Set 'noinline' to this function.
+    CurFn->removeFnAttr(llvm::Attribute::AlwaysInline);
+    CurFn->addFnAttr(llvm::Attribute::NoInline);
   }
   ExitSEHTryStmt(S, ContainsRetStmt);
-  
-  // Emit the SEHEndCall
-  CreateSEHEndCall();
-}
-
-void CodeGenFunction::CreateSEHEndCall() {
-  if (SizeTy->getBitWidth() != 32)
-    return;
-
-  llvm::Function *F = llvm::Function::Create(
-      llvm::FunctionType::get(VoidTy, false), llvm::Function::InternalLinkage,
-      "llvm_msvc_SEHEndCall", &CGM.getModule());
-  if (F->size() == 0) {
-    F->addFnAttr(llvm::Attribute::AttrKind::NoInline);
-    F->addFnAttr(llvm::Attribute::AttrKind::OptimizeNone);
-    F->addFnAttr("EmptyInst");
-    F->addFnAttr("SEHEndCall");
-    F->setLinkage(llvm::GlobalValue::InternalLinkage);
-    llvm::BasicBlock *EntryBlock = createBasicBlock("EntryBlock", F);
-    llvm::IRBuilder<> IRB(EntryBlock);
-    IRB.CreateRetVoid();
-  }
-  Builder.CreateCall(F);
 }
 
 //  Recursively walk through blocks in a _try
