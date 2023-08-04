@@ -63,10 +63,14 @@ private:
 
   InstListType InstList;
   Function *Parent;
+
   bool IsSEHTryBeginBlock = false;
   bool IsSEHTryEndBlock = false;
   bool IsSEHExceptExitBlock = false;
   bool IsSEHExceptEnterBlock = false;
+
+  bool IsCXXSEHTryBeginBlock = false;
+  bool IsCXXSEHTryEndBlock = false;
 
   void setParent(Function *parent);
 
@@ -95,6 +99,20 @@ public:
 
   bool isSEHExceptEnterBlock() const { return IsSEHExceptEnterBlock; }
   void setItisSEHExceptEnterBlock(bool Set) { IsSEHExceptEnterBlock = Set; }
+
+  bool isCXXSEHTryBeginBlock() const { return IsCXXSEHTryBeginBlock; }
+  void setItisCXXSEHTryBeginBlock(bool Set) { IsCXXSEHTryBeginBlock = Set; }
+
+  bool isCXXSEHTryEndBlock() const { return IsCXXSEHTryEndBlock; }
+  void setItisCXXSEHTryEndBlock(bool Set) { IsCXXSEHTryEndBlock = Set; }
+
+  bool isSEHOrCXXSEHTryBeginBlock() const {
+    return isSEHTryBeginBlock() || isCXXSEHTryBeginBlock();
+  }
+
+  bool isSEHOrCXXSEHTryEndBlock() const {
+    return isSEHTryEndBlock() || isCXXSEHTryEndBlock();
+  }
 
   /// Get the context in which this basic block lives.
   LLVMContext &getContext() const;
