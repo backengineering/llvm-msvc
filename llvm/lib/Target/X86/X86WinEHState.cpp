@@ -614,16 +614,6 @@ static int getSuccState(DenseMap<BasicBlock *, int> &InitialStates, Function &F,
 
 bool WinEHStatePass::isStateStoreNeeded(EHPersonality Personality,
                                         CallBase &Call) {
-  // If the function is marked as 'SEHEndCall', it needs a state store.
-  if (Call.hasFnAttr("SEHEndCall"))
-	return true;
-
-  // If the function is an invoke with cxx exception.
-  // it does not need a state store.
-  if (Personality == EHPersonality::MSVC_CXX)
-    if (!dyn_cast<InvokeInst>(&Call))
-      return false;
-
   // If the function touches memory, it needs a state store.
   if (isAsynchronousEHPersonality2(Personality))
     return !Call.doesNotAccessMemory();
@@ -755,8 +745,11 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
     // We might have hoisted a state store into this block, emit it now.
     auto EndState = FinalStates.find(BB);
     if (EndState != FinalStates.end())
-      if (EndState->second != PrevState)
-        insertStateNumberStore(BB->getTerminator(), EndState->second);
+      if (EndState->second != PrevState) {
+        Instruction *IP = BB->isSEHOrCXXSEHTryEndBlock() ? BB->getFirstNonPHI()
+                                                         : BB->getTerminator();
+        insertStateNumberStore(IP, EndState->second);
+      }
   }
 
   SmallVector<CallBase *, 1> SetJmp3Calls;
@@ -795,5 +788,5 @@ void WinEHStatePass::insertStateNumberStore(Instruction *IP, int State) {
   IRBuilder<> Builder(IP);
   Value *StateField = Builder.CreateStructGEP(RegNode->getAllocatedType(),
                                               RegNode, StateFieldIndex);
-  Builder.CreateStore(Builder.getInt32(State), StateField);
+  Builder.CreateStore(Builder.getInt32(State), StateField, true);
 }
