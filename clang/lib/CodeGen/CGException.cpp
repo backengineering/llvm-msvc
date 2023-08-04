@@ -628,6 +628,7 @@ void CodeGenFunction::FixSEHEnd(llvm::InvokeInst *InvokeIst) {
 void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
   EnterCXXTryStmt(S);
   bool NeedInsertSEH = false;
+  bool IsFirstTryBB = false;
   {
     // Under async exceptions, catch(...) need to catch HW exception too
     // Mark scope with SehTryBegin as a SEH __try scope
@@ -656,8 +657,11 @@ void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
       // Emit an invoke to _seh_try_begin() runtime for
       InvokeIst = dyn_cast<llvm::InvokeInst>(
           EmitRuntimeCallOrInvoke(getSehTryBeginFn(CGM)));
-      if (SEHTryEpilogueStack.size() == 1) // outermost only
+      if (SEHTryEpilogueStack.size() == 1) {
+        // outermost only
         TryBB = Builder.GetInsertBlock();
+        IsFirstTryBB = true;
+      }
     }
 
     EmitStmt(S.getTryBlock());
@@ -693,7 +697,7 @@ void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
     }
   }
   ExitCXXTryStmt(S);
-  if (NeedInsertSEH)
+  if (NeedInsertSEH && IsFirstTryBB)
     CreateSEHEndCall();
 }
 
@@ -1716,6 +1720,7 @@ llvm::BasicBlock *CodeGenFunction::getEHResumeBlock(bool isCleanup) {
 void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
   bool ContainsRetStmt = false;
   EnterSEHTryStmt(S, ContainsRetStmt);
+  bool IsFirstTryBB = false;
   {
     // __leave block
     JumpDest TryLeave = getJumpDestInCurrentScope("__try.__leave");
@@ -1725,8 +1730,11 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
     llvm::BasicBlock *TryBB = nullptr;
     // Emit an invoke to _seh_try_begin() runtime for
     auto Inst = EmitRuntimeCallOrInvoke(getSehTryBeginFn(CGM));
-    if (SEHTryEpilogueStack.size() == 1) // outermost only
+    if (SEHTryEpilogueStack.size() == 1) {
+      // outermost only
       TryBB = Builder.GetInsertBlock();
+      IsFirstTryBB = true;
+    }
 
     EmitStmt(S.getTryBlock());
 
@@ -1762,7 +1770,8 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
   ExitSEHTryStmt(S, ContainsRetStmt);
   
   // Emit the SEHEndCall
-  CreateSEHEndCall();
+  if (IsFirstTryBB)
+    CreateSEHEndCall();
 }
 
 void CodeGenFunction::CreateSEHEndCall() {
