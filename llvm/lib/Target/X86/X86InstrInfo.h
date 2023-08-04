@@ -155,9 +155,6 @@ public:
   /// always be able to get register info as well (through this method).
   ///
   const X86RegisterInfo &getRegisterInfo() const { return RI; }
-
-  // Fix the last call at the end of the block.
-  virtual void fixNoReturnCall(MachineBasicBlock &MBB) const override;
 	
   /// Returns the stack pointer adjustment that happens inside the frame
   /// setup..destroy sequence (e.g. by pushes, or inside the callee).
