@@ -16624,6 +16624,7 @@ bool Sema::isAcceptableTagRedeclaration(const TagDecl *Previous,
       return true;
     }
 
+#ifndef _WIN32
     bool previousMismatch = false;
     for (const TagDecl *I : Previous->redecls()) {
       if (I->getTagKind() != NewTag) {
@@ -16643,6 +16644,7 @@ bool Sema::isAcceptableTagRedeclaration(const TagDecl *Previous,
                TypeWithKeyword::getTagTypeKindName(NewTag));
       }
     }
+#endif
     return true;
   }
 
