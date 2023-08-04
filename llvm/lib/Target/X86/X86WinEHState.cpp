@@ -614,6 +614,12 @@ static int getSuccState(DenseMap<BasicBlock *, int> &InitialStates, Function &F,
 
 bool WinEHStatePass::isStateStoreNeeded(EHPersonality Personality,
                                         CallBase &Call) {
+  // If the function is an invoke with cxx exception.
+  // it does not need a state store.
+  if (Personality == EHPersonality::MSVC_CXX)
+    if (!dyn_cast<InvokeInst>(&Call))
+      return false;
+
   // If the function touches memory, it needs a state store.
   if (isAsynchronousEHPersonality2(Personality))
     return !Call.doesNotAccessMemory();
