@@ -619,7 +619,7 @@ void WinException::emitCSpecificHandlerTable(const MachineFunction *MF) {
     LastStartLabel = StateChange.NewStartLabel;
     LastEHState = StateChange.NewState;
   }
-  for (auto Entry : FuncInfo.SEHUnwindMap) {
+  for (auto &Entry : FuncInfo.SEHUnwindMap) {
     if (!Entry.IsFinally && Entry.ToState != -1) {
       // Mark up the destination of _local_unwind so it doesn't unwind
       // too far.
