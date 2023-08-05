@@ -663,8 +663,9 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
     int FinalState;
     if (&F.getEntryBlock() == BB)
       InitialState = FinalState = ParentBaseState;
-    if (FuncInfo.BlockToStateMap.find(BB) != FuncInfo.BlockToStateMap.end()) {
-      int State = FuncInfo.BlockToStateMap[BB];
+    auto BlockToState = FuncInfo.BlockToStateMap.find(BB);
+    if (BlockToState != FuncInfo.BlockToStateMap.end()) {
+      int State = BlockToState->second;
       if (InitialState == OverdefinedState)
         InitialState = State;
       FinalState = State;
@@ -728,8 +729,9 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
     LLVM_DEBUG(dbgs() << "X86WinEHState: " << BB->getName()
                       << " PrevState=" << PrevState << '\n');
 
-    if (FuncInfo.BlockToStateMap.find(BB) != FuncInfo.BlockToStateMap.end()) {
-      int State = FuncInfo.BlockToStateMap[BB];
+    auto BlockToState = FuncInfo.BlockToStateMap.find(BB);
+    if (BlockToState != FuncInfo.BlockToStateMap.end()) {
+      int State = BlockToState->second;
       if (State != PrevState)
         insertStateNumberStore(BB->getFirstNonPHI(), State);
       PrevState = State;
