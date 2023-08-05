@@ -663,11 +663,8 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
     int FinalState;
     if (&F.getEntryBlock() == BB)
       InitialState = FinalState = ParentBaseState;
-    for (Instruction &I : *BB) {
-      auto *Call = dyn_cast<CallBase>(&I);
-      if (!Call || !isStateStoreNeeded(Personality, *Call))
-        continue;
-      int State = getStateForCall(BlockColors, FuncInfo, *Call);
+    if (FuncInfo.BlockToStateMap.find(BB) != FuncInfo.BlockToStateMap.end()) {
+      int State = FuncInfo.BlockToStateMap[BB];
       if (InitialState == OverdefinedState)
         InitialState = State;
       FinalState = State;
@@ -720,36 +717,32 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
   // Finally, insert state stores before call-sites which transition us to a new
   // state.
   for (BasicBlock *BB : RPOT) {
-    auto &BBColors = BlockColors[BB];
-    BasicBlock *FuncletEntryBB = BBColors.front();
-    if (isa<CleanupPadInst>(FuncletEntryBB->getFirstNonPHI()))
+    if (isa<CleanupPadInst>(BB->getFirstNonPHI()))
+      continue;
+    if (isa<CatchSwitchInst>(BB->getFirstNonPHI()))
+      continue;
+    if (isa<CatchPadInst>(BB->getFirstNonPHI()))
       continue;
 
     int PrevState = getPredState(FinalStates, F, ParentBaseState, BB);
     LLVM_DEBUG(dbgs() << "X86WinEHState: " << BB->getName()
                       << " PrevState=" << PrevState << '\n');
 
-    for (Instruction &I : *BB) {
-      auto *Call = dyn_cast<CallBase>(&I);
-      if (!Call || !isStateStoreNeeded(Personality, *Call))
-        continue;
-      if ((!Call->getCalledFunction() ||
-           Call->getCalledFunction()->isIntrinsic()))
-        continue;
-      int State = getStateForCall(BlockColors, FuncInfo, *Call);
+    if (FuncInfo.BlockToStateMap.find(BB) != FuncInfo.BlockToStateMap.end()) {
+      int State = FuncInfo.BlockToStateMap[BB];
       if (State != PrevState)
-        insertStateNumberStore(&I, State);
+        insertStateNumberStore(BB->getFirstNonPHI(), State);
       PrevState = State;
     }
 
     // We might have hoisted a state store into this block, emit it now.
     auto EndState = FinalStates.find(BB);
-    if (EndState != FinalStates.end())
+    if (EndState != FinalStates.end()) {
       if (EndState->second != PrevState) {
-        Instruction *IP = BB->isSEHOrCXXSEHTryEndBlock() ? BB->getFirstNonPHI()
-                                                         : BB->getTerminator();
+        Instruction *IP = BB->getTerminator();
         insertStateNumberStore(IP, EndState->second);
       }
+    }
   }
 
   SmallVector<CallBase *, 1> SetJmp3Calls;
