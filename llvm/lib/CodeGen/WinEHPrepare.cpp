@@ -622,8 +622,7 @@ void llvm::calculateWinCXXEHStateNumbers(const Function *Fn,
 
   calculateStateNumbersForInvokes(Fn, FuncInfo);
 
-  bool IsEHa = Fn->getParent()->getModuleFlag("eh-asynch");
-  if (IsEHa) {
+  if (Fn->hasCXXSEH()) {
     const BasicBlock *EntryBB = &(Fn->getEntryBlock());
     calculateCXXStateForAsynchEH(EntryBB, -1, FuncInfo);
   }
