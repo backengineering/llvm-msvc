@@ -646,6 +646,8 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
   else
     calculateWinCXXEHStateNumbers(&F, FuncInfo);
 
+  bool HasCXXEH = F.hasCXXEH();
+
   // Iterate all the instructions and emit state number stores.
   DenseMap<BasicBlock *, ColorVector> BlockColors = colorEHFunclets(F);
   ReversePostOrderTraversal<Function *> RPOT(&F);
@@ -663,12 +665,24 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
     int FinalState;
     if (&F.getEntryBlock() == BB)
       InitialState = FinalState = ParentBaseState;
-    auto BlockToState = FuncInfo.BlockToStateMap.find(BB);
-    if (BlockToState != FuncInfo.BlockToStateMap.end()) {
-      int State = BlockToState->second;
-      if (InitialState == OverdefinedState)
-        InitialState = State;
-      FinalState = State;
+    if (HasCXXEH) {
+      for (Instruction &I : *BB) {
+        auto *Call = dyn_cast<CallBase>(&I);
+        if (!Call || !isStateStoreNeeded(Personality, *Call))
+          continue;
+        int State = getStateForCall(BlockColors, FuncInfo, *Call);
+        if (InitialState == OverdefinedState)
+          InitialState = State;
+        FinalState = State;
+      }
+    } else {
+      auto BlockToState = FuncInfo.BlockToStateMap.find(BB);
+      if (BlockToState != FuncInfo.BlockToStateMap.end()) {
+        int State = BlockToState->second;
+        if (InitialState == OverdefinedState)
+          InitialState = State;
+        FinalState = State;
+      }
     }
     // No call-sites in this basic block? That's OK, we will come back to these
     // in a later pass.
@@ -718,23 +732,37 @@ void WinEHStatePass::addStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
   // Finally, insert state stores before call-sites which transition us to a new
   // state.
   for (BasicBlock *BB : RPOT) {
-    if (isa<CleanupPadInst>(BB->getFirstNonPHI()))
+    auto *FirstNonPHI = BB->getFirstNonPHI();
+    if (isa<CleanupPadInst>(FirstNonPHI))
       continue;
-    if (isa<CatchSwitchInst>(BB->getFirstNonPHI()))
-      continue;
-    if (isa<CatchPadInst>(BB->getFirstNonPHI()))
-      continue;
+    if (!HasCXXEH) {
+      if (isa<CatchSwitchInst>(FirstNonPHI))
+        continue;
+      if (isa<CatchPadInst>(FirstNonPHI))
+        continue;    
+    }
 
     int PrevState = getPredState(FinalStates, F, ParentBaseState, BB);
     LLVM_DEBUG(dbgs() << "X86WinEHState: " << BB->getName()
                       << " PrevState=" << PrevState << '\n');
-
-    auto BlockToState = FuncInfo.BlockToStateMap.find(BB);
-    if (BlockToState != FuncInfo.BlockToStateMap.end()) {
-      int State = BlockToState->second;
-      if (State != PrevState)
-        insertStateNumberStore(BB->getFirstNonPHI(), State);
-      PrevState = State;
+    if (HasCXXEH) {
+      for (Instruction &I : *BB) {
+        auto *Call = dyn_cast<CallBase>(&I);
+        if (!Call || !isStateStoreNeeded(Personality, *Call))
+          continue;
+        int State = getStateForCall(BlockColors, FuncInfo, *Call);
+        if (State != PrevState)
+          insertStateNumberStore(&I, State);
+        PrevState = State;
+      }
+    } else {
+      auto BlockToState = FuncInfo.BlockToStateMap.find(BB);
+      if (BlockToState != FuncInfo.BlockToStateMap.end()) {
+        int State = BlockToState->second;
+        if (State != PrevState)
+          insertStateNumberStore(BB->getFirstNonPHI(), State);
+        PrevState = State;
+      }
     }
 
     // We might have hoisted a state store into this block, emit it now.
