@@ -696,6 +696,12 @@ void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
       // Set 'noinline' to this function.
       CurFn->removeFnAttr(llvm::Attribute::AlwaysInline);
       CurFn->addFnAttr(llvm::Attribute::NoInline);
+
+      // Function has CXXSEH
+      CurFn->setItHasCXXSEH(true);
+    } else {
+      // Function has CXXEH
+      CurFn->setItHasCXXEH(true);
     }
   }
   ExitCXXTryStmt(S);
@@ -1767,6 +1773,9 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
     // Set 'noinline' to this function.
     CurFn->removeFnAttr(llvm::Attribute::AlwaysInline);
     CurFn->addFnAttr(llvm::Attribute::NoInline);
+
+    // Function has SEH
+    CurFn->setItHasSEH(true);
   }
   ExitSEHTryStmt(S, ContainsRetStmt);
 }
