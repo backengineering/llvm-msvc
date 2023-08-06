@@ -1357,6 +1357,8 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
     return;
   if (MMI.getModule()->getDataLayout().getPointerSizeInBits() == 32)
     return;
+  if (MF->getFunction().hasCXXEH())
+    return;
   for (auto MBBI = MF->begin(); MBBI != MF->end(); ++MBBI) {
     MachineBasicBlock *MBB = &*MBBI;
     // Filter IPToState when MBB is empty
