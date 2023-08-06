@@ -82,6 +82,10 @@ private:
   bool IsSEHFinallyFunction : 1;          ///< Is SEHFinallyFunction?
   bool DisableCodeGenPreparePass : 1;     ///< Disable CodeGenPreparePass?
 
+  bool HasSEH = false;                    ///< Function has SEH
+  bool HasCXXSEH = false;                 ///< Function has CXXSEH
+  bool HasCXXEH = false;                  ///< Function has CXXEH
+
   /*
    * Value::SubclassData
    *
@@ -210,6 +214,18 @@ public:
   void setDisableCodeGenPreparePass(bool Disable = true) {
     DisableCodeGenPreparePass = Disable;
   }
+
+  /// Function has SEH
+  bool hasSEH() const { return HasSEH; }
+  void setItHasSEH(bool Set) { HasSEH = Set; }
+
+  /// Function has CXXSEH
+  bool hasCXXSEH() const { return HasCXXSEH; }
+  void setItHasCXXSEH(bool Set) { HasCXXSEH = Set; }
+
+  /// Function has CXXEH
+  bool hasCXXEH() const { return HasCXXEH; }
+  void setItHasCXXEH(bool Set) { HasCXXEH = Set; }
 
   /// Indicate that whether we should disable fast-isel for this function.
   bool isFastISelDisabled() const { return IsFastISelDisabled; }
