@@ -774,7 +774,7 @@ void WinException::emitCXXFrameHandler3Table(const MachineFunction *MF) {
   OS.emitInt32(0);
 
   AddComment("EHFlags");
-  if (MMI->getModule()->getModuleFlag("eh-asynch")) {
+  if (MF->getFunction().hasCXXSEH()) {
     OS.emitInt32(0);
   } else {
     OS.emitInt32(1);
