@@ -699,12 +699,9 @@ void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
 
       // Function has CXXSEH
       CurFn->setItHasCXXSEH(true);
-    } else {
-      // Function has CXXEH
-      CurFn->setItHasCXXEH(true);
     }
   }
-  ExitCXXTryStmt(S);
+  ExitCXXTryStmt(S, false, NeedInsertSEH);
 }
 
 void CodeGenFunction::EnterCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
@@ -1272,7 +1269,8 @@ void CodeGenFunction::popCatchScope() {
   EHStack.popCatch();
 }
 
-void CodeGenFunction::ExitCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
+void CodeGenFunction::ExitCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock,
+                                     bool NeedInsertSEH) {
   unsigned NumHandlers = S.getNumHandlers();
   EHCatchScope &CatchScope = cast<EHCatchScope>(*EHStack.begin());
   assert(CatchScope.getNumHandlers() == NumHandlers);
@@ -1297,7 +1295,7 @@ void CodeGenFunction::ExitCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
 
   // The fall-through block.
   llvm::BasicBlock *ContBB = createBasicBlock("try.cont");
-  ContBB->setItisCXXSEHTryEndBlock(true);
+  ContBB->setItisCXXSEHTryEndBlock(NeedInsertSEH);
 
   // We just emitted the body of the try; jump to the continue block.
   if (HaveInsertPoint())
