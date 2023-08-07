@@ -152,6 +152,9 @@ private:
   /// Indicate that this basic block is entered via an exception handler.
   bool IsEHPad = false;
 
+  /// Indicate that this basic block has emitted EHLabel.
+  bool HasEmittedEHLabel = false;
+
   /// Indicate that this MachineBasicBlock is referenced somewhere other than
   /// as predecessor/successor, a terminator MachineInstr, or a jump table.
   bool MachineBlockAddressTaken = false;
@@ -269,6 +272,10 @@ public:
   /// Set this block to reflect that, regardless how we flow to it, we need
   /// its label be emitted.
   void setLabelMustBeEmitted() { LabelMustBeEmitted = true; }
+
+  // Indicate that this basic block has emitted EHLabel.
+  bool hasEmittedEHLabel() const { return HasEmittedEHLabel; }
+  void setHasEmittedEHLabel(bool Set) { HasEmittedEHLabel = Set; }
 
   /// Return the MachineFunction containing this basic block.
   const MachineFunction *getParent() const { return xParent; }
