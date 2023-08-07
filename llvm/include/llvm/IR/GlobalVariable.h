@@ -25,6 +25,7 @@
 #include "llvm/IR/GlobalObject.h"
 #include "llvm/IR/OperandTraits.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 #include <cassert>
 #include <cstddef>
 
@@ -156,6 +157,11 @@ public:
   /// If the value is a volatile global, we will preserve it.
   bool isVolatile() const { return isVolatileGlobal; }
   void setVolatile(bool Val) { isVolatileGlobal = Val; }
+  void setVolatileAndAppendToUsed() {
+    setVolatile(true);
+    if (this->getParent())
+      appendToUsed(*this->getParent(), {this});
+  }
 
   bool isExternallyInitialized() const {
     return isExternallyInitializedConstant;
