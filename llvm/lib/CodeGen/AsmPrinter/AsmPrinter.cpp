@@ -1691,8 +1691,11 @@ void AsmPrinter::emitFunctionBody() {
         //   Or the exception won't be caught.
         //   (see MCConstantExpr::create(1,..) in WinException.cpp)
         {
-          // TODO: reduce redundant nops 
-          emitNops(1);
+          if (MBB.getBasicBlock()->isSEHOrCXXSEHTryEndBlock() &&
+              !MBB.hasEmittedEHLabel()) {
+            MBB.setHasEmittedEHLabel(true);
+            emitNops(1);
+          }
         }
         break;
       case TargetOpcode::INLINEASM:
