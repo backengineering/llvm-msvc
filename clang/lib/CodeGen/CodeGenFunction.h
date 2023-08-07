@@ -3299,7 +3299,8 @@ public:
   RValue EmitCoroutineIntrinsic(const CallExpr *E, unsigned int IID);
 
   void EnterCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock = false);
-  void ExitCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock = false);
+  void ExitCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock = false,
+                      bool NeedInsertSEH = false);
 
   void EmitCXXTryStmt(const CXXTryStmt &S);
   void EmitSEHTryStmt(const SEHTryStmt &S);
