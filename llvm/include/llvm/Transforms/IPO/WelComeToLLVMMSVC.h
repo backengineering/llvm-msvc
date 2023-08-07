@@ -11,11 +11,11 @@ class Function;
 class Module;
 class Pass;
 
-class WelComeToLLVMMSVCPass : public PassInfoMixin<WelComeToLLVMMSVCPass> {
+class WelcomeToLLVMMSVCPass : public PassInfoMixin<WelcomeToLLVMMSVCPass> {
   bool Enable;
 
 public:
-  WelComeToLLVMMSVCPass(bool Enable) : Enable(Enable) {}
+  WelcomeToLLVMMSVCPass(bool Enable) : Enable(Enable) {}
 
   // Run the pass on the given module, and return the results as a set of
   // preserved analyses.
