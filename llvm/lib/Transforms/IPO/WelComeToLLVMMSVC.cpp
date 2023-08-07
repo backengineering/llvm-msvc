@@ -19,9 +19,9 @@
 
 using namespace llvm;
 
-// Implementation of the run() function for the WelComeToLLVMMSVCPass
+// Implementation of the run() function for the WelcomeToLLVMMSVCPass
 // class
-PreservedAnalyses WelComeToLLVMMSVCPass::run(Module &M,
+PreservedAnalyses WelcomeToLLVMMSVCPass::run(Module &M,
                                              ModuleAnalysisManager &AM) {
 
   bool Changed = false;
