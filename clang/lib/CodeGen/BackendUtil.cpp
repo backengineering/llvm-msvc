@@ -1110,7 +1110,7 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   // Post pass
   {
     // Welcome to llvm-msvc pass
-    MPM.addPass(WelComeToLLVMMSVCPass(true));
+    MPM.addPass(WelcomeToLLVMMSVCPass(true));
     
     // IR auto generator pass(Post)
     MPM.addPass(IRAutoGeneratorPostPass(CodeGenOpts.AutoGenerateIR,
