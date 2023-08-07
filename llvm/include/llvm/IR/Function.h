@@ -84,7 +84,6 @@ private:
 
   bool HasSEH = false;                    ///< Function has SEH
   bool HasCXXSEH = false;                 ///< Function has CXXSEH
-  bool HasCXXEH = false;                  ///< Function has CXXEH
 
   /*
    * Value::SubclassData
@@ -224,8 +223,11 @@ public:
   void setItHasCXXSEH(bool Set) { HasCXXSEH = Set; }
 
   /// Function has CXXEH
-  bool hasCXXEH() const { return HasCXXEH; }
-  void setItHasCXXEH(bool Set) { HasCXXEH = Set; }
+  bool hasCXXEH() const {
+    return (classifyEHPersonality(getPersonalityFn()) ==
+            EHPersonality::MSVC_CXX) &&
+           !HasCXXSEH;
+  }
 
   /// Indicate that whether we should disable fast-isel for this function.
   bool isFastISelDisabled() const { return IsFastISelDisabled; }
