@@ -13,6 +13,14 @@ Because there are more hacky operations, a lot of code can not be submitted dire
 
 We want to use clang/llvm as comfortable as msvc.
 
+## Features:
+- SEH support.
+- Compatible with MSVC syntax as much as possible.
+- Windows Driver support.(Now only X64)
+- Intrinsic support.
+- Naked X64 inline asm support.
+
+
 ## How to compile?
 
 ```batch
