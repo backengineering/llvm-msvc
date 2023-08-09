@@ -1,9 +1,9 @@
 # `llvm-msvc`
-[![llvm-msvc-build](https://github.com/NewWorldComingSoon/llvm-msvc/actions/workflows/llvm-msvc-build.yml/badge.svg?branch=dev)](https://github.com/NewWorldComingSoon/llvm-msvc/actions/workflows/llvm-msvc-build.yml)
-[![GitHub license](https://img.shields.io/github/license/NewWorldComingSoon/llvm-msvc)](https://github.com/NewWorldComingSoon/llvm-msvc/blob/main/LICENSE)
+[![llvm-msvc-build](https://github.com/backengineering/llvm-msvc/actions/workflows/llvm-msvc-build.yml/badge.svg?branch=dev)](https://github.com/backengineering/llvm-msvc/actions/workflows/llvm-msvc-build.yml)
+[![GitHub license](https://img.shields.io/github/license/backengineering/llvm-msvc)](https://github.com/backengineering/llvm-msvc/blob/main/LICENSE)
 
-[![Github All Releases](https://img.shields.io/github/downloads/NewWorldComingSoon/llvm-msvc/total.svg)](https://github.com/NewWorldComingSoon/llvm-msvc/releases) 
-[![GitHub release](https://img.shields.io/github/release/NewWorldComingSoon/llvm-msvc.svg)](https://github.com/NewWorldComingSoon/llvm-msvc/releases) 
+[![Github All Releases](https://img.shields.io/github/downloads/backengineering/llvm-msvc/total.svg)](https://github.com/backengineering/llvm-msvc/releases) 
+[![GitHub release](https://img.shields.io/github/release/backengineering/llvm-msvc.svg)](https://github.com/backengineering/llvm-msvc/releases) 
 
 llvm-msvc is a compiler based LLVM that is not restricted by MSVC. The goal is to have the same experience as MSVC on Windows.
 You can use naked functions anywhere, as well as add custom support such as obfuscation.
@@ -42,16 +42,10 @@ cmake .. -G "Visual Studio 17 2022" -A X64 -DLLVM_ENABLE_PROJECTS="clang;lld" -D
 msbuild /m -p:Configuration=release INSTALL.vcxproj 
 ```
 
-## Quickstart
-- https://github.com/NewWorldComingSoon/llvm-msvc-build
-
 ## How to contribute?
 - https://github.com/HyunCafe/contribute-practice
 - https://docs.github.com/en/get-started/quickstart/contributing-to-projects
 
 ## Learning
 If you don't know how to learn LLVM, you can check out this [repository](https://github.com/gmh5225/awesome-llvm-security) of mine.
-
-## Issues
-If you have any questions, please tell me or send [issues](https://github.com/NewWorldComingSoon/llvm-msvc-issues/issues)
 
