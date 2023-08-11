@@ -6720,6 +6720,12 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-Wunused-function");
   else 
     CmdArgs.push_back("-Wno-unused-function");
+
+  // -Wunused-variable
+  if (Args.hasArg(options::OPT_funused_variable))
+    CmdArgs.push_back("-Wunused-variable");
+  else
+    CmdArgs.push_back("-Wno-unused-variable");
   
   // Handle -fgcc-version, if present.
   VersionTuple GNUCVer;
