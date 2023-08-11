@@ -593,6 +593,7 @@ def fauto_generate_ir : Flag<["-"], "fauto-generate-ir">, Group<f_Group>, Flags<
 
 def funused_function : Flag<["-"], "Wunused-function">, Group<f_Group>, Flags<[CC1Option, CoreOption]>;
 def funused_variable : Flag<["-"], "Wunused-variable">, Group<f_Group>, Flags<[CC1Option, CoreOption]>;
+def funused_value : Flag<["-"], "Wunused-value">, Group<f_Group>, Flags<[CC1Option, CoreOption]>;
 
 def internal_Group : OptionGroup<"<clang internal options>">, Flags<[HelpHidden]>;
 def internal_driver_Group : OptionGroup<"<clang driver internal options>">,
