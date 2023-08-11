@@ -134,7 +134,8 @@ void clang::ProcessWarningOptions(DiagnosticsEngine &Diags,
       // the deprecated -Werror-implicit-function-declaration which is used by
       // a few projects.
 #ifdef _WIN32
-      isPositive = false;
+      if (Opt == "error")
+        isPositive = false;
 #endif
       if (Opt.startswith("error")) {
         StringRef Specifier;
