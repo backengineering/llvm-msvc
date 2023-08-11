@@ -6714,7 +6714,13 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // -fauto-generate-ir (Automatically generate ir)
   if (Args.hasArg(options::OPT_fauto_generate_ir))
     CmdArgs.push_back("-fauto-generate-ir");
-
+  
+  // -Wunused-function
+  if (Args.hasArg(options::OPT_funused_function))
+    CmdArgs.push_back("-Wunused-function");
+  else 
+    CmdArgs.push_back("-Wno-unused-function");
+  
   // Handle -fgcc-version, if present.
   VersionTuple GNUCVer;
   if (Arg *A = Args.getLastArg(options::OPT_fgnuc_version_EQ)) {
