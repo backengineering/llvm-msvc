@@ -123,6 +123,9 @@ private:
   // Operands are allocated by an ArrayRecycler.
   MachineOperand *Operands = nullptr;   // Pointer to the first operand.
 
+  // Indicate this MCInstr is dirty.
+  bool IsDirty = false;
+
 #define LLVM_MI_NUMOPERANDS_BITS 24
 #define LLVM_MI_FLAGS_BITS 24
 #define LLVM_MI_ASMPRINTERFLAGS_BITS 8
@@ -1294,6 +1297,10 @@ public:
   bool isAnnotationLabel() const {
     return getOpcode() == TargetOpcode::ANNOTATION_LABEL;
   }
+
+  /// Indicate this MCInstr is dirty.
+  bool isDirty() const { return IsDirty; }
+  void setItisDirty(bool Set) { IsDirty = Set; }
 
   /// Returns true if the MachineInstr represents a label.
   bool isLabel() const {
