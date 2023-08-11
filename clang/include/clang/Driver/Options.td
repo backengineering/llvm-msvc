@@ -591,6 +591,8 @@ def fauto_generate_ir : Flag<["-"], "fauto-generate-ir">, Group<f_Group>, Flags<
   HelpText<"Automatically generate ir">,
   MarshallingInfoFlag<CodeGenOpts<"AutoGenerateIR">>;
 
+def funused_function : Flag<["-"], "Wunused-function">, Group<f_Group>, Flags<[CC1Option, CoreOption]>;
+
 def internal_Group : OptionGroup<"<clang internal options>">, Flags<[HelpHidden]>;
 def internal_driver_Group : OptionGroup<"<clang driver internal options>">,
   Group<internal_Group>, HelpText<"DRIVER OPTIONS">;
