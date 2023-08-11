@@ -8837,9 +8837,8 @@ ExprResult Sema::ActOnFinishFullExpr(Expr *FE, SourceLocation CC,
     FullExpr = IgnoredValueConversions(FullExpr.get());
     if (FullExpr.isInvalid())
       return ExprError();
-#ifndef _WIN32
+    
     DiagnoseUnusedExprResult(FullExpr.get(), diag::warn_unused_expr);
-#endif
   }
 
   FullExpr = CorrectDelayedTyposInExpr(FullExpr.get(), /*InitDecl=*/nullptr,
