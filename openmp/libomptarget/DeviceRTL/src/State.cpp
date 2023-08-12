@@ -93,7 +93,7 @@ struct SharedMemorySmartStackTy {
 private:
   /// Compute the size of the storage space reserved for a thread.
   uint32_t computeThreadStorageTotal() {
-    uint32_t NumLanesInBlock = mapping::getNumberOfProcessorElements();
+    uint32_t NumLanesInBlock = mapping::getNumberOfThreadsInBlock();
     return utils::align_down((state::SharedScratchpadSize / NumLanesInBlock),
                              Alignment);
   }
@@ -269,7 +269,7 @@ void state::enterDataEnvironment(IdentTy *Ident) {
       static_cast<ThreadStateTy *>(__kmpc_alloc_shared(sizeof(ThreadStateTy)));
   uintptr_t *ThreadStatesBitsPtr = reinterpret_cast<uintptr_t *>(&ThreadStates);
   if (!atomic::load(ThreadStatesBitsPtr, atomic::seq_cst)) {
-    uint32_t Bytes = sizeof(ThreadStates[0]) * mapping::getBlockSize();
+    uint32_t Bytes = sizeof(ThreadStates[0]) * mapping::getMaxTeamThreads();
     void *ThreadStatesPtr =
         memory::allocGlobal(Bytes, "Thread state array allocation");
     if (!atomic::cas(ThreadStatesBitsPtr, uintptr_t(0),
@@ -322,7 +322,7 @@ void state::assumeInitialState(bool IsSPMD) {
 
 int state::getEffectivePTeamSize() {
   int PTeamSize = state::ParallelTeamSize;
-  return PTeamSize ? PTeamSize : mapping::getBlockSize();
+  return PTeamSize ? PTeamSize : mapping::getMaxTeamThreads();
 }
 
 extern "C" {
@@ -334,7 +334,7 @@ void omp_set_num_threads(int V) { icv::NThreads = V; }
 
 int omp_get_max_threads(void) {
   int NT = icv::NThreads;
-  return NT > 0 ? NT : mapping::getBlockSize();
+  return NT > 0 ? NT : mapping::getMaxTeamThreads();
 }
 
 int omp_get_level(void) {
@@ -373,7 +373,7 @@ int omp_get_num_threads(void) {
   return omp_get_level() != 1 ? 1 : state::getEffectivePTeamSize();
 }
 
-int omp_get_thread_limit(void) { return mapping::getBlockSize(); }
+int omp_get_thread_limit(void) { return mapping::getMaxTeamThreads(); }
 
 int omp_get_num_procs(void) { return mapping::getNumberOfProcessorElements(); }
 
@@ -415,21 +415,19 @@ int omp_get_num_devices(void) { return config::getNumDevices(); }
 
 int omp_get_device_num(void) { return config::getDeviceNum(); }
 
-int omp_get_num_teams(void) { return mapping::getNumberOfBlocks(); }
+int omp_get_num_teams(void) { return mapping::getNumberOfBlocksInKernel(); }
 
-int omp_get_team_num() { return mapping::getBlockId(); }
+int omp_get_team_num() { return mapping::getBlockIdInKernel(); }
 
 int omp_get_initial_device(void) { return -1; }
 }
 
 extern "C" {
 __attribute__((noinline)) void *__kmpc_alloc_shared(uint64_t Bytes) {
-  FunctionTracingRAII();
   return memory::allocShared(Bytes, "Frontend alloc shared");
 }
 
 __attribute__((noinline)) void __kmpc_free_shared(void *Ptr, uint64_t Bytes) {
-  FunctionTracingRAII();
   memory::freeShared(Ptr, Bytes, "Frontend free shared");
 }
 
@@ -455,7 +453,6 @@ constexpr uint64_t NUM_SHARED_VARIABLES_IN_SHARED_MEM = 64;
     allocator(omp_pteam_mem_alloc)
 
 void __kmpc_begin_sharing_variables(void ***GlobalArgs, uint64_t nArgs) {
-  FunctionTracingRAII();
   if (nArgs <= NUM_SHARED_VARIABLES_IN_SHARED_MEM) {
     SharedMemVariableSharingSpacePtr = &SharedMemVariableSharingSpace[0];
   } else {
@@ -468,13 +465,11 @@ void __kmpc_begin_sharing_variables(void ***GlobalArgs, uint64_t nArgs) {
 }
 
 void __kmpc_end_sharing_variables() {
-  FunctionTracingRAII();
   if (SharedMemVariableSharingSpacePtr != &SharedMemVariableSharingSpace[0])
     memory::freeGlobal(SharedMemVariableSharingSpacePtr, "new extended args");
 }
 
 void __kmpc_get_shared_variables(void ***GlobalArgs) {
-  FunctionTracingRAII();
   *GlobalArgs = SharedMemVariableSharingSpacePtr;
 }
 }

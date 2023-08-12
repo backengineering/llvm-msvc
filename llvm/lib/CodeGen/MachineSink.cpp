@@ -915,7 +915,7 @@ MachineSinking::GetAllSortedSuccessors(MachineInstr &MI, MachineBasicBlock *MBB,
       AllSuccs, [this](const MachineBasicBlock *L, const MachineBasicBlock *R) {
         uint64_t LHSFreq = MBFI ? MBFI->getBlockFreq(L).getFrequency() : 0;
         uint64_t RHSFreq = MBFI ? MBFI->getBlockFreq(R).getFrequency() : 0;
-        bool HasBlockFreq = LHSFreq != 0 && RHSFreq != 0;
+        bool HasBlockFreq = LHSFreq != 0 || RHSFreq != 0;
         return HasBlockFreq ? LHSFreq < RHSFreq
                             : CI->getCycleDepth(L) < CI->getCycleDepth(R);
       });
@@ -1385,7 +1385,7 @@ bool MachineSinking::SinkInstruction(MachineInstr &MI, bool &SawStore,
 
   // If the instruction to move defines a dead physical register which is live
   // when leaving the basic block, don't move it because it could turn into a
-  // "zombie" define of that preg. E.g., EFLAGS. (<rdar://problem/8030636>)
+  // "zombie" define of that preg. E.g., EFLAGS.
   for (const MachineOperand &MO : MI.all_defs()) {
     Register Reg = MO.getReg();
     if (Reg == 0 || !Reg.isPhysical())

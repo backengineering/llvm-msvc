@@ -785,7 +785,7 @@ def OpWithShapedTypeInferTypeInterfaceOp : TEST_Op<"op_with_shaped_type_infer_ty
   let results = (outs AnyTensor);
 }
 
-def OpWithShapedTypeInferTypeAdaptorInterfaceOp : 
+def OpWithShapedTypeInferTypeAdaptorInterfaceOp :
       TEST_Op<"op_with_shaped_type_infer_type_adaptor_if",
               [InferTensorTypeAdaptorWithReify]> {
   let arguments = (ins AnyTensor:$operand1, AnyTensor:$operand2);
@@ -1258,8 +1258,9 @@ def TestOpWithVariadicResultsAndFolder: TEST_Op<"op_with_variadic_results_and_fo
 }
 
 def TestAddIOp : TEST_Op<"addi"> {
-  let arguments = (ins I32:$op1, I32:$op2);
-  let results = (outs I32);
+  let arguments = (ins AnyTypeOf<[I32, TestI32]>:$op1,
+                       AnyTypeOf<[I32, TestI32]>:$op2);
+  let results = (outs AnyTypeOf<[I32, TestI32]>);
 }
 
 def TestCommutativeOp : TEST_Op<"op_commutative", [Commutative]> {
@@ -2046,7 +2047,8 @@ def RegionIfYieldOp : TEST_Op<"region_if_yield",
 
 def RegionIfOp : TEST_Op<"region_if",
       [DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                                 ["getRegionInvocationBounds"]>,
+                                 ["getRegionInvocationBounds",
+                                  "getEntrySuccessorOperands"]>,
        SingleBlockImplicitTerminator<"RegionIfYieldOp">,
        RecursiveMemoryEffects]> {
   let description =[{
@@ -2070,8 +2072,6 @@ def RegionIfOp : TEST_Op<"region_if",
     ::mlir::Block::BlockArgListType getJoinArgs() {
       return getBody(2)->getArguments();
     }
-    ::mlir::OperandRange getSuccessorEntryOperands(
-        ::std::optional<unsigned> index);
   }];
   let hasCustomAssemblyFormat = 1;
 }
@@ -2082,6 +2082,30 @@ def AnyCondOp : TEST_Op<"any_cond",
        RecursiveMemoryEffects]> {
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region AnyRegion:$region);
+}
+
+def LoopBlockOp : TEST_Op<"loop_block",
+    [DeclareOpInterfaceMethods<RegionBranchOpInterface,
+        ["getEntrySuccessorOperands"]>, RecursiveMemoryEffects]> {
+
+  let results = (outs F32:$floatResult);
+  let arguments = (ins I32:$init);
+  let regions = (region SizedRegion<1>:$body);
+
+  let assemblyFormat = [{
+    $init `:` functional-type($init, $floatResult) $body
+    attr-dict-with-keyword
+  }];
+}
+
+def LoopBlockTerminatorOp : TEST_Op<"loop_block_term",
+    [DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>, Pure,
+     Terminator]> {
+  let arguments = (ins I32:$nextIterArg, F32:$exitArg);
+
+  let assemblyFormat = [{
+    `iter` $nextIterArg `exit` $exitArg attr-dict
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -2600,6 +2624,10 @@ def TestVersionedOpA : TEST_Op<"versionedA"> {
    AnyI64Attr:$dims,
    BoolAttr:$modifier
   );
+
+  // Since we use properties to store attributes, we need a custom encoding
+  // reader/writer to handle versioning.
+  let useCustomPropertiesEncoding = 1;
 }
 
 def TestVersionedOpB : TEST_Op<"versionedB"> {
@@ -2617,6 +2645,12 @@ def TestVersionedOpB : TEST_Op<"versionedB"> {
   // `readAttribute()` in `TestBytecodeDialectInterface`
   let arguments = (ins
     TestAttrParams:$attribute
+  );
+}
+
+def TestVersionedOpC : TEST_Op<"versionedC"> {
+  let arguments = (ins AnyAttrOf<[TestAttrParams,
+                                  I32ElementsAttr]>:$attribute
   );
 }
 
@@ -2735,6 +2769,51 @@ def TestOpWithNiceProperties : TEST_Op<"with_nice_properties"> {
   }];
 }
 
+def VersionedProperties : Property<"VersionedProperties"> {
+  let convertToAttribute = [{
+      getPropertiesAsAttribute($_ctxt, $_storage)
+  }];
+  let convertFromAttribute = [{
+    return setPropertiesFromAttribute($_storage, $_attr, $_diag);
+  }];
+  let hashProperty = [{
+    computeHash($_storage);
+  }];
+}
+
+def TestOpWithVersionedProperties : TEST_Op<"with_versioned_properties"> {
+  let assemblyFormat = "prop-dict attr-dict";
+  let arguments = (ins
+     VersionedProperties:$prop
+  );
+  let extraClassDeclaration = [{
+    void printProperties(::mlir::MLIRContext *ctx, ::mlir::OpAsmPrinter &p,
+                         const Properties &prop);
+    static ::mlir::ParseResult  parseProperties(::mlir::OpAsmParser &parser,
+                                     ::mlir::OperationState &result);
+    static ::mlir::LogicalResult readFromMlirBytecode(
+        ::mlir::DialectBytecodeReader &,
+        test::VersionedProperties &prop);
+    static void writeToMlirBytecode(
+        ::mlir::DialectBytecodeWriter &,
+        const test::VersionedProperties &prop);
+  }];
+  let extraClassDefinition = [{
+    void TestOpWithVersionedProperties::printProperties(::mlir::MLIRContext *ctx,
+            ::mlir::OpAsmPrinter &p, const Properties &prop) {
+      customPrintProperties(p, prop.prop);
+    }
+    ::mlir::ParseResult TestOpWithVersionedProperties::parseProperties(
+        ::mlir::OpAsmParser &parser,
+        ::mlir::OperationState &result) {
+      Properties &prop = result.getOrAddProperties<Properties>();
+      if (customParseProperties(parser, prop.prop))
+        return failure();
+      return success();
+    }
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // Test Dataflow
 //===----------------------------------------------------------------------===//
@@ -2755,10 +2834,25 @@ def TestCallAndStoreOp : TEST_Op<"call_and_store",
     "`:` functional-type(operands, results)";
 }
 
+def TestCallOnDeviceOp : TEST_Op<"call_on_device",
+    [DeclareOpInterfaceMethods<CallOpInterface>]> {
+  let arguments = (ins
+    SymbolRefAttr:$callee,
+    Variadic<AnyType>:$forwarded_operands,
+    AnyType:$non_forwarded_device_operand
+  );
+  let results = (outs
+    Variadic<AnyType>:$results
+  );
+  let assemblyFormat =
+    "$callee `(` $forwarded_operands `)` `,` $non_forwarded_device_operand "
+    "attr-dict `:` functional-type(operands, results)";
+}
+
 def TestStoreWithARegion : TEST_Op<"store_with_a_region",
     [DeclareOpInterfaceMethods<RegionBranchOpInterface>,
      SingleBlock]> {
-  let arguments = (ins 
+  let arguments = (ins
     Arg<AnyMemRef, "", [MemWrite]>:$address,
     BoolAttr:$store_before_region
   );
@@ -2768,7 +2862,7 @@ def TestStoreWithARegion : TEST_Op<"store_with_a_region",
 }
 
 def TestStoreWithARegionTerminator : TEST_Op<"store_with_a_region_terminator",
-    [DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>, Terminator, NoMemoryEffect]> {
+    [ReturnLike, Terminator, NoMemoryEffect]> {
   let assemblyFormat = "attr-dict";
 }
 

@@ -96,6 +96,12 @@ TEST(LlvmLibcSPrintfTest, StringConv) {
                                  "isn't", 12, 10, "important. Ever.");
   EXPECT_EQ(written, 26);
   ASSERT_STREQ(buff, " beginning is   important.");
+
+#ifndef LIBC_COPT_PRINTF_NO_NULLPTR_CHECKS
+  written = __llvm_libc::sprintf(buff, "%s", nullptr);
+  EXPECT_EQ(written, 4);
+  ASSERT_STREQ(buff, "null");
+#endif // LIBC_COPT_PRINTF_NO_NULLPTR_CHECKS
 }
 
 TEST(LlvmLibcSPrintfTest, IntConv) {
@@ -2437,6 +2443,10 @@ TEST_F(LlvmLibcSPrintfTest, FloatAutoConv) {
   written = __llvm_libc::sprintf(buff, "%.3g", 1256.0);
   ASSERT_STREQ_LEN(written, buff, "1.26e+03");
 
+  // Found through large scale testing.
+  written = __llvm_libc::sprintf(buff, "%.15g", 22.25);
+  ASSERT_STREQ_LEN(written, buff, "22.25");
+
   // Subnormal Precision Tests
 
   written = __llvm_libc::sprintf(buff, "%.310g", 0x1.0p-1022);
@@ -2777,8 +2787,10 @@ TEST(LlvmLibcSPrintfTest, WriteIntConv) {
   EXPECT_EQ(test_val, 8);
   ASSERT_STREQ(buff, "87654321");
 
+#ifndef LIBC_COPT_PRINTF_NO_NULLPTR_CHECKS
   written = __llvm_libc::sprintf(buff, "abc123%n", nullptr);
   EXPECT_LT(written, 0);
+#endif // LIBC_COPT_PRINTF_NO_NULLPTR_CHECKS
 }
 #endif // LIBC_COPT_PRINTF_DISABLE_WRITE_INT
 

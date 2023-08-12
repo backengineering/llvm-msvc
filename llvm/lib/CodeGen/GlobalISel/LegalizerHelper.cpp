@@ -119,8 +119,7 @@ LegalizerHelper::legalizeInstrStep(MachineInstr &MI,
 
   MIRBuilder.setInstrAndDebugLoc(MI);
 
-  if (MI.getOpcode() == TargetOpcode::G_INTRINSIC ||
-      MI.getOpcode() == TargetOpcode::G_INTRINSIC_W_SIDE_EFFECTS)
+  if (isa<GIntrinsic>(MI))
     return LI.legalizeIntrinsic(*this, MI) ? Legalized : UnableToLegalize;
   auto Step = LI.getAction(MI, MRI);
   switch (Step.Action) {
@@ -3503,6 +3502,10 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT LowerHintTy) {
     return lowerShuffleVector(MI);
   case G_DYN_STACKALLOC:
     return lowerDynStackAlloc(MI);
+  case G_STACKSAVE:
+    return lowerStackSave(MI);
+  case G_STACKRESTORE:
+    return lowerStackRestore(MI);
   case G_EXTRACT:
     return lowerExtract(MI);
   case G_INSERT:
@@ -4886,6 +4889,7 @@ LegalizerHelper::moreElementsVector(MachineInstr &MI, unsigned TypeIdx,
   case TargetOpcode::G_FREEZE:
   case TargetOpcode::G_FNEG:
   case TargetOpcode::G_FABS:
+  case TargetOpcode::G_FSQRT:
   case TargetOpcode::G_BSWAP:
   case TargetOpcode::G_FCANONICALIZE:
   case TargetOpcode::G_SEXT_INREG:
@@ -6806,6 +6810,28 @@ LegalizerHelper::lowerDynStackAlloc(MachineInstr &MI) {
   MIRBuilder.buildCopy(SPReg, SPTmp);
   MIRBuilder.buildCopy(Dst, SPTmp);
 
+  MI.eraseFromParent();
+  return Legalized;
+}
+
+LegalizerHelper::LegalizeResult
+LegalizerHelper::lowerStackSave(MachineInstr &MI) {
+  Register StackPtr = TLI.getStackPointerRegisterToSaveRestore();
+  if (!StackPtr)
+    return UnableToLegalize;
+
+  MIRBuilder.buildCopy(MI.getOperand(0), StackPtr);
+  MI.eraseFromParent();
+  return Legalized;
+}
+
+LegalizerHelper::LegalizeResult
+LegalizerHelper::lowerStackRestore(MachineInstr &MI) {
+  Register StackPtr = TLI.getStackPointerRegisterToSaveRestore();
+  if (!StackPtr)
+    return UnableToLegalize;
+
+  MIRBuilder.buildCopy(StackPtr, MI.getOperand(0));
   MI.eraseFromParent();
   return Legalized;
 }

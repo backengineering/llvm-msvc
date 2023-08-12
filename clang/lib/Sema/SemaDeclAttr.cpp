@@ -23,6 +23,7 @@
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/CharInfo.h"
+#include "clang/Basic/Cuda.h"
 #include "clang/Basic/DarwinSDKInfo.h"
 #include "clang/Basic/HLSLRuntime.h"
 #include "clang/Basic/LangOptions.h"
@@ -1992,8 +1993,12 @@ static void handleAliasAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     S.Diag(AL.getLoc(), diag::err_alias_not_supported_on_darwin);
     return;
   }
+
   if (S.Context.getTargetInfo().getTriple().isNVPTX()) {
-    S.Diag(AL.getLoc(), diag::err_alias_not_supported_on_nvptx);
+    CudaVersion Version =
+        ToCudaVersion(S.Context.getTargetInfo().getSDKVersion());
+    if (Version != CudaVersion::UNKNOWN && Version < CudaVersion::CUDA_100)
+      S.Diag(AL.getLoc(), diag::err_alias_not_supported_on_nvptx);
   }
 
   // Aliases should be on declarations, not definitions.
@@ -2197,13 +2202,13 @@ static void handleNoReturnAttr(Sema &S, Decl *D, const ParsedAttr &Attrs) {
 }
 
 static void handleStandardNoReturnAttr(Sema &S, Decl *D, const ParsedAttr &A) {
-  // The [[_Noreturn]] spelling is deprecated in C2x, so if that was used,
+  // The [[_Noreturn]] spelling is deprecated in C23, so if that was used,
   // issue an appropriate diagnostic. However, don't issue a diagnostic if the
   // attribute name comes from a macro expansion. We don't want to punish users
   // who write [[noreturn]] after including <stdnoreturn.h> (where 'noreturn'
   // is defined as a macro which expands to '_Noreturn').
   if (!S.getLangOpts().CPlusPlus &&
-      A.getSemanticSpelling() == CXX11NoReturnAttr::C2x_Noreturn &&
+      A.getSemanticSpelling() == CXX11NoReturnAttr::C23_Noreturn &&
       !(A.getLoc().isMacroID() &&
         S.getSourceManager().isInSystemMacro(A.getLoc())))
     S.Diag(A.getLoc(), diag::warn_deprecated_noreturn_spelling) << A.getRange();
@@ -3162,18 +3167,18 @@ static void handleWarnUnusedResult(Sema &S, Decl *D, const ParsedAttr &AL) {
 
     // If this is spelled as the standard C++17 attribute, but not in C++17,
     // warn about using it as an extension. If there are attribute arguments,
-    // then claim it's a C++2a extension instead.
+    // then claim it's a C++20 extension instead.
     // FIXME: If WG14 does not seem likely to adopt the same feature, add an
-    // extension warning for C2x mode.
+    // extension warning for C23 mode.
     const LangOptions &LO = S.getLangOpts();
     if (AL.getNumArgs() == 1) {
       if (LO.CPlusPlus && !LO.CPlusPlus20)
         S.Diag(AL.getLoc(), diag::ext_cxx20_attr) << AL;
 
       // Since this is spelled [[nodiscard]], get the optional string
-      // literal. If in C++ mode, but not in C++2a mode, diagnose as an
+      // literal. If in C++ mode, but not in C++20 mode, diagnose as an
       // extension.
-      // FIXME: C2x should support this feature as well, even as an extension.
+      // FIXME: C23 should support this feature as well, even as an extension.
       if (!S.checkStringLiteralArgumentAttr(AL, 0, Str, nullptr))
         return;
     } else if (LO.CPlusPlus && !LO.CPlusPlus17)
@@ -5353,9 +5358,6 @@ bool Sema::CheckCallingConvAttr(const ParsedAttr &Attrs, CallingConv &CC,
     break;
   case ParsedAttr::AT_AArch64SVEPcs:
     CC = CC_AArch64SVEPCS;
-    break;
-  case ParsedAttr::AT_ArmStreaming:
-    CC = CC_C; // FIXME: placeholder until real SME support is added.
     break;
   case ParsedAttr::AT_AMDGPUKernelCall:
     CC = CC_AMDGPUKernelCall;
@@ -8731,6 +8733,28 @@ static bool MustDelayAttributeArguments(const ParsedAttr &AL) {
   return false;
 }
 
+
+static void handleArmNewZaAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+  if (auto *FPT = dyn_cast<FunctionProtoType>(D->getFunctionType())) {
+    if (FPT->getAArch64SMEAttributes() &
+        FunctionType::SME_PStateZASharedMask) {
+      S.Diag(AL.getLoc(), diag::err_attributes_are_not_compatible)
+          << AL << "'__arm_shared_za'" << true;
+      AL.setInvalid();
+    }
+    if (FPT->getAArch64SMEAttributes() &
+        FunctionType::SME_PStateZAPreservedMask) {
+      S.Diag(AL.getLoc(), diag::err_attributes_are_not_compatible)
+          << AL << "'__arm_preserves_za'" << true;
+      AL.setInvalid();
+    }
+    if (AL.isInvalid())
+      return;
+  }
+
+  handleSimpleAttribute<ArmNewZAAttr>(S, D, AL);
+}
+
 /// ProcessDeclAttribute - Apply the specific attribute to the specified decl if
 /// the attribute applies to decls.  If the attribute is a type attribute, just
 /// silently ignore it if a GNU attribute.
@@ -9487,6 +9511,14 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
 
   case ParsedAttr::AT_ArmBuiltinAlias:
     handleArmBuiltinAliasAttr(S, D, AL);
+    break;
+
+  case ParsedAttr::AT_ArmLocallyStreaming:
+    handleSimpleAttribute<ArmLocallyStreamingAttr>(S, D, AL);
+    break;
+
+  case ParsedAttr::AT_ArmNewZA:
+    handleArmNewZaAttr(S, D, AL);
     break;
 
   case ParsedAttr::AT_AcquireHandle:

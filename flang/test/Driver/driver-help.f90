@@ -46,6 +46,8 @@
 ! HELP-NEXT: -fno-automatic         Implies the SAVE attribute for non-automatic local objects in subprograms unless RECURSIVE
 ! HELP-NEXT: -fno-color-diagnostics  Disable colors in diagnostics
 ! HELP-NEXT: -fno-integrated-as      Disable the integrated assembler
+! HELP-NEXT: -fno-ppc-native-vector-element-order
+! HELP-NEXT:                        Specifies PowerPC non-native vector element order
 ! HELP-NEXT: -fno-signed-zeros      Allow optimizations that ignore the sign of floating point zeros
 ! HELP-NEXT: -fno-stack-arrays      Allocate array temporaries on the heap (default)
 ! HELP-NEXT: -fno-version-loops-for-stride
@@ -54,8 +56,18 @@
 ! HELP-NEXT: -fopenmp-version=<value>
 ! HELP-NEXT:                        Set OpenMP version (e.g. 45 for OpenMP 4.5, 50 for OpenMP 5.0). Default value is 50 for Clang and 11 for Flang
 ! HELP-NEXT: -fopenmp               Parse OpenMP pragmas and generate parallel code.
+! HELP-NEXT: -foptimization-record-file=<file>
+! HELP-NEXT:                        Specify the output name of the file containing the optimization remarks. Implies -fsave-optimization-record. On Darwin platforms, this cannot be used with multiple -arch <arch> options.
+! HELP-NEXT: -foptimization-record-passes=<regex>
+! HELP-NEXT:                        Only include passes which match a specified regular expression in the generated optimization record (by default, include all passes)
 ! HELP-NEXT: -fpass-plugin=<dsopath> Load pass plugin from a dynamic shared object file (only with new pass manager).
+! HELP-NEXT: -fppc-native-vector-element-order
+! HELP-NEXT:                        Specifies PowerPC native vector element order
 ! HELP-NEXT: -freciprocal-math      Allow division operations to be reassociated
+! HELP-NEXT: -fsave-optimization-record=<format>
+! HELP-NEXT:                        Generate an optimization record file in a specific format
+! HELP-NEXT: -fsave-optimization-record
+! HELP-NEXT:                        Generate a YAML optimization record file
 ! HELP-NEXT: -fstack-arrays         Attempt to allocate array temporaries on the stack, no matter their size
 ! HELP-NEXT: -fsyntax-only          Run the preprocessor, parser and semantic analysis stages
 ! HELP-NEXT: -funderscoring         Appends one trailing underscore to external names
@@ -72,13 +84,17 @@
 ! HELP-NEXT: -module-dir <dir>      Put MODULE files in <dir>
 ! HELP-NEXT: -nocpp                 Disable predefined and command line preprocessor macros
 ! HELP-NEXT: --offload-device-only   Only compile for the offloading device.
-! HELP-NEXT: --offload-host-device   Only compile for the offloading host.
+! HELP-NEXT: --offload-host-device   Compile for both the offloading host and device (default).
 ! HELP-NEXT: --offload-host-only     Only compile for the offloading host.
 ! HELP-NEXT: -o <file>              Write output to <file>
 ! HELP-NEXT: -pedantic              Warn on language extensions
 ! HELP-NEXT: -print-effective-triple Print the effective target triple
 ! HELP-NEXT: -print-target-triple    Print the normalized target triple
 ! HELP-NEXT: -P                     Disable linemarker output in -E mode
+! HELP-NEXT: -Rpass-analysis=<value> Report transformation analysis from optimization passes whose name matches the given POSIX regular expression
+! HELP-NEXT: -Rpass-missed=<value>   Report missed transformations by optimization passes whose name matches the given POSIX regular expression
+! HELP-NEXT: -Rpass=<value>          Report transformations performed by optimization passes whose name matches the given POSIX regular expression
+! HELP-NEXT: -R<remark>              Enable the specified remark
 ! HELP-NEXT: -save-temps=<value>    Save intermediate compilation results.
 ! HELP-NEXT: -save-temps            Save intermediate compilation results
 ! HELP-NEXT: -std=<value>           Language standard to compile for
@@ -150,6 +166,8 @@
 ! HELP-FC1-NEXT:                        Do not use the analyzed objects when unparsing
 ! HELP-FC1-NEXT: -fno-automatic         Implies the SAVE attribute for non-automatic local objects in subprograms unless RECURSIVE
 ! HELP-FC1-NEXT: -fno-debug-pass-manager Disables debug printing for the new pass manager
+! HELP-FC1-NEXT: -fno-ppc-native-vector-element-order
+! HELP-FC1-NEXT:                        Specifies PowerPC non-native vector element order
 ! HELP-FC1-NEXT: -fno-reformat          Dump the cooked character stream in -E mode
 ! HELP-FC1-NEXT: -fno-signed-zeros      Allow optimizations that ignore the sign of floating point zeros
 ! HELP-FC1-NEXT: -fno-stack-arrays      Allocate array temporaries on the heap (default)
@@ -165,6 +183,8 @@
 ! HELP-FC1-NEXT:                        Set OpenMP version (e.g. 45 for OpenMP 4.5, 50 for OpenMP 5.0). Default value is 50 for Clang and 11 for Flang
 ! HELP-FC1-NEXT: -fopenmp               Parse OpenMP pragmas and generate parallel code.
 ! HELP-FC1-NEXT: -fpass-plugin=<dsopath> Load pass plugin from a dynamic shared object file (only with new pass manager).
+! HELP-FC1-NEXT: -fppc-native-vector-element-order
+! HELP-FC1-NEXT:                        Specifies PowerPC native vector element order
 ! HELP-FC1-NEXT: -freciprocal-math      Allow division operations to be reassociated
 ! HELP-FC1-NEXT: -fstack-arrays         Attempt to allocate array temporaries on the stack, no matter their size
 ! HELP-FC1-NEXT: -fsyntax-only          Run the preprocessor, parser and semantic analysis stages
@@ -186,12 +206,22 @@
 ! HELP-FC1-NEXT: -mrelocation-model <value>
 ! HELP-FC1-NEXT:                        The relocation model to use
 ! HELP-FC1-NEXT: -nocpp                 Disable predefined and command line preprocessor macros
+! HELP-FC1-NEXT: -opt-record-file <value>
+! HELP-FC1-NEXT:                        File name to use for YAML optimization record output
+! HELP-FC1-NEXT: -opt-record-format <value>
+! HELP-FC1-NEXT:                        The format used for serializing remarks (default: YAML)
+! HELP-FC1-NEXT: -opt-record-passes <value>
+! HELP-FC1-NEXT:                        Only record remark information for passes whose names match the given regular expression
 ! HELP-FC1-NEXT: -o <file>              Write output to <file>
 ! HELP-FC1-NEXT: -pedantic              Warn on language extensions
 ! HELP-FC1-NEXT: -pic-is-pie             File is for a position independent executable
 ! HELP-FC1-NEXT: -pic-level <value>      Value for __PIC__
 ! HELP-FC1-NEXT: -plugin <name>         Use the named plugin action instead of the default action (use "help" to list available options)
 ! HELP-FC1-NEXT: -P                     Disable linemarker output in -E mode
+! HELP-FC1-NEXT: -Rpass-analysis=<value> Report transformation analysis from optimization passes whose name matches the given POSIX regular expression
+! HELP-FC1-NEXT: -Rpass-missed=<value>   Report missed transformations by optimization passes whose name matches the given POSIX regular expression
+! HELP-FC1-NEXT: -Rpass=<value>          Report transformations performed by optimization passes whose name matches the given POSIX regular expression
+! HELP-FC1-NEXT: -R<remark>              Enable the specified remark
 ! HELP-FC1-NEXT: -save-temps=<value>    Save intermediate compilation results.
 ! HELP-FC1-NEXT: -save-temps            Save intermediate compilation results
 ! HELP-FC1-NEXT: -std=<value>           Language standard to compile for

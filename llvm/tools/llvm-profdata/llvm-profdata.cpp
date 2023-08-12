@@ -594,7 +594,7 @@ adjustInstrProfile(std::unique_ptr<WriterContext> &WC,
 
   auto checkSampleProfileHasFUnique = [&Reader]() {
     for (const auto &PD : Reader->getProfiles()) {
-      auto &FContext = PD.second.getContext();
+      auto &FContext = PD.first;
       if (FContext.toString().find(FunctionSamples::UniqSuffix) !=
           std::string::npos) {
         return true;
@@ -2833,8 +2833,7 @@ static int showSampleProfile(const std::string &Filename, bool ShowCounts,
           "be printed");
 
     // TODO: parse context string to support filtering by contexts.
-    FunctionSamples *FS = Reader->getSamplesFor(StringRef(ShowFunction));
-    Reader->dumpFunctionProfile(FS ? *FS : FunctionSamples(), OS);
+    Reader->dumpFunctionProfile(StringRef(ShowFunction), OS);
   }
 
   if (ShowProfileSymbolList) {
@@ -3070,17 +3069,11 @@ static int order_main(int argc, const char *argv[]) {
 
   WithColor::note() << "# Ordered " << Nodes.size() << " functions\n";
   for (auto &N : Nodes) {
-    auto FuncName = Reader->getSymtab().getFuncName(N.Id);
-    if (FuncName.contains(':')) {
-      // GlobalValue::getGlobalIdentifier() prefixes the filename if the symbol
-      // is local. This logic will break if there is a colon in the filename,
-      // but we cannot use rsplit() because ObjC symbols can have colons.
-      auto [Filename, ParsedFuncName] = FuncName.split(':');
-      // Emit a comment describing where this symbol came from
+    auto [Filename, ParsedFuncName] =
+        getParsedIRPGOFuncName(Reader->getSymtab().getFuncName(N.Id));
+    if (!Filename.empty())
       OS << "# " << Filename << "\n";
-      FuncName = ParsedFuncName;
-    }
-    OS << FuncName << "\n";
+    OS << ParsedFuncName << "\n";
   }
   return 0;
 }

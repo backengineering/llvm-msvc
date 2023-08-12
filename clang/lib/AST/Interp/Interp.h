@@ -148,8 +148,9 @@ bool CheckShift(InterpState &S, CodePtr OpPC, const LT &LHS, const RT &RHS,
 template <typename T>
 bool CheckDivRem(InterpState &S, CodePtr OpPC, const T &LHS, const T &RHS) {
   if (RHS.isZero()) {
-    const SourceInfo &Loc = S.Current->getSource(OpPC);
-    S.FFDiag(Loc, diag::note_expr_divide_by_zero);
+    const auto *Op = cast<BinaryOperator>(S.Current->getExpr(OpPC));
+    S.FFDiag(Op, diag::note_expr_divide_by_zero)
+        << Op->getRHS()->getSourceRange();
     return false;
   }
 
@@ -181,6 +182,9 @@ enum class ArithOp { Add, Sub };
 // Returning values
 //===----------------------------------------------------------------------===//
 
+/// Pop arguments of builtins defined as func-name(...).
+bool popBuiltinArgs(InterpState &S, CodePtr OpPC);
+
 template <PrimType Name, class T = typename PrimConv<Name>::T>
 bool Ret(InterpState &S, CodePtr &PC, APValue &Result) {
   const T &Ret = S.Stk.pop<T>();
@@ -197,8 +201,16 @@ bool Ret(InterpState &S, CodePtr &PC, APValue &Result) {
   }
 
   assert(S.Current->getFrameOffset() == S.Stk.size() && "Invalid frame");
-  if (!S.checkingPotentialConstantExpression() || S.Current->Caller)
-    S.Current->popArgs();
+  if (!S.checkingPotentialConstantExpression() || S.Current->Caller) {
+    // Certain builtin functions are declared as func-name(...), so the
+    // parameters are checked in Sema and only available through the CallExpr.
+    // The interp::Function we create for them has 0 parameters, so we need to
+    // remove them from the stack by checking the CallExpr.
+    if (S.Current && S.Current->getFunction()->needsRuntimeArgPop(S.getCtx()))
+      popBuiltinArgs(S, PC);
+    else
+      S.Current->popArgs();
+  }
 
   if (InterpFrame *Caller = S.Current->Caller) {
     PC = S.Current->getRetPC();
@@ -701,7 +713,9 @@ inline bool CmpHelper<Pointer>(InterpState &S, CodePtr OpPC, CompareFn Fn) {
 
   if (!Pointer::hasSameBase(LHS, RHS)) {
     const SourceInfo &Loc = S.Current->getSource(OpPC);
-    S.FFDiag(Loc, diag::note_invalid_subexpr_in_const_expr);
+    S.FFDiag(Loc, diag::note_constexpr_pointer_comparison_unspecified)
+        << LHS.toDiagnosticString(S.getCtx())
+        << RHS.toDiagnosticString(S.getCtx());
     return false;
   } else {
     unsigned VL = LHS.getByteOffset();
@@ -1773,7 +1787,7 @@ inline bool Invalid(InterpState &S, CodePtr OpPC) {
 inline bool InvalidCast(InterpState &S, CodePtr OpPC, CastKind Kind) {
   const SourceLocation &Loc = S.Current->getLocation(OpPC);
   S.FFDiag(Loc, diag::note_constexpr_invalid_cast)
-      << static_cast<uint8_t>(Kind) << S.Current->getRange(OpPC);
+      << static_cast<unsigned>(Kind) << S.Current->getRange(OpPC);
   return false;
 }
 

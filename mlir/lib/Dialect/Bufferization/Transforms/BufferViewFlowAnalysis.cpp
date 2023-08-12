@@ -45,6 +45,18 @@ void BufferViewFlowAnalysis::remove(const SetVector<Value> &aliasValues) {
     llvm::set_subtract(entry.second, aliasValues);
 }
 
+void BufferViewFlowAnalysis::rename(Value from, Value to) {
+  dependencies[to] = dependencies[from];
+  dependencies.erase(from);
+
+  for (auto &[key, value] : dependencies) {
+    if (value.contains(from)) {
+      value.insert(to);
+      value.erase(from);
+    }
+  }
+}
+
 /// This function constructs a mapping from values to its immediate
 /// dependencies. It iterates over all blocks, gets their predecessors,
 /// determines the values that will be passed to the corresponding block
@@ -94,7 +106,7 @@ void BufferViewFlowAnalysis::build(Operation *op) {
         // Wire the entry region's successor arguments with the initial
         // successor inputs.
         registerDependencies(
-            regionInterface.getSuccessorEntryOperands(
+            regionInterface.getEntrySuccessorOperands(
                 entrySuccessor.isParent()
                     ? std::optional<unsigned>()
                     : entrySuccessor.getSuccessor()->getRegionNumber()),
@@ -116,14 +128,11 @@ void BufferViewFlowAnalysis::build(Operation *op) {
             regionIndex = regionSuccessor->getRegionNumber();
           // Iterate over all immediate terminator operations and wire the
           // successor inputs with the successor operands of each terminator.
-          for (Block &block : region) {
-            auto successorOperands = getRegionBranchSuccessorOperands(
-                block.getTerminator(), regionIndex);
-            if (successorOperands) {
-              registerDependencies(*successorOperands,
+          for (Block &block : region)
+            if (auto terminator = dyn_cast<RegionBranchTerminatorOpInterface>(
+                    block.getTerminator()))
+              registerDependencies(terminator.getSuccessorOperands(regionIndex),
                                    successorRegion.getSuccessorInputs());
-            }
-          }
         }
       }
 

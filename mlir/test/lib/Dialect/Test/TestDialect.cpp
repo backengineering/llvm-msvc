@@ -114,6 +114,16 @@ static void customPrintProperties(OpAsmPrinter &p,
                                   const PropertiesWithCustomPrint &prop);
 static ParseResult customParseProperties(OpAsmParser &parser,
                                          PropertiesWithCustomPrint &prop);
+static LogicalResult setPropertiesFromAttribute(VersionedProperties &prop,
+                                                Attribute attr,
+                                                InFlightDiagnostic *diagnostic);
+static DictionaryAttr getPropertiesAsAttribute(MLIRContext *ctx,
+                                               const VersionedProperties &prop);
+static llvm::hash_code computeHash(const VersionedProperties &prop);
+static void customPrintProperties(OpAsmPrinter &p,
+                                  const VersionedProperties &prop);
+static ParseResult customParseProperties(OpAsmParser &parser,
+                                         VersionedProperties &prop);
 
 void test::registerTestDialect(DialectRegistry &registry) {
   registry.insert<TestDialect>();
@@ -922,14 +932,13 @@ ParseResult RegionIfOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 OperandRange
-RegionIfOp::getSuccessorEntryOperands(std::optional<unsigned> index) {
+RegionIfOp::getEntrySuccessorOperands(std::optional<unsigned> index) {
   assert(index && *index < 2 && "invalid region index");
   return getOperands();
 }
 
 void RegionIfOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor> &regions) {
+    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor> &regions) {
   // We always branch to the join region.
   if (index.has_value()) {
     if (index.value() < 2)
@@ -956,7 +965,6 @@ void RegionIfOp::getRegionInvocationBounds(
 //===----------------------------------------------------------------------===//
 
 void AnyCondOp::getSuccessorRegions(std::optional<unsigned> index,
-                                    ArrayRef<Attribute> operands,
                                     SmallVectorImpl<RegionSuccessor> &regions) {
   // The parent op branches into the only region, and the region branches back
   // to the parent op.
@@ -970,6 +978,37 @@ void AnyCondOp::getRegionInvocationBounds(
     ArrayRef<Attribute> operands,
     SmallVectorImpl<InvocationBounds> &invocationBounds) {
   invocationBounds.emplace_back(1, 1);
+}
+
+//===----------------------------------------------------------------------===//
+// LoopBlockOp
+//===----------------------------------------------------------------------===//
+
+void LoopBlockOp::getSuccessorRegions(
+    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor> &regions) {
+  regions.emplace_back(&getBody(), getBody().getArguments());
+  if (!index)
+    return;
+
+  regions.emplace_back((*this)->getResults());
+}
+
+OperandRange
+LoopBlockOp::getEntrySuccessorOperands(std::optional<unsigned> index) {
+  assert(index == 0);
+  return getInitMutable();
+}
+
+//===----------------------------------------------------------------------===//
+// LoopBlockTerminatorOp
+//===----------------------------------------------------------------------===//
+
+MutableOperandRange LoopBlockTerminatorOp::getMutableSuccessorOperands(
+    std::optional<unsigned> index) {
+  assert(!index || index == 0);
+  if (!index)
+    return getExitArgMutable();
+  return getNextIterArgMutable();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1148,6 +1187,54 @@ static ParseResult customParseProperties(OpAsmParser &parser,
   prop.label = std::make_shared<std::string>(std::move(label));
   return success();
 }
+static LogicalResult
+setPropertiesFromAttribute(VersionedProperties &prop, Attribute attr,
+                           InFlightDiagnostic *diagnostic) {
+  DictionaryAttr dict = dyn_cast<DictionaryAttr>(attr);
+  if (!dict) {
+    if (diagnostic)
+      *diagnostic << "expected DictionaryAttr to set VersionedProperties";
+    return failure();
+  }
+  auto value1Attr = dict.getAs<IntegerAttr>("value1");
+  if (!value1Attr) {
+    if (diagnostic)
+      *diagnostic << "expected IntegerAttr for key `value1`";
+    return failure();
+  }
+  auto value2Attr = dict.getAs<IntegerAttr>("value2");
+  if (!value2Attr) {
+    if (diagnostic)
+      *diagnostic << "expected IntegerAttr for key `value2`";
+    return failure();
+  }
+
+  prop.value1 = value1Attr.getValue().getSExtValue();
+  prop.value2 = value2Attr.getValue().getSExtValue();
+  return success();
+}
+static DictionaryAttr
+getPropertiesAsAttribute(MLIRContext *ctx, const VersionedProperties &prop) {
+  SmallVector<NamedAttribute> attrs;
+  Builder b{ctx};
+  attrs.push_back(b.getNamedAttr("value1", b.getI32IntegerAttr(prop.value1)));
+  attrs.push_back(b.getNamedAttr("value2", b.getI32IntegerAttr(prop.value2)));
+  return b.getDictionaryAttr(attrs);
+}
+static llvm::hash_code computeHash(const VersionedProperties &prop) {
+  return llvm::hash_combine(prop.value1, prop.value2);
+}
+static void customPrintProperties(OpAsmPrinter &p,
+                                  const VersionedProperties &prop) {
+  p << prop.value1 << " | " << prop.value2;
+}
+static ParseResult customParseProperties(OpAsmParser &parser,
+                                         VersionedProperties &prop) {
+  if (parser.parseInteger(prop.value1) || parser.parseVerticalBar() ||
+      parser.parseInteger(prop.value2))
+    return failure();
+  return success();
+}
 
 static bool parseUsingPropertyInCustom(OpAsmParser &parser, int64_t value[3]) {
   return parser.parseLSquare() || parser.parseInteger(value[0]) ||
@@ -1205,9 +1292,28 @@ Operation::operand_range TestCallAndStoreOp::getArgOperands() {
   return getCalleeOperands();
 }
 
+MutableOperandRange TestCallAndStoreOp::getArgOperandsMutable() {
+  return getCalleeOperandsMutable();
+}
+
+CallInterfaceCallable TestCallOnDeviceOp::getCallableForCallee() {
+  return getCallee();
+}
+
+void TestCallOnDeviceOp::setCalleeFromCallable(CallInterfaceCallable callee) {
+  setCalleeAttr(callee.get<SymbolRefAttr>());
+}
+
+Operation::operand_range TestCallOnDeviceOp::getArgOperands() {
+  return getForwardedOperands();
+}
+
+MutableOperandRange TestCallOnDeviceOp::getArgOperandsMutable() {
+  return getForwardedOperandsMutable();
+}
+
 void TestStoreWithARegion::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor> &regions) {
+    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor> &regions) {
   if (!index) {
     regions.emplace_back(&getBody(), getBody().front().getArguments());
   } else {
@@ -1215,9 +1321,67 @@ void TestStoreWithARegion::getSuccessorRegions(
   }
 }
 
-MutableOperandRange TestStoreWithARegionTerminator::getMutableSuccessorOperands(
-    std::optional<unsigned> index) {
-  return MutableOperandRange(getOperation());
+LogicalResult
+TestVersionedOpA::readProperties(::mlir::DialectBytecodeReader &reader,
+                                 ::mlir::OperationState &state) {
+  auto &prop = state.getOrAddProperties<Properties>();
+  if (::mlir::failed(reader.readAttribute(prop.dims)))
+    return ::mlir::failure();
+
+  // Check if we have a version. If not, assume we are parsing the current
+  // version.
+  auto maybeVersion = reader.getDialectVersion("test");
+  if (succeeded(maybeVersion)) {
+    // If version is less than 2.0, there is no additional attribute to parse.
+    // We can materialize missing properties post parsing before verification.
+    const auto *version =
+        reinterpret_cast<const TestDialectVersion *>(*maybeVersion);
+    if ((version->major_ < 2)) {
+      return success();
+    }
+  }
+
+  if (::mlir::failed(reader.readAttribute(prop.modifier)))
+    return ::mlir::failure();
+  return ::mlir::success();
+}
+
+void TestVersionedOpA::writeProperties(::mlir::DialectBytecodeWriter &writer) {
+  auto &prop = getProperties();
+  writer.writeAttribute(prop.dims);
+  writer.writeAttribute(prop.modifier);
+}
+
+::mlir::LogicalResult TestOpWithVersionedProperties::readFromMlirBytecode(
+    ::mlir::DialectBytecodeReader &reader, test::VersionedProperties &prop) {
+  uint64_t value1, value2 = 0;
+  if (failed(reader.readVarInt(value1)))
+    return failure();
+
+  // Check if we have a version. If not, assume we are parsing the current
+  // version.
+  auto maybeVersion = reader.getDialectVersion("test");
+  bool needToParseAnotherInt = true;
+  if (succeeded(maybeVersion)) {
+    // If version is less than 2.0, there is no additional attribute to parse.
+    // We can materialize missing properties post parsing before verification.
+    const auto *version =
+        reinterpret_cast<const TestDialectVersion *>(*maybeVersion);
+    if ((version->major_ < 2))
+      needToParseAnotherInt = false;
+  }
+  if (needToParseAnotherInt && failed(reader.readVarInt(value2)))
+    return failure();
+
+  prop.value1 = value1;
+  prop.value2 = value2;
+  return success();
+}
+void TestOpWithVersionedProperties::writeToMlirBytecode(
+    ::mlir::DialectBytecodeWriter &writer,
+    const test::VersionedProperties &prop) {
+  writer.writeVarInt(prop.value1);
+  writer.writeVarInt(prop.value2);
 }
 
 #include "TestOpEnums.cpp.inc"

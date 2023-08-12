@@ -1157,12 +1157,16 @@ Parser::DeclGroupPtrTy Parser::ParseDeclOrFunctionDefInternal(
     Decl *TheDecl = Actions.ParsedFreeStandingDeclSpec(
         getCurScope(), AS_none, DS, ParsedAttributesView::none(), AnonRecord);
     DS.complete(TheDecl);
+    Actions.ActOnDefinedDeclarationSpecifier(TheDecl);
     if (AnonRecord) {
       Decl* decls[] = {AnonRecord, TheDecl};
       return Actions.BuildDeclaratorGroup(decls);
     }
     return Actions.ConvertDeclToDeclGroup(TheDecl);
   }
+
+  if (DS.hasTagDefinition())
+    Actions.ActOnDefinedDeclarationSpecifier(DS.getRepAsDecl());
 
   // ObjC2 allows prefix attributes on class interfaces and protocols.
   // FIXME: This still needs better diagnostics. We should only accept
@@ -2107,7 +2111,7 @@ bool Parser::TryAnnotateTypeOrScopeTokenAfterScopeSpec(
     }
 
     if (!getLangOpts().CPlusPlus) {
-      // If we're in C, the only place we can have :: tokens is C2x
+      // If we're in C, the only place we can have :: tokens is C23
       // attribute which is parsed elsewhere. If the identifier is not a type,
       // then it can't be scope either, just early exit.
       return false;

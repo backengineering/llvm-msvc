@@ -291,6 +291,18 @@ struct LinalgPaddingOptions {
     transposePaddings.assign(tp.begin(), tp.end());
     return *this;
   }
+  enum class CopyBackOp : int8_t {
+    None = 0,
+    BufferizationCopyTensor = 1,
+    LinalgCopy = 2
+  };
+  /// The op to be used for copying the padded result to the original
+  /// destination tensor.
+  CopyBackOp copyBackOp = CopyBackOp::BufferizationCopyTensor;
+  LinalgPaddingOptions &setCopyBackOp(CopyBackOp op) {
+    copyBackOp = op;
+    return *this;
+  }
 };
 
 /// Callback function type used to perform the allocation for the promoted
@@ -473,14 +485,13 @@ void peelLoops(RewriterBase &rewriter, ArrayRef<scf::ForOp> loops);
 /// * The unpadded results (extracted slice of the cloned operation) are
 ///   returned via `replacements`.
 /// * The tensor::PadOps are returned via `padOps`.
-/// * If `copyBack` is set to "true", the unpadded result is copied back to the
-///   original destination tensor.
+/// * "options.copyBackOp" specifies the op type for copying back the unpadded
+///   result to the original destination tensor.
 LogicalResult rewriteAsPaddedOp(RewriterBase &rewriter, LinalgOp opToPad,
                                 const LinalgPaddingOptions &options,
                                 LinalgOp &paddedOp,
                                 SmallVector<Value> &replacements,
-                                SmallVector<tensor::PadOp> &padOps,
-                                bool copyBack);
+                                SmallVector<tensor::PadOp> &padOps);
 
 namespace detail {
 
@@ -1422,9 +1433,6 @@ void populateConvertConv2DToImg2ColPatterns(RewritePatternSet &patterns);
 /// of all tensor::PadOp vectorization patterns by a certain value.
 void populatePadOpVectorizationPatterns(RewritePatternSet &patterns,
                                         PatternBenefit baseBenefit = 1);
-
-void populateExtractOpVectorizationPatterns(RewritePatternSet &patterns,
-                                            PatternBenefit baseBenefit = 1);
 
 /// Populate patterns for splitting a `LinalgOp` with multiple statements within
 /// its payload into multiple `GenericOp` that have a single statement.

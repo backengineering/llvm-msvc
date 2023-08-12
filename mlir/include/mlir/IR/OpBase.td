@@ -2178,7 +2178,7 @@ def SameVariadicOperandSize : GenInternalOpTrait<"SameVariadicOperandSize">;
 // to have the same array size.
 def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
 
-// Uses an attribute named `operand_segment_sizes` to specify how many actual
+// Uses an attribute named `operandSegmentSizes` to specify how many actual
 // operand each ODS-declared operand (variadic or not) corresponds to.
 // This trait is used for ops that have multiple variadic operands but do
 // not know statically their size relationship. The attribute must be a 1D
@@ -2188,7 +2188,7 @@ def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
 def AttrSizedOperandSegments :
   NativeOpTrait<"AttrSizedOperandSegments">, StructuralOpTrait;
 // Similar to AttrSizedOperandSegments, but used for results. The attribute
-// should be named as `result_segment_sizes`.
+// should be named as `resultSegmentSizes`.
 def AttrSizedResultSegments  :
   NativeOpTrait<"AttrSizedResultSegments">, StructuralOpTrait;
 
@@ -2575,6 +2575,10 @@ class Op<Dialect dialect, string mnemonic, list<Trait> props = []> {
 
   // Whether this op has a folder.
   bit hasFolder = 0;
+
+  // Whether to let ops implement their custom `readProperties` and
+  // `writeProperties` methods to emit bytecode.
+  bit useCustomPropertiesEncoding = 0;
 
   // Op traits.
   // Note: The list of traits will be uniqued by ODS.

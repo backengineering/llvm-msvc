@@ -2147,7 +2147,7 @@ def fir_DoLoopOp : region_Op<"do_loop",
 }
 
 def fir_IfOp : region_Op<"if", [DeclareOpInterfaceMethods<RegionBranchOpInterface, [
-    "getRegionInvocationBounds"]>, RecursiveMemoryEffects,
+    "getRegionInvocationBounds", "getEntrySuccessorRegions"]>, RecursiveMemoryEffects,
     NoRegionArguments]> {
   let summary = "if-then-else conditional operation";
   let description = [{
@@ -2345,6 +2345,12 @@ def fir_CallOp : fir_Op<"call",
       if ((*this)->getAttrOfType<mlir::SymbolRefAttr>(getCalleeAttrName()))
         return {arg_operand_begin(), arg_operand_end()};
       return {arg_operand_begin() + 1, arg_operand_end()};
+    }
+
+    mlir::MutableOperandRange getArgOperandsMutable() {
+      if ((*this)->getAttrOfType<mlir::SymbolRefAttr>(getCalleeAttrName()))
+        return getArgsMutable();
+      return mlir::MutableOperandRange(*this, 1, getArgs().size() - 1);
     }
 
     operand_iterator arg_operand_begin() { return operand_begin(); }

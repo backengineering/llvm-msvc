@@ -64,13 +64,6 @@ VSCode::VSCode()
 
 VSCode::~VSCode() = default;
 
-int64_t VSCode::GetLineForPC(int64_t sourceReference, lldb::addr_t pc) const {
-  auto pos = source_map.find(sourceReference);
-  if (pos != source_map.end())
-    return pos->second.GetLineForPC(pc);
-  return 0;
-}
-
 ExceptionBreakpoint *VSCode::GetExceptionBreakpoint(const std::string &filter) {
   for (auto &bp : exception_breakpoints) {
     if (bp.filter == filter)
@@ -96,12 +89,6 @@ void VSCode::SendJSON(const std::string &json_str) {
   output.write_full(llvm::utostr(json_str.size()));
   output.write_full("\r\n\r\n");
   output.write_full(json_str);
-
-  if (log) {
-    *log << "<-- " << std::endl
-         << "Content-Length: " << json_str.size() << "\r\n\r\n"
-         << json_str << std::endl;
-  }
 }
 
 // Serialize the JSON value into a string and send the JSON packet to
@@ -112,7 +99,14 @@ void VSCode::SendJSON(const llvm::json::Value &json) {
   strm << json;
   static std::mutex mutex;
   std::lock_guard<std::mutex> locker(mutex);
-  SendJSON(strm.str());
+  std::string json_str = strm.str();
+  SendJSON(json_str);
+
+  if (log) {
+    *log << "<-- " << std::endl
+         << "Content-Length: " << json_str.size() << "\r\n\r\n"
+         << llvm::formatv("{0:2}", json).str() << std::endl;
+  }
 }
 
 // Read a JSON packet from the "in" stream.
@@ -136,11 +130,8 @@ std::string VSCode::ReadJSON() {
   if (!input.read_full(log.get(), length, json_str))
     return json_str;
 
-  if (log) {
-    *log << "--> " << std::endl
-         << "Content-Length: " << length << "\r\n\r\n"
-         << json_str << std::endl;
-  }
+  if (log)
+    *log << "--> " << std::endl << "Content-Length: " << length << "\r\n\r\n";
 
   return json_str;
 }
@@ -341,11 +332,6 @@ VSCode::SendFormattedOutput(OutputType o, const char *format, ...) {
       o, llvm::StringRef(buffer, std::min<int>(actual_length, sizeof(buffer))));
 }
 
-int64_t VSCode::GetNextSourceReference() {
-  static int64_t ref = 0;
-  return ++ref;
-}
-
 ExceptionBreakpoint *
 VSCode::GetExceptionBPFromStopReason(lldb::SBThread &thread) {
   const auto num = thread.GetStopReasonDataCount();
@@ -535,12 +521,18 @@ PacketStatus VSCode::GetNextObject(llvm::json::Object &object) {
     }
     return PacketStatus::JSONMalformed;
   }
-  object = *json_value->getAsObject();
-  if (!json_value->getAsObject()) {
+
+  if (log) {
+    *log << llvm::formatv("{0:2}", *json_value).str() << std::endl;
+  }
+
+  llvm::json::Object *object_ptr = json_value->getAsObject();
+  if (!object_ptr) {
     if (log)
       *log << "error: json packet isn't a object" << std::endl;
     return PacketStatus::JSONNotObject;
   }
+  object = *object_ptr;
   return PacketStatus::Success;
 }
 

@@ -754,6 +754,8 @@ SITargetLowering::SITargetLowering(const TargetMachine &TM,
                       MVT::i8, MVT::i128},
                      Custom);
 
+  setOperationAction(ISD::STACKSAVE, MVT::Other, Custom);
+
   setTargetDAGCombine({ISD::ADD,
                        ISD::UADDO_CARRY,
                        ISD::SUB,
@@ -1414,7 +1416,8 @@ bool SITargetLowering::isLegalAddressingMode(const DataLayout &DL,
   if (AS == AMDGPUAS::PRIVATE_ADDRESS)
     return isLegalMUBUFAddressingMode(AM);
 
-  if (AS == AMDGPUAS::LOCAL_ADDRESS || AS == AMDGPUAS::REGION_ADDRESS) {
+  if (AS == AMDGPUAS::LOCAL_ADDRESS ||
+      (AS == AMDGPUAS::REGION_ADDRESS && Subtarget->hasGDS())) {
     // Basic, single offset DS instructions allow a 16-bit unsigned immediate
     // field.
     // XXX - If doing a 4-byte aligned 8-byte type access, we effectively have
@@ -3482,22 +3485,21 @@ SDValue SITargetLowering::lowerDYNAMIC_STACKALLOCImpl(
   SDValue SP = DAG.getCopyFromReg(Chain, dl, SPReg, VT);
   Chain = SP.getValue(1);
   MaybeAlign Alignment = cast<ConstantSDNode>(Tmp3)->getMaybeAlignValue();
-  const GCNSubtarget &ST = MF.getSubtarget<GCNSubtarget>();
-  const TargetFrameLowering *TFL = ST.getFrameLowering();
+  const TargetFrameLowering *TFL = Subtarget->getFrameLowering();
   unsigned Opc =
     TFL->getStackGrowthDirection() == TargetFrameLowering::StackGrowsUp ?
     ISD::ADD : ISD::SUB;
 
   SDValue ScaledSize = DAG.getNode(
       ISD::SHL, dl, VT, Size,
-      DAG.getConstant(ST.getWavefrontSizeLog2(), dl, MVT::i32));
+      DAG.getConstant(Subtarget->getWavefrontSizeLog2(), dl, MVT::i32));
 
   Align StackAlign = TFL->getStackAlign();
   Tmp1 = DAG.getNode(Opc, dl, VT, SP, ScaledSize); // Value
   if (Alignment && *Alignment > StackAlign) {
     Tmp1 = DAG.getNode(ISD::AND, dl, VT, Tmp1,
                        DAG.getConstant(-(uint64_t)Alignment->value()
-                                           << ST.getWavefrontSizeLog2(),
+                                           << Subtarget->getWavefrontSizeLog2(),
                                        dl, VT));
   }
 
@@ -3519,6 +3521,23 @@ SDValue SITargetLowering::LowerDYNAMIC_STACKALLOC(SDValue Op,
       return lowerDYNAMIC_STACKALLOCImpl(Op, DAG); // Use "generic" expansion.
 
   return AMDGPUTargetLowering::LowerDYNAMIC_STACKALLOC(Op, DAG);
+}
+
+SDValue SITargetLowering::LowerSTACKSAVE(SDValue Op, SelectionDAG &DAG) const {
+  if (Op.getValueType() != MVT::i32)
+    return Op; // Defer to cannot select error.
+
+  Register SP = getStackPointerRegisterToSaveRestore();
+  SDLoc SL(Op);
+
+  SDValue CopyFromSP = DAG.getCopyFromReg(Op->getOperand(0), SL, SP, MVT::i32);
+
+  // Convert from wave uniform to swizzled vector address. This should protect
+  // from any edge cases where the stacksave result isn't directly used with
+  // stackrestore.
+  SDValue VectorAddress =
+      DAG.getNode(AMDGPUISD::WAVE_ADDRESS, SL, MVT::i32, CopyFromSP);
+  return DAG.getMergeValues({VectorAddress, CopyFromSP.getValue(1)}, SL);
 }
 
 Register SITargetLowering::getRegisterByName(const char* RegName, LLT VT,
@@ -5028,6 +5047,8 @@ SDValue SITargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return lowerXMUL_LOHI(Op, DAG);
   case ISD::DYNAMIC_STACKALLOC:
     return LowerDYNAMIC_STACKALLOC(Op, DAG);
+  case ISD::STACKSAVE:
+    return LowerSTACKSAVE(Op, DAG);
   }
   return SDValue();
 }
@@ -10428,13 +10449,34 @@ calculateSrcByte(const SDValue Op, uint64_t DestByte, uint64_t SrcIndex = 0,
   if (Depth >= 6)
     return std::nullopt;
 
+  auto ValueSize = Op.getValueSizeInBits();
+  if (ValueSize != 8 && ValueSize != 16 && ValueSize != 32)
+    return std::nullopt;
+
   switch (Op->getOpcode()) {
   case ISD::TRUNCATE: {
-    if (Op->getOperand(0).getScalarValueSizeInBits() != 32)
+    return calculateSrcByte(Op->getOperand(0), DestByte, SrcIndex, Depth + 1);
+  }
+
+  case ISD::SIGN_EXTEND:
+  case ISD::ZERO_EXTEND:
+  case ISD::SIGN_EXTEND_INREG: {
+    SDValue NarrowOp = Op->getOperand(0);
+    auto NarrowVT = NarrowOp.getValueType();
+    if (Op->getOpcode() == ISD::SIGN_EXTEND_INREG) {
+      auto *VTSign = cast<VTSDNode>(Op->getOperand(1));
+      NarrowVT = VTSign->getVT();
+    }
+    if (!NarrowVT.isByteSized())
+      return std::nullopt;
+    uint64_t NarrowByteWidth = NarrowVT.getStoreSize();
+
+    if (SrcIndex >= NarrowByteWidth)
       return std::nullopt;
     return calculateSrcByte(Op->getOperand(0), DestByte, SrcIndex, Depth + 1);
   }
 
+  case ISD::SRA:
   case ISD::SRL: {
     auto ShiftOp = dyn_cast<ConstantSDNode>(Op->getOperand(1));
     if (!ShiftOp)
@@ -10451,9 +10493,6 @@ calculateSrcByte(const SDValue Op, uint64_t DestByte, uint64_t SrcIndex = 0,
   }
 
   default: {
-    if (Op.getScalarValueSizeInBits() != 32)
-      return std::nullopt;
-
     return ByteProvider<SDValue>::getSrc(Op, DestByte, SrcIndex);
   }
   }
@@ -10477,7 +10516,8 @@ calculateByteProvider(const SDValue &Op, unsigned Index, unsigned Depth,
   unsigned BitWidth = Op.getScalarValueSizeInBits();
   if (BitWidth % 8 != 0)
     return std::nullopt;
-  assert(Index < BitWidth / 8 && "invalid index requested");
+  if (Index > BitWidth / 8 - 1)
+    return std::nullopt;
 
   switch (Op.getOpcode()) {
   case ISD::OR: {
@@ -10520,6 +10560,7 @@ calculateByteProvider(const SDValue &Op, unsigned Index, unsigned Depth,
     return calculateSrcByte(Op->getOperand(0), StartingIndex, Index);
   }
 
+  case ISD::SRA:
   case ISD::SRL: {
     auto ShiftOp = dyn_cast<ConstantSDNode>(Op->getOperand(1));
     if (!ShiftOp)
@@ -10566,9 +10607,18 @@ calculateByteProvider(const SDValue &Op, unsigned Index, unsigned Depth,
   }
   case ISD::ANY_EXTEND:
   case ISD::SIGN_EXTEND:
-  case ISD::ZERO_EXTEND: {
+  case ISD::ZERO_EXTEND:
+  case ISD::SIGN_EXTEND_INREG:
+  case ISD::AssertZext:
+  case ISD::AssertSext: {
     SDValue NarrowOp = Op->getOperand(0);
-    unsigned NarrowBitWidth = NarrowOp.getScalarValueSizeInBits();
+    unsigned NarrowBitWidth = NarrowOp.getValueSizeInBits();
+    if (Op->getOpcode() == ISD::SIGN_EXTEND_INREG ||
+        Op->getOpcode() == ISD::AssertZext ||
+        Op->getOpcode() == ISD::AssertSext) {
+      auto *VTSign = cast<VTSDNode>(Op->getOperand(1));
+      NarrowBitWidth = VTSign->getVT().getSizeInBits();
+    }
     if (NarrowBitWidth % 8 != 0)
       return std::nullopt;
     uint64_t NarrowByteWidth = NarrowBitWidth / 8;
@@ -10582,15 +10632,19 @@ calculateByteProvider(const SDValue &Op, unsigned Index, unsigned Depth,
   }
 
   case ISD::TRUNCATE: {
-    unsigned NarrowBitWidth = Op.getScalarValueSizeInBits();
-    if (NarrowBitWidth % 8 != 0)
-      return std::nullopt;
-    uint64_t NarrowByteWidth = NarrowBitWidth / 8;
+    uint64_t NarrowByteWidth = BitWidth / 8;
 
     if (NarrowByteWidth >= Index) {
       return calculateByteProvider(Op.getOperand(0), Index, Depth + 1,
                                    StartingIndex);
     }
+
+    return std::nullopt;
+  }
+
+  case ISD::CopyFromReg: {
+    if (BitWidth / 8 > Index)
+      return calculateSrcByte(Op, StartingIndex, Index);
 
     return std::nullopt;
   }
@@ -10622,6 +10676,23 @@ calculateByteProvider(const SDValue &Op, unsigned Index, unsigned Depth,
   case ISD::BSWAP:
     return calculateByteProvider(Op->getOperand(0), BitWidth / 8 - Index - 1,
                                  Depth + 1, StartingIndex);
+
+  case ISD::EXTRACT_VECTOR_ELT: {
+    auto IdxOp = dyn_cast<ConstantSDNode>(Op->getOperand(1));
+    if (!IdxOp)
+      return std::nullopt;
+    auto VecIdx = IdxOp->getZExtValue();
+    auto ScalarSize = Op.getScalarValueSizeInBits();
+    if (ScalarSize != 32) {
+      if ((VecIdx + 1) * ScalarSize > 32)
+        return std::nullopt;
+      Index = ScalarSize == 8 ? VecIdx : VecIdx * 2 + Index;
+    }
+
+    return calculateSrcByte(ScalarSize == 32 ? Op : Op.getOperand(0),
+                            StartingIndex, Index);
+  }
+
   default: {
     return std::nullopt;
   }
@@ -10631,7 +10702,8 @@ calculateByteProvider(const SDValue &Op, unsigned Index, unsigned Depth,
 }
 
 // Returns true if the Operand is a scalar and is 16 bits
-static bool is16BitScalarOp(SDValue &Operand) {
+static bool isExtendedFrom16Bits(SDValue &Operand) {
+
   switch (Operand.getOpcode()) {
   case ISD::ANY_EXTEND:
   case ISD::SIGN_EXTEND:
@@ -10647,7 +10719,7 @@ static bool is16BitScalarOp(SDValue &Operand) {
       auto MemVT = L->getMemoryVT();
       return !MemVT.isVector() && MemVT.getSizeInBits() == 16;
     }
-    return false;
+    return L->getMemoryVT().getSizeInBits() == 16;
   }
   default:
     return false;
@@ -10675,29 +10747,29 @@ static bool addresses16Bits(int Mask) {
 // Do not lower into v_perm if the operands are actually 16 bit
 // and the selected bits (based on PermMask) correspond with two
 // easily addressable 16 bit operands.
-static bool hasEightBitAccesses(uint64_t PermMask, SDValue &Op,
+static bool hasNon16BitAccesses(uint64_t PermMask, SDValue &Op,
                                 SDValue &OtherOp) {
   int Low16 = PermMask & 0xffff;
   int Hi16 = (PermMask & 0xffff0000) >> 16;
 
-  // ByteProvider only accepts 32 bit operands
-  assert(Op.getValueType().getSizeInBits() == 32);
-  assert(OtherOp.getValueType().getSizeInBits() == 32);
+  assert(Op.getValueType().isByteSized());
+  assert(OtherOp.getValueType().isByteSized());
 
-  auto OpIs16Bit = is16BitScalarOp(Op);
-  auto OtherOpIs16Bit = is16BitScalarOp(Op);
+  auto TempOp = peekThroughBitcasts(Op);
+  auto TempOtherOp = peekThroughBitcasts(OtherOp);
 
-  // If there is a size mismatch, then we must use masking on at least one
-  // operand
-  if (OpIs16Bit != OtherOpIs16Bit)
+  auto OpIs16Bit =
+      TempOtherOp.getValueSizeInBits() == 16 || isExtendedFrom16Bits(TempOp);
+  if (!OpIs16Bit)
     return true;
 
-  // If both operands are 16 bit, return whether or not we cleanly address both
-  if (is16BitScalarOp(Op) && is16BitScalarOp(OtherOp))
-    return !addresses16Bits(Low16) || !addresses16Bits(Hi16);
+  auto OtherOpIs16Bit = TempOtherOp.getValueSizeInBits() == 16 ||
+                        isExtendedFrom16Bits(TempOtherOp);
+  if (!OtherOpIs16Bit)
+    return true;
 
-  // Both are 32 bit operands
-  return true;
+  // Do we cleanly address both
+  return !addresses16Bits(Low16) || !addresses16Bits(Hi16);
 }
 
 SDValue SITargetLowering::performOrCombine(SDNode *N,
@@ -10832,7 +10904,7 @@ SDValue SITargetLowering::performOrCombine(SDNode *N,
 
       int FirstSrc = 0;
       std::optional<int> SecondSrc;
-      uint64_t permMask = 0x00000000;
+      uint64_t PermMask = 0x00000000;
       for (size_t i = 0; i < PermNodes.size(); i++) {
         auto PermOp = PermNodes[i];
         // Since the mask is applied to Src1:Src2, Src1 bytes must be offset
@@ -10843,15 +10915,15 @@ SDValue SITargetLowering::performOrCombine(SDNode *N,
           if (SecondSrc.has_value())
             if (!PermOp.hasSameSrc(PermNodes[*SecondSrc]))
               return SDValue();
+
           // Set the index of the second distinct Src node
           SecondSrc = i;
-          assert(PermNodes[*SecondSrc].Src->getValueType().getSizeInBits() ==
-                 32);
+          assert(!(PermNodes[*SecondSrc].Src->getValueSizeInBits() % 8));
           SrcByteAdjust = 0;
         }
         assert(PermOp.SrcOffset + SrcByteAdjust < 8);
         assert(!DAG.getDataLayout().isBigEndian());
-        permMask |= (PermOp.SrcOffset + SrcByteAdjust) << (i * 8);
+        PermMask |= (PermOp.SrcOffset + SrcByteAdjust) << (i * 8);
       }
 
       SDValue Op = *PermNodes[FirstSrc].Src;
@@ -10859,22 +10931,41 @@ SDValue SITargetLowering::performOrCombine(SDNode *N,
                                               : *PermNodes[FirstSrc].Src;
 
       // Check that we are not just extracting the bytes in order from an op
-      if (Op == OtherOp) {
-        int Low16 = permMask & 0xffff;
-        int Hi16 = (permMask & 0xffff0000) >> 16;
+      if (Op == OtherOp && Op.getValueSizeInBits() == 32) {
+        int Low16 = PermMask & 0xffff;
+        int Hi16 = (PermMask & 0xffff0000) >> 16;
 
         bool WellFormedLow = (Low16 == 0x0504) || (Low16 == 0x0100);
         bool WellFormedHi = (Hi16 == 0x0706) || (Hi16 == 0x0302);
 
         // The perm op would really just produce Op. So combine into Op
         if (WellFormedLow && WellFormedHi)
-          return Op;
+          return DAG.getBitcast(MVT::getIntegerVT(32), Op);
       }
 
-      if (hasEightBitAccesses(permMask, Op, OtherOp)) {
+      if (hasNon16BitAccesses(PermMask, Op, OtherOp)) {
         SDLoc DL(N);
+        assert(Op.getValueType().isByteSized() &&
+               OtherOp.getValueType().isByteSized());
+
+        // Handle potential vectors
+        Op = DAG.getBitcast(MVT::getIntegerVT(Op.getValueSizeInBits()), Op);
+        OtherOp = DAG.getBitcast(
+              MVT::getIntegerVT(OtherOp.getValueSizeInBits()), OtherOp);
+
+        if (Op.getValueSizeInBits() < 32)
+          // If the ultimate src is less than 32 bits, then we will only be
+          // using bytes 0: Op.getValueSizeInBytes() - 1 in the or.
+          // CalculateByteProvider would not have returned Op as source if we
+          // used a byte that is outside its ValueType. Thus, we are free to
+          // ANY_EXTEND as the extended bits are dont-cares.
+          Op = DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i32, Op);
+
+        if (OtherOp.getValueSizeInBits() < 32)
+          OtherOp = DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i32, OtherOp);
+
         return DAG.getNode(AMDGPUISD::PERM, DL, MVT::i32, Op, OtherOp,
-                           DAG.getConstant(permMask, DL, MVT::i32));
+                           DAG.getConstant(PermMask, DL, MVT::i32));
       }
     }
   }
@@ -11303,6 +11394,7 @@ bool SITargetLowering::isCanonicalized(Register Reg, MachineFunction &MF,
         return false;
     return true;
   case AMDGPU::G_INTRINSIC:
+  case AMDGPU::G_INTRINSIC_CONVERGENT:
     switch (cast<GIntrinsic>(MI)->getIntrinsicID()) {
     case Intrinsic::amdgcn_fmul_legacy:
     case Intrinsic::amdgcn_fmad_ftz:
@@ -13736,7 +13828,8 @@ void SITargetLowering::computeKnownBitsForTargetInstr(
     const MachineRegisterInfo &MRI, unsigned Depth) const {
   const MachineInstr *MI = MRI.getVRegDef(R);
   switch (MI->getOpcode()) {
-  case AMDGPU::G_INTRINSIC: {
+  case AMDGPU::G_INTRINSIC:
+  case AMDGPU::G_INTRINSIC_CONVERGENT: {
     switch (cast<GIntrinsic>(MI)->getIntrinsicID()) {
     case Intrinsic::amdgcn_workitem_id_x:
       knownBitsForWorkitemID(*getSubtarget(), KB, Known, 0);
@@ -13810,7 +13903,6 @@ Align SITargetLowering::computeKnownAlignForTargetInstr(
     AttributeList Attrs = Intrinsic::getAttributes(Ctx, IID);
     if (MaybeAlign RetAlign = Attrs.getRetAlignment())
       return *RetAlign;
-    return Align(1);
   }
   return Align(1);
 }

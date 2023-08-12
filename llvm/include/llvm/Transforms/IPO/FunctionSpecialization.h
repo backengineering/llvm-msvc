@@ -105,15 +105,47 @@ struct Spec {
   SpecSig Sig;
 
   // Profitability of the specialization.
-  Cost Score;
+  unsigned Score;
 
   // List of call sites, matching this specialization.
   SmallVector<CallBase *> CallSites;
 
-  Spec(Function *F, const SpecSig &S, Cost Score)
+  Spec(Function *F, const SpecSig &S, unsigned Score)
       : F(F), Sig(S), Score(Score) {}
-  Spec(Function *F, const SpecSig &&S, Cost Score)
+  Spec(Function *F, const SpecSig &&S, unsigned Score)
       : F(F), Sig(S), Score(Score) {}
+};
+
+struct Bonus {
+  unsigned CodeSize = 0;
+  unsigned Latency = 0;
+
+  Bonus() = default;
+
+  Bonus(Cost CodeSize, Cost Latency) {
+    int64_t Sz = *CodeSize.getValue();
+    int64_t Ltc = *Latency.getValue();
+
+    assert(Sz >= 0 && Ltc >= 0 && "CodeSize and Latency cannot be negative");
+    // It is safe to down cast since we know the arguments
+    // cannot be negative and Cost is of type int64_t.
+    this->CodeSize = static_cast<unsigned>(Sz);
+    this->Latency = static_cast<unsigned>(Ltc);
+  }
+
+  Bonus &operator+=(const Bonus RHS) {
+    CodeSize += RHS.CodeSize;
+    Latency += RHS.Latency;
+    return *this;
+  }
+
+  Bonus operator+(const Bonus RHS) const {
+    return Bonus(CodeSize + RHS.CodeSize, Latency + RHS.Latency);
+  }
+
+  bool operator==(const Bonus RHS) const {
+    return CodeSize == RHS.CodeSize && Latency == RHS.Latency;
+  }
 };
 
 class InstCostVisitor : public InstVisitor<InstCostVisitor, Constant *> {
@@ -123,6 +155,15 @@ class InstCostVisitor : public InstVisitor<InstCostVisitor, Constant *> {
   SCCPSolver &Solver;
 
   ConstMap KnownConstants;
+  // Basic blocks known to be unreachable after constant propagation.
+  DenseSet<BasicBlock *> DeadBlocks;
+  // PHI nodes we have visited before.
+  DenseSet<Instruction *> VisitedPHIs;
+  // PHI nodes we have visited once without successfully constant folding them.
+  // Once the InstCostVisitor has processed all the specialization arguments,
+  // it should be possible to determine whether those PHIs can be folded
+  // (some of their incoming values may have become constant or dead).
+  SmallVector<Instruction *> PendingPHIs;
 
   ConstMap::iterator LastVisited;
 
@@ -131,15 +172,29 @@ public:
                   TargetTransformInfo &TTI, SCCPSolver &Solver)
       : DL(DL), BFI(BFI), TTI(TTI), Solver(Solver) {}
 
-  Cost getUserBonus(Instruction *User, Value *Use, Constant *C);
+  bool isBlockExecutable(BasicBlock *BB) {
+    return Solver.isBlockExecutable(BB) && !DeadBlocks.contains(BB);
+  }
+
+  Bonus getSpecializationBonus(Argument *A, Constant *C);
+
+  Bonus getBonusFromPendingPHIs();
 
 private:
   friend class InstVisitor<InstCostVisitor, Constant *>;
 
+  static bool canEliminateSuccessor(BasicBlock *BB, BasicBlock *Succ,
+                                    DenseSet<BasicBlock *> &DeadBlocks);
+
+  Bonus getUserBonus(Instruction *User, Value *Use = nullptr,
+                     Constant *C = nullptr);
+
+  Cost estimateBasicBlocks(SmallVectorImpl<BasicBlock *> &WorkList);
   Cost estimateSwitchInst(SwitchInst &I);
   Cost estimateBranchInst(BranchInst &I);
 
   Constant *visitInstruction(Instruction &I) { return nullptr; }
+  Constant *visitPHINode(PHINode &I);
   Constant *visitFreezeInst(FreezeInst &I);
   Constant *visitCallBase(CallBase &I);
   Constant *visitLoadInst(LoadInst &I);
@@ -191,10 +246,6 @@ public:
     return InstCostVisitor(M.getDataLayout(), BFI, TTI, Solver);
   }
 
-  /// Compute a bonus for replacing argument \p A with constant \p C.
-  Cost getSpecializationBonus(Argument *A, Constant *C,
-                              InstCostVisitor &Visitor);
-
 private:
   Constant *getPromotableAlloca(AllocaInst *Alloca, CallInst *Call);
 
@@ -215,13 +266,15 @@ private:
 
   /// @brief  Find potential specialization opportunities.
   /// @param F Function to specialize
-  /// @param SpecCost Cost of specializing a function. Final score is benefit
-  /// minus this cost.
+  /// @param FuncSize Cost of specializing a function.
   /// @param AllSpecs A vector to add potential specializations to.
   /// @param SM  A map for a function's specialisation range
   /// @return True, if any potential specializations were found
-  bool findSpecializations(Function *F, Cost SpecCost,
+  bool findSpecializations(Function *F, unsigned FuncSize,
                            SmallVectorImpl<Spec> &AllSpecs, SpecMap &SM);
+
+  /// Compute the inlining bonus for replacing argument \p A with constant \p C.
+  unsigned getInliningBonus(Argument *A, Constant *C);
 
   bool isCandidateFunction(Function *F);
 

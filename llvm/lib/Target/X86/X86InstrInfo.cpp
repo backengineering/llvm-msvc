@@ -871,13 +871,14 @@ bool X86InstrInfo::isReallyTriviallyReMaterializable(
       if (BaseReg == 0 || BaseReg == X86::RIP)
         return true;
       // Allow re-materialization of PIC load.
-      if (!ReMatPICStubLoad && MI.getOperand(1 + X86::AddrDisp).isGlobal())
-        return false;
-      const MachineFunction &MF = *MI.getParent()->getParent();
-      const MachineRegisterInfo &MRI = MF.getRegInfo();
-      return regIsPICBase(BaseReg, MRI);
+      if (!(!ReMatPICStubLoad && MI.getOperand(1 + X86::AddrDisp).isGlobal())) {
+        const MachineFunction &MF = *MI.getParent()->getParent();
+        const MachineRegisterInfo &MRI = MF.getRegInfo();
+        if (regIsPICBase(BaseReg, MRI))
+          return true;
+      }
     }
-    return false;
+    break;
   }
 
   case X86::LEA32r:
@@ -895,11 +896,13 @@ bool X86InstrInfo::isReallyTriviallyReMaterializable(
       // Allow re-materialization of lea PICBase + x.
       const MachineFunction &MF = *MI.getParent()->getParent();
       const MachineRegisterInfo &MRI = MF.getRegInfo();
-      return regIsPICBase(BaseReg, MRI);
+      if (regIsPICBase(BaseReg, MRI))
+        return true;
     }
-    return false;
+    break;
   }
   }
+  return TargetInstrInfo::isReallyTriviallyReMaterializable(MI);
 }
 
 void X86InstrInfo::reMaterialize(MachineBasicBlock &MBB,
@@ -3648,8 +3651,15 @@ void X86InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
 
 std::optional<DestSourcePair>
 X86InstrInfo::isCopyInstrImpl(const MachineInstr &MI) const {
-  if (MI.isMoveReg())
+  if (MI.isMoveReg()) {
+    // FIXME: Dirty hack for apparent invariant that doesn't hold when
+    // subreg_to_reg is coalesced with ordinary copies, such that the bits that
+    // were asserted as 0 are now undef.
+    if (MI.getOperand(0).isUndef() && MI.getOperand(0).getSubReg())
+      return std::nullopt;
+
     return DestSourcePair{MI.getOperand(0), MI.getOperand(1)};
+  }
   return std::nullopt;
 }
 

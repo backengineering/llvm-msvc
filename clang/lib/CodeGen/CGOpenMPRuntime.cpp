@@ -2161,11 +2161,7 @@ Address CGOpenMPRuntime::emitThreadIDAddress(CodeGenFunction &CGF,
 llvm::Value *CGOpenMPRuntime::getCriticalRegionLock(StringRef CriticalName) {
   std::string Prefix = Twine("gomp_critical_user_", CriticalName).str();
   std::string Name = getName({Prefix, "var"});
-  llvm::GlobalVariable *G = OMPBuilder.getOrCreateInternalVariable(KmpCriticalNameTy, Name);
-  llvm::Align PtrAlign = OMPBuilder.M.getDataLayout().getPointerABIAlignment(G->getAddressSpace());
-  if (PtrAlign > llvm::Align(G->getAlignment()))
-    G->setAlignment(PtrAlign);
-  return G;
+  return OMPBuilder.getOrCreateInternalVariable(KmpCriticalNameTy, Name);
 }
 
 namespace {
@@ -10166,6 +10162,13 @@ void CGOpenMPRuntime::registerTargetGlobalVariable(const VarDecl *VD,
 
   std::optional<OMPDeclareTargetDeclAttr::MapTypeTy> Res =
       OMPDeclareTargetDeclAttr::isDeclareTargetDeclaration(VD);
+
+  // If this is an 'extern' declaration we defer to the canonical definition and
+  // do not emit an offloading entry.
+  if (Res && *Res != OMPDeclareTargetDeclAttr::MT_Link &&
+      VD->hasExternalStorage())
+    return;
+
   if (!Res) {
     if (CGM.getLangOpts().OpenMPIsTargetDevice) {
       // Register non-target variables being emitted in device code (debug info

@@ -1385,7 +1385,34 @@ struct UnaryOp<
                                          hlfir::Entity lhs) {
     if constexpr (TC1 == Fortran::common::TypeCategory::Character &&
                   TC2 == TC1) {
-      TODO(loc, "character conversion in HLFIR");
+      // TODO(loc, "character conversion in HLFIR");
+      auto kindMap = builder.getKindMap();
+      mlir::Type fromTy = lhs.getFortranElementType();
+      mlir::Value origBufferSize = genCharLength(loc, builder, lhs);
+      mlir::Value bufferSize{origBufferSize};
+      auto fromBits = kindMap.getCharacterBitsize(
+          fir::unwrapRefType(fromTy).cast<fir::CharacterType>().getFKind());
+      mlir::Type toTy = Fortran::lower::getFIRType(
+          builder.getContext(), TC1, KIND, /*params=*/std::nullopt);
+      auto toBits = kindMap.getCharacterBitsize(
+          toTy.cast<fir::CharacterType>().getFKind());
+      if (toBits < fromBits) {
+        // Scale by relative ratio to give a buffer of the same length.
+        auto ratio = builder.createIntegerConstant(loc, bufferSize.getType(),
+                                                   fromBits / toBits);
+        bufferSize =
+            builder.create<mlir::arith::MulIOp>(loc, bufferSize, ratio);
+      }
+      // allocate space on the stack for toBuffer
+      auto dest = builder.create<fir::AllocaOp>(loc, toTy,
+                                                mlir::ValueRange{bufferSize});
+      builder.create<fir::CharConvertOp>(loc, lhs.getFirBase(), origBufferSize,
+                                         dest);
+
+      return hlfir::EntityWithAttributes{builder.create<hlfir::DeclareOp>(
+          loc, dest, "ctor.temp", /*shape=*/nullptr,
+          /*typeparams=*/mlir::ValueRange{origBufferSize},
+          fir::FortranVariableFlagsAttr{})};
     }
     mlir::Type type = Fortran::lower::getFIRType(builder.getContext(), TC1,
                                                  KIND, /*params=*/std::nullopt);
@@ -1498,11 +1525,6 @@ private:
     // Elemental expression.
     mlir::Type elementType;
     if constexpr (R::category == Fortran::common::TypeCategory::Derived) {
-      // TODO: need to pass a mold to hlfir.elemental for polymorphic arrays
-      // if using hlfir.elemental here so that it can get the dynamic type
-      // info.
-      if (left.isPolymorphic())
-        TODO(loc, "parenthesized polymorphic arrays in HLFIR");
       elementType = Fortran::lower::translateDerivedTypeToFIRType(
           getConverter(), op.derived().GetType().GetDerivedTypeSpec());
     } else {
@@ -1518,9 +1540,9 @@ private:
       auto leftVal = hlfir::loadTrivialScalar(l, b, leftElement);
       return unaryOp.gen(l, b, op.derived(), leftVal);
     };
-    mlir::Value elemental = hlfir::genElementalOp(loc, builder, elementType,
-                                                  shape, typeParams, genKernel,
-                                                  /*isUnordered=*/true);
+    mlir::Value elemental = hlfir::genElementalOp(
+        loc, builder, elementType, shape, typeParams, genKernel,
+        /*isUnordered=*/true, left.isPolymorphic() ? left : mlir::Value{});
     fir::FirOpBuilder *bldr = &builder;
     getStmtCtx().attachCleanup(
         [=]() { bldr->create<hlfir::DestroyOp>(loc, elemental); });

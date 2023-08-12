@@ -49,6 +49,8 @@ class RISCVInitUndef : public MachineFunctionPass {
   const RISCVSubtarget *ST;
   const TargetRegisterInfo *TRI;
 
+  // Newly added vregs, assumed to be fully rewritten
+  SmallSet<Register, 8> NewRegs;
 public:
   static char ID;
 
@@ -155,8 +157,12 @@ bool RISCVInitUndef::handleImplicitDef(MachineBasicBlock &MBB,
   unsigned Opcode = getUndefInitOpcode(TargetRegClass->getID());
 
   Register NewDest = Reg;
-  if (HasOtherUse)
+  if (HasOtherUse) {
     NewDest = MRI->createVirtualRegister(TargetRegClass);
+    // We don't have a way to update dead lanes, so keep track of the
+    // new register so that we avoid querying it later.
+    NewRegs.insert(NewDest);
+  }
   BuildMI(MBB, Inst, Inst->getDebugLoc(), TII->get(Opcode), NewDest);
 
   if (!HasOtherUse)
@@ -178,8 +184,12 @@ bool RISCVInitUndef::handleSubReg(MachineFunction &MF, MachineInstr &MI,
       continue;
     if (!UseMO.getReg().isVirtual())
       continue;
+    if (UseMO.isTied())
+      continue;
 
     Register Reg = UseMO.getReg();
+    if (NewRegs.count(Reg))
+      continue;
     DeadLaneDetector::VRegInfo Info =
         DLD.getVRegInfo(Register::virtReg2Index(Reg));
 

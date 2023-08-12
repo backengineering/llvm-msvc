@@ -805,5 +805,5 @@
 // RUN: %clang --target=loongarch64 -x c -E -dM %s -o - -march=la464 -mtune=loongarch64 | \
 // RUN:   FileCheck --match-full-lines --check-prefix=ARCH-TUNE -DARCH=la464 -DTUNE=loongarch64 %s
 
-// ARCH-TUNE: #define __loongarch_arch [[ARCH]]
-// ARCH-TUNE: #define __loongarch_tune [[TUNE]]
+// ARCH-TUNE: #define __loongarch_arch "[[ARCH]]"
+// ARCH-TUNE: #define __loongarch_tune "[[TUNE]]"

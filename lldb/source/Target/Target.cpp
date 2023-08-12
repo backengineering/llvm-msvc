@@ -23,7 +23,6 @@
 #include "lldb/Core/SearchFilter.h"
 #include "lldb/Core/Section.h"
 #include "lldb/Core/SourceManager.h"
-#include "lldb/Core/StreamFile.h"
 #include "lldb/Core/StructuredDataImpl.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Core/ValueObjectConstResult.h"
@@ -34,6 +33,7 @@
 #include "lldb/Expression/UtilityFunction.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Host/PosixApi.h"
+#include "lldb/Host/StreamFile.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/Interpreter/OptionGroupWatchpoint.h"
@@ -2864,12 +2864,12 @@ bool Target::RunStopHooks() {
   if (!any_active_hooks)
     return false;
 
-  // <rdar://problem/12027563> make sure we check that we are not stopped
-  // because of us running a user expression since in that case we do not want
-  // to run the stop-hooks.  Note, you can't just check whether the last stop
-  // was for a User Expression, because breakpoint commands get run before
-  // stop hooks, and one of them might have run an expression.  You have
-  // to ensure you run the stop hooks once per natural stop.
+  // Make sure we check that we are not stopped because of us running a user
+  // expression since in that case we do not want to run the stop-hooks. Note,
+  // you can't just check whether the last stop was for a User Expression,
+  // because breakpoint commands get run before stop hooks, and one of them
+  // might have run an expression. You have to ensure you run the stop hooks
+  // once per natural stop.
   uint32_t last_natural_stop = m_process_sp->GetModIDRef().GetLastNaturalStopID();
   if (last_natural_stop != 0 && m_latest_stop_hook_id == last_natural_stop)
     return false;

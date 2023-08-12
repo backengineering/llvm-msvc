@@ -126,7 +126,7 @@ private:
   }
 
   template <typename T> ConstantSubscripts Get(const Parentheses<T> &x) {
-    // Cause of temp variable inside parentheses - return [1, ... 1] for lower
+    // Case of temp variable inside parentheses - return [1, ... 1] for lower
     // bounds and shape for upper bounds
     if (getLbound_) {
       return ConstantSubscripts(x.Rank(), ConstantSubscript{1});
@@ -156,17 +156,21 @@ Expr<Type<TypeCategory::Integer, KIND>> LBOUND(FoldingContext &context,
   using T = Type<TypeCategory::Integer, KIND>;
   ActualArguments &args{funcRef.arguments()};
   if (const auto *array{UnwrapExpr<Expr<SomeType>>(args[0])}) {
-    if (int rank{array->Rank()}; rank > 0 || IsAssumedRank(*array)) {
-      std::optional<int> dim;
-      if (funcRef.Rank() == 0) {
-        // Optional DIM= argument is present: result is scalar.
-        if (!CheckDimArg(args[1], *array, context.messages(), true, dim)) {
-          return MakeInvalidIntrinsic<T>(std::move(funcRef));
-        } else if (!dim) {
-          // DIM= is present but not constant, or error
-          return Expr<T>{std::move(funcRef)};
-        }
+    std::optional<int> dim;
+    if (funcRef.Rank() == 0) {
+      // Optional DIM= argument is present: result is scalar.
+      if (!CheckDimArg(args[1], *array, context.messages(), true, dim)) {
+        return MakeInvalidIntrinsic<T>(std::move(funcRef));
+      } else if (!dim) {
+        // DIM= is present but not constant, or error
+        return Expr<T>{std::move(funcRef)};
       }
+    }
+    if (IsAssumedRank(*array)) {
+      // Would like to return 1 if DIM=.. is present, but that would be
+      // hiding a runtime error if the DIM= were too large (including
+      // the case of an assumed-rank argument that's scalar).
+    } else if (int rank{array->Rank()}; rank > 0) {
       bool lowerBoundsAreOne{true};
       if (auto named{ExtractNamedEntity(*array)}) {
         const Symbol &symbol{named->GetLastSymbol()};
@@ -203,17 +207,18 @@ Expr<Type<TypeCategory::Integer, KIND>> UBOUND(FoldingContext &context,
   using T = Type<TypeCategory::Integer, KIND>;
   ActualArguments &args{funcRef.arguments()};
   if (auto *array{UnwrapExpr<Expr<SomeType>>(args[0])}) {
-    if (int rank{array->Rank()}; rank > 0 || IsAssumedRank(*array)) {
-      std::optional<int> dim;
-      if (funcRef.Rank() == 0) {
-        // Optional DIM= argument is present: result is scalar.
-        if (!CheckDimArg(args[1], *array, context.messages(), false, dim)) {
-          return MakeInvalidIntrinsic<T>(std::move(funcRef));
-        } else if (!dim) {
-          // DIM= is present but not constant
-          return Expr<T>{std::move(funcRef)};
-        }
+    std::optional<int> dim;
+    if (funcRef.Rank() == 0) {
+      // Optional DIM= argument is present: result is scalar.
+      if (!CheckDimArg(args[1], *array, context.messages(), false, dim)) {
+        return MakeInvalidIntrinsic<T>(std::move(funcRef));
+      } else if (!dim) {
+        // DIM= is present but not constant, or error
+        return Expr<T>{std::move(funcRef)};
       }
+    }
+    if (IsAssumedRank(*array)) {
+    } else if (int rank{array->Rank()}; rank > 0) {
       bool takeBoundsFromShape{true};
       if (auto named{ExtractNamedEntity(*array)}) {
         const Symbol &symbol{named->GetLastSymbol()};
@@ -347,12 +352,12 @@ public:
     if (mask) {
       if (auto scalarMask{mask->GetScalarValue()}) {
         // Convert into array in case of scalar MASK= (for
-        // MAXLOC/MINLOC/FINDLOC mask should be be conformable)
+        // MAXLOC/MINLOC/FINDLOC mask should be conformable)
         ConstantSubscript n{GetSize(array->shape())};
         std::vector<Scalar<LogicalResult>> mask_elements(
             n, Scalar<LogicalResult>{scalarMask.value()});
         *mask = Constant<LogicalResult>{
-            std::move(mask_elements), ConstantSubscripts{n}};
+            std::move(mask_elements), ConstantSubscripts{array->shape()}};
       }
       mask->SetLowerBoundsToOne();
       maskAt = mask->lbounds();
@@ -1033,8 +1038,6 @@ Expr<Type<TypeCategory::Integer, KIND>> FoldIntrinsicFunction(
   } else if (name == "maxval") {
     return FoldMaxvalMinval<T>(context, std::move(funcRef),
         RelationalOperator::GT, T::Scalar::Least());
-  } else if (name == "merge") {
-    return FoldMerge<T>(context, std::move(funcRef));
   } else if (name == "merge_bits") {
     return FoldElementalIntrinsic<T, T, T, T>(
         context, std::move(funcRef), &Scalar<T>::MERGE_BITS);

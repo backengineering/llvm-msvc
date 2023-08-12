@@ -50,6 +50,9 @@ Update on required toolchains to build LLVM
 Changes to the LLVM IR
 ----------------------
 
+* The `llvm.stacksave` and `llvm.stackrestore` intrinsics now use
+  an overloaded pointer type to support non-0 address spaces.
+
 Changes to LLVM infrastructure
 ------------------------------
 
@@ -70,6 +73,8 @@ Changes to the AMDGPU Backend
 
 * `llvm.sqrt.f64` is now lowered correctly. Use `llvm.amdgcn.sqrt.f64`
   for raw instruction access.
+
+* Implemented `llvm.stacksave` and `llvm.stackrestore` intrinsics.
 
 Changes to the ARM Backend
 --------------------------
@@ -95,6 +100,8 @@ Changes to the PowerPC Backend
 Changes to the RISC-V Backend
 -----------------------------
 
+* Zihintntl extension version was upgraded to 1.0 and is no longer experimental.
+
 Changes to the WebAssembly Backend
 ----------------------------------
 
@@ -116,8 +123,21 @@ Changes to the Python bindings
 Changes to the C API
 --------------------
 
+* Added ``LLVMGetTailCallKind`` and ``LLVMSetTailCallKind`` to
+  allow getting and setting ``tail``, ``musttail``, and ``notail``
+  attributes on call instructions.
+
 Changes to the CodeGen infrastructure
 -------------------------------------
+
+* ``PrologEpilogInserter`` no longer supports register scavenging
+  during forwards frame index elimination. Targets should use
+  backwards frame index elimination instead.
+
+* ``RegScavenger`` no longer supports forwards register
+  scavenging. Clients should use backwards register scavenging
+  instead, which is preferred because it does not depend on accurate
+  kill flags.
 
 Changes to the Metadata Info
 ---------------------------------

@@ -1126,23 +1126,22 @@ TEST_F(OpenMPIRBuilderTest, ParallelForwardAsPointers) {
   using InsertPointTy = OpenMPIRBuilder::InsertPointTy;
 
   Type *I32Ty = Type::getInt32Ty(M->getContext());
-  Type *I32PtrTy = Type::getInt32PtrTy(M->getContext());
-  Type *StructTy = StructType::get(I32Ty, I32PtrTy);
-  Type *StructPtrTy = StructTy->getPointerTo();
+  Type *PtrTy = PointerType::get(M->getContext(), 0);
+  Type *StructTy = StructType::get(I32Ty, PtrTy);
   Type *VoidTy = Type::getVoidTy(M->getContext());
   FunctionCallee RetI32Func = M->getOrInsertFunction("ret_i32", I32Ty);
   FunctionCallee TakeI32Func =
       M->getOrInsertFunction("take_i32", VoidTy, I32Ty);
-  FunctionCallee RetI32PtrFunc = M->getOrInsertFunction("ret_i32ptr", I32PtrTy);
+  FunctionCallee RetI32PtrFunc = M->getOrInsertFunction("ret_i32ptr", PtrTy);
   FunctionCallee TakeI32PtrFunc =
-      M->getOrInsertFunction("take_i32ptr", VoidTy, I32PtrTy);
+      M->getOrInsertFunction("take_i32ptr", VoidTy, PtrTy);
   FunctionCallee RetStructFunc = M->getOrInsertFunction("ret_struct", StructTy);
   FunctionCallee TakeStructFunc =
       M->getOrInsertFunction("take_struct", VoidTy, StructTy);
   FunctionCallee RetStructPtrFunc =
-      M->getOrInsertFunction("ret_structptr", StructPtrTy);
+      M->getOrInsertFunction("ret_structptr", PtrTy);
   FunctionCallee TakeStructPtrFunc =
-      M->getOrInsertFunction("take_structPtr", VoidTy, StructPtrTy);
+      M->getOrInsertFunction("take_structPtr", VoidTy, PtrTy);
   Value *I32Val = Builder.CreateCall(RetI32Func);
   Value *I32PtrVal = Builder.CreateCall(RetI32PtrFunc);
   Value *StructVal = Builder.CreateCall(RetStructFunc);
@@ -2745,7 +2744,15 @@ TEST_F(OpenMPIRBuilderTest, CriticalDirective) {
   PointerType *CriticalNamePtrTy =
       PointerType::getUnqual(ArrayType::get(Type::getInt32Ty(Ctx), 8));
   EXPECT_EQ(CriticalEndCI->getArgOperand(2), CriticalEntryCI->getArgOperand(2));
-  EXPECT_EQ(CriticalEndCI->getArgOperand(2)->getType(), CriticalNamePtrTy);
+  GlobalVariable *GV =
+      dyn_cast<GlobalVariable>(CriticalEndCI->getArgOperand(2));
+  ASSERT_NE(GV, nullptr);
+  EXPECT_EQ(GV->getType(), CriticalNamePtrTy);
+  const DataLayout &DL = M->getDataLayout();
+  const llvm::Align TypeAlign = DL.getABITypeAlign(CriticalNamePtrTy);
+  const llvm::Align PtrAlign = DL.getPointerABIAlignment(GV->getAddressSpace());
+  if (const llvm::MaybeAlign Alignment = GV->getAlign())
+    EXPECT_EQ(*Alignment, std::max(TypeAlign, PtrAlign));
 }
 
 TEST_F(OpenMPIRBuilderTest, OrderedDirectiveDependSource) {
@@ -4895,6 +4902,8 @@ TEST_F(OpenMPIRBuilderTest, TargetEnterData) {
 
     CombinedInfo.BasePointers.emplace_back(Val1);
     CombinedInfo.Pointers.emplace_back(Val1);
+    CombinedInfo.DevicePointers.emplace_back(
+        llvm::OpenMPIRBuilder::DeviceInfoTy::None);
     CombinedInfo.Sizes.emplace_back(Builder.getInt64(4));
     CombinedInfo.Types.emplace_back(llvm::omp::OpenMPOffloadMappingFlags(1));
     uint32_t temp;
@@ -4952,6 +4961,8 @@ TEST_F(OpenMPIRBuilderTest, TargetExitData) {
 
     CombinedInfo.BasePointers.emplace_back(Val1);
     CombinedInfo.Pointers.emplace_back(Val1);
+    CombinedInfo.DevicePointers.emplace_back(
+        llvm::OpenMPIRBuilder::DeviceInfoTy::None);
     CombinedInfo.Sizes.emplace_back(Builder.getInt64(4));
     CombinedInfo.Types.emplace_back(llvm::omp::OpenMPOffloadMappingFlags(2));
     uint32_t temp;
@@ -4997,36 +5008,63 @@ TEST_F(OpenMPIRBuilderTest, TargetDataRegion) {
       Builder.CreateAlloca(Builder.getInt32Ty(), Builder.getInt64(1));
   ASSERT_NE(Val1, nullptr);
 
+  AllocaInst *Val2 = Builder.CreateAlloca(Builder.getPtrTy());
+  ASSERT_NE(Val2, nullptr);
+
+  AllocaInst *Val3 = Builder.CreateAlloca(Builder.getPtrTy());
+  ASSERT_NE(Val3, nullptr);
+
   IRBuilder<>::InsertPoint AllocaIP(&F->getEntryBlock(),
                                     F->getEntryBlock().getFirstInsertionPt());
 
+  using DeviceInfoTy = llvm::OpenMPIRBuilder::DeviceInfoTy;
   llvm::OpenMPIRBuilder::MapInfosTy CombinedInfo;
   using InsertPointTy = OpenMPIRBuilder::InsertPointTy;
   auto GenMapInfoCB =
       [&](InsertPointTy codeGenIP) -> llvm::OpenMPIRBuilder::MapInfosTy & {
     // Get map clause information.
     Builder.restoreIP(codeGenIP);
+    uint32_t temp;
 
     CombinedInfo.BasePointers.emplace_back(Val1);
     CombinedInfo.Pointers.emplace_back(Val1);
+    CombinedInfo.DevicePointers.emplace_back(DeviceInfoTy::None);
     CombinedInfo.Sizes.emplace_back(Builder.getInt64(4));
     CombinedInfo.Types.emplace_back(llvm::omp::OpenMPOffloadMappingFlags(3));
-    uint32_t temp;
+    CombinedInfo.Names.emplace_back(
+        OMPBuilder.getOrCreateSrcLocStr("unknown", temp));
+
+    CombinedInfo.BasePointers.emplace_back(Val2);
+    CombinedInfo.Pointers.emplace_back(Val2);
+    CombinedInfo.DevicePointers.emplace_back(DeviceInfoTy::Pointer);
+    CombinedInfo.Sizes.emplace_back(Builder.getInt64(8));
+    CombinedInfo.Types.emplace_back(llvm::omp::OpenMPOffloadMappingFlags(67));
+    CombinedInfo.Names.emplace_back(
+        OMPBuilder.getOrCreateSrcLocStr("unknown", temp));
+
+    CombinedInfo.BasePointers.emplace_back(Val3);
+    CombinedInfo.Pointers.emplace_back(Val3);
+    CombinedInfo.DevicePointers.emplace_back(DeviceInfoTy::Address);
+    CombinedInfo.Sizes.emplace_back(Builder.getInt64(8));
+    CombinedInfo.Types.emplace_back(llvm::omp::OpenMPOffloadMappingFlags(67));
     CombinedInfo.Names.emplace_back(
         OMPBuilder.getOrCreateSrcLocStr("unknown", temp));
     return CombinedInfo;
   };
 
   llvm::OpenMPIRBuilder::TargetDataInfo Info(
-      /*RequiresDevicePointerInfo=*/false,
+      /*RequiresDevicePointerInfo=*/true,
       /*SeparateBeginEndCalls=*/true);
 
   OMPBuilder.Config.setIsGPU(true);
 
-  auto BodyCB = [&](InsertPointTy CodeGenIP, int BodyGenType) {
-    if (BodyGenType == 3) {
+  using BodyGenTy = llvm::OpenMPIRBuilder::BodyGenTy;
+  auto BodyCB = [&](InsertPointTy CodeGenIP, BodyGenTy BodyGenType) {
+    if (BodyGenType == BodyGenTy::Priv) {
+      EXPECT_EQ(Info.DevicePtrInfoMap.size(), 2u);
       Builder.restoreIP(CodeGenIP);
-      CallInst *TargetDataCall = dyn_cast<CallInst>(&BB->back());
+      CallInst *TargetDataCall =
+          dyn_cast<CallInst>(BB->back().getPrevNode()->getPrevNode());
       EXPECT_NE(TargetDataCall, nullptr);
       EXPECT_EQ(TargetDataCall->arg_size(), 9U);
       EXPECT_EQ(TargetDataCall->getCalledFunction()->getName(),
@@ -5034,7 +5072,15 @@ TEST_F(OpenMPIRBuilderTest, TargetDataRegion) {
       EXPECT_TRUE(TargetDataCall->getOperand(1)->getType()->isIntegerTy(64));
       EXPECT_TRUE(TargetDataCall->getOperand(2)->getType()->isIntegerTy(32));
       EXPECT_TRUE(TargetDataCall->getOperand(8)->getType()->isPointerTy());
-      Builder.restoreIP(CodeGenIP);
+
+      LoadInst *LI = dyn_cast<LoadInst>(BB->back().getPrevNode());
+      EXPECT_NE(LI, nullptr);
+      StoreInst *SI = dyn_cast<StoreInst>(&BB->back());
+      EXPECT_NE(SI, nullptr);
+      EXPECT_EQ(SI->getValueOperand(), LI);
+      EXPECT_EQ(SI->getPointerOperand(), Info.DevicePtrInfoMap[Val2].second);
+      EXPECT_TRUE(isa<AllocaInst>(Info.DevicePtrInfoMap[Val2].second));
+      EXPECT_TRUE(isa<GetElementPtrInst>(Info.DevicePtrInfoMap[Val3].second));
       Builder.CreateStore(Builder.getInt32(99), Val1);
     }
     return Builder.saveIP();
@@ -5125,8 +5171,8 @@ TEST_F(OpenMPIRBuilderTest, TargetRegionDevice) {
   LoadInst *Value = nullptr;
   StoreInst *TargetStore = nullptr;
   llvm::SmallVector<llvm::Value *, 2> CapturedArgs = {
-      Constant::getNullValue(Type::getInt32PtrTy(Ctx)),
-      Constant::getNullValue(Type::getInt32PtrTy(Ctx))};
+      Constant::getNullValue(PointerType::get(Ctx, 0)),
+      Constant::getNullValue(PointerType::get(Ctx, 0))};
 
   auto BodyGenCB = [&](OpenMPIRBuilder::InsertPointTy AllocaIP,
                        OpenMPIRBuilder::InsertPointTy CodeGenIP)
@@ -5756,10 +5802,10 @@ TEST_F(OpenMPIRBuilderTest, EmitOffloadingArraysArguments) {
   OpenMPIRBuilder::TargetDataRTArgs RTArgs;
   OpenMPIRBuilder::TargetDataInfo Info(true, false);
 
-  auto VoidPtrTy = Type::getInt8PtrTy(Builder.getContext());
-  auto VoidPtrPtrTy = VoidPtrTy->getPointerTo(0);
+  auto VoidPtrTy = PointerType::getUnqual(Builder.getContext());
+  auto VoidPtrPtrTy = PointerType::getUnqual(Builder.getContext());
   auto Int64Ty = Type::getInt64Ty(Builder.getContext());
-  auto Int64PtrTy = Type::getInt64PtrTy(Builder.getContext());
+  auto Int64PtrTy = PointerType::getUnqual(Builder.getContext());
   auto Array4VoidPtrTy = ArrayType::get(VoidPtrTy, 4);
   auto Array4Int64PtrTy = ArrayType::get(Int64Ty, 4);
 

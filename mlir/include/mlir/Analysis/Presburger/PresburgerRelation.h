@@ -118,6 +118,16 @@ public:
   /// Same as compose, provided for uniformity with applyDomain.
   void applyRange(const PresburgerRelation &rel);
 
+  /// Compute the symbolic integer lexmin of the relation, i.e. for every
+  /// assignment of the symbols and domain the lexicographically minimum value
+  /// attained by the range.
+  SymbolicLexOpt findSymbolicIntegerLexMin() const;
+
+  /// Compute the symbolic integer lexmax of the relation, i.e. for every
+  /// assignment of the symbols and domain the lexicographically maximum value
+  /// attained by the range.
+  SymbolicLexOpt findSymbolicIntegerLexMax() const;
+
   /// Return true if the set contains the given point, and false otherwise.
   bool containsPoint(ArrayRef<MPInt> point) const;
   bool containsPoint(ArrayRef<int64_t> point) const {
@@ -151,6 +161,12 @@ public:
   /// Return true if the set is known to have one unconstrained disjunct, false
   /// otherwise.
   bool isPlainUniverse() const;
+
+  /// Perform a quick equality check on `this` and `other`. The relations are
+  /// equal if the check return true, but may or may not be equal if the check
+  /// returns false. This is doing by directly comparing whether each internal
+  /// disjunct is the same.
+  bool isPlainEqual(const PresburgerRelation &set) const;
 
   /// Return true if the set is consist of a single disjunct, without any local
   /// variables, false otherwise.

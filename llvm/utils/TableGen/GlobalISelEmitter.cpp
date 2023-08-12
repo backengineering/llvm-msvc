@@ -312,6 +312,8 @@ public:
   void emitTestSimplePredicate(raw_ostream &OS) override;
   void emitRunCustomAction(raw_ostream &OS) override;
 
+  void postProcessRule(RuleMatcher &M);
+
   const CodeGenTarget &getTarget() const override { return Target; }
   StringRef getClassName() const override { return ClassName; }
 
@@ -497,6 +499,10 @@ GlobalISelEmitter::getEquivNode(Record &Equiv, const TreePatternNode *N) const {
         MVT(N->getChild(0)->getSimpleType(0)).isFloatingPoint())
       return &Target.getInstruction(Equiv.getValueAsDef("IfFloatingPoint"));
   }
+
+  if (!Equiv.isValueUnset("IfConvergent") &&
+      N->getIntrinsicInfo(CGP)->isConvergent)
+    return &Target.getInstruction(Equiv.getValueAsDef("IfConvergent"));
 
   for (const TreePredicateCall &Call : N->getPredicateCalls()) {
     const TreePredicateFn &Predicate = Call.Fn;
@@ -863,7 +869,10 @@ Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
     // Match the used operands (i.e. the children of the operator).
     bool IsIntrinsic =
         SrcGIOrNull->TheDef->getName() == "G_INTRINSIC" ||
-        SrcGIOrNull->TheDef->getName() == "G_INTRINSIC_W_SIDE_EFFECTS";
+        SrcGIOrNull->TheDef->getName() == "G_INTRINSIC_W_SIDE_EFFECTS" ||
+        SrcGIOrNull->TheDef->getName() == "G_INTRINSIC_CONVERGENT" ||
+        SrcGIOrNull->TheDef->getName() ==
+            "G_INTRINSIC_CONVERGENT_W_SIDE_EFFECTS";
     const CodeGenIntrinsic *II = Src->getIntrinsicInfo(CGP);
     if (IsIntrinsic && !II)
       return failedImport("Expected IntInit containing intrinsic ID)");
@@ -2357,10 +2366,36 @@ void GlobalISelEmitter::emitTestSimplePredicate(raw_ostream &OS) {
 
 void GlobalISelEmitter::emitRunCustomAction(raw_ostream &OS) {
   OS << "void " << getClassName()
-     << "::runCustomAction(unsigned, const MatcherState&) const {\n"
+     << "::runCustomAction(unsigned, const MatcherState&, NewMIVector &) const "
+        "{\n"
      << "    llvm_unreachable(\"" + getClassName() +
             " does not support custom C++ actions!\");\n"
      << "}\n";
+}
+
+void GlobalISelEmitter::postProcessRule(RuleMatcher &M) {
+  SmallPtrSet<Record *, 16> UsedRegs;
+
+  // TODO: deal with subregs?
+  for (auto &A : M.actions()) {
+    auto *MI = dyn_cast<BuildMIAction>(A.get());
+    if (!MI)
+      continue;
+
+    for (auto *Use : MI->getCGI()->ImplicitUses)
+      UsedRegs.insert(Use);
+  }
+
+  for (auto &A : M.actions()) {
+    auto *MI = dyn_cast<BuildMIAction>(A.get());
+    if (!MI)
+      continue;
+
+    for (auto *Def : MI->getCGI()->ImplicitDefs) {
+      if (!UsedRegs.contains(Def))
+        MI->setDeadImplicitDef(Def);
+    }
+  }
 }
 
 void GlobalISelEmitter::run(raw_ostream &OS) {
@@ -2420,6 +2455,7 @@ void GlobalISelEmitter::run(raw_ostream &OS) {
                      "Pattern is not covered by a test");
     }
     Rules.push_back(std::move(MatcherOrErr.get()));
+    postProcessRule(Rules.back());
   }
 
   // Comparison function to order records by name.

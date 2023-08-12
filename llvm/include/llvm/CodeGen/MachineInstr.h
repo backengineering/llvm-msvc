@@ -1205,7 +1205,7 @@ public:
   /// Returns true if this instruction is a candidate for remat.
   /// This flag is deprecated, please don't use it anymore.  If this
   /// flag is set, the isReallyTriviallyReMaterializable() method is called to
-  /// verify the instruction is really rematable.
+  /// verify the instruction is really rematerializable.
   bool isRematerializable(QueryType Type = AllInBundle) const {
     // It's only possible to re-mat a bundle if all bundled instructions are
     // re-materializable.
@@ -1751,6 +1751,9 @@ public:
 
   /// Return true if all the defs of this instruction are dead.
   bool allDefsAreDead() const;
+
+  /// Return true if all the implicit defs of this instruction are dead.
+  bool allImplicitDefsAreDead() const;
 
   /// Return a valid size if the instruction is a spill instruction.
   std::optional<unsigned> getSpillSize(const TargetInstrInfo *TII) const;

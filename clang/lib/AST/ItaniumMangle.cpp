@@ -1660,6 +1660,7 @@ void CXXNameMangler::mangleUnqualifiedName(
       // Otherwise, use the complete destructor name. This is relevant if a
       // class with a destructor is declared within a destructor.
       mangleCXXDtorType(Dtor_Complete);
+    assert(ND);
     writeAbiTags(ND, AdditionalAbiTags);
     break;
 
@@ -1691,8 +1692,12 @@ void CXXNameMangler::mangleRegCallName(const IdentifierInfo *II) {
   // <source-name> ::= <positive length number> __regcall3__ <identifier>
   // <number> ::= [n] <non-negative decimal integer>
   // <identifier> ::= <unqualified source code identifier>
-  Out << II->getLength() + sizeof("__regcall3__") - 1 << "__regcall3__"
-      << II->getName();
+  if (getASTContext().getLangOpts().RegCall4)
+    Out << II->getLength() + sizeof("__regcall4__") - 1 << "__regcall4__"
+        << II->getName();
+  else
+    Out << II->getLength() + sizeof("__regcall3__") - 1 << "__regcall3__"
+        << II->getName();
 }
 
 void CXXNameMangler::mangleDeviceStubName(const IdentifierInfo *II) {

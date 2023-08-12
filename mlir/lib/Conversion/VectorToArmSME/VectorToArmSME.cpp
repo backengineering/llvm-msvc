@@ -15,8 +15,6 @@
 
 using namespace mlir;
 
-static constexpr unsigned kMinNumElts = 16;
-
 /// Returns true if 'val' is a splat of zero, false otherwise.
 static bool isSplatZero(Type elemType, DenseElementsAttr val) {
   if (llvm::isa<FloatType>(elemType))
@@ -28,18 +26,15 @@ static bool isSplatZero(Type elemType, DenseElementsAttr val) {
 
 namespace {
 
-/// Look at `vector.transfer_write` operations and convert suitable candidates
-/// to ArmSME operations, e.g.:
+/// Conversion pattern for vector.transfer_write.
 ///
-///    %cst = arith.constant dense<0> : vector<[16]x[16]xi8>
-///    vector.transfer_write %cst, %arg0 : vector<[16]x[16]xi8>, memref<?x?xi8>
+///   vector.transfer_write %vector, %source[%c0, %c0] : vector<[16]x[16]xi8>,
+///                                                      memref<?x?xi8>
 ///
 /// is converted to:
 ///
-///    %0 = arm_sme.zero : vector<[16]x[16]xi8>
-///    arm_sme.tile_store %arg0[%c0, %c0], %0 : memref<?x?xi8>,
-///    vector<[16]x[16]xi8>
-///
+///   arm_sme.tile_store %vector, %source[%c0, %c0] : memref<?x?xi8>,
+///                                                   vector<[16]x[16]xi8>
 struct TransferWriteToArmSMELowering
     : public OpRewritePattern<vector::TransferWriteOp> {
   using OpRewritePattern<vector::TransferWriteOp>::OpRewritePattern;
@@ -47,32 +42,15 @@ struct TransferWriteToArmSMELowering
   LogicalResult matchAndRewrite(vector::TransferWriteOp writeOp,
                                 PatternRewriter &rewriter) const final {
     auto vType = writeOp.getVectorType();
-    if (vType.getRank() != 2)
+    if (!arm_sme::isValidSMETileVectorType(vType))
       return failure();
-    if (vType.getShape() != ArrayRef<int64_t>({kMinNumElts, kMinNumElts}))
-      return failure();
-    if (vType.getElementType() != rewriter.getI8Type())
-      return failure();
-    if (vType.getScalableDims().size() != 2)
-      return failure();
-
-    auto loc = writeOp.getLoc();
 
     if (!llvm::isa<MemRefType>(writeOp.getSource().getType()))
       return failure();
 
-    auto constant = writeOp.getVector().getDefiningOp<arith::ConstantOp>();
-    if (!constant)
-      return failure();
-
-    auto denseAttr = dyn_cast<DenseElementsAttr>(constant.getValueAttr());
-    if (!denseAttr || !isSplatZero(vType.getElementType(), denseAttr))
-      return failure();
-
-    auto zero = rewriter.create<arm_sme::ZeroOp>(loc, vType);
-
     rewriter.replaceOpWithNewOp<arm_sme::TileStoreOp>(
-        writeOp, zero, writeOp.getSource(), writeOp.getIndices());
+        writeOp, writeOp.getVector(), writeOp.getSource(),
+        writeOp.getIndices());
     return success();
   }
 };
@@ -109,10 +87,30 @@ struct VectorStoreToArmSMELowering : public OpRewritePattern<vector::StoreOp> {
   }
 };
 
+/// Conversion pattern for dense arith.constant.
+struct ConstantOpToArmSMELowering : public OpRewritePattern<arith::ConstantOp> {
+  using OpRewritePattern<arith::ConstantOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::ConstantOp constantOp,
+                                PatternRewriter &rewriter) const final {
+    auto vType = dyn_cast<VectorType>(constantOp.getType());
+    if (!vType || !arm_sme::isValidSMETileVectorType(vType))
+      return failure();
+
+    auto denseAttr = dyn_cast<DenseElementsAttr>(constantOp.getValueAttr());
+    if (!denseAttr || !isSplatZero(vType.getElementType(), denseAttr))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<arm_sme::ZeroOp>(constantOp, vType);
+
+    return success();
+  }
+};
+
 } // namespace
 
 void mlir::populateVectorToArmSMEPatterns(RewritePatternSet &patterns,
                                           MLIRContext &ctx) {
   patterns.add<TransferWriteToArmSMELowering, VectorLoadToArmSMELowering,
-               VectorStoreToArmSMELowering>(&ctx);
+               VectorStoreToArmSMELowering, ConstantOpToArmSMELowering>(&ctx);
 }
