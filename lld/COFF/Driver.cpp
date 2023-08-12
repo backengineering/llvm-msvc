@@ -2409,7 +2409,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
 
     // Add weak aliases. Weak aliases is a mechanism to give remaining
     // undefined symbols final chance to be resolved successfully.
-    for (auto pair : config->alternateNames) {
+    for (auto &pair : config->alternateNames) {
       StringRef from = pair.first;
       StringRef to = pair.second;
       Symbol *sym = ctx.symtab.find(from);
@@ -2545,7 +2545,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
     writeDefFile(arg->getValue(), config->exports);
 
   // Set extra alignment for .comm symbols
-  for (auto pair : config->alignComm) {
+  for (auto &pair : config->alignComm) {
     StringRef name = pair.first;
     uint32_t alignment = pair.second;
 
