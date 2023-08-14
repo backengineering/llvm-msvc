@@ -1780,6 +1780,22 @@ public:
     return CreateAlignedLoad(Ty, Ptr, MaybeAlign(), isVolatile, Name);
   }
 
+  // Deprecated [opaque pointer types]
+  LoadInst *CreateLoad(Value *Ptr, const char *Name) {
+    return CreateLoad(Ptr->getType()->getPointerElementType(), Ptr, Name);
+  }
+
+  // Deprecated [opaque pointer types]
+  LoadInst *CreateLoad(Value *Ptr, const Twine &Name = "") {
+    return CreateLoad(Ptr->getType()->getPointerElementType(), Ptr, Name);
+  }
+
+  // Deprecated [opaque pointer types]
+  LoadInst *CreateLoad(Value *Ptr, bool isVolatile, const Twine &Name = "") {
+    return CreateLoad(Ptr->getType()->getPointerElementType(), Ptr, isVolatile,
+                      Name);
+  }
+
   StoreInst *CreateStore(Value *Val, Value *Ptr, bool isVolatile = false) {
     return CreateAlignedStore(Val, Ptr, MaybeAlign(), isVolatile);
   }
