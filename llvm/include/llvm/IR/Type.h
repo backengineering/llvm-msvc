@@ -407,6 +407,11 @@ public:
     return ContainedTys[0];
   }
 
+  Type *getPointerElementType() const {
+    assert(getTypeID() == PointerTyID);
+    return ContainedTys[0];
+  }
+
   inline StringRef getTargetExtName() const;
 
   /// Only use this method in code that is not reachable with opaque pointers,
