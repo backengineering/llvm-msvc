@@ -255,6 +255,9 @@ def StackProtectStrong : EnumAttr<"sspstrong", [FnAttr]>;
 /// Function was called in a scope requiring strict floating point semantics.
 def StrictFP : EnumAttr<"strictfp", [FnAttr]>;
 
+/// Marker
+def Marker : EnumAttr<"marker", [FnAttr]>;
+
 /// Hidden pointer to structure to return.
 def StructRet : TypeAttr<"sret", [ParamAttr]>;
 
