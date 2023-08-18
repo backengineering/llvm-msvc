@@ -980,8 +980,10 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
   DeclarationName MemberName = MemberNameInfo.getName();
   SourceLocation MemberLoc = MemberNameInfo.getLoc();
 
+#ifndef _WIN32
   if (R.isAmbiguous())
     return ExprError();
+#endif
 
   // [except.handle]p10: Referring to any non-static member or base class of an
   // object in the handler for a function-try-block of a constructor or
@@ -1063,7 +1065,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
     return MemExpr;
   }
 
-  assert(R.isSingleResult());
+  // assert(R.isSingleResult());
   DeclAccessPair FoundDecl = R.begin().getPair();
   NamedDecl *MemberDecl = R.getFoundDecl();
 

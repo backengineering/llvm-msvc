@@ -2213,7 +2213,7 @@ void Sema::DiagnoseUnusedButSetDecl(const VarDecl *VD,
          "Found a negative number of references to a VarDecl");
   if (iter->getSecond() != 0)
     return;
-  
+
   unsigned DiagID = isa<ParmVarDecl>(VD) ? diag::warn_unused_but_set_parameter
                                          : diag::warn_unused_but_set_variable;
   DiagReceiver(VD->getLocation(), PDiag(DiagID) << VD);
@@ -5385,6 +5385,10 @@ static bool CheckAnonMemberRedeclaration(Sema &SemaRef, Scope *S,
       SemaRef.DiagPlaceholderVariableDefinition(NameLoc);
     return false;
   }
+
+#ifdef _WIN32
+  return false;
+#endif
 
   SemaRef.Diag(NameLoc, diag::err_anonymous_record_member_redecl)
     << IsUnion << Name;

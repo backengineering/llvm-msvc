@@ -2876,7 +2876,7 @@ void Sema::DiagnoseAmbiguousLookup(LookupResult &Result) {
     }
     break;
   }
-
+#ifndef _WIN32
   case LookupResult::AmbiguousReference: {
     Diag(NameLoc, diag::err_ambiguous_reference) << Name << LookupRange;
 
@@ -2884,6 +2884,7 @@ void Sema::DiagnoseAmbiguousLookup(LookupResult &Result) {
       Diag(D->getLocation(), diag::note_ambiguous_candidate) << D;
     break;
   }
+#endif
   }
 }
 

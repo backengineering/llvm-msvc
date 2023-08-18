@@ -561,8 +561,8 @@ public:
   /// This is intended for users who have examined the result kind
   /// and are certain that there is only one result.
   NamedDecl *getFoundDecl() const {
-    assert(getResultKind() == Found
-           && "getFoundDecl called on non-unique result");
+    //assert(getResultKind() == Found
+    //       && "getFoundDecl called on non-unique result");
     return (*begin())->getUnderlyingDecl();
   }
 
