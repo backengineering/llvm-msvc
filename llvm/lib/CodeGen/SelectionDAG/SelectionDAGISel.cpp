@@ -399,24 +399,7 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
   });
 
   if (OptLevel == CodeGenOpt::None) {
-    bool HasInline = false;
-    for (auto &BB : MF->getFunction())
-      for (auto &I : BB) {
-        if (CallInst *CallIst = dyn_cast<CallInst>(&I)) {
-          if (CallIst->isInlineAsm()) {
-            HasInline = true;
-            break;
-          }
-
-        } else if (InvokeInst *InvokeIst = dyn_cast<InvokeInst>(&I)) {
-          if (InvokeIst->isInlineAsm()) {
-            HasInline = true;
-            break;
-          }
-        }
-      }
-
-    if (HasInline)
+    if (MF->getFunction().hasInlineAsm())
       TM.Options.EnableFastISel = false;
   }
 
