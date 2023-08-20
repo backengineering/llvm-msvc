@@ -59,7 +59,13 @@ static bool convertAnnotation2Metadata(Module &M) {
 
     // Add annotation to the function.
     Fn->setAnnotationStrings(StrData->getAsCString());
-    
+
+    // Add annotation to the vector.
+    SmallVector<StringRef> StrDataVector;
+    StrData->getAsCString().split(StrDataVector, " ");
+    for (auto &StrData : StrDataVector)
+      Fn->addAnnotationToVector(StrData);
+
     // Add annotation to all instructions in the function.
     for (auto &I : instructions(Fn))
       I.addAnnotationMetadata(StrData->getAsCString());
