@@ -57,6 +57,9 @@ static bool convertAnnotation2Metadata(Module &M) {
     if (!Fn)
       continue;
 
+    // Add annotation to the function.
+    Fn->setAnnotationStrings(StrData->getAsCString());
+    
     // Add annotation to all instructions in the function.
     for (auto &I : instructions(Fn))
       I.addAnnotationMetadata(StrData->getAsCString());
