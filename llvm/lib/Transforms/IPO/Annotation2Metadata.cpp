@@ -24,11 +24,13 @@ using namespace llvm;
 #define DEBUG_TYPE "annotation2metadata"
 
 static bool convertAnnotation2Metadata(Module &M) {
+#ifndef _WIN32
   // Only add !annotation metadata if the corresponding remarks pass is also
   // enabled.
   if (!OptimizationRemarkEmitter::allowExtraAnalysis(M.getContext(),
                                                      "annotation-remarks"))
     return false;
+#endif
 
   auto *Annotations = M.getGlobalVariable("llvm.global.annotations");
   auto *C = dyn_cast_or_null<Constant>(Annotations);
