@@ -78,6 +78,7 @@ private:
       SymTab;                             ///< Symbol table of args/instructions
   AttributeList AttributeSets;            ///< Parameter attributes
   StringRef AnnotationStrings;            ///< Annotation strings
+  SmallVector<StringRef> AnnotationVec;   ///< Annotation vector
   bool IsVolatileFunction : 1;            ///< Is this a volatile function?
   bool IsFastISelDisabled : 1;            ///< Is fast-isel for this function disabled?
   bool IsSEHFilterFunction : 1;           ///< Is SEHFilterFunction?
@@ -195,6 +196,10 @@ public:
   /// Get/Set annotation strings.
   StringRef getAnnotationStrings() const { return AnnotationStrings; }
   void setAnnotationStrings(StringRef Strs) { AnnotationStrings = Strs; }
+
+  /// Get/Add annotation to the annotation vector.
+  SmallVector<StringRef> &getAnnotationVector() { return AnnotationVec; }
+  void addAnnotationToVector(StringRef Strs) { AnnotationVec.push_back(Strs); }
 
   /// If the value is a volatile function, we will preserve it.
   bool isVolatile() const { return IsVolatileFunction; }
