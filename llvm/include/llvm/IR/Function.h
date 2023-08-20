@@ -77,6 +77,7 @@ private:
   std::unique_ptr<ValueSymbolTable>
       SymTab;                             ///< Symbol table of args/instructions
   AttributeList AttributeSets;            ///< Parameter attributes
+  StringRef AnnotationStrings;            ///< Annotation strings
   bool IsVolatileFunction : 1;            ///< Is this a volatile function?
   bool IsFastISelDisabled : 1;            ///< Is fast-isel for this function disabled?
   bool IsSEHFilterFunction : 1;           ///< Is SEHFilterFunction?
@@ -190,6 +191,10 @@ public:
   /// getContext - Return a reference to the LLVMContext associated with this
   /// function.
   LLVMContext &getContext() const;
+
+  /// Get/Set annotation strings.
+  StringRef getAnnotationStrings() const { return AnnotationStrings; }
+  void setAnnotationStrings(StringRef Strs) { AnnotationStrings = Strs; }
 
   /// If the value is a volatile function, we will preserve it.
   bool isVolatile() const { return IsVolatileFunction; }
