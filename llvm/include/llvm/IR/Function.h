@@ -240,6 +240,9 @@ public:
            !HasCXXSEH;
   }
 
+  /// Function has inline asm
+  bool hasInlineAsm();
+
   /// Indicate that whether we should disable fast-isel for this function.
   bool isFastISelDisabled() const { return IsFastISelDisabled; }
   void setFastISelDisabled(bool Disabled = true) {
