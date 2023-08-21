@@ -1858,6 +1858,8 @@ bool Function::hasInlineAsm() {
           break;
         }
       }
+      if (HasInline)
+        break;
     }
   return HasInline;
 }
