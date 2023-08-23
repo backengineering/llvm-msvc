@@ -175,6 +175,9 @@ AllocaInst *llvm::DemotePHIToStack(PHINode *P, Instruction *AllocaPoint) {
 bool llvm::DemotePHIToStack(Function &F) {
   bool Changed = false;
 
+  if (F.begin()->size() == 0)
+    return Changed;
+
   SmallPtrSet<PHINode *, 8> PHIsToDemote;
   for (auto &BB : F)
     for (auto &I : BB)
