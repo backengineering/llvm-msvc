@@ -566,10 +566,13 @@ void LiveVariables::runOnBlock(MachineBasicBlock *MBB, const unsigned NumRegs) {
   if (!PHIVarInfo[MBB->getNumber()].empty()) {
     SmallVectorImpl<unsigned> &VarInfoVec = PHIVarInfo[MBB->getNumber()];
 
-    for (unsigned I : VarInfoVec)
-      // Mark it alive only in the block we are representing.
-      MarkVirtRegAliveInBlock(getVarInfo(I), MRI->getVRegDef(I)->getParent(),
-                              MBB);
+    for (unsigned I : VarInfoVec) {
+      if (MRI && MRI->getVRegDef(I)) {
+        // Mark it alive only in the block we are representing.
+        MarkVirtRegAliveInBlock(getVarInfo(I), MRI->getVRegDef(I)->getParent(),
+                                MBB);
+      }
+    }
   }
 
   // MachineCSE may CSE instructions which write to non-allocatable physical
