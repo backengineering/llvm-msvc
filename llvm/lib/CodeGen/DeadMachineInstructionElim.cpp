@@ -110,7 +110,7 @@ bool DeadMachineInstructionElim::runOnMachineFunction(MachineFunction &MF) {
   // Skip functions that disabled CodeGenPreparePass.
   if (MF.getFunction().doesDisableCodeGenPreparePass())
     return false;
-  
+
   MRI = &MF.getRegInfo();
 
   const TargetSubtargetInfo &ST = MF.getSubtarget();
@@ -136,7 +136,8 @@ bool DeadMachineInstructionElim::eliminateDeadMI(MachineFunction &MF) {
     // liveness as we go.
     for (MachineInstr &MI : make_early_inc_range(reverse(*MBB))) {
       // If the instruction is dead, delete it!
-      if (isDead(&MI)) {
+      // Skip instructions that are dirty.
+      if (isDead(&MI) && !MI.isDirty()) {
         LLVM_DEBUG(dbgs() << "DeadMachineInstructionElim: DELETING: " << MI);
         // It is possible that some DBG_VALUE instructions refer to this
         // instruction. They will be deleted in the live debug variable

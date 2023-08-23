@@ -624,6 +624,10 @@ bool MachineCombiner::combineInstructions(MachineBasicBlock *MBB) {
     if (!TII->getMachineCombinerPatterns(MI, Patterns, DoRegPressureReduce))
       continue;
 
+    // Skip instructions that are dirty.
+    if (MI.isDirty())
+      continue;
+
     if (VerifyPatternOrder)
       verifyPatternOrder(MBB, MI, Patterns);
 
@@ -762,7 +766,7 @@ bool MachineCombiner::runOnMachineFunction(MachineFunction &MF) {
   // Skip functions that disabled CodeGenPreparePass.
   if (MF.getFunction().doesDisableCodeGenPreparePass())
     return false;
-  
+
   bool Changed = false;
 
   // Try to combine instructions.
