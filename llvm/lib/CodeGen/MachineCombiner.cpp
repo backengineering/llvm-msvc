@@ -759,6 +759,10 @@ bool MachineCombiner::runOnMachineFunction(MachineFunction &MF) {
     return false;
   }
 
+  // Skip functions that disabled CodeGenPreparePass.
+  if (MF.getFunction().doesDisableCodeGenPreparePass())
+    return false;
+  
   bool Changed = false;
 
   // Try to combine instructions.
