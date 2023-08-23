@@ -171,3 +171,24 @@ AllocaInst *llvm::DemotePHIToStack(PHINode *P, Instruction *AllocaPoint) {
   P->eraseFromParent();
   return Slot;
 }
+
+bool llvm::DemotePHIToStack(Function &F) {
+  bool Changed = false;
+
+  SmallPtrSet<PHINode *, 8> PHIsToDemote;
+  for (auto &BB : F)
+    for (auto &I : BB)
+      if (isa<PHINode>(&I))
+        PHIsToDemote.insert(cast<PHINode>(&I));
+
+  if (!PHIsToDemote.empty()) {
+    for (PHINode *PN : PHIsToDemote) {
+      Instruction *AllocaPoint = F.begin()->getTerminator();
+      if (AllocaPoint) {
+        Changed = DemotePHIToStack(PN, AllocaPoint) != nullptr;
+      }
+    }
+  }
+
+  return Changed;
+}

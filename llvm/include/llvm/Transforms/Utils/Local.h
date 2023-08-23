@@ -202,6 +202,7 @@ AllocaInst *DemoteRegToStack(Instruction &X,
 /// it with a slot in the stack frame, allocated via alloca. The phi node is
 /// deleted and it returns the pointer to the alloca inserted.
 AllocaInst *DemotePHIToStack(PHINode *P, Instruction *AllocaPoint = nullptr);
+bool DemotePHIToStack(Function &F);
 
 /// Try to ensure that the alignment of \p V is at least \p PrefAlign bytes. If
 /// the owning object can be modified and has an alignment less than \p
