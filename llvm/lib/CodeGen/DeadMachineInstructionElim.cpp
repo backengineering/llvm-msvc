@@ -20,6 +20,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Function.h"
 
 using namespace llvm;
 
@@ -106,6 +107,10 @@ bool DeadMachineInstructionElim::runOnMachineFunction(MachineFunction &MF) {
   if (skipFunction(MF.getFunction()))
     return false;
 
+  // Skip functions that disabled CodeGenPreparePass.
+  if (MF.getFunction().doesDisableCodeGenPreparePass())
+    return false;
+  
   MRI = &MF.getRegInfo();
 
   const TargetSubtargetInfo &ST = MF.getSubtarget();
