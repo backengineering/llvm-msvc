@@ -399,8 +399,6 @@ bool llvm::isInstructionTriviallyDead(Instruction *I,
                                       const TargetLibraryInfo *TLI) {
   if (!I->use_empty())
     return false;
-  if (I->isVolatile())
-    return false;
   return wouldInstructionBeTriviallyDead(I, TLI);
 }
 
