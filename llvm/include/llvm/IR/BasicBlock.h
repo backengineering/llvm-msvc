@@ -72,6 +72,8 @@ private:
   bool IsCXXSEHTryBeginBlock = false;
   bool IsCXXSEHTryEndBlock = false;
 
+  bool IsVolatileBlock = false;
+
   void setParent(Function *parent);
 
   /// Constructor.
@@ -113,6 +115,10 @@ public:
   bool isSEHOrCXXSEHTryEndBlock() const {
     return isSEHTryEndBlock() || isCXXSEHTryEndBlock();
   }
+
+  /// If the value is a volatile block, we will preserve it.
+  bool isVolatile() const { return IsVolatileBlock; }
+  void setVolatile(bool Volatile = true) { IsVolatileBlock = Volatile; }
 
   /// Get the context in which this basic block lives.
   LLVMContext &getContext() const;
