@@ -126,10 +126,6 @@ static const unsigned BitPartRecursionMaxDepth = 48;
 bool llvm::ConstantFoldTerminator(BasicBlock *BB, bool DeleteDeadConditions,
                                   const TargetLibraryInfo *TLI,
                                   DomTreeUpdater *DTU) {
-  // Skip volatile blocks
-  if (BB->isVolatile())
-    return false;
-
   Instruction *T = BB->getTerminator();
   IRBuilder<> Builder(T);
 
@@ -402,6 +398,8 @@ bool llvm::ConstantFoldTerminator(BasicBlock *BB, bool DeleteDeadConditions,
 bool llvm::isInstructionTriviallyDead(Instruction *I,
                                       const TargetLibraryInfo *TLI) {
   if (!I->use_empty())
+    return false;
+  if (I->isVolatile())
     return false;
   return wouldInstructionBeTriviallyDead(I, TLI);
 }
