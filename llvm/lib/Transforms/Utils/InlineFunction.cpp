@@ -2665,8 +2665,10 @@ llvm::InlineResult llvm::InlineFunction(CallBase &CB, InlineFunctionInfo &IFI,
     if (MergeAttributes)
       AttributeFuncs::mergeAttributesForInlining(*Caller, *CalledFunc);
 
-    // Set 'volatile' to the new BB.
+    // Set 'volatile' to the new BB and instructions.
     OrigBB->setVolatile(true);
+    for (auto &I : *OrigBB)
+      I.setVolatile(true);
 
     // We are now done with the inlining.
     return InlineResult::success();
@@ -2832,8 +2834,10 @@ llvm::InlineResult llvm::InlineFunction(CallBase &CB, InlineFunctionInfo &IFI,
   if (MergeAttributes)
     AttributeFuncs::mergeAttributesForInlining(*Caller, *CalledFunc);
 
-  // Set 'volatile' to the new BB. 
+  // Set 'volatile' to the new BB and instructions.
   AfterCallBB->setVolatile(true);
+  for (auto &I : *AfterCallBB)
+    I.setVolatile(true);
 
   return InlineResult::success();
 }

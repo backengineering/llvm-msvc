@@ -4160,7 +4160,7 @@ bool InstCombinerImpl::prepareWorklist(
 
   auto HandleOnlyLiveSuccessor = [&](BasicBlock *BB, BasicBlock *LiveSucc) {
     for (BasicBlock *Succ : successors(BB))
-      if (Succ != LiveSucc && DeadEdges.insert({BB, Succ}).second)
+      if (Succ != LiveSucc && DeadEdges.insert({BB, Succ}).second && !BB->isVolatile())
         for (PHINode &PN : Succ->phis())
           for (Use &U : PN.incoming_values())
             if (PN.getIncomingBlock(U) == BB && !isa<PoisonValue>(U)) {
@@ -4179,6 +4179,8 @@ bool InstCombinerImpl::prepareWorklist(
     LiveBlocks.insert(BB);
 
     for (Instruction &Inst : llvm::make_early_inc_range(*BB)) {
+      if (Inst.isVolatile())
+        continue;
       // ConstantProp instruction if trivially constant.
       if (!Inst.use_empty() &&
           (Inst.getNumOperands() == 0 || isa<Constant>(Inst.getOperand(0))))
@@ -4255,7 +4257,8 @@ bool InstCombinerImpl::prepareWorklist(
   for (BasicBlock &BB : F) {
     if (LiveBlocks.count(&BB))
       continue;
-
+    if (BB.isVolatile())
+      continue;
     unsigned NumDeadInstInBB;
     unsigned NumDeadDbgInstInBB;
     std::tie(NumDeadInstInBB, NumDeadDbgInstInBB) =
@@ -4272,6 +4275,8 @@ bool InstCombinerImpl::prepareWorklist(
   // some N^2 behavior in pathological cases.
   Worklist.reserve(InstrsForInstructionWorklist.size());
   for (Instruction *Inst : reverse(InstrsForInstructionWorklist)) {
+    if (Inst->isVolatile())
+      continue;
     // DCE instruction if trivially dead. As we iterate in reverse program
     // order here, we will clean up whole chains of dead instructions.
     if (isInstructionTriviallyDead(Inst, &TLI) ||

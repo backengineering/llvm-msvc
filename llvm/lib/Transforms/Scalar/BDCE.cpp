@@ -152,11 +152,15 @@ static bool bitTrackingDCE(Function &F, DemandedBits &DB) {
   }
 
   for (Instruction *&I : llvm::reverse(Worklist)) {
+    if (I->isVolatile())
+      continue;
     salvageDebugInfo(*I);
     I->dropAllReferences();
   }
 
   for (Instruction *&I : Worklist) {
+    if (I->isVolatile())
+      continue;
     ++NumRemoved;
     I->eraseFromParent();
   }

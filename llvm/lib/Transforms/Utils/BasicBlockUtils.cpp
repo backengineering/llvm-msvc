@@ -184,6 +184,8 @@ bool llvm::MergeBlockIntoPredecessor(BasicBlock *BB, DomTreeUpdater *DTU,
                                      DominatorTree *DT) {
   if (BB->hasAddressTaken())
     return false;
+  if (BB->isVolatile())
+    return false;
 
   // Can't merge if there are multiple predecessors, or no predecessors.
   BasicBlock *PredBB = BB->getUniquePredecessor();

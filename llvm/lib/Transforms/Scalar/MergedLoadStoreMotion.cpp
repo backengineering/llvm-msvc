@@ -326,6 +326,10 @@ bool MergedLoadStoreMotion::mergeStores(BasicBlock *HeadBB) {
     Instruction *I = &*RBI;
     ++RBI;
 
+    // Skip volatile instructions.
+    if (I->isVolatile())
+      continue;
+
     // Don't sink non-simple (atomic, volatile) stores.
     auto *S0 = dyn_cast<StoreInst>(I);
     if (!S0 || !S0->isSimple())

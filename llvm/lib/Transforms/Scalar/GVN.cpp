@@ -2382,6 +2382,8 @@ void GVNPass::assignBlockRPONumber(Function &F) {
 
 bool GVNPass::replaceOperandsForInBlockEquality(Instruction *Instr) const {
   bool Changed = false;
+  if (Instr->isVolatile())
+    return Changed;
   for (unsigned OpNum = 0; OpNum < Instr->getNumOperands(); ++OpNum) {
     Value *Operand = Instr->getOperand(OpNum);
     auto it = ReplaceOperandsWithMap.find(Operand);
@@ -2553,6 +2555,9 @@ bool GVNPass::propagateEquality(Value *LHS, Value *RHS,
 bool GVNPass::processInstruction(Instruction *I) {
   // Ignore dbg info intrinsics.
   if (isa<DbgInfoIntrinsic>(I))
+    return false;
+
+  if (I->isVolatile())
     return false;
 
   // If the instruction can be easily simplified then do so now in preference
@@ -2770,6 +2775,9 @@ bool GVNPass::processBlock(BasicBlock *BB) {
   if (DeadBlocks.count(BB))
     return false;
 
+  if (BB->isVolatile())
+    return false;
+
   // Clearing map before every BB because it can be used only for single BB.
   ReplaceOperandsWithMap.clear();
   bool ChangedFunction = false;
@@ -2800,6 +2808,9 @@ bool GVNPass::processBlock(BasicBlock *BB) {
       --BI;
 
     for (auto *I : InstrsToErase) {
+      // Skip volatile instructions.
+      if (I->isVolatile())
+        continue;
       assert(I->getParent() == BB && "Removing instruction from wrong block?");
       LLVM_DEBUG(dbgs() << "GVN removed: " << *I << '\n');
       salvageKnowledge(I, AC);
@@ -3043,6 +3054,9 @@ bool GVNPass::performPRE(Function &F) {
 
     // Don't perform PRE on an EH pad.
     if (CurrentBlock->isEHPad())
+      continue;
+
+    if (CurrentBlock->isVolatile())
       continue;
 
     for (BasicBlock::iterator BI = CurrentBlock->begin(),
