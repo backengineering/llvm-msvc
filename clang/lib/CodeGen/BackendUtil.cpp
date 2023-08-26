@@ -61,6 +61,7 @@
 #include "llvm/Transforms/IPO/LowerTypeTests.h"
 #include "llvm/Transforms/IPO/ThinLTOBitcodeWriter.h"
 #include "llvm/Transforms/IPO/WelComeToLLVMMSVC.h"
+#include "llvm/Transforms/IPO/MSVCMacroRebuilding.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/Instrumentation/AddressSanitizer.h"
@@ -1105,6 +1106,9 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     // Bitcode auto generator pass(Pre)
     MPM.addPassToFront(BitcodeAutoGeneratorPrePass(
           CodeGenOpts.AutoGenerateBitcode, "BitcodeAutoGeneratorPre"));
+
+    // MSVC macro rebuilding pass (this pass must be at the top)
+    MPM.addPassToFront(MSVCMacroRebuildingPass());
   }
 
   // Post pass
