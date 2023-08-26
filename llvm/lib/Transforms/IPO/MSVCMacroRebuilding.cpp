@@ -88,11 +88,11 @@ PreservedAnalyses MSVCMacroRebuildingPass::run(Module &M,
       // instruction in a function.
       for (auto UserIt = GV.users().begin(); UserIt != GV.users().end();
            ++UserIt) {
-        if (Instruction *Inst = dyn_cast<Instruction>(*UserIt)) {
-          if (!Inst->getParent())
+        if (Instruction *I = dyn_cast<Instruction>(*UserIt)) {
+          if (!I->getParent())
             continue;
 
-          Function *F = Inst->getParent()->getParent();
+          Function *F = I->getParent()->getParent();
           if (!F)
             continue;
 
