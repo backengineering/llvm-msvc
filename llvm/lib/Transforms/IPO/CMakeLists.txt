@@ -43,6 +43,7 @@ add_llvm_component_library(LLVMipo
   ThinLTOBitcodeWriter.cpp
   WholeProgramDevirt.cpp
   WelComeToLLVMMSVC.cpp
+  MSVCMacroRebuilding.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms

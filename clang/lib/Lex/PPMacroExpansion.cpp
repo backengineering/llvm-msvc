@@ -47,6 +47,7 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/IPO/MSVCMacroRebuilding.h"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -1581,9 +1582,13 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
         //[MSVC Compalibility] Use file name and line to replace '__FUNCTION__'
 #ifdef _WIN32
         if (II == Ident__FUNCTION__) {
-          FN += "(Line:";
-          FN += Twine(PLoc.getLine()).str();
-          FN += ")";
+          SmallString<256> FNTemp =
+              llvm::MSVCMacroRebuildingPass::get__FUNCTION__MarkerName();
+          FNTemp += FN;
+          FNTemp += "(Line:";
+          FNTemp += Twine(PLoc.getLine()).str();
+          FNTemp += ")";
+          FN = FNTemp;
         }
 #endif
       }
