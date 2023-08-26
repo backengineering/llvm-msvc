@@ -67,7 +67,7 @@ PreservedAnalyses MSVCMacroRebuildingPass::run(Module &M,
 
   // Construct the regular expression used to match the
   // macro marker and the file name with escaped backslashes and line number.
-  std::string RegexStrFor__FUNCTION__ =
+  std::string RegexStr__FUNCTION__ =
       MSVCMacroRebuildingPass::get__FUNCTION__MarkerName().str() +
       std::regex_replace(M.getSourceFileName(), std::regex("\\\\"), "\\\\") +
       "\\(Line:\\d+\\)";
@@ -97,8 +97,8 @@ PreservedAnalyses MSVCMacroRebuildingPass::run(Module &M,
             continue;
 
           // Replace '__FUNCTION__'
-          Changed |= replace__FUNCTION__(RegexStrFor__FUNCTION__, GV, CDA,
-                                         F->getName());
+          Changed |=
+              replace__FUNCTION__(RegexStr__FUNCTION__, GV, CDA, F->getName());
         }
       }
     }
