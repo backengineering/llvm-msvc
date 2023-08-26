@@ -1337,6 +1337,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   // Get other target #defines.
   TI.getTargetDefines(LangOpts, Builder);
 
+#ifdef _WIN32
   // #define offsetof
   Builder.append("#ifndef offsetof");
   Builder.append("#if defined _MSC_VER && !defined _CRT_USE_BUILTIN_OFFSETOF");
@@ -1349,6 +1350,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   Builder.append("    #define offsetof(s,m) __builtin_offsetof(s,m)");
   Builder.append("#endif");
   Builder.append("#endif");
+#endif
 }
 
 /// InitializePreprocessor - Initialize the preprocessor getting it and the
