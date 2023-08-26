@@ -22,16 +22,10 @@
 using namespace llvm;
 
 // Replace '__FUNCTION__'
-bool MSVCMacroRebuildingPass::replace__FUNCTION__(GlobalVariable &GV,
+bool MSVCMacroRebuildingPass::replace__FUNCTION__(std::string &RegexStr,
+                                                  GlobalVariable &GV,
                                                   ConstantDataArray *CDA,
                                                   StringRef FunctionName) {
-  // Construct the regular expression used to match the
-  // macro marker and the file name with escaped backslashes and line number.
-  static std::string RegexStr =
-      MSVCMacroRebuildingPass::get__FUNCTION__MarkerName().str() +
-      std::regex_replace(GV.getParent()->getSourceFileName(),
-                         std::regex("\\\\"), "\\\\") +
-      "\\(Line:\\d+\\)";
 
   // Get the original string value of the constant data array.
   std::string OriginalStr = CDA->getAsCString().str();
@@ -71,6 +65,13 @@ PreservedAnalyses MSVCMacroRebuildingPass::run(Module &M,
                                                ModuleAnalysisManager &AM) {
   bool Changed = false;
 
+  // Construct the regular expression used to match the
+  // macro marker and the file name with escaped backslashes and line number.
+  std::string RegexStrFor__FUNCTION__ =
+      MSVCMacroRebuildingPass::get__FUNCTION__MarkerName().str() +
+      std::regex_replace(M.getSourceFileName(), std::regex("\\\\"), "\\\\") +
+      "\\(Line:\\d+\\)";
+
   // Iterate over all global variables in the input module.
   for (GlobalVariable &GV : M.globals()) {
     // Skip the variable if it does not have an initializer.
@@ -96,7 +97,8 @@ PreservedAnalyses MSVCMacroRebuildingPass::run(Module &M,
             continue;
 
           // Replace '__FUNCTION__'
-          Changed |= replace__FUNCTION__(GV, CDA, F->getName());
+          Changed |= replace__FUNCTION__(RegexStrFor__FUNCTION__, GV, CDA,
+                                         F->getName());
         }
       }
     }
