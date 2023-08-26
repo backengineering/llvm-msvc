@@ -1336,6 +1336,19 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
 
   // Get other target #defines.
   TI.getTargetDefines(LangOpts, Builder);
+
+  // #define offsetof
+  Builder.append("#ifndef offsetof");
+  Builder.append("#if defined _MSC_VER && !defined _CRT_USE_BUILTIN_OFFSETOF");
+  Builder.append("    #ifdef __cplusplus");
+  Builder.append("        #define offsetof(s,m) ((::size_t)&reinterpret_cast<char const volatile&>((((s*)0)->m)))");
+  Builder.append("    #else");
+  Builder.append("        #define offsetof(s,m) ((size_t)&(((s*)0)->m))");
+  Builder.append("    #endif");
+  Builder.append("#else");
+  Builder.append("    #define offsetof(s,m) __builtin_offsetof(s,m)");
+  Builder.append("#endif");
+  Builder.append("#endif");
 }
 
 /// InitializePreprocessor - Initialize the preprocessor getting it and the
