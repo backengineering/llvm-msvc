@@ -32,28 +32,18 @@ bool MSVCMacroRebuildingPass::replace__FUNCTION__(std::string &RegexStr,
   // Replace the macro marker and file name in the original string with
   // the name of the function containing the instruction.
   std::string ReplacedStr =
-      std::regex_replace(OriginalStr, std::regex(RegexStr), FunctionName.str());
+      std::regex_replace(OriginalStr, std::regex(RegexStr),
+                         demangleGetFunctionName(FunctionName.str()));
 
   // If the replaced string is the same as the original string, skip the
   // variable.
   if (ReplacedStr == OriginalStr)
     return false;
 
-  // Demangle the replaced string and extract the function name.
-  std::string DemangledReplacedStr = demangle(ReplacedStr);
-  size_t StartIndex = DemangledReplacedStr.find("(");
-  if (StartIndex != std::string::npos) {
-    size_t EndIndex = DemangledReplacedStr.rfind(" ", StartIndex);
-    if (EndIndex != std::string::npos) {
-      DemangledReplacedStr =
-          DemangledReplacedStr.substr(EndIndex + 1, StartIndex - EndIndex - 1);
-    }
-  }
-
   // Create a new constant data array containing the demangled function
   // name and set it as the initializer of the global variable.
-  Constant *NewStr = ConstantDataArray::getString(GV.getParent()->getContext(),
-                                                  DemangledReplacedStr);
+  Constant *NewStr =
+      ConstantDataArray::getString(GV.getParent()->getContext(), ReplacedStr);
   GV.setInitializer(NewStr);
 
   return true;
