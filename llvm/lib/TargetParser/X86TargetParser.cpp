@@ -705,6 +705,8 @@ void llvm::X86::getFeaturesForCPU(StringRef CPU,
 #ifdef _WIN32
   // Matches Microsoft's default support.
   Bits |= FeatureSSE3;
+  Bits |= FeatureSSE4_1;
+  Bits |= FeatureSSE4_2;
   Bits |= FeatureINVPCID;
   Bits |= FeatureRTM;
 #endif
