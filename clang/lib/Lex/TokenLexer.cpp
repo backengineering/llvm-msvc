@@ -822,6 +822,11 @@ bool TokenLexer::pasteTokens(Token &LHSTok, ArrayRef<Token> TokenStream,
       // Returns true the caller should immediately return the token.
       return true;
     }
+    // [MSVC Compatibility] Handle "__FUNCTION__"##"string"
+    if (LHSTok.is(tok::kw___FUNCTION__) && RHS.is(tok::string_literal)) {
+      // Returns true the caller should immediately return the token.
+      return true;
+    }
     // [MSVC Compatibility] Handle "string"##"string"
     if ((LHSTok.is(tok::string_literal) && RHS.is(tok::string_literal))) {
       // Returns true the caller should immediately return the token.
