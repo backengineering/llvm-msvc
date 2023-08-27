@@ -31,9 +31,8 @@ bool MSVCMacroRebuildingPass::replace__FUNCTION__(std::string &RegexStr,
   std::string OriginalStr = CDA->getAsCString().str();
   // Replace the macro marker and file name in the original string with
   // the name of the function containing the instruction.
-  std::string ReplacedStr =
-      std::regex_replace(OriginalStr, std::regex(RegexStr),
-                         demangleGetFunctionName(FunctionName.str()));
+  std::string ReplacedStr = std::regex_replace(
+      OriginalStr, std::regex(RegexStr), demangleGetFunctionName(FunctionName));
 
   // If the replaced string is the same as the original string, skip the
   // variable.
