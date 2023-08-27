@@ -67,6 +67,9 @@ char *dlangDemangle(std::string_view MangledName);
 /// demangling occurred.
 std::string demangle(std::string_view MangledName);
 
+/// demangle a string to get the function name.
+std::string demangleGetFunctionName(std::string_view MangledName);
+
 bool nonMicrosoftDemangle(std::string_view MangledName, std::string &Result);
 
 /// "Partial" demangler. This supports demangling a string into an AST

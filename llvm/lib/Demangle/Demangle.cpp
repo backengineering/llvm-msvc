@@ -17,6 +17,20 @@
 
 using llvm::itanium_demangle::starts_with;
 
+/// demangle a string to get the function name.
+std::string llvm::demangleGetFunctionName(std::string_view MangledName) {
+  std::string DemangledStr = llvm::demangle(MangledName);
+  size_t StartIndex = DemangledStr.find("(");
+  if (StartIndex != std::string::npos) {
+    size_t EndIndex = DemangledStr.rfind(" ", StartIndex);
+    if (EndIndex != std::string::npos) {
+      DemangledStr =
+          DemangledStr.substr(EndIndex + 1, StartIndex - EndIndex - 1);
+    }
+  }
+  return DemangledStr;
+}
+
 std::string llvm::demangle(std::string_view MangledName) {
   std::string Result;
 
