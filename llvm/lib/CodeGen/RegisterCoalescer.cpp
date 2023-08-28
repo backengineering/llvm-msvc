@@ -648,7 +648,8 @@ bool RegisterCoalescer::adjustCopiesBackFrom(const CoalescerPair &CP,
   // The live segment might not exist after fun with physreg coalescing.
   if (AS == IntA.end()) return false;
   VNInfo *AValNo = AS->valno;
-
+  if (!AValNo)
+    return false;
   // If AValNo is defined as a copy from IntB, we can potentially process this.
   // Get the instruction that defines this value number.
   MachineInstr *ACopyMI = LIS->getInstructionFromIndex(AValNo->def);
@@ -832,6 +833,8 @@ RegisterCoalescer::removeCopyByCommutingDef(const CoalescerPair &CP,
 
   // AValNo is the value number in A that defines the copy, A3 in the example.
   VNInfo *AValNo = IntA.getVNInfoAt(CopyIdx.getRegSlot(true));
+  if (!AValNo)
+    return {false, false};
   assert(AValNo && !AValNo->isUnused() && "COPY source not live");
   if (AValNo->isPHIDef())
     return { false, false };
@@ -2728,6 +2731,8 @@ JoinVals::analyzeValue(unsigned ValNo, JoinVals &Other) {
 
   // Find the value in Other that overlaps VNI->def, if any.
   LiveQueryResult OtherLRQ = Other.LR.Query(VNI->def);
+  if (!OtherLRQ.valueIn() && !OtherLRQ.valueOutOrDead() && !OtherLRQ.isKill())
+    return CR_Impossible;
 
   // It is possible that both values are defined by the same instruction, or
   // the values are PHIs defined in the same block. When that happens, the two

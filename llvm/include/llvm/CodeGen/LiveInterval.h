@@ -542,7 +542,7 @@ namespace llvm {
       // Find the segment that enters the instruction.
       const_iterator I = find(Idx.getBaseIndex());
       const_iterator E = end();
-      if (I == E)
+      if (I == E || !I->valno)
         return LiveQueryResult(nullptr, nullptr, SlotIndex(), false);
 
       // Is this an instruction live-in segment?
