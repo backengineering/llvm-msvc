@@ -111,7 +111,6 @@ typedef typeof(nullptr) nullptr_t;
     (defined(__cplusplus) && __cplusplus >= 201103L)
 #include "__stddef_max_align_t.h"
 #endif
-#define offsetof(t, d) __builtin_offsetof(t, d)
 #undef __need_STDDEF_H_misc
 #endif  /* defined(__need_STDDEF_H_misc) */
 
