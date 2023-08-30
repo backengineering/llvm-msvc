@@ -46,13 +46,14 @@ namespace sys {
   struct ProcessInfo {
     enum : procid_t { InvalidPid = 0 };
 
-    procid_t Pid;      /// The process identifier.
-    process_t Process; /// Platform-dependent process object.
+    procid_t Pid = 0;      /// The process identifier.
+    process_t Process = 0; /// Platform-dependent process object.
 
     /// The return code, set after execution.
-    int ReturnCode;
-
-    ProcessInfo();
+    int ReturnCode = 0;
+    
+    /// The process is running?
+    bool IsRunning = false; 
   };
 
   /// This struct encapsulates information about a process execution.
@@ -227,6 +228,40 @@ namespace sys {
 
        bool Polling = false ///< If true, do not kill the process on timeout.
   );
+
+  /// This function waits for the process specified by \p PIs to finish.
+  /// \returns A \see ProcessInfo struct with Pid set to:
+  /// \li The process id of the child process if the child process has changed
+  /// state.
+  /// \li 0 if the child process has not changed state.
+  /// \note Users of this function should always check the ReturnCode member of
+  /// the \see ProcessInfo returned from this function.
+  bool
+  WaitMP(std::vector<ProcessInfo *> &PIs, ///< The child process that should be waited on.
+       bool WaitAllMP, ///< if WaitAllMP, waits until all processes have completed.
+       std::optional<unsigned> SecondsToWait, ///< If std::nullopt, waits until
+       ///< child has terminated.
+       ///< If a value, this specifies the amount of time to wait for the child
+       ///< process. If the time expires, and \p Polling is false, the child is
+       ///< killed and this < function returns. If the time expires and \p
+       ///< Polling is true, the child is resumed.
+       ///<
+       ///< If zero, this function will perform a non-blocking
+       ///< wait on the child process.
+       std::string *ErrMsg = nullptr, ///< If non-zero, provides a pointer to a
+       ///< string instance in which error messages will be returned. If the
+       ///< string is non-empty upon return an error occurred while invoking the
+       ///< program.
+       std::optional<ProcessStatistics> *ProcStat =
+           nullptr, ///< If non-zero, provides
+       /// a pointer to a structure in which process execution statistics will
+       /// be stored.
+
+       bool Polling = false ///< If true, do not kill the process on timeout.
+  );
+
+  /// This function clean up the process specified by \p PIs to finish.
+  bool CleanUpMP(std::vector<ProcessInfo *> &PIs);
 
   /// Print a command argument, and optionally quote it.
   void printArg(llvm::raw_ostream &OS, StringRef Arg, bool Quote);

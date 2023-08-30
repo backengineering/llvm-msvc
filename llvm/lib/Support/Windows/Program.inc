@@ -32,9 +32,6 @@
 //===----------------------------------------------------------------------===//
 
 namespace llvm {
-
-ProcessInfo::ProcessInfo() : Pid(0), Process(0), ReturnCode(0) {}
-
 ErrorOr<std::string> sys::findProgramByName(StringRef Name,
                                             ArrayRef<StringRef> Paths) {
   assert(!Name.empty() && "Must have a name!");
@@ -343,6 +340,48 @@ static bool Execute(ProcessInfo &PI, StringRef Program,
                              (DWORD_PTR)AffinityMask->getData().front());
     ::ResumeThread(pi.hThread);
   }
+  
+  PI.IsRunning = true;
+  return true;
+}
+
+static bool cleanUpProcess(ProcessInfo &PI) {
+  DWORD ExitStatus = 0;
+
+  BOOL Result = GetExitCodeProcess(PI.Process, &ExitStatus);
+  if (Result && ExitStatus == STILL_ACTIVE) {
+    // Process is still running
+    return true;
+  }
+
+  PI.Pid = procid_t();
+  PI.Process = process_t();
+  PI.IsRunning = false;
+
+  DWORD LastError = GetLastError();
+  if (LastError != ERROR_INVALID_HANDLE) {
+    CloseHandle(PI.Process);
+  }
+
+  if (!Result) {
+    // Failed to get exit code
+    SetLastError(LastError);
+    return false;
+  }
+
+  if (!ExitStatus) {
+    // Process exited successfully with code 0
+    PI.ReturnCode = 0;
+    return true;
+  }
+  
+  // Pass 10(Warning) and 11(Error) to the callee as negative value.
+  if ((ExitStatus & 0xBFFF0000U) == 0x80000000U)
+    PI.ReturnCode = static_cast<int>(ExitStatus);
+  else if (ExitStatus & 0xFF)
+    PI.ReturnCode = ExitStatus & 0x7FFFFFFF;
+  else
+    PI.ReturnCode = 1;
 
   return true;
 }
@@ -486,6 +525,118 @@ ProcessInfo sys::Wait(const ProcessInfo &PI,
     WaitResult.ReturnCode = 1;
 
   return WaitResult;
+}
+
+bool sys::WaitMP(std::vector<ProcessInfo *> &PIs, bool WaitAllMP,
+                 std::optional<unsigned> SecondsToWait, std::string *ErrMsg,
+                 std::optional<ProcessStatistics> *ProcStat, bool Polling) {
+    DWORD WaitTime = 0;
+    if (!SecondsToWait.has_value()) {
+        WaitTime = INFINITE;
+    } else if (SecondsToWait.value() > 0) {
+        WaitTime = SecondsToWait.value() * 1000;
+    }
+
+    std::vector<HANDLE> Handles;
+
+    for (auto &PI : PIs) {
+        if (!PI->IsRunning) {
+            continue;
+        }
+        Handles.push_back(PI->Process);
+    }
+
+    if (Handles.empty()) {
+        return false;
+    }
+
+    // If there is only one handle, set WaitAllMP to true
+    if (Handles.size() == 1) {
+        WaitAllMP = true;
+    }
+
+    // Wait for the objects in Handles to be signaled
+    DWORD Status = WaitForMultipleObjects(Handles.size(), Handles.data(),
+                                          WaitAllMP, WaitTime);
+
+    // Check the status of the wait operation
+    if (!(Status >= WAIT_OBJECT_0 &&
+          Status < (WAIT_OBJECT_0 + Handles.size()))) {
+        if (Status == WAIT_TIMEOUT) {
+            if (WaitTime == INFINITE) {
+                return true;
+            }
+            CleanUpMP(PIs);
+        } else {
+            for (auto &PI : PIs) {
+                if (!PI->IsRunning) {
+                    continue;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Clean up the processes that have finished
+    bool Done = true;
+    for (auto &PI : PIs) {
+        if (!PI->IsRunning) {
+            continue;
+        }
+
+        if (!cleanUpProcess(*PI)) {
+            Done = false;
+        }
+    }
+    return Done;
+}
+
+bool sys::CleanUpMP(std::vector<ProcessInfo *> &PIs) {
+    bool Done = true;
+    std::vector<HANDLE> Handles;
+
+    for (auto &PI : PIs) {
+        // Skip if the process is not running
+        if (!PI->IsRunning) {
+            continue;
+        }
+
+        // Terminate the process and handle termination failure
+        if (!TerminateProcess(PI->Process, 1)) {
+            // If termination fails, attempt to clean up the process
+            if (!cleanUpProcess(*PI)) {
+                Done = false;
+            }
+            continue;
+        }
+        // Add the process handle to the vector of handles
+        Handles.push_back(PI->Process);
+    }
+
+    // If no handles were added, return false
+    if (Handles.size() == 0) {
+        return false;
+    }
+
+     // Wait for all processes to terminate
+    WaitForMultipleObjects(Handles.size(), Handles.data(),
+                           TRUE, INFINITE);
+
+    for (auto &PI : PIs) {
+        // Skip if the process is not running
+        if (!PI->IsRunning) {
+            continue;
+        }
+
+        // Clean up the process and handle cleanup failure
+        if (!cleanUpProcess(*PI)) {
+            Done = false;
+        }
+
+        // Set IsRunning flag to false
+        PI->IsRunning = false;
+    }
+    return Done;
 }
 
 std::error_code llvm::sys::ChangeStdinMode(sys::fs::OpenFlags Flags) {
