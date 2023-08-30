@@ -566,7 +566,9 @@ bool sys::WaitMP(std::vector<ProcessInfo *> &PIs, bool WaitAllMP,
             if (WaitTime == INFINITE) {
                 return true;
             }
-            CleanUpMP(PIs);
+            if (!Polling) {
+                CleanUpMP(PIs);
+            }
         } else {
             for (auto &PI : PIs) {
                 if (!PI->IsRunning) {
