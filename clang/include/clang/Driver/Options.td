@@ -7371,6 +7371,8 @@ def _SLASH_Gregcall : CLFlag<"Gregcall">,
   HelpText<"Set __regcall as a default calling convention">;
 def _SLASH_Gregcall4 : CLFlag<"Gregcall4">,
   HelpText<"Set __regcall4 as a default calling convention to respect __regcall ABI v.4">;
+def _SLASH_MP : CLJoined<"MP">,
+  HelpText<"Multi-processor Compilation">;
 
 // GNU Driver aliases
 
@@ -7461,7 +7463,6 @@ def _SLASH_headerUnitQuote : CLJoinedOrSeparate<"headerUnit:quote">;
 def _SLASH_homeparams : CLFlag<"homeparams">;
 def _SLASH_kernel : CLFlag<"kernel">;
 def _SLASH_LN : CLFlag<"LN">;
-def _SLASH_MP : CLJoined<"MP">;
 def _SLASH_Qfast_transcendentals : CLFlag<"Qfast_transcendentals">;
 def _SLASH_QIfist : CLFlag<"QIfist">;
 def _SLASH_Qimprecise_fwaits : CLFlag<"Qimprecise_fwaits">;
