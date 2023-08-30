@@ -8040,7 +8040,7 @@ void Clang::AddClangCLArgs(Compilation &C, const ArgList &Args,
 
   if (Arg *A = Args.getLastArg(options::OPT__SLASH_MP_EQ)) {
     unsigned long long CoreNumber = 1;
-    llvm::getAsInteger(A->getValue(0), 0, CoreNumber);
+    llvm::getAsIntegerWrapper(A->getValue(0), 0, CoreNumber);
     C.setMPCoresNumber(static_cast<unsigned int>(CoreNumber));
   }
   
