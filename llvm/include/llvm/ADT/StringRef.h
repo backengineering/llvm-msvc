@@ -36,6 +36,8 @@ namespace llvm {
 
   bool getAsSignedInteger(StringRef Str, unsigned Radix, long long &Result);
 
+  bool getAsInteger(StringRef Str, unsigned Radix, unsigned long long &Result);
+
   bool consumeUnsignedInteger(StringRef &Str, unsigned Radix,
                               unsigned long long &Result);
   bool consumeSignedInteger(StringRef &Str, unsigned Radix, long long &Result);
