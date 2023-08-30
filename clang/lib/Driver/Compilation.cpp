@@ -22,6 +22,7 @@
 #include "llvm/Option/Option.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/TargetParser/Triple.h"
 #include <cassert>
 #include <string>
@@ -40,6 +41,7 @@ Compilation::Compilation(const Driver &D, const ToolChain &_DefaultToolChain,
   // The offloading host toolchain is the default toolchain.
   OrderedOffloadingToolchains.insert(
       std::make_pair(Action::OFK_Host, &DefaultToolChain));
+  MPCoresNumber = llvm::hardware_concurrency().compute_thread_count();
 }
 
 Compilation::~Compilation() {

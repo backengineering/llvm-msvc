@@ -43,6 +43,10 @@ class ToolChain;
 /// Compilation - A set of tasks to perform for a single driver
 /// invocation.
 class Compilation {
+
+  /// The number of MP cores
+  unsigned int MPCoresNumber;
+
   /// The driver we were created by.
   const Driver &TheDriver;
 
