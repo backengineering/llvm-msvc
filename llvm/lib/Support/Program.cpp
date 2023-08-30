@@ -54,6 +54,41 @@ int sys::ExecuteAndWait(StringRef Program, ArrayRef<StringRef> Args,
   return -1;
 }
 
+int sys::ExecuteAndWaitMP(StringRef Program, ArrayRef<StringRef> Args,
+                          std::optional<ArrayRef<StringRef>> Env,
+                          ArrayRef<std::optional<StringRef>> Redirects,
+                          unsigned SecondsToWait, unsigned MemoryLimit,
+                          std::string *ErrMsg, bool *ExecutionFailed,
+                          std::optional<ProcessStatistics> *ProcStat,
+                          BitVector *AffinityMask, ProcessInfo *PI) {
+#ifdef _WIN32
+  ProcessInfo PITemp;
+  if (!PI) {
+    PI = &PITemp;
+  }
+
+  if (Execute(*PI, Program, Args, Env, Redirects, MemoryLimit, ErrMsg,
+              AffinityMask)) {
+    if (ExecutionFailed)
+      *ExecutionFailed = false;
+
+    bool Ret =
+        WaitMP({PI}, true,
+               SecondsToWait == 0 ? std::nullopt : std::optional(SecondsToWait),
+               ErrMsg, ProcStat);
+    return Ret ? 0 : 1;
+  }
+
+  if (ExecutionFailed)
+    *ExecutionFailed = true;
+
+  return -1;
+#else
+  // Not implemented
+  return -1;
+#endif
+}
+
 ProcessInfo sys::ExecuteNoWait(StringRef Program, ArrayRef<StringRef> Args,
                                std::optional<ArrayRef<StringRef>> Env,
                                ArrayRef<std::optional<StringRef>> Redirects,

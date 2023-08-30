@@ -527,7 +527,7 @@ ProcessInfo sys::Wait(const ProcessInfo &PI,
   return WaitResult;
 }
 
-bool sys::WaitMP(std::vector<ProcessInfo *> &PIs, bool WaitAllMP,
+bool sys::WaitMP(const std::vector<ProcessInfo *> &PIs, bool WaitAllMP,
                  std::optional<unsigned> SecondsToWait, std::string *ErrMsg,
                  std::optional<ProcessStatistics> *ProcStat, bool Polling) {
     DWORD WaitTime = 0;
@@ -593,7 +593,7 @@ bool sys::WaitMP(std::vector<ProcessInfo *> &PIs, bool WaitAllMP,
     return Done;
 }
 
-bool sys::CleanUpMP(std::vector<ProcessInfo *> &PIs) {
+bool sys::CleanUpMP(const std::vector<ProcessInfo *> &PIs) {
     bool Done = true;
     std::vector<HANDLE> Handles;
 

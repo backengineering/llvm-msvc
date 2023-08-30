@@ -142,6 +142,48 @@ namespace sys {
                                         /// program shall run on.
   );
 
+  /// This is a MP version.
+  int ExecuteAndWaitMP(
+      StringRef Program, ///< Path of the program to be executed. It is
+      ///< presumed this is the result of the findProgramByName method.
+      ArrayRef<StringRef> Args, ///< An array of strings that are passed to the
+      ///< program.  The first element should be the name of the program.
+      ///< The array should **not** be terminated by an empty StringRef.
+      std::optional<ArrayRef<StringRef>> Env =
+          std::nullopt, ///< An optional vector of
+      ///< strings to use for the program's environment. If not provided, the
+      ///< current program's environment will be used.  If specified, the
+      ///< vector should **not** be terminated by an empty StringRef.
+      ArrayRef<std::optional<StringRef>> Redirects = {}, ///<
+      ///< An array of optional paths. Should have a size of zero or three.
+      ///< If the array is empty, no redirections are performed.
+      ///< Otherwise, the inferior process's stdin(0), stdout(1), and stderr(2)
+      ///< will be redirected to the corresponding paths, if the optional path
+      ///< is present (not \c std::nullopt).
+      ///< When an empty path is passed in, the corresponding file descriptor
+      ///< will be disconnected (ie, /dev/null'd) in a portable way.
+      unsigned SecondsToWait = 0, ///< If non-zero, this specifies the amount
+      ///< of time to wait for the child process to exit. If the time
+      ///< expires, the child is killed and this call returns. If zero,
+      ///< this function will wait until the child finishes or forever if
+      ///< it doesn't.
+      unsigned MemoryLimit = 0, ///< If non-zero, this specifies max. amount
+      ///< of memory can be allocated by process. If memory usage will be
+      ///< higher limit, the child is killed and this call returns. If zero
+      ///< - no memory limit.
+      std::string *ErrMsg = nullptr, ///< If non-zero, provides a pointer to a
+      ///< string instance in which error messages will be returned. If the
+      ///< string is non-empty upon return an error occurred while invoking the
+      ///< program.
+      bool *ExecutionFailed = nullptr,
+      std::optional<ProcessStatistics> *ProcStat = nullptr, ///< If non-zero,
+      /// provides a pointer to a structure in which process execution
+      /// statistics will be stored.
+      BitVector *AffinityMask = nullptr, ///< CPUs or processors the new
+                                        /// program shall run on.
+      ProcessInfo *PI = nullptr ///< The child process that should be waited on.
+  );
+
   /// Similar to ExecuteAndWait, but returns immediately.
   /// @returns The \see ProcessInfo of the newly launched process.
   /// \note On Microsoft Windows systems, users will need to either call
@@ -237,7 +279,7 @@ namespace sys {
   /// \note Users of this function should always check the ReturnCode member of
   /// the \see ProcessInfo returned from this function.
   bool
-  WaitMP(std::vector<ProcessInfo *> &PIs, ///< The child process that should be waited on.
+  WaitMP(const std::vector<ProcessInfo *> &PIs, ///< The child process that should be waited on.
        bool WaitAllMP, ///< if WaitAllMP, waits until all processes have completed.
        std::optional<unsigned> SecondsToWait, ///< If std::nullopt, waits until
        ///< child has terminated.
@@ -261,7 +303,7 @@ namespace sys {
   );
 
   /// This function clean up the process specified by \p PIs to finish.
-  bool CleanUpMP(std::vector<ProcessInfo *> &PIs);
+  bool CleanUpMP(const std::vector<ProcessInfo *> &PIs);
 
   /// Print a command argument, and optionally quote it.
   void printArg(llvm::raw_ostream &OS, StringRef Arg, bool Quote);
