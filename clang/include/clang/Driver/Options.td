@@ -7373,6 +7373,8 @@ def _SLASH_Gregcall4 : CLFlag<"Gregcall4">,
   HelpText<"Set __regcall4 as a default calling convention to respect __regcall ABI v.4">;
 def _SLASH_MP : CLJoined<"MP">,
   HelpText<"Multi-processor Compilation">;
+def _SLASH_MP_EQ : CLJoined<"MPCore=">,
+  HelpText<"Set number of Multi-processor cores">;
 
 // GNU Driver aliases
 
