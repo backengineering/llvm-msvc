@@ -141,6 +141,9 @@ public:
               llvm::opt::InputArgList *Args,
               llvm::opt::DerivedArgList *TranslatedArgs, bool ContainsError);
   ~Compilation();
+  
+  const unsigned int getMPCoresNumber() const { return MPCoresNumber; }
+  void setMPCoresNumber(unsigned int CoreNumber) { MPCoresNumber = CoreNumber; }
 
   const Driver &getDriver() const { return TheDriver; }
 
