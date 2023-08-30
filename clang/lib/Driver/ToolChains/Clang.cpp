@@ -5705,7 +5705,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // Add clang-cl arguments.
   types::ID InputType = Input.getType();
   if (D.IsCLMode())
-    AddClangCLArgs(Args, InputType, CmdArgs, &DebugInfoKind, &EmitCodeView);
+    AddClangCLArgs(C, Args, InputType, CmdArgs, &DebugInfoKind, &EmitCodeView);
 
   DwarfFissionKind DwarfFission = DwarfFissionKind::None;
   renderDebugOptions(TC, D, RawTriple, Args, EmitCodeView,
@@ -7843,7 +7843,8 @@ static EHFlags parseClangCLEHFlags(const Driver &D, const ArgList &Args) {
   return EH;
 }
 
-void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
+void Clang::AddClangCLArgs(Compilation &C, const ArgList &Args,
+                           types::ID InputType,
                            ArgStringList &CmdArgs,
                            llvm::codegenoptions::DebugInfoKind *DebugInfoKind,
                            bool *EmitCodeView) const {
@@ -8037,6 +8038,12 @@ void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
   if (Args.hasArg(options::OPT__SLASH_kernel))
     CmdArgs.push_back("-fms-kernel");
 
+  if (Arg *A = Args.getLastArg(options::OPT__SLASH_MP_EQ)) {
+    unsigned long long CoreNumber = 1;
+    llvm::getAsInteger(A->getValue(0), 0, CoreNumber);
+    C.setMPCoresNumber(static_cast<unsigned int>(CoreNumber));
+  }
+  
   for (const Arg *A : Args.filtered(options::OPT__SLASH_guard)) {
     StringRef GuardArgs = A->getValue();
     // The only valid options are "cf", "cf,nochecks", "cf-", "ehcont" and
