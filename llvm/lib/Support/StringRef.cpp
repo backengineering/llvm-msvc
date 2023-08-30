@@ -509,7 +509,7 @@ bool llvm::getAsSignedInteger(StringRef Str, unsigned Radix,
   return !Str.empty();
 }
 
-bool llvm::getAsInteger(StringRef Str, unsigned Radix,
+bool llvm::getAsIntegerWrapper(StringRef Str, unsigned Radix,
                            unsigned long long &Result) {
   if (Str[0] == '-') {
     int64_t SignedResult = 0;
