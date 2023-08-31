@@ -324,7 +324,13 @@ void Command::PrintFileNames() const {
 }
 
 int Command::Execute(ArrayRef<std::optional<StringRef>> Redirects,
-                     std::string *ErrMsg, bool *ExecutionFailed) const {
+                     std::string *ErrMsg, bool *ExecutionFailed,
+                     llvm::sys::ProcessInfo &PI, bool SupportMP,
+                     bool NeedWait) const {
+  bool RealSupportMP = SupportMP;
+#ifndef _WIN32
+  RealSupportMP = false;
+#endif
   PrintFileNames();
 
   SmallVector<const char *, 128> Argv;
@@ -354,6 +360,7 @@ int Command::Execute(ArrayRef<std::optional<StringRef>> Redirects,
         *ExecutionFailed = true;
       // Return -1 by convention (see llvm/include/llvm/Support/Program.h) to
       // indicate the requested executable cannot be started.
+      PI.ReturnCode = -1;
       return -1;
     }
   }
@@ -378,15 +385,39 @@ int Command::Execute(ArrayRef<std::optional<StringRef>> Redirects,
       else
         RedirectFilesOptional.push_back(std::nullopt);
 
-    return llvm::sys::ExecuteAndWait(Executable, Args, Env,
-                                     ArrayRef(RedirectFilesOptional),
-                                     /*secondsToWait=*/0, /*memoryLimit=*/0,
-                                     ErrMsg, ExecutionFailed, &ProcStat);
+    if (RealSupportMP) {
+      PI = llvm::sys::ExecuteNoWait(Executable, Args, Env,
+                                    ArrayRef(RedirectFilesOptional),
+                                    /*memoryLimit=*/0);
+      bool Ret = PI.ReturnCode;
+      if (NeedWait) {
+        std::vector<llvm::sys::ProcessInfo *> PIs = {&PI};
+        Ret = llvm::sys::WaitMP(PIs, true, std::nullopt, ErrMsg, &ProcStat);
+      }
+      return Ret ? 0 : 1;
+    } else {
+      return llvm::sys::ExecuteAndWait(
+          Executable, Args, Env, ArrayRef(RedirectFilesOptional),
+          /*secondsToWait=*/0, /*memoryLimit=*/0, ErrMsg, ExecutionFailed,
+          &ProcStat, nullptr, &PI, false);
+    }
   }
 
-  return llvm::sys::ExecuteAndWait(Executable, Args, Env, Redirects,
-                                   /*secondsToWait*/ 0, /*memoryLimit*/ 0,
-                                   ErrMsg, ExecutionFailed, &ProcStat);
+  if (RealSupportMP) {
+    PI = llvm::sys::ExecuteNoWait(Executable, Args, Env, Redirects,
+                                  /*memoryLimit*/ 0);
+    bool Ret = PI.ReturnCode;
+    if (NeedWait) {
+      std::vector<llvm::sys::ProcessInfo *> PIs = {&PI};
+      Ret = llvm::sys::WaitMP(PIs, true, std::nullopt, ErrMsg, &ProcStat);
+    }
+    return Ret ? 0 : 1;
+  } else {
+    return llvm::sys::ExecuteAndWait(Executable, Args, Env, Redirects,
+                                     /*secondsToWait*/ 0, /*memoryLimit*/ 0,
+                                     ErrMsg, ExecutionFailed, &ProcStat,
+                                     nullptr, &PI, false);
+  }
 }
 
 CC1Command::CC1Command(const Action &Source, const Tool &Creator,
@@ -408,12 +439,15 @@ void CC1Command::Print(raw_ostream &OS, const char *Terminator, bool Quote,
 }
 
 int CC1Command::Execute(ArrayRef<std::optional<StringRef>> Redirects,
-                        std::string *ErrMsg, bool *ExecutionFailed) const {
+                        std::string *ErrMsg, bool *ExecutionFailed,
+                        llvm::sys::ProcessInfo &PI, bool SupportMP,
+                        bool NeedWait) const {
   // FIXME: Currently, if there're more than one job, we disable
   // -fintegrate-cc1. If we're no longer a integrated-cc1 job, fallback to
   // out-of-process execution. See discussion in https://reviews.llvm.org/D74447
   if (!InProcess)
-    return Command::Execute(Redirects, ErrMsg, ExecutionFailed);
+    return Command::Execute(Redirects, ErrMsg, ExecutionFailed, PI, SupportMP,
+                            NeedWait);
 
   PrintFileNames();
 

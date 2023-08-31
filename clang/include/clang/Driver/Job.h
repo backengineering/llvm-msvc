@@ -183,7 +183,9 @@ public:
                      CrashReportInfo *CrashInfo = nullptr) const;
 
   virtual int Execute(ArrayRef<std::optional<StringRef>> Redirects,
-                      std::string *ErrMsg, bool *ExecutionFailed) const;
+                      std::string *ErrMsg, bool *ExecutionFailed,
+                      llvm::sys::ProcessInfo &PI, bool SupportMP = true,
+                      bool NeedWait = true) const;
 
   /// getSource - Return the Action which caused the creation of this job.
   const Action &getSource() const { return Source; }
@@ -253,7 +255,8 @@ public:
              CrashReportInfo *CrashInfo = nullptr) const override;
 
   int Execute(ArrayRef<std::optional<StringRef>> Redirects, std::string *ErrMsg,
-              bool *ExecutionFailed) const override;
+              bool *ExecutionFailed, llvm::sys::ProcessInfo &PI,
+              bool SupportMP = true, bool NeedWait = true) const override;
 
   void setEnvironment(llvm::ArrayRef<const char *> NewEnvironment) override;
 };

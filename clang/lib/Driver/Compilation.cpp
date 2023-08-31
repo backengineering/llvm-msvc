@@ -164,6 +164,7 @@ bool Compilation::CleanupFileMap(const ArgStringMap &Files,
 
 int Compilation::ExecuteCommand(const Command &C,
                                 const Command *&FailingCommand,
+                                llvm::sys::ProcessInfo &PI,
                                 bool LogOnly) const {
   if ((getDriver().CCPrintOptions ||
        getArgs().hasArg(options::OPT_v)) && !getDriver().CCGenDiagnostics) {
@@ -182,6 +183,7 @@ int Compilation::ExecuteCommand(const Command &C,
         getDriver().Diag(diag::err_drv_cc_print_options_failure)
             << EC.message();
         FailingCommand = &C;
+        PI.ReturnCode = 1;
         return 1;
       }
       OS = OwnedStream.get();
@@ -193,12 +195,20 @@ int Compilation::ExecuteCommand(const Command &C,
     C.Print(*OS, "\n", /*Quote=*/getDriver().CCPrintOptions);
   }
 
-  if (LogOnly)
+  if (LogOnly) {
+    PI.ReturnCode = 0;
     return 0;
+  }
 
   std::string Error;
   bool ExecutionFailed;
-  int Res = C.Execute(Redirects, &Error, &ExecutionFailed);
+#ifdef _WIN32
+  bool SupportMP = MPCoresNumber > 1;
+#else
+  bool SupportMP = false;
+#endif
+  int Res =
+      C.Execute(Redirects, &Error, &ExecutionFailed, PI, SupportMP, false);
   if (PostCallback)
     PostCallback(C, Res);
   if (!Error.empty()) {
@@ -208,7 +218,7 @@ int Compilation::ExecuteCommand(const Command &C,
 
   if (Res)
     FailingCommand = &C;
-
+  PI.ReturnCode = Res;
   return ExecutionFailed ? 1 : Res;
 }
 
@@ -244,6 +254,14 @@ static bool InputsOk(const Command &C,
 void Compilation::ExecuteJobs(const JobList &Jobs,
                               FailingCommandList &FailingCommands,
                               bool LogOnly) const {
+#ifdef _WIN32
+  bool SupportMP = MPCoresNumber > 1;
+#else
+  bool SupportMP = false;
+#endif
+  if (SupportMP)
+    return ExecuteJobsMP(Jobs, FailingCommands, LogOnly);
+
   // According to UNIX standard, driver need to continue compiling all the
   // inputs on the command line even one of them failed.
   // In all but CLMode, execute all the jobs unless the necessary inputs for the
@@ -252,11 +270,112 @@ void Compilation::ExecuteJobs(const JobList &Jobs,
     if (!InputsOk(Job, FailingCommands))
       continue;
     const Command *FailingCommand = nullptr;
-    if (int Res = ExecuteCommand(Job, FailingCommand, LogOnly)) {
+    llvm::sys::ProcessInfo PI;
+    if (int Res = ExecuteCommand(Job, FailingCommand, PI, LogOnly)) {
       FailingCommands.push_back(std::make_pair(Res, FailingCommand));
       // Bail as soon as one command fails in cl driver mode.
       if (TheDriver.IsCLMode())
         return;
+    }
+  }
+}
+
+void Compilation::ExecuteJobsMP(const JobList &Jobs,
+                                FailingCommandList &FailingCommands,
+                                bool LogOnly) const {
+  struct MPJobsStruct {
+    const Command *Commands = nullptr;
+    llvm::sys::ProcessInfo PI;
+  };
+
+  // Determine the number of parallel jobs to execute
+  int MPJobsSize =
+      std::min(static_cast<int>(MPCoresNumber), static_cast<int>(Jobs.size()));
+  if (MPJobsSize <= 0)
+    MPJobsSize = 1;
+  SmallVector<std::pair<int, MPJobsStruct>> MPJobs(MPJobsSize);
+
+  // Iterate over the job list and execute the jobs in parallel
+  auto MPJobIt = Jobs.begin();
+  int MPJobsDone = 0;
+  while (MPJobsDone < Jobs.size()) {
+    for (auto &Item : MPJobs) {
+      if (Item.second.Commands) {
+        continue;
+      }
+
+      if (MPJobIt == Jobs.end()) {
+        break;
+      }
+
+      Command &C = *MPJobIt++;
+
+      // Check if the inputs for the command are valid
+      if (!InputsOk(C, FailingCommands)) {
+        ++MPJobsDone;
+        continue;
+      }
+
+      const Command *FailingCommandTemp = nullptr;
+      llvm::sys::ProcessInfo PI;
+      ExecuteCommand(C, FailingCommandTemp, PI, LogOnly);
+      MPJobsStruct MPJobTemp = {&C, PI};
+      Item = std::pair(PI.ReturnCode, MPJobTemp);
+    }
+
+    // Wait for the parallel jobs to finish
+    std::vector<llvm::sys::ProcessInfo *> MPWaitJobs;
+    for (auto &Item : MPJobs) {
+      if (!Item.second.PI.IsRunning) {
+        continue;
+      }
+      MPWaitJobs.push_back(&Item.second.PI);
+    }
+    llvm::sys::WaitMP(MPWaitJobs, false, std::nullopt);
+
+    // Check the results of the parallel jobs
+    bool RunFailed = false;
+    for (auto &Item : MPJobs) {
+      if (!Item.second.Commands || Item.second.PI.IsRunning) {
+        continue;
+      }
+
+      // Increment the count of completed jobs
+      ++MPJobsDone;
+
+      // Check if the job failed and add it to the list of failing commands
+      if (Item.second.PI.ReturnCode > 0) {
+        FailingCommands.push_back(
+            {Item.second.PI.ReturnCode, Item.second.Commands});
+        RunFailed = true;
+      }
+
+      // Reset the job information
+      Item = {};
+    }
+
+    // Clean up any remaining running jobs if any job failed and the driver is
+    // in CL mode
+    if (RunFailed && TheDriver.IsCLMode()) {
+      std::vector<llvm::sys::ProcessInfo *> MPCleanUpJobs;
+      for (auto &Item : MPJobs) {
+        if (!Item.second.Commands)
+          continue;
+        MPCleanUpJobs.push_back(&Item.second.PI);
+      }
+      llvm::sys::CleanUpMP(MPCleanUpJobs);
+
+      for (auto &Item : MPJobs) {
+        if (!Item.second.Commands) {
+          continue;
+        }
+
+        if (Item.second.PI.ReturnCode > 0) {
+          FailingCommands.push_back(
+              {Item.second.PI.ReturnCode, Item.second.Commands});
+        }
+      }
+      return;
     }
   }
 }

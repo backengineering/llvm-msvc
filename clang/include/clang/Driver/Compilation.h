@@ -17,6 +17,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Option/Option.h"
+#include "llvm/Support/Program.h"
 #include <cassert>
 #include <iterator>
 #include <map>
@@ -141,7 +142,7 @@ public:
               llvm::opt::InputArgList *Args,
               llvm::opt::DerivedArgList *TranslatedArgs, bool ContainsError);
   ~Compilation();
-  
+
   const unsigned int getMPCoresNumber() const { return MPCoresNumber; }
   void setMPCoresNumber(unsigned int CoreNumber) { MPCoresNumber = CoreNumber; }
 
@@ -318,7 +319,7 @@ public:
   /// execute it.
   /// \return The result code of the subprocess.
   int ExecuteCommand(const Command &C, const Command *&FailingCommand,
-                     bool LogOnly = false) const;
+                     llvm::sys::ProcessInfo &PI, bool LogOnly = false) const;
 
   /// ExecuteJob - Execute a single job.
   ///
@@ -328,6 +329,10 @@ public:
   /// execute it.
   void
   ExecuteJobs(const JobList &Jobs,
+              SmallVectorImpl<std::pair<int, const Command *>> &FailingCommands,
+              bool LogOnly = false) const;
+  void
+  ExecuteJobsMP(const JobList &Jobs,
               SmallVectorImpl<std::pair<int, const Command *>> &FailingCommands,
               bool LogOnly = false) const;
 
