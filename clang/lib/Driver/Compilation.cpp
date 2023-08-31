@@ -41,7 +41,11 @@ Compilation::Compilation(const Driver &D, const ToolChain &_DefaultToolChain,
   // The offloading host toolchain is the default toolchain.
   OrderedOffloadingToolchains.insert(
       std::make_pair(Action::OFK_Host, &DefaultToolChain));
+#ifdef NDEBUG
   MPCoresNumber = llvm::hardware_concurrency().compute_thread_count();
+#else
+  MPCoresNumber = 1;
+#endif
 }
 
 Compilation::~Compilation() {
