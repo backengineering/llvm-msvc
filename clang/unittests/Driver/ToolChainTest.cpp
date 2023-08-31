@@ -363,7 +363,8 @@ TEST(ToolChainTest, PostCallback) {
   const JobList &Jobs = CC->getJobs();
   auto &CmdCompile = Jobs.getJobs().front();
   const Command *FailingCmd = nullptr;
-  CC->ExecuteCommand(*CmdCompile, FailingCmd);
+  llvm::sys::ProcessInfo PI;
+  CC->ExecuteCommand(*CmdCompile, FailingCmd, PI);
   EXPECT_TRUE(CallbackHasCalled);
 }
 
