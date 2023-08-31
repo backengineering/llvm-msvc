@@ -330,6 +330,8 @@ static bool Execute(ProcessInfo &PI, StringRef Program,
       MakeErrMsg(ErrMsg, std::string("Unable to set memory limit"));
       TerminateProcess(pi.hProcess, 1);
       WaitForSingleObject(pi.hProcess, INFINITE);
+      PI.Pid = procid_t();
+      PI.Process = process_t();
       return false;
     }
   }
