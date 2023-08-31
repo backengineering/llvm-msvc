@@ -1679,7 +1679,8 @@ void Driver::generateCompilationDiagnostics(
     NewLLDInvocation.replaceArguments(std::move(ArgList));
 
     // Redirect stdout/stderr to /dev/null.
-    NewLLDInvocation.Execute({std::nullopt, {""}, {""}}, nullptr, nullptr);
+    llvm::sys::ProcessInfo PI;
+    NewLLDInvocation.Execute({std::nullopt, {""}, {""}}, nullptr, nullptr, PI);
     Diag(clang::diag::note_drv_command_failed_diag_msg) << BugReporMsg;
     Diag(clang::diag::note_drv_command_failed_diag_msg) << TmpName;
     Diag(clang::diag::note_drv_command_failed_diag_msg)
