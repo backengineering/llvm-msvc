@@ -35,15 +35,26 @@ int sys::ExecuteAndWait(StringRef Program, ArrayRef<StringRef> Args,
                         unsigned SecondsToWait, unsigned MemoryLimit,
                         std::string *ErrMsg, bool *ExecutionFailed,
                         std::optional<ProcessStatistics> *ProcStat,
-                        BitVector *AffinityMask) {
+                        BitVector *AffinityMask, ProcessInfo *PI,
+                        bool SupportMP) {
+#ifdef _WIN32
+  if (SupportMP) {
+    return ExecuteAndWaitMP(Program, Args, Env, Redirects, SecondsToWait,
+                            MemoryLimit, ErrMsg, ExecutionFailed, ProcStat,
+                            AffinityMask, PI);
+  }
+#endif
   assert(Redirects.empty() || Redirects.size() == 3);
-  ProcessInfo PI;
-  if (Execute(PI, Program, Args, Env, Redirects, MemoryLimit, ErrMsg,
+  ProcessInfo PITemp;
+  if (!PI) {
+    PI = &PITemp;
+  }
+  if (Execute(*PI, Program, Args, Env, Redirects, MemoryLimit, ErrMsg,
               AffinityMask)) {
     if (ExecutionFailed)
       *ExecutionFailed = false;
     ProcessInfo Result = Wait(
-        PI, SecondsToWait == 0 ? std::nullopt : std::optional(SecondsToWait),
+        *PI, SecondsToWait == 0 ? std::nullopt : std::optional(SecondsToWait),
         ErrMsg, ProcStat);
     return Result.ReturnCode;
   }
