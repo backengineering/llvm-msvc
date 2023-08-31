@@ -138,8 +138,10 @@ namespace sys {
       std::optional<ProcessStatistics> *ProcStat = nullptr, ///< If non-zero,
       /// provides a pointer to a structure in which process execution
       /// statistics will be stored.
-      BitVector *AffinityMask = nullptr ///< CPUs or processors the new
-                                        /// program shall run on.
+      BitVector *AffinityMask = nullptr, ///< CPUs or processors the new
+                                         /// program shall run on.
+      ProcessInfo *PI = nullptr, ///< The child process that should be waited on.
+      bool SupportMP = true ///< Support MP?
   );
 
   /// This is a MP version.
