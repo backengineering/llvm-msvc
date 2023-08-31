@@ -106,9 +106,11 @@ ToolChain::executeToolChainProgram(StringRef Executable) const {
   };
 
   std::string ErrorMessage;
+  llvm::sys::ProcessInfo PI;
   if (llvm::sys::ExecuteAndWait(Executable, {}, {}, Redirects,
                                 /* SecondsToWait */ 0,
-                                /*MemoryLimit*/ 0, &ErrorMessage))
+                                /*MemoryLimit*/ 0, &ErrorMessage, nullptr,
+                                nullptr, nullptr, &PI, true))
     return llvm::createStringError(std::error_code(),
                                    Executable + ": " + ErrorMessage);
 
