@@ -59,7 +59,9 @@ static bool shouldEmitLifetimeMarkers(const CodeGenOptions &CGOpts,
 #ifdef _WIN32
   //[SEH] when we enable EHAsynch, we should not emit life time mark
   //if (LangOpts.EHAsynch)
-    return false;
+  CodeGenOptions &CGOpts2 = (CodeGenOptions &)CGOpts;
+  CGOpts2.DisableLifetimeMarkers = true;
+  return false;
 #endif
   
   if (CGOpts.DisableLifetimeMarkers)
