@@ -344,7 +344,7 @@ void Compilation::ExecuteJobsMP(const JobList &Jobs,
       ++MPJobsDone;
 
       // Check if the job failed and add it to the list of failing commands
-      if (Item.second.PI.ReturnCode > 0) {
+      if (Item.second.PI.ReturnCode != 0) {
         FailingCommands.push_back(
             {Item.second.PI.ReturnCode, Item.second.Commands});
         RunFailed = true;
@@ -359,8 +359,9 @@ void Compilation::ExecuteJobsMP(const JobList &Jobs,
     if (RunFailed && TheDriver.IsCLMode()) {
       std::vector<llvm::sys::ProcessInfo *> MPCleanUpJobs;
       for (auto &Item : MPJobs) {
-        if (!Item.second.Commands)
+        if (!Item.second.Commands) {
           continue;
+        }
         MPCleanUpJobs.push_back(&Item.second.PI);
       }
       llvm::sys::CleanUpMP(MPCleanUpJobs);
@@ -370,7 +371,7 @@ void Compilation::ExecuteJobsMP(const JobList &Jobs,
           continue;
         }
 
-        if (Item.second.PI.ReturnCode > 0) {
+        if (Item.second.PI.ReturnCode != 0) {
           FailingCommands.push_back(
               {Item.second.PI.ReturnCode, Item.second.Commands});
         }
