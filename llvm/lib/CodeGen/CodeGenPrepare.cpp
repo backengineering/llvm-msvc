@@ -745,13 +745,15 @@ bool CodeGenPrepare::hoistCatchPadAlloca(Function &F) {
       if (auto *CatchPad = dyn_cast<CatchPadInst>(I)) {
         for (auto &Arg : CatchPad->arg_operands()) {
           if (auto *AI = dyn_cast<AllocaInst>(&Arg)) {
-            MoveAllocInst(AI);
-            MadeChange = true;
+            if (isa<ConstantInt>(AI->getOperand(0))) {
+              MoveAllocInst(AI);
+              MadeChange = true;
+            }
           }
         }
       } else if (auto *AI = dyn_cast<AllocaInst>(I)) {
         // _alloca
-        if (AI->getAlign() == 16) {
+        if (AI->getAlign() == 16 && isa<ConstantInt>(AI->getOperand(0))) {
           MoveAllocInst(AI);
           MadeChange = true;
         }
