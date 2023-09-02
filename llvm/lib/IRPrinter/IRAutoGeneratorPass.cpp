@@ -62,7 +62,8 @@ void autoGenerateIR(Module &M, StringRef FolderName) {
   Out->keep();
 
   // Add a flag
-  M.addModuleFlag(llvm::Module::Warning, "IRAutoGenerator", 1);
+  if (!M.getModuleFlag("IRAutoGenerator"))
+    M.addModuleFlag(llvm::Module::Warning, "IRAutoGenerator", 1);
 }
 
 } // namespace IRGen
