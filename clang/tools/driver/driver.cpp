@@ -622,12 +622,6 @@ int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
   if (Res < 0)
     Res = 1;
 #endif
-
-  // If we have multiple failing commands, we return the result of the first
-  // failing command.
-  clock_t EndTime = clock();
-  auto Delta = (double)(EndTime - StartTime) / CLOCKS_PER_SEC;
-  llvm::outs() << "llvm-msvc(" << CLANG_LLVM_MSVC_VERSION << ") spent " << Delta
-               << "s in " << FileName << "\n";
+  
   return Res;
 }
