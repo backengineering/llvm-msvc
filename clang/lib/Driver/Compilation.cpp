@@ -264,8 +264,13 @@ void Compilation::ExecuteJobs(const JobList &Jobs,
   bool SupportMP = false;
 #endif
   if (SupportMP)
-    return ExecuteJobsMP(Jobs, FailingCommands, LogOnly);
+    return ExecuteJobsMP(const_cast<JobList &>(Jobs), FailingCommands, LogOnly);
+  return ExecuteJobsSingle(Jobs, FailingCommands, LogOnly);
+}
 
+void Compilation::ExecuteJobsSingle(const JobList &Jobs,
+                              FailingCommandList &FailingCommands,
+                              bool LogOnly) const {
   // According to UNIX standard, driver need to continue compiling all the
   // inputs on the command line even one of them failed.
   // In all but CLMode, execute all the jobs unless the necessary inputs for the
@@ -284,7 +289,7 @@ void Compilation::ExecuteJobs(const JobList &Jobs,
   }
 }
 
-void Compilation::ExecuteJobsMP(const JobList &Jobs,
+void Compilation::ExecuteJobsMP(JobList &Jobs,
                                 FailingCommandList &FailingCommands,
                                 bool LogOnly) const {
   struct MPJobsStruct {

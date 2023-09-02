@@ -332,7 +332,11 @@ public:
               SmallVectorImpl<std::pair<int, const Command *>> &FailingCommands,
               bool LogOnly = false) const;
   void
-  ExecuteJobsMP(const JobList &Jobs,
+  ExecuteJobsSingle(const JobList &Jobs,
+              SmallVectorImpl<std::pair<int, const Command *>> &FailingCommands,
+              bool LogOnly = false) const;
+  void
+  ExecuteJobsMP(JobList &Jobs,
               SmallVectorImpl<std::pair<int, const Command *>> &FailingCommands,
               bool LogOnly = false) const;
 
