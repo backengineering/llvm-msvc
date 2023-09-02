@@ -462,6 +462,8 @@ public:
   /// run - Execute all of the passes scheduled for execution.  Keep track of
   /// whether any of the passes modifies the module, and if so, return true.
   bool runOnFunction(Function &F);
+  virtual bool runOnModulePre(Module &M) { return false; }
+  virtual bool runOnModulePost(Module &M) { return false; }
   bool runOnModule(Module &M) override;
 
   /// cleanup - After running all passes, clean up pass manager cache.

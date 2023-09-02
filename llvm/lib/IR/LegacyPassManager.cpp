@@ -1476,10 +1476,10 @@ bool FPPassManager::runOnFunction(Function &F) {
 
 bool FPPassManager::runOnModule(Module &M) {
   bool Changed = false;
-
+  Changed |= runOnModulePre(M);
   for (Function &F : M)
     Changed |= runOnFunction(F);
-
+  Changed |= runOnModulePost(M);
   return Changed;
 }
 
