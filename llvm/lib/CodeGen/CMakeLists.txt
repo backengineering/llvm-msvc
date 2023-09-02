@@ -275,6 +275,7 @@ add_llvm_component_library(LLVMCodeGen
   Analysis
   BitReader
   BitWriter
+  IRPrinter
   CodeGenTypes
   Core
   MC

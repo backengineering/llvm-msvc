@@ -21,6 +21,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/Analysis/BlockFrequencyInfo.h"
 #include "llvm/Analysis/BranchProbabilityInfo.h"
 #include "llvm/Analysis/InstructionSimplify.h"
@@ -62,6 +63,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsAArch64.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
@@ -74,6 +76,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/IR/ValueMap.h"
+#include "llvm/IRPrinter/IRAutoGeneratorPass.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/BlockFrequency.h"
@@ -502,6 +505,15 @@ INITIALIZE_PASS_END(CodeGenPrepare, DEBUG_TYPE, "Optimize for code generation",
 FunctionPass *llvm::createCodeGenPreparePass() { return new CodeGenPrepare(); }
 
 bool CodeGenPrepare::runOnFunction(Function &F) {
+  auto AutoGenerateIR = llvm::make_scope_exit([&F]() {
+    if (F.getParent()->getModuleFlag("IRAutoGenerator")) {
+      static std::once_flag Flag;
+      std::call_once(Flag, [&F]() {
+        IRGen::autoGenerateIR(*F.getParent(), "IRAutoGeneratorCodeGenPrepare");
+      });
+    }
+  });
+
   if (skipFunction(F))
     return false;
   if (F.doesDisableCodeGenPreparePass())

@@ -15,6 +15,9 @@
 
 using namespace llvm;
 
+namespace llvm {
+namespace IRGen {
+
 // Generate an ir file from the LLVM IR module M and save it to the
 // specified FolderName directory
 void autoGenerateIR(Module &M, StringRef FolderName) {
@@ -57,14 +60,20 @@ void autoGenerateIR(Module &M, StringRef FolderName) {
   if (!M.empty())
     M.print(Out->os(), nullptr);
   Out->keep();
+
+  // Add a flag
+  M.addModuleFlag(llvm::Module::Warning, "IRAutoGenerator", 1);
 }
+
+} // namespace IRGen
+} // namespace llvm
 
 // Implementation of the run() function for the IRAutoGeneratorPrePass
 // class
 PreservedAnalyses IRAutoGeneratorPrePass::run(Module &M,
                                               ModuleAnalysisManager &AM) {
   if (Enable)
-    autoGenerateIR(M, FolderName);
+    IRGen::autoGenerateIR(M, FolderName);
 
   // Return a PreservedAnalyses object that preserves all analysis results
   return PreservedAnalyses::all();
@@ -76,7 +85,7 @@ PreservedAnalyses IRAutoGeneratorPostPass::run(Module &M,
                                                ModuleAnalysisManager &AM) {
 
   if (Enable)
-    autoGenerateIR(M, FolderName);
+    IRGen::autoGenerateIR(M, FolderName);
 
   // Return a PreservedAnalyses object that preserves all analysis results
   return PreservedAnalyses::all();

@@ -13,6 +13,10 @@ class Function;
 class Module;
 class Pass;
 
+namespace IRGen {
+void autoGenerateIR(Module &M, StringRef FolderName);
+}
+
 // This class defines a pre-pass that generates LLVM IR automatically based on
 // the input.
 class IRAutoGeneratorPrePass : public PassInfoMixin<IRAutoGeneratorPrePass> {
