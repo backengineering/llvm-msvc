@@ -257,12 +257,30 @@ static bool InputsOk(const Command &C,
 
 void Compilation::ExecuteJobs(const JobList &Jobs,
                               FailingCommandList &FailingCommands,
-                              bool LogOnly) const {
+                              bool LogOnly) {
 #ifdef _WIN32
   bool SupportMP = MPCoresNumber > 1;
 #else
   bool SupportMP = false;
 #endif
+
+  for (const auto &Job : Jobs) {
+    bool HasPCH = false;
+    for (const char *Arg : Job.getArguments()) {
+      if (Arg && StringRef(Arg) == "-emit-pch") {
+        HasPCH = true;
+        break;
+      }
+    }
+
+    if (HasPCH) {
+      // MP is not supported if precompiled headers are present.
+      SupportMP = false;
+      MPCoresNumber = 1;
+      break;
+    }
+  }
+
   if (SupportMP)
     return ExecuteJobsMP(const_cast<JobList &>(Jobs), FailingCommands, LogOnly);
   return ExecuteJobsSingle(Jobs, FailingCommands, LogOnly);
@@ -270,7 +288,7 @@ void Compilation::ExecuteJobs(const JobList &Jobs,
 
 void Compilation::ExecuteJobsSingle(const JobList &Jobs,
                               FailingCommandList &FailingCommands,
-                              bool LogOnly) const {
+                              bool LogOnly) {
   // According to UNIX standard, driver need to continue compiling all the
   // inputs on the command line even one of them failed.
   // In all but CLMode, execute all the jobs unless the necessary inputs for the
@@ -291,7 +309,7 @@ void Compilation::ExecuteJobsSingle(const JobList &Jobs,
 
 void Compilation::ExecuteJobsMP(JobList &Jobs,
                                 FailingCommandList &FailingCommands,
-                                bool LogOnly) const {
+                                bool LogOnly) {
   struct MPJobsStruct {
     const Command *Commands = nullptr;
     llvm::sys::ProcessInfo PI;

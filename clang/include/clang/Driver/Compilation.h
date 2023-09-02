@@ -330,15 +330,15 @@ public:
   void
   ExecuteJobs(const JobList &Jobs,
               SmallVectorImpl<std::pair<int, const Command *>> &FailingCommands,
-              bool LogOnly = false) const;
+              bool LogOnly = false);
   void
   ExecuteJobsSingle(const JobList &Jobs,
               SmallVectorImpl<std::pair<int, const Command *>> &FailingCommands,
-              bool LogOnly = false) const;
+              bool LogOnly = false);
   void
   ExecuteJobsMP(JobList &Jobs,
               SmallVectorImpl<std::pair<int, const Command *>> &FailingCommands,
-              bool LogOnly = false) const;
+              bool LogOnly = false);
 
   /// initCompilationForDiagnostics - Remove stale state and suppress output
   /// so compilation can be reexecuted to generate additional diagnostic
