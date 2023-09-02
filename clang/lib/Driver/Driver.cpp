@@ -3936,11 +3936,13 @@ void Driver::handleArguments(Compilation &C, DerivedArgList &Args,
     Args.eraseArg(options::OPT__SLASH_Yu);
     YcArg = YuArg = nullptr;
   }
+#ifndef _WIN32
   if (YcArg && Inputs.size() > 1) {
     Diag(clang::diag::warn_drv_yc_multiple_inputs_clang_cl);
     Args.eraseArg(options::OPT__SLASH_Yc);
     YcArg = nullptr;
   }
+#endif
 
   Arg *FinalPhaseArg;
   phases::ID FinalPhase = getFinalPhase(Args, &FinalPhaseArg);
