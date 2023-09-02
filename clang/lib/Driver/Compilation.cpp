@@ -264,23 +264,6 @@ void Compilation::ExecuteJobs(const JobList &Jobs,
   bool SupportMP = false;
 #endif
 
-  for (const auto &Job : Jobs) {
-    bool HasPCH = false;
-    for (const char *Arg : Job.getArguments()) {
-      if (Arg && StringRef(Arg) == "-emit-pch") {
-        HasPCH = true;
-        break;
-      }
-    }
-
-    if (HasPCH) {
-      // MP is not supported if precompiled headers are present.
-      SupportMP = false;
-      MPCoresNumber = 1;
-      break;
-    }
-  }
-
   if (SupportMP)
     return ExecuteJobsMP(const_cast<JobList &>(Jobs), FailingCommands, LogOnly);
   return ExecuteJobsSingle(Jobs, FailingCommands, LogOnly);
@@ -314,6 +297,22 @@ void Compilation::ExecuteJobsMP(JobList &Jobs,
     const Command *Commands = nullptr;
     llvm::sys::ProcessInfo PI;
   };
+
+  for (const auto &Job : Jobs) {
+    bool HasPCH = false;
+    for (const char *Arg : Job.getArguments()) {
+      if (Arg && StringRef(Arg) == "-emit-pch") {
+        HasPCH = true;
+        break;
+      }
+    }
+
+    if (HasPCH) {
+      // MP is not supported if precompiled headers are present.
+      MPCoresNumber = 1;
+      break;
+    }
+  }
 
   // Determine the number of parallel jobs to execute
   int MPJobsSize =
