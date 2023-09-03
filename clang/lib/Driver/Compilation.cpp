@@ -296,6 +296,7 @@ int Compilation::ExecuteJob(const Command &Job,
     if (TheDriver.IsCLMode())
       return 2;
   }
+  return 0;
 }
 
 void Compilation::ExecuteJobsMP(JobList &Jobs,
