@@ -1366,6 +1366,8 @@ llvm::Value *CodeGenFunction::EmitLifetimeStart(llvm::TypeSize Size,
 }
 
 void CodeGenFunction::EmitLifetimeEnd(llvm::Value *Size, llvm::Value *Addr) {
+  if (!ShouldEmitLifetimeMarkers)
+    return;
   assert(Addr->getType()->getPointerAddressSpace() ==
              CGM.getDataLayout().getAllocaAddrSpace() &&
          "Pointer should be in alloca address space");
