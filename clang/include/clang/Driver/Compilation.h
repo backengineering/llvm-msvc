@@ -319,7 +319,8 @@ public:
   /// execute it.
   /// \return The result code of the subprocess.
   int ExecuteCommand(const Command &C, const Command *&FailingCommand,
-                     llvm::sys::ProcessInfo &PI, bool LogOnly = false) const;
+                     llvm::sys::ProcessInfo &PI, bool LogOnly = false,
+                     bool SupportMP = false, bool NeedWait = false);
 
   /// ExecuteJob - Execute a single job.
   ///
@@ -331,6 +332,12 @@ public:
   ExecuteJobs(const JobList &Jobs,
               SmallVectorImpl<std::pair<int, const Command *>> &FailingCommands,
               bool LogOnly = false);
+
+  int
+  ExecuteJob(const Command &Job,
+             SmallVectorImpl<std::pair<int, const Command *>> &FailingCommands,
+             bool LogOnly = false);
+
   void
   ExecuteJobsSingle(const JobList &Jobs,
               SmallVectorImpl<std::pair<int, const Command *>> &FailingCommands,

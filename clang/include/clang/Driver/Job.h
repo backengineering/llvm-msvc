@@ -169,6 +169,9 @@ public:
   /// Whether the command will be executed in this process or not.
   bool InProcess = false;
 
+  /// Whether the command has executed.
+  bool ExecDone = false;
+
   Command(const Action &Source, const Tool &Creator,
           ResponseFileSupport ResponseSupport, const char *Executable,
           const llvm::opt::ArgStringList &Arguments, ArrayRef<InputInfo> Inputs,
