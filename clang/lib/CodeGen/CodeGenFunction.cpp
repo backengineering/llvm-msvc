@@ -407,31 +407,7 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
   // attribute for the current function (CurFn).
   if (CurCodeDecl && CurCodeDecl->hasAttr<VolatileAttr>())
     CurFn->setVolatile();
-
-  // Check 'RemoveR15' attribute
-  if (CurCodeDecl && CurCodeDecl->hasAttr<RemoveR15Attr>())
-    CurFn->addFnAttr(llvm::Attribute::RemoveR15);
-
-  // Check 'DisableFunctionPadding' attribute
-  if (CurCodeDecl && CurCodeDecl->hasAttr<DisableFunctionPaddingAttr>())
-    CurFn->addFnAttr(llvm::Attribute::DisableFunctionPadding);
-
-  // Check 'JmpOneTrick' attribute
-  if (CurCodeDecl && CurCodeDecl->hasAttr<JmpOneTrickAttr>())
-    CurFn->addFnAttr(llvm::Attribute::JmpOneTrick);
-
-  // Check 'ReturnMutant' attribute
-  if (CurCodeDecl && CurCodeDecl->hasAttr<ReturnMutantAttr>())
-    CurFn->addFnAttr(llvm::Attribute::ReturnMutant);
-
-  // Check 'ConstantHidden' attribute
-  if (CurCodeDecl && CurCodeDecl->hasAttr<ConstantHiddenAttr>())
-    CurFn->addFnAttr(llvm::Attribute::ConstantHidden);
-
-  // Check 'MBAObfuscation' attribute
-  if (CurCodeDecl && CurCodeDecl->hasAttr<MBAObfuscationAttr>())
-    CurFn->addFnAttr(llvm::Attribute::MBAObfuscation);
-
+  
   // Reset the debug location to that of the simple 'return' expression, if any
   // rather than that of the end of the function's scope '}'.
   ApplyDebugLocation AL(*this, Loc);
