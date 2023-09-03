@@ -3370,6 +3370,7 @@ private:
     // for the new alloca slice.
     Type *PointerTy = IRB.getInt8PtrTy(OldPtr->getType()->getPointerAddressSpace());
     Value *Ptr = getNewAllocaSlicePtr(IRB, PointerTy);
+#ifndef _WIN32
     Value *New;
     if (II.getIntrinsicID() == Intrinsic::lifetime_start)
       New = IRB.CreateLifetimeStart(Ptr, Size);
@@ -3378,7 +3379,7 @@ private:
 
     (void)New;
     LLVM_DEBUG(dbgs() << "          to: " << *New << "\n");
-
+#endif
     return true;
   }
 

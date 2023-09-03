@@ -1860,7 +1860,9 @@ bool AtomicExpand::expandAtomicOpToLibcall(
   if (CASExpected) {
     AllocaCASExpected = AllocaBuilder.CreateAlloca(CASExpected->getType());
     AllocaCASExpected->setAlignment(AllocaAlignment);
+#ifndef _WIN32
     Builder.CreateLifetimeStart(AllocaCASExpected, SizeVal64);
+#endif
     Builder.CreateAlignedStore(CASExpected, AllocaCASExpected, AllocaAlignment);
     Args.push_back(AllocaCASExpected);
   }
@@ -1874,7 +1876,9 @@ bool AtomicExpand::expandAtomicOpToLibcall(
     } else {
       AllocaValue = AllocaBuilder.CreateAlloca(ValueOperand->getType());
       AllocaValue->setAlignment(AllocaAlignment);
+#ifndef _WIN32
       Builder.CreateLifetimeStart(AllocaValue, SizeVal64);
+#endif
       Builder.CreateAlignedStore(ValueOperand, AllocaValue, AllocaAlignment);
       Args.push_back(AllocaValue);
     }
@@ -1884,7 +1888,9 @@ bool AtomicExpand::expandAtomicOpToLibcall(
   if (!CASExpected && HasResult && !UseSizedLibcall) {
     AllocaResult = AllocaBuilder.CreateAlloca(I->getType());
     AllocaResult->setAlignment(AllocaAlignment);
+#ifndef _WIN32
     Builder.CreateLifetimeStart(AllocaResult, SizeVal64);
+#endif
     Args.push_back(AllocaResult);
   }
 
@@ -1914,11 +1920,11 @@ bool AtomicExpand::expandAtomicOpToLibcall(
   CallInst *Call = Builder.CreateCall(LibcallFn, Args);
   Call->setAttributes(Attr);
   Value *Result = Call;
-
+#ifndef _WIN32
   // And then, extract the results...
   if (ValueOperand && !UseSizedLibcall)
     Builder.CreateLifetimeEnd(AllocaValue, SizeVal64);
-
+#endif
   if (CASExpected) {
     // The final result from the CAS is {load of 'expected' alloca, bool result
     // from call}
@@ -1926,7 +1932,9 @@ bool AtomicExpand::expandAtomicOpToLibcall(
     Value *V = PoisonValue::get(FinalResultTy);
     Value *ExpectedOut = Builder.CreateAlignedLoad(
         CASExpected->getType(), AllocaCASExpected, AllocaAlignment);
+#ifndef _WIN32
     Builder.CreateLifetimeEnd(AllocaCASExpected, SizeVal64);
+#endif
     V = Builder.CreateInsertValue(V, ExpectedOut, 0);
     V = Builder.CreateInsertValue(V, Result, 1);
     I->replaceAllUsesWith(V);
@@ -1937,7 +1945,9 @@ bool AtomicExpand::expandAtomicOpToLibcall(
     else {
       V = Builder.CreateAlignedLoad(I->getType(), AllocaResult,
                                     AllocaAlignment);
+#ifndef _WIN32
       Builder.CreateLifetimeEnd(AllocaResult, SizeVal64);
+#endif
     }
     I->replaceAllUsesWith(V);
   }
