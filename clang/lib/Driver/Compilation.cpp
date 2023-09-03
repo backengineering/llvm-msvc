@@ -302,11 +302,6 @@ int Compilation::ExecuteJob(const Command &Job,
 void Compilation::ExecuteJobsMP(JobList &Jobs,
                                 FailingCommandList &FailingCommands,
                                 bool LogOnly) {
-  struct MPJobsStruct {
-    const Command *Commands = nullptr;
-    llvm::sys::ProcessInfo PI;
-  };
-
   int PCHCount = 0;
   for (auto &Job : Jobs) {
     bool HasPCH = false;
@@ -331,6 +326,11 @@ void Compilation::ExecuteJobsMP(JobList &Jobs,
       std::min(static_cast<int>(MPCoresNumber), static_cast<int>(Jobs.size()));
   if (MPJobsSize <= 0)
     MPJobsSize = 1;
+
+  struct MPJobsStruct {
+    const Command *Commands = nullptr;
+    llvm::sys::ProcessInfo PI;
+  };
   SmallVector<std::pair<int, MPJobsStruct>> MPJobs(MPJobsSize);
 
   // Iterate over the job list and execute the jobs in parallel
