@@ -19,6 +19,8 @@ We want to use clang/llvm as comfortable as msvc.
 - Windows Driver support.(Now only X64)
 - Intrinsic support.
 - Naked X64 inline asm support.
+- Support multiple cores compilation.
+- Support ``/MP`` when precompiled headers are present.
 
 
 ## How to compile?
