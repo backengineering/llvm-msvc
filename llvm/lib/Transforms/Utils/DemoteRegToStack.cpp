@@ -188,7 +188,7 @@ bool llvm::DemotePHIToStack(Function &F) {
     for (PHINode *PN : PHIsToDemote) {
       Instruction *AllocaPoint = F.begin()->getTerminator();
       if (AllocaPoint) {
-        Changed = DemotePHIToStack(PN, AllocaPoint) != nullptr;
+        Changed |= DemotePHIToStack(PN, AllocaPoint) != nullptr;
       }
     }
   }
