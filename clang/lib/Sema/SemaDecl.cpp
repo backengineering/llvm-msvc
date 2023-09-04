@@ -19245,12 +19245,10 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
 
     // Maybe randomize the record's decls. We automatically randomize a record
     // of function pointers, unless it has the "no_randomize_layout" attribute.
-    if (!getLangOpts().CPlusPlus &&
-        (Record->hasAttr<RandomizeLayoutAttr>() ||
+    if ((Record->hasAttr<RandomizeLayoutAttr>() ||
          (!Record->hasAttr<NoRandomizeLayoutAttr>() &&
           llvm::all_of(Record->decls(), IsFunctionPointerOrForwardDecl))) &&
-        !Record->isUnion() && !getLangOpts().RandstructSeed.empty() &&
-        !Record->isRandomized()) {
+        !Record->isUnion() && !Record->isRandomized()) {
       SmallVector<Decl *, 32> NewDeclOrdering;
       if (randstruct::randomizeStructureLayout(Context, Record,
                                                NewDeclOrdering))

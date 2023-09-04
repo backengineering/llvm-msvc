@@ -202,8 +202,17 @@ bool randomizeStructureLayout(const ASTContext &Context, RecordDecl *RD,
         FlexibleArray = RandomizedFields.pop_back_val();
   }
 
-  std::string Seed =
-      Context.getLangOpts().RandstructSeed + RD->getNameAsString();
+  std::string RandstructSeed = Context.getLangOpts().RandstructSeed;
+#ifdef _WIN32
+  if (RandstructSeed.empty()) {
+    constexpr auto Time = __TIME__;
+    constexpr auto ConstKey = (static_cast<unsigned long long>(Time[7]) +
+                               static_cast<unsigned long long>(Time[6]) * 10 +
+                               static_cast<unsigned long long>(Time[4]) * 60);
+    RandstructSeed = Twine(ConstKey).str();
+  }
+#endif
+  std::string Seed = RandstructSeed + RD->getNameAsString();
   std::seed_seq SeedSeq(Seed.begin(), Seed.end());
   std::mt19937 RNG(SeedSeq);
 

@@ -2318,7 +2318,7 @@ void InitListChecker::CheckStructUnionTypes(
       }
       return false;
     };
-
+#ifndef _WIN32
     // Don't allow non-designated initializers on randomized structures.
     if (RD->isRandomized() && !IsZeroInitializer(Init)) {
       if (!VerifyOnly)
@@ -2326,7 +2326,7 @@ void InitListChecker::CheckStructUnionTypes(
       hadError = true;
       break;
     }
-
+#endif
     if (Field == FieldEnd) {
       // We've run out of fields. We're done.
       break;

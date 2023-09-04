@@ -3229,7 +3229,7 @@ void CastOperation::CheckCStyleCast() {
 
     const RecordDecl *SrcRD = SrcTy->getAsRecordDecl();
     const RecordDecl *DestRD = DestTy->getAsRecordDecl();
-
+#ifndef _WIN32
     if (SrcRD && DestRD && SrcRD->hasAttr<RandomizeLayoutAttr>() &&
         SrcRD != DestRD) {
       // The struct we are casting the pointer from was randomized.
@@ -3238,6 +3238,7 @@ void CastOperation::CheckCStyleCast() {
       SrcExpr = ExprError();
       return;
     }
+#endif
   }
 
   DiagnoseCastOfObjCSEL(Self, SrcExpr, DestType);
