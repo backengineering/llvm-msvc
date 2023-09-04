@@ -20,7 +20,7 @@ include "mlir/Dialect/GPU/IR/CompilationAttrs.td"
 include "mlir/Dialect/GPU/IR/ParallelLoopMapperAttr.td"
 include "mlir/Dialect/GPU/TransformOps/GPUDeviceMappingAttr.td"
 include "mlir/IR/EnumAttr.td"
-include "mlir/IR/FunctionInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/DataLayoutInterfaces.td"
 include "mlir/Interfaces/InferIntRangeInterface.td"
@@ -414,6 +414,8 @@ def GPU_GPUFuncOp : GPU_Op<"func", [
 
     /// Returns the result types of this function.
     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+
+    Region *getCallableRegion() { return &getBody(); }
 
     /// Returns the keywords used in the custom syntax for this Op.
     static StringRef getWorkgroupKeyword() { return "workgroup"; }
@@ -2391,10 +2393,10 @@ def GPU_SpGEMMCopyOp : GPU_Op<"spgemm_copy", [GPU_AsyncOpInterface]> {
   }];
 }
 
-def GPU_SpGEMMGetSizeOp : GPU_Op<"spgemm_get_size", [GPU_AsyncOpInterface]> {
-  let summary = "SpGEMM get size operation";
+def GPU_SpMatGetSizeOp : GPU_Op<"spmat_get_size", [GPU_AsyncOpInterface]> {
+  let summary = "SpMat get size operation";
   let description = [{
-    The `gpu.spgemm_get_size` operation retrieves the number of rows, number of
+    The `gpu.spmat_get_size` operation retrieves the number of rows, number of
     columns, and number of non-zero elements of a sparse matrix.
 
     If the `async` keyword is present, the op is executed asynchronously (i.e.
@@ -2404,7 +2406,7 @@ def GPU_SpGEMMGetSizeOp : GPU_Op<"spgemm_get_size", [GPU_AsyncOpInterface]> {
     Example:
 
     ```mlir
-    %rows, %cols, %nnz, %token = gpu.spgemm_get_size async [%dep] %spmatC
+    %rows, %cols, %nnz, %token = gpu.spmat_get_size async [%dep] %spmatC
     ```
   }];
 

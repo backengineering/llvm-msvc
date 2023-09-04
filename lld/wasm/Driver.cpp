@@ -39,6 +39,7 @@
 
 using namespace llvm;
 using namespace llvm::object;
+using namespace llvm::opt;
 using namespace llvm::sys;
 using namespace llvm::wasm;
 
@@ -111,9 +112,13 @@ bool link(ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
 
 // Create table mapping all options defined in Options.td
 static constexpr opt::OptTable::Info optInfo[] = {
-#define OPTION(X1, X2, ID, KIND, GROUP, ALIAS, X7, X8, X9, X10, X11, X12)      \
-  {X1, X2, X10,         X11,         OPT_##ID, opt::Option::KIND##Class,       \
-   X9, X8, OPT_##GROUP, OPT_##ALIAS, X7,       X12},
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS,         \
+               VISIBILITY, PARAM, HELPTEXT, METAVAR, VALUES)                   \
+  {PREFIX,      NAME,        HELPTEXT,                                         \
+   METAVAR,     OPT_##ID,    opt::Option::KIND##Class,                         \
+   PARAM,       FLAGS,       VISIBILITY,                                       \
+   OPT_##GROUP, OPT_##ALIAS, ALIASARGS,                                        \
+   VALUES},
 #include "Options.inc"
 #undef OPTION
 };
@@ -453,6 +458,7 @@ static void readConfigs(opt::InputArgList &args) {
   }
 
   config->sharedMemory = args.hasArg(OPT_shared_memory);
+  config->soName = args.getLastArgValue(OPT_soname);
   config->importTable = args.hasArg(OPT_import_table);
   config->importUndefined = args.hasArg(OPT_import_undefined);
   config->ltoo = args::getInteger(args, OPT_lto_O, 2);
@@ -496,6 +502,7 @@ static void readConfigs(opt::InputArgList &args) {
 
   config->initialMemory = args::getInteger(args, OPT_initial_memory, 0);
   config->globalBase = args::getInteger(args, OPT_global_base, 0);
+  config->tableBase = args::getInteger(args, OPT_table_base, 0);
   config->maxMemory = args::getInteger(args, OPT_max_memory, 0);
   config->zStackSize =
       args::getZOptionValue(args, OPT_z, "stack-size", WasmPageSize);
@@ -567,6 +574,17 @@ static void setConfigs() {
     if (config->exportTable)
       error("-shared/-pie is incompatible with --export-table");
     config->importTable = true;
+  } else {
+    // Default table base.  Defaults to 1, reserving 0 for the NULL function
+    // pointer.
+    if (!config->tableBase)
+      config->tableBase = 1;
+    // The default offset for static/global data, for when --global-base is
+    // not specified on the command line.  The precise value of 1024 is
+    // somewhat arbitrary, and pre-dates wasm-ld (Its the value that
+    // emscripten used prior to wasm-ld).
+    if (!config->globalBase && !config->relocatable && !config->stackFirst)
+      config->globalBase = 1024;
   }
 
   if (config->relocatable) {
@@ -660,8 +678,11 @@ static void checkOptions(opt::InputArgList &args) {
     warn("-Bsymbolic is only meaningful when combined with -shared");
   }
 
-  if (config->globalBase && config->isPic) {
-    error("--global-base may not be used with -shared/-pie");
+  if (config->isPic) {
+    if (config->globalBase)
+      error("--global-base may not be used with -shared/-pie");
+    if (config->tableBase)
+      error("--table-base may not be used with -shared/-pie");
   }
 }
 

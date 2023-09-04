@@ -1,5 +1,4 @@
 libcxx/include/__algorithm/binary_search.h
-libcxx/include/__algorithm/clamp.h
 libcxx/include/__algorithm/comp_ref_type.h
 libcxx/include/__algorithm/copy_backward.h
 libcxx/include/__algorithm/copy_if.h
@@ -109,7 +108,6 @@ libcxx/include/__bit/countl.h
 libcxx/include/__bit/countr.h
 libcxx/include/__bit/endian.h
 libcxx/include/__bit/popcount.h
-libcxx/include/__bit/rotate.h
 libcxx/include/bitset
 libcxx/include/cctype
 libcxx/include/chrono

@@ -1202,6 +1202,7 @@ AddressClass ObjectFileMachO::GetAddressClass(lldb::addr_t file_addr) {
         case eSectionTypeDWARFAppleObjC:
         case eSectionTypeDWARFGNUDebugAltLink:
         case eSectionTypeCTF:
+        case eSectionTypeSwiftModules:
           return AddressClass::eDebug;
 
         case eSectionTypeEHFrame:
@@ -1476,6 +1477,7 @@ static lldb::SectionType GetSectionType(uint32_t flags,
   static ConstString g_sect_name_data("__data");
   static ConstString g_sect_name_go_symtab("__gosymtab");
   static ConstString g_sect_name_ctf("__ctf");
+  static ConstString g_sect_name_swift_ast("__swift_ast");
 
   if (section_name == g_sect_name_dwarf_debug_abbrev)
     return eSectionTypeDWARFDebugAbbrev;
@@ -1555,6 +1557,8 @@ static lldb::SectionType GetSectionType(uint32_t flags,
     return eSectionTypeGoSymtab;
   if (section_name == g_sect_name_ctf)
     return eSectionTypeCTF;
+  if (section_name == g_sect_name_swift_ast)
+    return eSectionTypeSwiftModules;
   if (section_name == g_sect_name_objc_data ||
       section_name == g_sect_name_objc_classrefs ||
       section_name == g_sect_name_objc_superrefs ||
@@ -5486,8 +5490,9 @@ std::string ObjectFileMachO::GetIdentifierString() {
   return result;
 }
 
-addr_t ObjectFileMachO::GetAddressMask() {
-  addr_t mask = 0;
+AddressableBits ObjectFileMachO::GetAddressableBits() {
+  AddressableBits addressable_bits;
+
   Log *log(GetLog(LLDBLog::Process));
   ModuleSP module_sp(GetModule());
   if (module_sp) {
@@ -5513,13 +5518,25 @@ addr_t ObjectFileMachO::GetAddressMask() {
           if (m_data.GetU32(&offset, &version, 1) != nullptr) {
             if (version == 3) {
               uint32_t num_addr_bits = m_data.GetU32_unchecked(&offset);
-              if (num_addr_bits != 0) {
-                mask = ~((1ULL << num_addr_bits) - 1);
-              }
+              addressable_bits.SetAddressableBits(num_addr_bits);
               LLDB_LOGF(log,
-                        "LC_NOTE 'addrable bits' found, value %d bits, "
-                        "mask 0x%" PRIx64,
-                        num_addr_bits, mask);
+                        "LC_NOTE 'addrable bits' v3 found, value %d "
+                        "bits",
+                        num_addr_bits);
+              break;
+            }
+            if (version == 4) {
+              uint32_t lo_addr_bits = m_data.GetU32_unchecked(&offset);
+              uint32_t hi_addr_bits = m_data.GetU32_unchecked(&offset);
+
+              if (lo_addr_bits == hi_addr_bits)
+                addressable_bits.SetAddressableBits(lo_addr_bits);
+              else
+                addressable_bits.SetAddressableBits(lo_addr_bits, hi_addr_bits);
+              LLDB_LOGF(log,
+                        "LC_NOTE 'addrable bits' v4 found, value %d & %d bits",
+                        lo_addr_bits, hi_addr_bits);
+
               break;
             }
           }
@@ -5528,7 +5545,7 @@ addr_t ObjectFileMachO::GetAddressMask() {
       offset = cmd_offset + lc.cmdsize;
     }
   }
-  return mask;
+  return addressable_bits;
 }
 
 bool ObjectFileMachO::GetCorefileMainBinaryInfo(addr_t &value,
@@ -6669,10 +6686,12 @@ bool ObjectFileMachO::SaveCore(const lldb::ProcessSP &process_sp,
           addrable_bits_lcnote_up->name = "addrable bits";
           addrable_bits_lcnote_up->payload_file_offset = file_offset;
           int bits = std::bitset<64>(~address_mask).count();
-          addrable_bits_lcnote_up->payload.PutHex32(3); // version
+          addrable_bits_lcnote_up->payload.PutHex32(4); // version
           addrable_bits_lcnote_up->payload.PutHex32(
-              bits); // # of bits used for addressing
-          addrable_bits_lcnote_up->payload.PutHex64(0); // unused
+              bits); // # of bits used for low addresses
+          addrable_bits_lcnote_up->payload.PutHex32(
+              bits); // # of bits used for high addresses
+          addrable_bits_lcnote_up->payload.PutHex32(0); // reserved
 
           file_offset += addrable_bits_lcnote_up->payload.GetSize();
 

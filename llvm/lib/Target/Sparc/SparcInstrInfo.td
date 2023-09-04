@@ -1123,14 +1123,6 @@ let Predicates = [HasNoV9] in {
 		     "rd %tbr, $rd", []>;
 }
 
-// PC don't exist on the SparcV8, only the V9.
-let Predicates = [HasV9] in {
-  let rs2 = 0, rs1 = 5 in
-    def RDPC : F3_1<2, 0b101000,
-		     (outs IntRegs:$rd), (ins),
-		     "rd %pc, $rd", []>;
-}
-
 // Section B.29 - Write State Register Instructions
 def WRASRrr : F3_1<2, 0b110000,
                  (outs ASRRegs:$rd), (ins IntRegs:$rs1, IntRegs:$rs2),
@@ -1743,6 +1735,22 @@ let hasSideEffects = 1 in {
 }
 }
 
+// Section A.11 - DONE and RETRY
+// Section A.47 - SAVED and RESTORED
+let Predicates = [HasV9], rs1 = 0, rs2 = 0 in {
+  let rd = 0 in
+    def DONE : F3_1<2, 0b111110, (outs), (ins), "done", []>;
+
+  let rd = 1 in
+    def RETRY : F3_1<2, 0b111110, (outs), (ins), "retry", []>;
+
+  let rd = 0 in
+    def SAVED : F3_1<2, 0b110001, (outs), (ins), "saved", []>;
+
+  let rd = 1 in
+    def RESTORED : F3_1<2, 0b110001, (outs), (ins), "restored", []>;
+}
+
 // Section A.42 - Prefetch Data
 let Predicates = [HasV9] in {
   def PREFETCHr : F3_1<3, 0b101101,
@@ -1852,12 +1860,12 @@ def : Pat<(i32 (atomic_load_32 ADDRrr:$src)), (LDrr ADDRrr:$src)>;
 def : Pat<(i32 (atomic_load_32 ADDRri:$src)), (LDri ADDRri:$src)>;
 
 // atomic_store val, addr -> store val, addr
-def : Pat<(atomic_store_8 ADDRrr:$dst, i32:$val), (STBrr ADDRrr:$dst, $val)>;
-def : Pat<(atomic_store_8 ADDRri:$dst, i32:$val), (STBri ADDRri:$dst, $val)>;
-def : Pat<(atomic_store_16 ADDRrr:$dst, i32:$val), (STHrr ADDRrr:$dst, $val)>;
-def : Pat<(atomic_store_16 ADDRri:$dst, i32:$val), (STHri ADDRri:$dst, $val)>;
-def : Pat<(atomic_store_32 ADDRrr:$dst, i32:$val), (STrr ADDRrr:$dst, $val)>;
-def : Pat<(atomic_store_32 ADDRri:$dst, i32:$val), (STri ADDRri:$dst, $val)>;
+def : Pat<(atomic_store_8 i32:$val, ADDRrr:$dst), (STBrr ADDRrr:$dst, $val)>;
+def : Pat<(atomic_store_8 i32:$val, ADDRri:$dst), (STBri ADDRri:$dst, $val)>;
+def : Pat<(atomic_store_16 i32:$val, ADDRrr:$dst), (STHrr ADDRrr:$dst, $val)>;
+def : Pat<(atomic_store_16 i32:$val, ADDRri:$dst), (STHri ADDRri:$dst, $val)>;
+def : Pat<(atomic_store_32 i32:$val, ADDRrr:$dst), (STrr ADDRrr:$dst, $val)>;
+def : Pat<(atomic_store_32 i32:$val, ADDRri:$dst), (STri ADDRri:$dst, $val)>;
 
 // A register pair with zero upper half.
 // The upper part is done with ORrr instead of `COPY G0`

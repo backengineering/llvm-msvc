@@ -90,6 +90,7 @@ atof           |check|
 atol           |check|
 atoll          |check|
 exit           |check|    |check|
+abort          |check|    |check|
 labs           |check|
 llabs          |check|
 div            |check|
@@ -124,6 +125,27 @@ Function Name  Available  RPC Required
 =============  =========  ============
 puts           |check|    |check|
 fputs          |check|    |check|
-fclose                    |check|
-fopen                     |check|
+fclose         |check|    |check|
+fopen          |check|    |check|
+fread          |check|    |check|
+=============  =========  ============
+
+time.h
+--------
+
+=============  =========  ============
+Function Name  Available  RPC Required
+=============  =========  ============
+clock          |check|
+nanosleep      |check|
+=============  =========  ============
+
+assert.h
+--------
+
+=============  =========  ============
+Function Name  Available  RPC Required
+=============  =========  ============
+assert         |check|    |check|
+__assert_fail  |check|    |check|
 =============  =========  ============

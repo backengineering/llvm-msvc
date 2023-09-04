@@ -415,6 +415,8 @@ private:
 
   void declareSubtargetFeature(Record *Predicate);
 
+  unsigned declareHwModeCheck(StringRef HwModeFeatures);
+
   MatchTable buildMatchTable(MutableArrayRef<RuleMatcher> Rules, bool Optimize,
                              bool WithCoverage);
 
@@ -785,13 +787,11 @@ Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
     }
   }
 
-  bool IsAtomic = false;
   if (SrcGIEquivOrNull &&
       SrcGIEquivOrNull->getValueAsBit("CheckMMOIsNonAtomic"))
     InsnMatcher.addPredicate<AtomicOrderingMMOPredicateMatcher>("NotAtomic");
   else if (SrcGIEquivOrNull &&
            SrcGIEquivOrNull->getValueAsBit("CheckMMOIsAtomic")) {
-    IsAtomic = true;
     InsnMatcher.addPredicate<AtomicOrderingMMOPredicateMatcher>(
         "Unordered", AtomicOrderingMMOPredicateMatcher::AO_OrStronger);
   }
@@ -843,27 +843,6 @@ Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
           --NumChildren;
         }
       }
-    }
-
-    // Hack around an unfortunate mistake in how atomic store (and really
-    // atomicrmw in general) operands were ordered. A ISD::STORE used the order
-    // <stored value>, <pointer> order. ISD::ATOMIC_STORE used the opposite,
-    // <pointer>, <stored value>. In GlobalISel there's just the one store
-    // opcode, so we need to swap the operands here to get the right type check.
-    if (IsAtomic && SrcGIOrNull->TheDef->getName() == "G_STORE") {
-      assert(NumChildren == 2 && "wrong operands for atomic store");
-
-      const TreePatternNode *PtrChild = Src->getChild(0);
-      const TreePatternNode *ValueChild = Src->getChild(1);
-
-      if (auto Error = importChildMatcher(Rule, InsnMatcher, PtrChild, true,
-                                          false, 1, TempOpIdx))
-        return std::move(Error);
-
-      if (auto Error = importChildMatcher(Rule, InsnMatcher, ValueChild, false,
-                                          false, 0, TempOpIdx))
-        return std::move(Error);
-      return InsnMatcher;
     }
 
     // Match the used operands (i.e. the children of the operator).
@@ -1917,6 +1896,9 @@ Expected<RuleMatcher> GlobalISelEmitter::runOnPattern(const PatternToMatch &P) {
   if (auto Error = importRulePredicates(M, Predicates))
     return std::move(Error);
 
+  if (!P.getHwModeFeatures().empty())
+    M.addHwModeIdx(declareHwModeCheck(P.getHwModeFeatures()));
+
   // Next, analyze the pattern operators.
   TreePatternNode *Src = P.getSrcPattern();
   TreePatternNode *Dst = P.getDstPattern();
@@ -2520,9 +2502,11 @@ void GlobalISelEmitter::run(raw_ostream &OS) {
 }
 
 void GlobalISelEmitter::declareSubtargetFeature(Record *Predicate) {
-  if (SubtargetFeatures.count(Predicate) == 0)
-    SubtargetFeatures.emplace(
-        Predicate, SubtargetFeatureInfo(Predicate, SubtargetFeatures.size()));
+  SubtargetFeatures.try_emplace(Predicate, Predicate, SubtargetFeatures.size());
+}
+
+unsigned GlobalISelEmitter::declareHwModeCheck(StringRef HwModeFeatures) {
+  return HwModes.emplace(HwModeFeatures.str(), HwModes.size()).first->second;
 }
 
 } // end anonymous namespace

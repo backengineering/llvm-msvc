@@ -995,37 +995,66 @@ Instruction *InstCombinerImpl::foldAddWithConstant(BinaryOperator &Add) {
   return nullptr;
 }
 
-// Fold variations of a^2 + 2*a*b + b^2 -> (a + b)^2
-Instruction *InstCombinerImpl::foldSquareSumInts(BinaryOperator &I) {
-  Value *A, *B;
+// match variations of a^2 + 2*a*b + b^2
+//
+// to reuse the code between the FP and Int versions, the instruction OpCodes
+//  and constant types have been turned into template parameters.
+//
+// Mul2Rhs: The constant to perform the multiplicative equivalent of X*2 with;
+//  should be `m_SpecificFP(2.0)` for FP and `m_SpecificInt(1)` for Int
+//  (we're matching `X<<1` instead of `X*2` for Int)
+template <bool FP, typename Mul2Rhs>
+static bool matchesSquareSum(BinaryOperator &I, Mul2Rhs M2Rhs, Value *&A,
+                             Value *&B) {
+  constexpr unsigned MulOp = FP ? Instruction::FMul : Instruction::Mul;
+  constexpr unsigned AddOp = FP ? Instruction::FAdd : Instruction::Add;
+  constexpr unsigned Mul2Op = FP ? Instruction::FMul : Instruction::Shl;
 
-  // (a * a) + (((a << 1) + b) * b)
-  bool Matches = match(
-      &I, m_c_Add(m_OneUse(m_Mul(m_Value(A), m_Deferred(A))),
-                  m_OneUse(m_Mul(m_c_Add(m_Shl(m_Deferred(A), m_SpecificInt(1)),
-                                         m_Value(B)),
-                                 m_Deferred(B)))));
+  // (a * a) + (((a * 2) + b) * b)
+  if (match(&I, m_c_BinOp(
+                    AddOp, m_OneUse(m_BinOp(MulOp, m_Value(A), m_Deferred(A))),
+                    m_OneUse(m_BinOp(
+                        MulOp,
+                        m_c_BinOp(AddOp, m_BinOp(Mul2Op, m_Deferred(A), M2Rhs),
+                                  m_Value(B)),
+                        m_Deferred(B))))))
+    return true;
 
-  // ((a * b) << 1)  or ((a << 1) * b)
+  // ((a * b) * 2)  or ((a * 2) * b)
   // +
   // (a * a + b * b) or (b * b + a * a)
-  if (!Matches) {
-    Matches = match(
-        &I,
-        m_c_Add(m_CombineOr(m_OneUse(m_Shl(m_Mul(m_Value(A), m_Value(B)),
-                                           m_SpecificInt(1))),
-                            m_OneUse(m_Mul(m_Shl(m_Value(A), m_SpecificInt(1)),
-                                           m_Value(B)))),
-                m_OneUse(m_c_Add(m_Mul(m_Deferred(A), m_Deferred(A)),
-                                 m_Mul(m_Deferred(B), m_Deferred(B))))));
-  }
+  return match(
+      &I,
+      m_c_BinOp(AddOp,
+                m_CombineOr(
+                    m_OneUse(m_BinOp(
+                        Mul2Op, m_BinOp(MulOp, m_Value(A), m_Value(B)), M2Rhs)),
+                    m_OneUse(m_BinOp(MulOp, m_BinOp(Mul2Op, m_Value(A), M2Rhs),
+                                     m_Value(B)))),
+                m_OneUse(m_c_BinOp(
+                    AddOp, m_BinOp(MulOp, m_Deferred(A), m_Deferred(A)),
+                    m_BinOp(MulOp, m_Deferred(B), m_Deferred(B))))));
+}
 
-  // if one of them matches: -> (a + b)^2
-  if (Matches) {
+// Fold integer variations of a^2 + 2*a*b + b^2 -> (a + b)^2
+Instruction *InstCombinerImpl::foldSquareSumInt(BinaryOperator &I) {
+  Value *A, *B;
+  if (matchesSquareSum</*FP*/ false>(I, m_SpecificInt(1), A, B)) {
     Value *AB = Builder.CreateAdd(A, B);
     return BinaryOperator::CreateMul(AB, AB);
   }
+  return nullptr;
+}
 
+// Fold floating point variations of a^2 + 2*a*b + b^2 -> (a + b)^2
+// Requires `nsz` and `reassoc`.
+Instruction *InstCombinerImpl::foldSquareSumFP(BinaryOperator &I) {
+  assert(I.hasAllowReassoc() && I.hasNoSignedZeros() && "Assumption mismatch");
+  Value *A, *B;
+  if (matchesSquareSum</*FP*/ true>(I, m_SpecificFP(2.0), A, B)) {
+    Value *AB = Builder.CreateFAddFMF(A, B, &I);
+    return BinaryOperator::CreateFMulFMF(AB, AB, &I);
+  }
   return nullptr;
 }
 
@@ -1177,6 +1206,21 @@ static Instruction *foldToUnsignedSaturatedAdd(BinaryOperator &I) {
       *C == ~*NotC)
     return CallInst::Create(getUAddSat(), { X, ConstantInt::get(Ty, *C) });
 
+  return nullptr;
+}
+
+// Transform:
+//  (add A, (shl (neg B), Y))
+//      -> (sub A, (shl B, Y))
+static Instruction *combineAddSubWithShlAddSub(InstCombiner::BuilderTy &Builder,
+                                               const BinaryOperator &I) {
+  Value *A, *B, *Cnt;
+  if (match(&I,
+            m_c_Add(m_OneUse(m_Shl(m_OneUse(m_Neg(m_Value(B))), m_Value(Cnt))),
+                    m_Value(A)))) {
+    Value *NewShl = Builder.CreateShl(B, Cnt);
+    return BinaryOperator::CreateSub(A, NewShl);
+  }
   return nullptr;
 }
 
@@ -1420,6 +1464,9 @@ Instruction *InstCombinerImpl::visitAdd(BinaryOperator &I) {
   if (Instruction *R = foldBinOpShiftWithShift(I))
     return R;
 
+  if (Instruction *R = combineAddSubWithShlAddSub(Builder, I))
+    return R;
+
   Value *LHS = I.getOperand(0), *RHS = I.getOperand(1);
   Type *Ty = I.getType();
   if (Ty->isIntOrIntVectorTy(1))
@@ -1649,7 +1696,7 @@ Instruction *InstCombinerImpl::visitAdd(BinaryOperator &I) {
         I, Builder.CreateIntrinsic(Intrinsic::ctpop, {I.getType()},
                                    {Builder.CreateOr(A, B)}));
 
-  if (Instruction *Res = foldSquareSumInts(I))
+  if (Instruction *Res = foldSquareSumInt(I))
     return Res;
 
   if (Instruction *Res = foldBinOpOfDisplacedShifts(I))
@@ -1829,6 +1876,9 @@ Instruction *InstCombinerImpl::visitFAdd(BinaryOperator &I) {
 
   if (I.hasAllowReassoc() && I.hasNoSignedZeros()) {
     if (Instruction *F = factorizeFAddFSub(I, Builder))
+      return F;
+
+    if (Instruction *F = foldSquareSumFP(I))
       return F;
 
     // Try to fold fadd into start value of reduction intrinsic.
@@ -2573,9 +2623,7 @@ Instruction *InstCombinerImpl::hoistFNegAboveFMulFDiv(Value *FNegOp,
   if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(FNegOp)) {
     // Make sure to preserve flags and metadata on the call.
     if (II->getIntrinsicID() == Intrinsic::ldexp) {
-      FastMathFlags FMF = FMFSource.getFastMathFlags();
-      FMF |= II->getFastMathFlags();
-
+      FastMathFlags FMF = FMFSource.getFastMathFlags() | II->getFastMathFlags();
       IRBuilder<>::FastMathFlagGuard FMFGuard(Builder);
       Builder.setFastMathFlags(FMF);
 
@@ -2623,8 +2671,7 @@ Instruction *InstCombinerImpl::visitFNeg(UnaryOperator &I) {
     auto propagateSelectFMF = [&](SelectInst *S, bool CommonOperand) {
       S->copyFastMathFlags(&I);
       if (auto *OldSel = dyn_cast<SelectInst>(Op)) {
-        FastMathFlags FMF = I.getFastMathFlags();
-        FMF |= OldSel->getFastMathFlags();
+        FastMathFlags FMF = I.getFastMathFlags() | OldSel->getFastMathFlags();
         S->setFastMathFlags(FMF);
         if (!OldSel->hasNoSignedZeros() && !CommonOperand &&
             !isGuaranteedNotToBeUndefOrPoison(OldSel->getCondition()))

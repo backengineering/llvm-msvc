@@ -51,7 +51,7 @@ export namespace std {
     using std::chrono::round;
 
     // [time.duration.io], duration I/O
-#if !defined(_LIBCPP_HAS_NO_INCOMPLETE_FORMAT) && !defined(_LIBCPP_HAS_NO_LOCALIZATION)
+#ifndef _LIBCPP_HAS_NO_LOCALIZATION
     using std::chrono::operator<<;
 #endif
     // using std::chrono::from_stream;
@@ -112,8 +112,10 @@ export namespace std {
 
     using std::chrono::file_time;
 
+#ifndef _LIBCPP_HAS_NO_MONOTONIC_CLOCK
     // [time.clock.steady], class steady_clock
     using std::chrono::steady_clock;
+#endif
 
     // [time.clock.hires], class high_resolution_clock
     using std::chrono::high_resolution_clock;
@@ -233,7 +235,9 @@ export namespace std {
 #endif
   } // namespace chrono
 
+#ifndef _LIBCPP_HAS_NO_LOCALIZATION
   using std::formatter;
+#endif // _LIBCPP_HAS_NO_LOCALIZATION
 
   namespace chrono {
     // using std::chrono::parse;

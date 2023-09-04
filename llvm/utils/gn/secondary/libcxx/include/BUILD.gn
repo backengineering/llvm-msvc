@@ -33,6 +33,7 @@ if (current_toolchain == default_toolchain) {
       "_LIBCPP_HAS_NO_RANDOM_DEVICE=",
       "_LIBCPP_HAS_NO_LOCALIZATION=",
       "_LIBCPP_HAS_NO_WIDE_CHARACTERS=",
+      "_LIBCPP_HAS_NO_STD_MODULES=",
       "_LIBCPP_ABI_DEFINES=",
       "_LIBCPP_ENABLE_DEBUG_MODE_DEFAULT=",
       "_LIBCPP_ENABLE_HARDENED_MODE_DEFAULT=",
@@ -60,10 +61,7 @@ if (current_toolchain == default_toolchain) {
     values = [
       # An empty value here means the feature is supported.
       # Unsupported values should be set to `$no`.
-      "requires_LIBCXX_ENABLE_FILESYSTEM=",
       "requires_LIBCXX_ENABLE_LOCALIZATION=",
-      "requires_LIBCXX_ENABLE_THREADS=",
-      "requires_LIBCXX_ENABLE_WIDE_CHARACTERS=",
     ]
   }
 
@@ -613,6 +611,7 @@ if (current_toolchain == default_toolchain) {
       "__memory_resource/unsynchronized_pool_resource.h",
       "__mutex/lock_guard.h",
       "__mutex/mutex.h",
+      "__mutex/once_flag.h",
       "__mutex/tag_types.h",
       "__mutex/unique_lock.h",
       "__node_handle",

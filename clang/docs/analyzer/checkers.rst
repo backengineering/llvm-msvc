@@ -29,6 +29,56 @@ Models core language features and contains general-purpose checkers such as divi
 null pointer dereference, usage of uninitialized values, etc.
 *These checkers must be always switched on as other checker rely on them.*
 
+.. _core-BitwiseShift:
+
+core.BitwiseShift (C, C++)
+""""""""""""""""""""""""""
+
+Finds undefined behavior caused by the bitwise left- and right-shift operator
+operating on integer types.
+
+By default, this checker only reports situations when the right operand is
+either negative or larger than the bit width of the type of the left operand;
+these are logically unsound.
+
+Moreover, if the pedantic mode is activated by
+``-analyzer-config core.BitwiseShift:Pedantic=true``, then this checker also
+reports situations where the _left_ operand of a shift operator is negative or
+overflow occurs during the right shift of a signed value. (Most compilers
+handle these predictably, but the C standard and the C++ standards before C++20
+say that they're undefined behavior. In the C++20 standard these constructs are
+well-defined, so activating pedantic mode in C++20 has no effect.)
+
+**Examples**
+
+.. code-block:: cpp
+
+ static_assert(sizeof(int) == 4, "assuming 32-bit int")
+
+ void basic_examples(int a, int b) {
+   if (b < 0) {
+     b = a << b; // warn: right operand is negative in left shift
+   } else if (b >= 32) {
+     b = a >> b; // warn: right shift overflows the capacity of 'int'
+   }
+ }
+
+ int pedantic_examples(int a, int b) {
+   if (a < 0) {
+     return a >> b; // warn: left operand is negative in right shift
+   }
+   a = 1000u << 31; // OK, overflow of unsigned value is well-defined, a == 0
+   if (b > 10) {
+     a = b << 31; // this is undefined before C++20, but the checker doesn't
+                  // warn because it doesn't know the exact value of b
+   }
+   return 1000 << 31; // warn: this overflows the capacity of 'int'
+ }
+
+**Solution**
+
+Ensure the shift operands are in proper range before shifting.
+
 .. _core-CallAndMessage:
 
 core.CallAndMessage (C, C++, ObjC)
@@ -2431,13 +2481,13 @@ input refers to a valid file and removing any invalid user input.
     if (!filename[0])
       return -1;
     strcat(cmd, filename);
-    system(cmd); // Superflous Warning: Untrusted data is passed to a system call
+    system(cmd); // Superfluous Warning: Untrusted data is passed to a system call
   }
 
 Unfortunately, the checker cannot discover automatically that the programmer
 have performed data sanitation, so it still emits the warning.
 
-One can get rid of this superflous warning by telling by specifying the
+One can get rid of this superfluous warning by telling by specifying the
 sanitation functions in the taint configuration file (see
 :doc:`user-docs/TaintAnalysisConfiguration`).
 
@@ -2499,7 +2549,7 @@ and add the `csa_mark_sanitized` function.
 
 Then calling `csa_mark_sanitized(X)` will tell the analyzer that `X` is safe to
 be used after this point, because its contents are verified. It is the
-responisibility of the programmer to ensure that this verification was indeed
+responsibility of the programmer to ensure that this verification was indeed
 correct. Please note that `csa_mark_sanitized` function is only declared and
 used during Clang Static Analysis and skipped in (production) builds.
 

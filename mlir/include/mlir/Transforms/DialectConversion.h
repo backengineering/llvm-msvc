@@ -38,6 +38,22 @@ class Value;
 class TypeConverter {
 public:
   virtual ~TypeConverter() = default;
+  TypeConverter() = default;
+  // Copy the registered conversions, but not the caches
+  TypeConverter(const TypeConverter &other)
+      : conversions(other.conversions),
+        argumentMaterializations(other.argumentMaterializations),
+        sourceMaterializations(other.sourceMaterializations),
+        targetMaterializations(other.targetMaterializations),
+        typeAttributeConversions(other.typeAttributeConversions) {}
+  TypeConverter &operator=(const TypeConverter &other) {
+    conversions = other.conversions;
+    argumentMaterializations = other.argumentMaterializations;
+    sourceMaterializations = other.sourceMaterializations;
+    targetMaterializations = other.targetMaterializations;
+    typeAttributeConversions = other.typeAttributeConversions;
+    return *this;
+  }
 
   /// This class provides all of the information necessary to convert a type
   /// signature.
@@ -307,7 +323,7 @@ private:
   /// types is empty, the type is removed and any usages of the existing value
   /// are expected to be removed during conversion.
   using ConversionCallbackFn = std::function<std::optional<LogicalResult>(
-      Type, SmallVectorImpl<Type> &, ArrayRef<Type>)>;
+      Type, SmallVectorImpl<Type> &)>;
 
   /// The signature of the callback used to materialize a conversion.
   using MaterializationCallbackFn = std::function<std::optional<Value>(
@@ -330,44 +346,30 @@ private:
   template <typename T, typename FnT>
   std::enable_if_t<std::is_invocable_v<FnT, T>, ConversionCallbackFn>
   wrapCallback(FnT &&callback) const {
-    return wrapCallback<T>(
-        [callback = std::forward<FnT>(callback)](
-            T type, SmallVectorImpl<Type> &results, ArrayRef<Type>) {
-          if (std::optional<Type> resultOpt = callback(type)) {
-            bool wasSuccess = static_cast<bool>(*resultOpt);
-            if (wasSuccess)
-              results.push_back(*resultOpt);
-            return std::optional<LogicalResult>(success(wasSuccess));
-          }
-          return std::optional<LogicalResult>();
-        });
-  }
-  /// With callback of form: `std::optional<LogicalResult>(
-  ///     T, SmallVectorImpl<Type> &)`.
-  template <typename T, typename FnT>
-  std::enable_if_t<std::is_invocable_v<FnT, T, SmallVectorImpl<Type> &>,
-                   ConversionCallbackFn>
-  wrapCallback(FnT &&callback) const {
-    return wrapCallback<T>(
-        [callback = std::forward<FnT>(callback)](
-            T type, SmallVectorImpl<Type> &results, ArrayRef<Type>) {
-          return callback(type, results);
-        });
+    return wrapCallback<T>([callback = std::forward<FnT>(callback)](
+                               T type, SmallVectorImpl<Type> &results) {
+      if (std::optional<Type> resultOpt = callback(type)) {
+        bool wasSuccess = static_cast<bool>(*resultOpt);
+        if (wasSuccess)
+          results.push_back(*resultOpt);
+        return std::optional<LogicalResult>(success(wasSuccess));
+      }
+      return std::optional<LogicalResult>();
+    });
   }
   /// With callback of form: `std::optional<LogicalResult>(
   ///     T, SmallVectorImpl<Type> &, ArrayRef<Type>)`.
   template <typename T, typename FnT>
-  std::enable_if_t<
-      std::is_invocable_v<FnT, T, SmallVectorImpl<Type> &, ArrayRef<Type>>,
-      ConversionCallbackFn>
+  std::enable_if_t<std::is_invocable_v<FnT, T, SmallVectorImpl<Type> &>,
+                   ConversionCallbackFn>
   wrapCallback(FnT &&callback) const {
     return [callback = std::forward<FnT>(callback)](
-               Type type, SmallVectorImpl<Type> &results,
-               ArrayRef<Type> callStack) -> std::optional<LogicalResult> {
+               Type type,
+               SmallVectorImpl<Type> &results) -> std::optional<LogicalResult> {
       T derivedType = dyn_cast<T>(type);
       if (!derivedType)
         return std::nullopt;
-      return callback(derivedType, results, callStack);
+      return callback(derivedType, results);
     };
   }
 
@@ -435,10 +437,8 @@ private:
   mutable DenseMap<Type, Type> cachedDirectConversions;
   /// This cache stores the successful 1->N conversions, where N != 1.
   mutable DenseMap<Type, SmallVector<Type, 2>> cachedMultiConversions;
-
-  /// Stores the types that are being converted in the case when convertType
-  /// is being called recursively to convert nested types.
-  mutable SmallVector<Type, 2> conversionCallStack;
+  /// A mutex used for cache access
+  mutable llvm::sys::SmartRWMutex<true> cacheMutex;
 };
 
 //===----------------------------------------------------------------------===//
@@ -476,13 +476,13 @@ public:
 
   /// Return the type converter held by this pattern, or nullptr if the pattern
   /// does not require type conversion.
-  TypeConverter *getTypeConverter() const { return typeConverter; }
+  const TypeConverter *getTypeConverter() const { return typeConverter; }
 
   template <typename ConverterTy>
   std::enable_if_t<std::is_base_of<TypeConverter, ConverterTy>::value,
-                   ConverterTy *>
+                   const ConverterTy *>
   getTypeConverter() const {
-    return static_cast<ConverterTy *>(typeConverter);
+    return static_cast<const ConverterTy *>(typeConverter);
   }
 
 protected:
@@ -492,13 +492,13 @@ protected:
   /// Construct a conversion pattern with the given converter, and forward the
   /// remaining arguments to RewritePattern.
   template <typename... Args>
-  ConversionPattern(TypeConverter &typeConverter, Args &&...args)
+  ConversionPattern(const TypeConverter &typeConverter, Args &&...args)
       : RewritePattern(std::forward<Args>(args)...),
         typeConverter(&typeConverter) {}
 
 protected:
   /// An optional type converter for use by this pattern.
-  TypeConverter *typeConverter = nullptr;
+  const TypeConverter *typeConverter = nullptr;
 
 private:
   using RewritePattern::rewrite;
@@ -514,7 +514,7 @@ public:
 
   OpConversionPattern(MLIRContext *context, PatternBenefit benefit = 1)
       : ConversionPattern(SourceOp::getOperationName(), benefit, context) {}
-  OpConversionPattern(TypeConverter &typeConverter, MLIRContext *context,
+  OpConversionPattern(const TypeConverter &typeConverter, MLIRContext *context,
                       PatternBenefit benefit = 1)
       : ConversionPattern(typeConverter, SourceOp::getOperationName(), benefit,
                           context) {}
@@ -567,7 +567,7 @@ public:
   OpInterfaceConversionPattern(MLIRContext *context, PatternBenefit benefit = 1)
       : ConversionPattern(Pattern::MatchInterfaceOpTypeTag(),
                           SourceOp::getInterfaceID(), benefit, context) {}
-  OpInterfaceConversionPattern(TypeConverter &typeConverter,
+  OpInterfaceConversionPattern(const TypeConverter &typeConverter,
                                MLIRContext *context, PatternBenefit benefit = 1)
       : ConversionPattern(typeConverter, Pattern::MatchInterfaceOpTypeTag(),
                           SourceOp::getInterfaceID(), benefit, context) {}
@@ -608,17 +608,17 @@ private:
 /// ops which use FunctionType to represent their type.
 void populateFunctionOpInterfaceTypeConversionPattern(
     StringRef functionLikeOpName, RewritePatternSet &patterns,
-    TypeConverter &converter);
+    const TypeConverter &converter);
 
 template <typename FuncOpT>
 void populateFunctionOpInterfaceTypeConversionPattern(
-    RewritePatternSet &patterns, TypeConverter &converter) {
+    RewritePatternSet &patterns, const TypeConverter &converter) {
   populateFunctionOpInterfaceTypeConversionPattern(FuncOpT::getOperationName(),
                                                    patterns, converter);
 }
 
 void populateAnyFunctionOpInterfaceTypeConversionPattern(
-    RewritePatternSet &patterns, TypeConverter &converter);
+    RewritePatternSet &patterns, const TypeConverter &converter);
 
 //===----------------------------------------------------------------------===//
 // Conversion PatternRewriter
@@ -645,7 +645,7 @@ public:
   Block *
   applySignatureConversion(Region *region,
                            TypeConverter::SignatureConversion &conversion,
-                           TypeConverter *converter = nullptr);
+                           const TypeConverter *converter = nullptr);
 
   /// Convert the types of block arguments within the given region. This
   /// replaces each block with a new block containing the updated signature. The
@@ -653,7 +653,7 @@ public:
   /// provided. On success, the new entry block to the region is returned for
   /// convenience. Otherwise, failure is returned.
   FailureOr<Block *> convertRegionTypes(
-      Region *region, TypeConverter &converter,
+      Region *region, const TypeConverter &converter,
       TypeConverter::SignatureConversion *entryConversion = nullptr);
 
   /// Convert the types of block arguments within the given region except for
@@ -664,7 +664,7 @@ public:
   /// example, we need to convert only a subset of a BB arguments), such
   /// behavior can be specified in blockConversions.
   LogicalResult convertNonEntryRegionTypes(
-      Region *region, TypeConverter &converter,
+      Region *region, const TypeConverter &converter,
       ArrayRef<TypeConverter::SignatureConversion> blockConversions);
 
   /// Replace all the uses of the block argument `from` with value `to`.
@@ -1024,12 +1024,12 @@ private:
 class PDLConversionConfig final
     : public PDLPatternConfigBase<PDLConversionConfig> {
 public:
-  PDLConversionConfig(TypeConverter *converter) : converter(converter) {}
+  PDLConversionConfig(const TypeConverter *converter) : converter(converter) {}
   ~PDLConversionConfig() final = default;
 
   /// Return the type converter used by this configuration, which may be nullptr
   /// if no type conversions are expected.
-  TypeConverter *getTypeConverter() const { return converter; }
+  const TypeConverter *getTypeConverter() const { return converter; }
 
   /// Hooks that are invoked at the beginning and end of a rewrite of a matched
   /// pattern.
@@ -1038,7 +1038,7 @@ public:
 
 private:
   /// An optional type converter to use for the pattern.
-  TypeConverter *converter;
+  const TypeConverter *converter;
 };
 
 /// Register the dialect conversion PDL functions with the given pattern set.

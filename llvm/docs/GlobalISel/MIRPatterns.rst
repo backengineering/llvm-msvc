@@ -63,7 +63,7 @@ Semantics:
     other patterns in that rule/alternative can simply use ``$x``
     (``i32:$x`` is redundant).
 
-* A nammed operand's behavior depends on whether the name has been seen before.
+* A named operand's behavior depends on whether the name has been seen before.
 
   * For match patterns, reusing an operand name checks that the operands
     are identical (see example 2 below).
@@ -110,6 +110,8 @@ This a non-exhaustive list of known issues with MIR patterns at this time.
 * Matching intrinsics is not yet possible.
 * Using ``GICombinePatFrag`` within another ``GICombinePatFrag`` is not
   supported.
+* ``GICombinePatFrag`` can only have a single root.
+* Instructions with multiple defs cannot be the root of a ``GICombinePatFrag``.
 * Using ``GICombinePatFrag`` in the ``apply`` pattern of a ``GICombineRule``
   is not supported.
 * Deleting the matched pattern in a ``GICombineRule`` needs to be done using

@@ -335,9 +335,11 @@ private:
                          uint32_t ThreadLimitClause[3]) const;
 
   /// The number of threads \p NumThreads can be adjusted by this method.
+  /// \p IsNumThreadsFromUser is true is \p NumThreads is defined by user via
+  /// thread_limit clause.
   uint64_t getNumBlocks(GenericDeviceTy &GenericDevice,
                         uint32_t BlockLimitClause[3], uint64_t LoopTripCount,
-                        uint32_t &NumThreads) const;
+                        uint32_t &NumThreads, bool IsNumThreadsFromUser) const;
 
   /// Indicate if the kernel works in Generic SPMD, Generic or SPMD mode.
   bool isGenericSPMDMode() const {
@@ -1001,7 +1003,7 @@ protected:
 
 private:
   /// Number of devices available for the plugin.
-  int32_t NumDevices;
+  int32_t NumDevices = 0;
 
   /// Array of pointers to the devices. Initially, they are all set to nullptr.
   /// Once a device is initialized, the pointer is stored in the position given

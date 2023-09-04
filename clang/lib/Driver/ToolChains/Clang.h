@@ -90,10 +90,8 @@ private:
                                  RewriteKind rewrite) const;
 
   void AddClangCLArgs(Compilation &C, const llvm::opt::ArgList &Args,
-                      types::ID InputType,
-                      llvm::opt::ArgStringList &CmdArgs,
-                      llvm::codegenoptions::DebugInfoKind *DebugInfoKind,
-                      bool *EmitCodeView) const;
+                    types::ID InputType,
+                    llvm::opt::ArgStringList &CmdArgs) const;
 
   mutable std::unique_ptr<llvm::raw_fd_ostream> CompilationDatabase = nullptr;
   void DumpCompilationDatabase(Compilation &C, StringRef Filename,

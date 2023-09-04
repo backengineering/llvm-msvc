@@ -2270,7 +2270,13 @@ let Log2LMUL = [-3, -2, -1, 0, 1, 2] in {
   def vfwcvt_rtz_x_f_v : RVVConvToWidenSignedBuiltin<"vfwcvt_rtz_x">;
   def vfwcvt_f_xu_v : RVVConvBuiltin<"Fw", "FwUv", "csi", "vfwcvt_f">;
   def vfwcvt_f_x_v : RVVConvBuiltin<"Fw", "Fwv", "csi", "vfwcvt_f">;
-  def vfwcvt_f_f_v : RVVConvBuiltin<"w", "wv", "xf", "vfwcvt_f">;
+  def vfwcvt_f_f_v : RVVConvBuiltin<"w", "wv", "f", "vfwcvt_f">;
+  let RequiredFeatures = ["ZvfhminOrZvfh"] in
+    def vfwcvt_f_f_v_fp16 : RVVConvBuiltin<"w", "wv", "x", "vfwcvt_f"> {
+      let Name = "vfwcvt_f_f_v";
+      let IRName = "vfwcvt_f_f_v";
+      let MaskedIRName = "vfwcvt_f_f_v_mask";
+    }
 }
 
 // 14.19. Narrowing Floating-Point/Integer Type-Convert Instructions
@@ -2360,9 +2366,11 @@ let ManualCodegen = [{
         defm :
           RVVConvBuiltinSet<"vfncvt_f_xu_w", "csi", [["Fv", "FvUwu"]]>;
       }
-      let OverloadedName = "vfncvt_f" in
-        defm :
-          RVVConvBuiltinSet<"vfncvt_f_f_w", "xf", [["v", "vwu"]]>;
+      let OverloadedName = "vfncvt_f" in {
+        defm : RVVConvBuiltinSet<"vfncvt_f_f_w", "f", [["v", "vwu"]]>;
+        let RequiredFeatures = ["ZvfhminOrZvfh"] in
+        defm : RVVConvBuiltinSet<"vfncvt_f_f_w", "x", [["v", "vwu"]]>;
+      }
     }
   }
 
@@ -2403,9 +2411,11 @@ let ManualCodegen = [{
       defm :
         RVVConvBuiltinSet<"vfncvt_f_xu_w", "csi", [["Fv", "FvUw"]]>;
     }
-    let OverloadedName = "vfncvt_f" in
-      defm :
-        RVVConvBuiltinSet<"vfncvt_f_f_w", "xf", [["v", "vw"]]>;
+    let OverloadedName = "vfncvt_f" in {
+      defm : RVVConvBuiltinSet<"vfncvt_f_f_w", "f", [["v", "vw"]]>;
+      let RequiredFeatures = ["ZvfhminOrZvfh"] in
+      defm : RVVConvBuiltinSet<"vfncvt_f_f_w", "x", [["v", "vw"]]>;
+    }
   }
 }
 }
@@ -2830,6 +2840,32 @@ let HasMasked = false, HasVL = false, IRName = "" in {
       def : RVVBuiltin<"Uv" # T # "Uv", T # "Uv" # T # "UvKzUv", "csil">;
     }
   }
+
+  let Name = "vcreate_v",
+      UnMaskedPolicyScheme = NonePolicy,
+      MaskedPolicyScheme = NonePolicy,
+      SupportOverloading = false,
+      ManualCodegen = [{
+      {
+        assert(isa<StructType>(ResultType));
+        unsigned NF = cast<StructType>(ResultType)->getNumElements();
+        llvm::Value *ReturnTuple = llvm::PoisonValue::get(ResultType);
+        for (unsigned I = 0; I < NF; ++I) {
+          ReturnTuple = Builder.CreateInsertValue(ReturnTuple, Ops[I], {I});
+        }
+        return ReturnTuple;
+      }
+      }] in {
+    foreach nf = NFList in {
+      let NF = nf in {
+        defvar T = "(Tuple:" # nf # ")";
+        defvar V = VString<nf, /*signed=*/true>.S;
+        defvar UV = VString<nf, /*signed=*/false>.S;
+        def : RVVBuiltin<T # "v", T # "v" # V, "csilxfd">;
+        def : RVVBuiltin<T # "Uv", T # "Uv" # UV, "csil">;
+      }
+    }
+  }
 }
 
 multiclass RVVOutBuiltinSetZvbb {
@@ -2874,51 +2910,69 @@ multiclass RVVSignedWidenBinBuiltinSetVwsll
                           ["vx", "Uw", "UwUvz"]]>;
 
 let UnMaskedPolicyScheme = HasPassthruOperand in {
+  // zvkb
+  let RequiredFeatures = ["Zvkb"] in {
+    defm vandn   : RVVUnsignedBinBuiltinSet;
+    defm vbrev8  : RVVOutBuiltinSetZvbb;
+    defm vrev8   : RVVOutBuiltinSetZvbb;
+    defm vrol    : RVVUnsignedShiftBuiltinSet;
+    defm vror    : RVVUnsignedShiftBuiltinSet;
+  }
+
   // zvbb
-  defm vandn   : RVVUnsignedBinBuiltinSet;
-  defm vbrev   : RVVOutBuiltinSetZvbb;
-  defm vbrev8  : RVVOutBuiltinSetZvbb;
-  defm vrev8   : RVVOutBuiltinSetZvbb;
-  defm vclz    : RVVOutBuiltinSetZvbb;
-  defm vctz    : RVVOutBuiltinSetZvbb;
-  defm vcpopv  : RVVOutBuiltinSetZvbb;
-  defm vrol    : RVVUnsignedShiftBuiltinSet;
-  defm vror    : RVVUnsignedShiftBuiltinSet;
-  let OverloadedName = "vwsll" in
-  defm vwsll   : RVVSignedWidenBinBuiltinSetVwsll;
+  let RequiredFeatures = ["Zvbb"] in {
+    defm vbrev   : RVVOutBuiltinSetZvbb;
+    defm vclz    : RVVOutBuiltinSetZvbb;
+    defm vctz    : RVVOutBuiltinSetZvbb;
+    defm vcpopv  : RVVOutBuiltinSetZvbb;
+    let OverloadedName = "vwsll" in
+    defm vwsll   : RVVSignedWidenBinBuiltinSetVwsll;
+  }
 
   // zvbc
-  defm vclmul  : RVVInt64BinBuiltinSet;
-  defm vclmulh : RVVInt64BinBuiltinSet;
+  let RequiredFeatures = ["Zvbc"] in {
+    defm vclmul  : RVVInt64BinBuiltinSet;
+    defm vclmulh : RVVInt64BinBuiltinSet;
+  }
 }
 
 let UnMaskedPolicyScheme = HasPolicyOperand, HasMasked = false in {
   // zvkg
-  defm vghsh   : RVVOutOp2BuiltinSetVVZvk;
-  defm vgmul   : RVVOutBuiltinSetZvk<HasVV=1, HasVS=0>;
+  let RequiredFeatures = ["Zvkg"] in {
+    defm vghsh   : RVVOutOp2BuiltinSetVVZvk;
+    defm vgmul   : RVVOutBuiltinSetZvk<HasVV=1, HasVS=0>;
+  }
 
   // zvkned
-  defm vaesdf  : RVVOutBuiltinSetZvk;
-  defm vaesdm  : RVVOutBuiltinSetZvk;
-  defm vaesef  : RVVOutBuiltinSetZvk;
-  defm vaesem  : RVVOutBuiltinSetZvk;
-  let UnMaskedPolicyScheme = HasPassthruOperand in
-  defm vaeskf1 : RVVOutOp1BuiltinSet<"vaeskf1", "i", [["vi", "Uv", "UvUvKz"]]>;
-  defm vaeskf2 : RVVOutOp2BuiltinSetVIZvk;
-  defm vaesz   : RVVOutBuiltinSetZvk<HasVV=0>;
+  let RequiredFeatures = ["Zvkned"] in {
+    defm vaesdf  : RVVOutBuiltinSetZvk;
+    defm vaesdm  : RVVOutBuiltinSetZvk;
+    defm vaesef  : RVVOutBuiltinSetZvk;
+    defm vaesem  : RVVOutBuiltinSetZvk;
+    let UnMaskedPolicyScheme = HasPassthruOperand in
+    defm vaeskf1 : RVVOutOp1BuiltinSet<"vaeskf1", "i", [["vi", "Uv", "UvUvKz"]]>;
+    defm vaeskf2 : RVVOutOp2BuiltinSetVIZvk;
+    defm vaesz   : RVVOutBuiltinSetZvk<HasVV=0>;
+  }
 
   // zvknha or zvknhb
-  defm vsha2ch : RVVOutOp2BuiltinSetVVZvk<"il">;
-  defm vsha2cl : RVVOutOp2BuiltinSetVVZvk<"il">;
-  defm vsha2ms : RVVOutOp2BuiltinSetVVZvk<"il">;
+  let RequiredFeatures = ["Zvknha"] in {
+    defm vsha2ch : RVVOutOp2BuiltinSetVVZvk<"il">;
+    defm vsha2cl : RVVOutOp2BuiltinSetVVZvk<"il">;
+    defm vsha2ms : RVVOutOp2BuiltinSetVVZvk<"il">;
+  }
 
   // zvksed
-  let UnMaskedPolicyScheme = HasPassthruOperand in
-  defm vsm4k   : RVVOutOp1BuiltinSet<"vsm4k", "i", [["vi", "Uv", "UvUvKz"]]>;
-  defm vsm4r   : RVVOutBuiltinSetZvk;
+  let RequiredFeatures = ["Zvksed"] in {
+    let UnMaskedPolicyScheme = HasPassthruOperand in
+    defm vsm4k   : RVVOutOp1BuiltinSet<"vsm4k", "i", [["vi", "Uv", "UvUvKz"]]>;
+    defm vsm4r   : RVVOutBuiltinSetZvk;
+  }
 
   // zvksh
-  defm vsm3c   : RVVOutOp2BuiltinSetVIZvk;
-  let UnMaskedPolicyScheme = HasPassthruOperand in
-  defm vsm3me  : RVVOutOp1BuiltinSet<"vsm3me", "i", [["vv", "Uv", "UvUvUv"]]>;
+  let RequiredFeatures = ["Zvksh"] in {
+    defm vsm3c   : RVVOutOp2BuiltinSetVIZvk;
+    let UnMaskedPolicyScheme = HasPassthruOperand in
+    defm vsm3me  : RVVOutOp1BuiltinSet<"vsm3me", "i", [["vv", "Uv", "UvUvUv"]]>;
+  }
 }

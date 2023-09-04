@@ -56,7 +56,9 @@ def err_expected_string_literal : Error<"expected string literal "
   "%select{in %1|for diagnostic message in static_assert|"
           "for optional message in 'availability' attribute|"
           "for %select{language name|source container name|USR}1 in "
-          "'external_source_symbol' attribute}0">;
+          "'external_source_symbol' attribute|"
+          "as argument of '%1' attribute}0">;
+
 def err_invalid_string_udl : Error<
   "string literal with user-defined suffix cannot be used here">;
 def err_invalid_character_udl : Error<
@@ -336,6 +338,8 @@ def err_target_unsupported_mcmse : Error<
   "-mcmse is not supported for %0">;
 def err_opt_not_valid_with_opt : Error<
   "option '%0' cannot be specified with '%1'">;
+def err_opt_not_valid_with_opt_on_target : Error<
+  "option '%0' cannot be specified with '%1' for the %2 sub-architecture">;
 def err_opt_not_valid_without_opt : Error<
   "option '%0' cannot be specified without '%1'">;
 def err_opt_not_valid_on_target : Error<
@@ -421,4 +425,13 @@ def err_opencl_extension_and_feature_differs : Error<
   "options %0 and %1 are set to different values">;
 def err_opencl_feature_requires : Error<
   "feature %0 requires support of %1 feature">;
+
+def warn_throw_not_valid_on_target : Warning<
+  "target '%0' does not support exception handling;"
+  " 'throw' is assumed to be never reached">,
+  InGroup<OpenMPTargetException>;
+def warn_try_not_valid_on_target : Warning<
+  "target '%0' does not support exception handling;"
+  " 'catch' block is ignored">,
+  InGroup<OpenMPTargetException>;
 }

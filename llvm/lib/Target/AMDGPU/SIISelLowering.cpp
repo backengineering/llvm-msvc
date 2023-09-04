@@ -755,6 +755,7 @@ SITargetLowering::SITargetLowering(const TargetMachine &TM,
                      Custom);
 
   setOperationAction(ISD::STACKSAVE, MVT::Other, Custom);
+  setOperationAction(ISD::GET_ROUNDING, MVT::i32, Custom);
 
   setTargetDAGCombine({ISD::ADD,
                        ISD::UADDO_CARRY,
@@ -762,6 +763,7 @@ SITargetLowering::SITargetLowering(const TargetMachine &TM,
                        ISD::USUBO_CARRY,
                        ISD::FADD,
                        ISD::FSUB,
+                       ISD::FDIV,
                        ISD::FMINNUM,
                        ISD::FMAXNUM,
                        ISD::FMINNUM_IEEE,
@@ -3540,6 +3542,77 @@ SDValue SITargetLowering::LowerSTACKSAVE(SDValue Op, SelectionDAG &DAG) const {
   return DAG.getMergeValues({VectorAddress, CopyFromSP.getValue(1)}, SL);
 }
 
+SDValue SITargetLowering::lowerGET_ROUNDING(SDValue Op,
+                                            SelectionDAG &DAG) const {
+  SDLoc SL(Op);
+  assert(Op.getValueType() == MVT::i32);
+
+  uint32_t BothRoundHwReg =
+      AMDGPU::Hwreg::encodeHwreg(AMDGPU::Hwreg::ID_MODE, 0, 4);
+  SDValue GetRoundBothImm = DAG.getTargetConstant(BothRoundHwReg, SL, MVT::i32);
+
+  SDValue IntrinID =
+      DAG.getTargetConstant(Intrinsic::amdgcn_s_getreg, SL, MVT::i32);
+  SDValue GetReg = DAG.getNode(ISD::INTRINSIC_W_CHAIN, SL, Op->getVTList(),
+                               Op.getOperand(0), IntrinID, GetRoundBothImm);
+
+  // There are two rounding modes, one for f32 and one for f64/f16. We only
+  // report in the standard value range if both are the same.
+  //
+  // The raw values also differ from the expected FLT_ROUNDS values. Nearest
+  // ties away from zero is not supported, and the other values are rotated by
+  // 1.
+  //
+  // If the two rounding modes are not the same, report a target defined value.
+
+  // Mode register rounding mode fields:
+  //
+  // [1:0] Single-precision round mode.
+  // [3:2] Double/Half-precision round mode.
+  //
+  // 0=nearest even; 1= +infinity; 2= -infinity, 3= toward zero.
+  //
+  //             Hardware   Spec
+  // Toward-0        3        0
+  // Nearest Even    0        1
+  // +Inf            1        2
+  // -Inf            2        3
+  //  NearestAway0  N/A       4
+  //
+  // We have to handle 16 permutations of a 4-bit value, so we create a 64-bit
+  // table we can index by the raw hardware mode.
+  //
+  // (trunc (FltRoundConversionTable >> MODE.fp_round)) & 0xf
+
+  SDValue BitTable =
+      DAG.getConstant(AMDGPU::FltRoundConversionTable, SL, MVT::i64);
+
+  SDValue Two = DAG.getConstant(2, SL, MVT::i32);
+  SDValue RoundModeTimesNumBits =
+      DAG.getNode(ISD::SHL, SL, MVT::i32, GetReg, Two);
+
+  // TODO: We could possibly avoid a 64-bit shift and use a simpler table if we
+  // knew only one mode was demanded.
+  SDValue TableValue =
+      DAG.getNode(ISD::SRL, SL, MVT::i64, BitTable, RoundModeTimesNumBits);
+  SDValue TruncTable = DAG.getNode(ISD::TRUNCATE, SL, MVT::i32, TableValue);
+
+  SDValue EntryMask = DAG.getConstant(0xf, SL, MVT::i32);
+  SDValue TableEntry =
+      DAG.getNode(ISD::AND, SL, MVT::i32, TruncTable, EntryMask);
+
+  // There's a gap in the 4-bit encoded table and actual enum values, so offset
+  // if it's an extended value.
+  SDValue Four = DAG.getConstant(4, SL, MVT::i32);
+  SDValue IsStandardValue =
+      DAG.getSetCC(SL, MVT::i1, TableEntry, Four, ISD::SETULT);
+  SDValue EnumOffset = DAG.getNode(ISD::ADD, SL, MVT::i32, TableEntry, Four);
+  SDValue Result = DAG.getNode(ISD::SELECT, SL, MVT::i32, IsStandardValue,
+                               TableEntry, EnumOffset);
+
+  return DAG.getMergeValues({Result, GetReg.getValue(1)}, SL);
+}
+
 Register SITargetLowering::getRegisterByName(const char* RegName, LLT VT,
                                              const MachineFunction &MF) const {
   Register Reg = StringSwitch<Register>(RegName)
@@ -5049,6 +5122,8 @@ SDValue SITargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerDYNAMIC_STACKALLOC(Op, DAG);
   case ISD::STACKSAVE:
     return LowerSTACKSAVE(Op, DAG);
+  case ISD::GET_ROUNDING:
+    return lowerGET_ROUNDING(Op, DAG);
   }
   return SDValue();
 }
@@ -8642,8 +8717,7 @@ SDValue SITargetLowering::LowerINTRINSIC_VOID(SDValue Op,
         IntrinsicID == Intrinsic::amdgcn_struct_ptr_buffer_load_lds;
     unsigned OpOffset = HasVIndex ? 1 : 0;
     SDValue VOffset = Op.getOperand(5 + OpOffset);
-    auto CVOffset = dyn_cast<ConstantSDNode>(VOffset);
-    bool HasVOffset = !CVOffset || !CVOffset->isZero();
+    bool HasVOffset = !isNullConstant(VOffset);
     unsigned Size = Op->getConstantOperandVal(4);
 
     switch (Size) {
@@ -9299,11 +9373,6 @@ SDValue SITargetLowering::lowerFastUnsafeFDIV(SDValue Op,
 
       // XXX - Is UnsafeFPMath sufficient to do this for f64? The maximum ULP
       // error seems really high at 2^29 ULP.
-
-      // XXX - do we need afn for this or is arcp sufficent?
-      if (RHS.getOpcode() == ISD::FSQRT)
-        return DAG.getNode(AMDGPUISD::RSQ, SL, VT, RHS.getOperand(0));
-
       // 1.0 / x -> rcp(x)
       return DAG.getNode(AMDGPUISD::RCP, SL, VT, RHS);
     }
@@ -10948,21 +11017,13 @@ SDValue SITargetLowering::performOrCombine(SDNode *N,
         assert(Op.getValueType().isByteSized() &&
                OtherOp.getValueType().isByteSized());
 
-        // Handle potential vectors
-        Op = DAG.getBitcast(MVT::getIntegerVT(Op.getValueSizeInBits()), Op);
-        OtherOp = DAG.getBitcast(
-              MVT::getIntegerVT(OtherOp.getValueSizeInBits()), OtherOp);
-
-        if (Op.getValueSizeInBits() < 32)
-          // If the ultimate src is less than 32 bits, then we will only be
-          // using bytes 0: Op.getValueSizeInBytes() - 1 in the or.
-          // CalculateByteProvider would not have returned Op as source if we
-          // used a byte that is outside its ValueType. Thus, we are free to
-          // ANY_EXTEND as the extended bits are dont-cares.
-          Op = DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i32, Op);
-
-        if (OtherOp.getValueSizeInBits() < 32)
-          OtherOp = DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i32, OtherOp);
+        // If the ultimate src is less than 32 bits, then we will only be
+        // using bytes 0: Op.getValueSizeInBytes() - 1 in the or.
+        // CalculateByteProvider would not have returned Op as source if we
+        // used a byte that is outside its ValueType. Thus, we are free to
+        // ANY_EXTEND as the extended bits are dont-cares.
+        Op = DAG.getBitcastedAnyExtOrTrunc(Op, DL, MVT::i32);
+        OtherOp = DAG.getBitcastedAnyExtOrTrunc(OtherOp, DL, MVT::i32);
 
         return DAG.getNode(AMDGPUISD::PERM, DL, MVT::i32, Op, OtherOp,
                            DAG.getConstant(PermMask, DL, MVT::i32));
@@ -11113,10 +11174,8 @@ SDValue SITargetLowering::performClassCombine(SDNode *N,
   SDValue Mask = N->getOperand(1);
 
   // fp_class x, 0 -> false
-  if (const ConstantSDNode *CMask = dyn_cast<ConstantSDNode>(Mask)) {
-    if (CMask->isZero())
-      return DAG.getConstant(0, SDLoc(N), MVT::i1);
-  }
+  if (isNullConstant(Mask))
+    return DAG.getConstant(0, SDLoc(N), MVT::i1);
 
   if (N->getOperand(0).isUndef())
     return DAG.getUNDEF(MVT::i1);
@@ -11141,7 +11200,9 @@ SDValue SITargetLowering::performRcpCombine(SDNode *N,
                            N->getFlags());
   }
 
-  if ((VT == MVT::f32 || VT == MVT::f16) && N0.getOpcode() == ISD::FSQRT) {
+  // TODO: Could handle f32 + amdgcn.sqrt but probably never reaches here.
+  if ((VT == MVT::f16 && N0.getOpcode() == ISD::FSQRT) &&
+      N->getFlags().hasAllowContract() && N0->getFlags().hasAllowContract()) {
     return DCI.DAG.getNode(AMDGPUISD::RSQ, SDLoc(N), VT,
                            N0.getOperand(0), N->getFlags());
   }
@@ -12388,8 +12449,7 @@ SDValue SITargetLowering::performSubCombine(SDNode *N,
 
   if (LHS.getOpcode() == ISD::USUBO_CARRY) {
     // sub (usubo_carry x, 0, cc), y => usubo_carry x, y, cc
-    auto C = dyn_cast<ConstantSDNode>(LHS.getOperand(1));
-    if (!C || !C->isZero())
+    if (!isNullConstant(LHS.getOperand(1)))
       return SDValue();
     SDValue Args[] = { LHS.getOperand(0), RHS, LHS.getOperand(2) };
     return DAG.getNode(ISD::USUBO_CARRY, SDLoc(N), LHS->getVTList(), Args);
@@ -12503,6 +12563,41 @@ SDValue SITargetLowering::performFSubCombine(SDNode *N,
       if (FusedOp != 0){
         const SDValue NegTwo = DAG.getConstantFP(-2.0, SL, VT);
         return DAG.getNode(FusedOp, SL, VT, A, NegTwo, LHS);
+      }
+    }
+  }
+
+  return SDValue();
+}
+
+SDValue SITargetLowering::performFDivCombine(SDNode *N,
+                                             DAGCombinerInfo &DCI) const {
+  SelectionDAG &DAG = DCI.DAG;
+  SDLoc SL(N);
+  EVT VT = N->getValueType(0);
+  if (VT != MVT::f16 || !Subtarget->has16BitInsts())
+    return SDValue();
+
+  SDValue LHS = N->getOperand(0);
+  SDValue RHS = N->getOperand(1);
+
+  SDNodeFlags Flags = N->getFlags();
+  SDNodeFlags RHSFlags = RHS->getFlags();
+  if (!Flags.hasAllowContract() || !RHSFlags.hasAllowContract() ||
+      !RHS->hasOneUse())
+    return SDValue();
+
+  if (const ConstantFPSDNode *CLHS = dyn_cast<ConstantFPSDNode>(LHS)) {
+    bool IsNegative = false;
+    if (CLHS->isExactlyValue(1.0) ||
+        (IsNegative = CLHS->isExactlyValue(-1.0))) {
+      // fdiv contract 1.0, (sqrt contract x) -> rsq for f16
+      // fdiv contract -1.0, (sqrt contract x) -> fneg(rsq) for f16
+      if (RHS.getOpcode() == ISD::FSQRT) {
+        // TODO: Or in RHS flags, somehow missing from SDNodeFlags
+        SDValue Rsq =
+            DAG.getNode(AMDGPUISD::RSQ, SL, VT, RHS.getOperand(0), Flags);
+        return IsNegative ? DAG.getNode(ISD::FNEG, SL, VT, Rsq, Flags) : Rsq;
       }
     }
   }
@@ -12773,6 +12868,8 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
     return performFAddCombine(N, DCI);
   case ISD::FSUB:
     return performFSubCombine(N, DCI);
+  case ISD::FDIV:
+    return performFDivCombine(N, DCI);
   case ISD::SETCC:
     return performSetCCCombine(N, DCI);
   case ISD::FMAXNUM:

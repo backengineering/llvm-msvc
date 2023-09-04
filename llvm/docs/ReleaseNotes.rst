@@ -52,6 +52,13 @@ Changes to the LLVM IR
 
 * The `llvm.stacksave` and `llvm.stackrestore` intrinsics now use
   an overloaded pointer type to support non-0 address spaces.
+* The constant expression variants of the following instructions have been
+  removed:
+
+  * ``and``
+  * ``or``
+
+* Added `llvm.exp10` intrinsic.
 
 Changes to LLVM infrastructure
 ------------------------------
@@ -75,6 +82,8 @@ Changes to the AMDGPU Backend
   for raw instruction access.
 
 * Implemented `llvm.stacksave` and `llvm.stackrestore` intrinsics.
+
+* Implemented :ref:`llvm.get.rounding <int_get_rounding>`
 
 Changes to the ARM Backend
 --------------------------
@@ -126,6 +135,13 @@ Changes to the C API
 * Added ``LLVMGetTailCallKind`` and ``LLVMSetTailCallKind`` to
   allow getting and setting ``tail``, ``musttail``, and ``notail``
   attributes on call instructions.
+* The following functions for creating constant expressions have been removed,
+  because the underlying constant expressions are no longer supported. Instead,
+  an instruction should be created using the ``LLVMBuildXYZ`` APIs, which will
+  constant fold the operands if possible and create an instruction otherwise:
+
+  * ``LLVMConstAnd``
+  * ``LLVMConstOr``
 
 Changes to the CodeGen infrastructure
 -------------------------------------
@@ -148,8 +164,14 @@ Changes to the Debug Info
 Changes to the LLVM tools
 ---------------------------------
 
+* llvm-symbolizer now treats invalid input as an address for which source
+  information is not found.
+
 Changes to LLDB
 ---------------------------------
+
+* Methods in SBHostOS related to threads have had their implementations
+  removed. These methods will return a value indicating failure.
 
 Changes to Sanitizers
 ---------------------
@@ -157,6 +179,21 @@ Changes to Sanitizers
 
 Other Changes
 -------------
+
+* The ``Flags`` field of ``llvm::opt::Option`` has been split into ``Flags``
+  and ``Visibility`` to simplify option sharing between various drivers (such
+  as ``clang``, ``clang-cl``, or ``flang``) that rely on Clang's Options.td.
+  Overloads of ``llvm::opt::OptTable`` that use ``FlagsToInclude`` have been
+  deprecated. There is a script and instructions on how to resolve conflicts -
+  see https://reviews.llvm.org/D157150 and https://reviews.llvm.org/D157151 for
+  details.
+
+* On Linux, FreeBSD, and NetBSD, setting the environment variable
+  ``LLVM_ENABLE_SYMBOLIZER_MARKUP`` causes tools to print stacktraces using
+  :doc:`Symbolizer Markup <SymbolizerMarkupFormat>`.
+  This works even if the tools have no embedded symbol information (i.e. are
+  fully stripped); :doc:`llvm-symbolizer <CommandGuide/llvm-symbolizer>` can
+  symbolize the markup afterwards using ``debuginfod``.
 
 External Open Source Projects Using LLVM 15
 ===========================================

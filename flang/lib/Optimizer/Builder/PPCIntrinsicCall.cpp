@@ -59,6 +59,451 @@ static constexpr IntrinsicHandler ppcHandlers[]{
          &PI::genMmaIntr<MMAOp::DisassemblePair, MMAHandlerOp::SubToFunc>),
      {{{"data", asAddr}, {"pair", asValue}}},
      /*isElemental=*/true},
+    {"__ppc_mma_pmxvbf16ger2_",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvbf16ger2, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvbf16ger2nn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvbf16ger2nn,
+                         MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvbf16ger2np",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvbf16ger2np,
+                         MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvbf16ger2pn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvbf16ger2pn,
+                         MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvbf16ger2pp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvbf16ger2pp,
+                         MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf16ger2_",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf16ger2, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf16ger2nn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf16ger2nn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf16ger2np",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf16ger2np, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf16ger2pn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf16ger2pn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf16ger2pp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf16ger2pp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf32ger",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf32ger, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf32gernn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf32gernn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf32gernp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf32gernp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf32gerpn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf32gerpn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf32gerpp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf32gerpp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf64ger",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf64ger, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf64gernn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf64gernn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf64gernp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf64gernp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf64gerpn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf64gerpn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvf64gerpp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvf64gerpp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvi16ger2_",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvi16ger2, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvi16ger2pp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvi16ger2pp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvi16ger2s",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvi16ger2s, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvi16ger2spp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvi16ger2spp,
+                         MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvi4ger8_",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvi4ger8, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvi4ger8pp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvi4ger8pp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvi8ger4_",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvi8ger4, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvi8ger4pp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvi8ger4pp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_pmxvi8ger4spp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Pmxvi8ger4spp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr},
+       {"a", asValue},
+       {"b", asValue},
+       {"xmask", asValue},
+       {"ymask", asValue},
+       {"pmask", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvbf16ger2_",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvbf16ger2, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvbf16ger2nn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvbf16ger2nn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvbf16ger2np",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvbf16ger2np, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvbf16ger2pn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvbf16ger2pn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvbf16ger2pp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvbf16ger2pp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf16ger2_",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf16ger2, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf16ger2nn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf16ger2nn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf16ger2np",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf16ger2np, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf16ger2pn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf16ger2pn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf16ger2pp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf16ger2pp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf32ger",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf32ger, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf32gernn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf32gernn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf32gernp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf32gernp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf32gerpn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf32gerpn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf32gerpp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf32gerpp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf64ger",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf64ger, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf64gernn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf64gernn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf64gernp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf64gernp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf64gerpn",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf64gerpn, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvf64gerpp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvf64gerpp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvi16ger2_",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvi16ger2, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvi16ger2pp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvi16ger2pp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvi16ger2s",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvi16ger2s, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvi16ger2spp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvi16ger2spp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvi4ger8_",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvi4ger8, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvi4ger8pp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvi4ger8pp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvi8ger4_",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvi8ger4, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvi8ger4pp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvi8ger4pp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xvi8ger4spp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xvi8ger4spp, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}, {"a", asValue}, {"b", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xxmfacc",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xxmfacc, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xxmtacc",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xxmtacc, MMAHandlerOp::FirstArgIsResult>),
+     {{{"acc", asAddr}}},
+     /*isElemental=*/true},
+    {"__ppc_mma_xxsetaccz",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genMmaIntr<MMAOp::Xxsetaccz, MMAHandlerOp::SubToFunc>),
+     {{{"acc", asAddr}}},
+     /*isElemental=*/true},
     {"__ppc_mtfsf",
      static_cast<IntrinsicLibrary::SubroutineGenerator>(&PI::genMtfsf<false>),
      {{{"mask", asValue}, {"r", asValue}}},
@@ -129,6 +574,41 @@ static constexpr IntrinsicHandler ppcHandlers[]{
      static_cast<IntrinsicLibrary::ExtendedGenerator>(&PI::genVecInsert),
      {{{"arg1", asValue}, {"arg2", asValue}, {"arg3", asValue}}},
      /*isElemental=*/true},
+    {"__ppc_vec_ld",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecLdCallGrp<VecOp::Ld>),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
+    {"__ppc_vec_lde",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecLdCallGrp<VecOp::Lde>),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
+    {"__ppc_vec_ldl",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecLdCallGrp<VecOp::Ldl>),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
+    {"__ppc_vec_lvsl",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecLvsGrp<VecOp::Lvsl>),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
+    {"__ppc_vec_lvsr",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecLvsGrp<VecOp::Lvsr>),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
+    {"__ppc_vec_lxv",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecLdNoCallGrp<VecOp::Lxv>),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
+    {"__ppc_vec_lxvp",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecLdCallGrp<VecOp::Lxvp>),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
     {"__ppc_vec_mergeh",
      static_cast<IntrinsicLibrary::ExtendedGenerator>(
          &PI::genVecMerge<VecOp::Mergeh>),
@@ -193,6 +673,21 @@ static constexpr IntrinsicHandler ppcHandlers[]{
          &PI::genVecShift<VecOp::Slo>),
      {{{"arg1", asValue}, {"arg2", asValue}}},
      /*isElemental=*/true},
+    {"__ppc_vec_splat",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecSplat<VecOp::Splat>),
+     {{{"arg1", asValue}, {"arg2", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_vec_splat_s32_",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecSplat<VecOp::Splat_s32>),
+     {{{"arg1", asValue}}},
+     /*isElemental=*/true},
+    {"__ppc_vec_splats",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecSplat<VecOp::Splats>),
+     {{{"arg1", asValue}}},
+     /*isElemental=*/true},
     {"__ppc_vec_sr",
      static_cast<IntrinsicLibrary::ExtendedGenerator>(
          &PI::genVecShift<VecOp::Sr>),
@@ -223,11 +718,39 @@ static constexpr IntrinsicHandler ppcHandlers[]{
          &PI::genVecXStore<VecOp::Stxv>),
      {{{"arg1", asValue}, {"arg2", asValue}, {"arg3", asAddr}}},
      /*isElemental=*/false},
+    {"__ppc_vec_stxvp",
+     static_cast<IntrinsicLibrary::SubroutineGenerator>(
+         &PI::genVecStore<VecOp::Stxvp>),
+     {{{"arg1", asValue}, {"arg2", asValue}, {"arg3", asAddr}}},
+     /*isElemental=*/false},
     {"__ppc_vec_sub",
      static_cast<IntrinsicLibrary::ExtendedGenerator>(
          &PI::genVecAddAndMulSubXor<VecOp::Sub>),
      {{{"arg1", asValue}, {"arg2", asValue}}},
      /*isElemental=*/true},
+    {"__ppc_vec_xl",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(&PI::genVecXlGrp),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
+    {"__ppc_vec_xl_be",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecLdNoCallGrp<VecOp::Xlbe>),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
+    {"__ppc_vec_xld2_",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecLdCallGrp<VecOp::Xld2>),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
+    {"__ppc_vec_xlds",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(&PI::genVecXlds),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
+    {"__ppc_vec_xlw4_",
+     static_cast<IntrinsicLibrary::ExtendedGenerator>(
+         &PI::genVecLdCallGrp<VecOp::Xlw4>),
+     {{{"arg1", asValue}, {"arg2", asAddr}}},
+     /*isElemental=*/false},
     {"__ppc_vec_xor",
      static_cast<IntrinsicLibrary::ExtendedGenerator>(
          &PI::genVecAddAndMulSubXor<VecOp::Xor>),
@@ -429,15 +952,18 @@ checkPPCMathOperationsRange(llvm::StringRef name) {
 
 // Helper functions for vector element ordering.
 bool PPCIntrinsicLibrary::isBEVecElemOrderOnLE() {
-  return (Fortran::evaluate::isHostLittleEndian &&
+  const auto triple{fir::getTargetTriple(builder.getModule())};
+  return (triple.isLittleEndian() &&
           converter->getLoweringOptions().getNoPPCNativeVecElemOrder());
 }
 bool PPCIntrinsicLibrary::isNativeVecElemOrderOnLE() {
-  return (Fortran::evaluate::isHostLittleEndian &&
+  const auto triple{fir::getTargetTriple(builder.getModule())};
+  return (triple.isLittleEndian() &&
           !converter->getLoweringOptions().getNoPPCNativeVecElemOrder());
 }
 bool PPCIntrinsicLibrary::changeVecElemOrder() {
-  return (Fortran::evaluate::isHostLittleEndian !=
+  const auto triple{fir::getTargetTriple(builder.getModule())};
+  return (triple.isLittleEndian() !=
           converter->getLoweringOptions().getNoPPCNativeVecElemOrder());
 }
 
@@ -1273,6 +1799,240 @@ PPCIntrinsicLibrary::genVecMerge(mlir::Type resultType,
   return builder.createConvert(loc, resultType, callOp);
 }
 
+static mlir::Value addOffsetToAddress(fir::FirOpBuilder &builder,
+                                      mlir::Location loc, mlir::Value baseAddr,
+                                      mlir::Value offset) {
+  auto typeExtent{fir::SequenceType::getUnknownExtent()};
+  // Construct an !fir.ref<!ref.array<?xi8>> type
+  auto arrRefTy{builder.getRefType(fir::SequenceType::get(
+      {typeExtent}, mlir::IntegerType::get(builder.getContext(), 8)))};
+  // Convert arg to !fir.ref<!ref.array<?xi8>>
+  auto resAddr{builder.create<fir::ConvertOp>(loc, arrRefTy, baseAddr)};
+
+  return builder.create<fir::CoordinateOp>(loc, arrRefTy, resAddr, offset);
+}
+
+static mlir::Value reverseVectorElements(fir::FirOpBuilder &builder,
+                                         mlir::Location loc, mlir::Value v,
+                                         int64_t len) {
+  assert(v.getType().isa<mlir::VectorType>());
+  assert(len > 0);
+  llvm::SmallVector<int64_t, 16> mask;
+  for (int64_t i = 0; i < len; ++i) {
+    mask.push_back(len - 1 - i);
+  }
+  auto undefVec{builder.create<fir::UndefOp>(loc, v.getType())};
+  return builder.create<mlir::vector::ShuffleOp>(loc, v, undefVec, mask);
+}
+
+static mlir::NamedAttribute getAlignmentAttr(fir::FirOpBuilder &builder,
+                                             const int val) {
+  auto i64ty{mlir::IntegerType::get(builder.getContext(), 64)};
+  auto alignAttr{mlir::IntegerAttr::get(i64ty, val)};
+  return builder.getNamedAttr("alignment", alignAttr);
+}
+
+fir::ExtendedValue
+PPCIntrinsicLibrary::genVecXlGrp(mlir::Type resultType,
+                                 llvm::ArrayRef<fir::ExtendedValue> args) {
+  VecTypeInfo vecTyInfo{getVecTypeFromFirType(resultType)};
+  switch (vecTyInfo.eleTy.getIntOrFloatBitWidth()) {
+  case 8:
+    // vec_xlb1
+    return genVecLdNoCallGrp<VecOp::Xl>(resultType, args);
+  case 16:
+    // vec_xlh8
+    return genVecLdNoCallGrp<VecOp::Xl>(resultType, args);
+  case 32:
+    // vec_xlw4
+    return genVecLdCallGrp<VecOp::Xlw4>(resultType, args);
+  case 64:
+    // vec_xld2
+    return genVecLdCallGrp<VecOp::Xld2>(resultType, args);
+  default:
+    llvm_unreachable("invalid kind");
+  }
+  llvm_unreachable("invalid vector operation for generator");
+}
+
+template <VecOp vop>
+fir::ExtendedValue PPCIntrinsicLibrary::genVecLdNoCallGrp(
+    mlir::Type resultType, llvm::ArrayRef<fir::ExtendedValue> args) {
+  assert(args.size() == 2);
+  auto arg0{getBase(args[0])};
+  auto arg1{getBase(args[1])};
+
+  auto vecTyInfo{getVecTypeFromFirType(resultType)};
+  auto mlirTy{vecTyInfo.toMlirVectorType(builder.getContext())};
+  auto firTy{vecTyInfo.toFirVectorType()};
+
+  // Add the %val of arg0 to %addr of arg1
+  auto addr{addOffsetToAddress(builder, loc, arg1, arg0)};
+
+  const auto triple{fir::getTargetTriple(builder.getModule())};
+  // Need to get align 1.
+  auto result{builder.create<fir::LoadOp>(loc, mlirTy, addr,
+                                          getAlignmentAttr(builder, 1))};
+  if ((vop == VecOp::Xl && isBEVecElemOrderOnLE()) ||
+      (vop == VecOp::Xlbe && triple.isLittleEndian()))
+    return builder.createConvert(
+        loc, firTy, reverseVectorElements(builder, loc, result, vecTyInfo.len));
+
+  return builder.createConvert(loc, firTy, result);
+}
+
+// VEC_LD, VEC_LDE, VEC_LDL, VEC_LXVP, VEC_XLD2, VEC_XLW4
+template <VecOp vop>
+fir::ExtendedValue
+PPCIntrinsicLibrary::genVecLdCallGrp(mlir::Type resultType,
+                                     llvm::ArrayRef<fir::ExtendedValue> args) {
+  assert(args.size() == 2);
+  auto context{builder.getContext()};
+  auto arg0{getBase(args[0])};
+  auto arg1{getBase(args[1])};
+
+  // Prepare the return type in FIR.
+  auto vecResTyInfo{getVecTypeFromFirType(resultType)};
+  auto mlirTy{vecResTyInfo.toMlirVectorType(context)};
+  auto firTy{vecResTyInfo.toFirVectorType()};
+
+  // llvm.ppc.altivec.lvx* returns <4xi32>
+  // Others, like "llvm.ppc.altivec.lvebx" too if arg2 is not of Integer type
+  const auto i32Ty{mlir::IntegerType::get(builder.getContext(), 32)};
+  const auto mVecI32Ty{mlir::VectorType::get(4, i32Ty)};
+
+  // For vec_ld, need to convert arg0 from i64 to i32
+  if (vop == VecOp::Ld && arg0.getType().getIntOrFloatBitWidth() == 64)
+    arg0 = builder.createConvert(loc, i32Ty, arg0);
+
+  // Add the %val of arg0 to %addr of arg1
+  auto addr{addOffsetToAddress(builder, loc, arg1, arg0)};
+  llvm::SmallVector<mlir::Value, 4> parsedArgs{addr};
+
+  mlir::Type intrinResTy{nullptr};
+  llvm::StringRef fname{};
+  switch (vop) {
+  case VecOp::Ld:
+    fname = "llvm.ppc.altivec.lvx";
+    intrinResTy = mVecI32Ty;
+    break;
+  case VecOp::Lde:
+    switch (vecResTyInfo.eleTy.getIntOrFloatBitWidth()) {
+    case 8:
+      fname = "llvm.ppc.altivec.lvebx";
+      intrinResTy = mlirTy;
+      break;
+    case 16:
+      fname = "llvm.ppc.altivec.lvehx";
+      intrinResTy = mlirTy;
+      break;
+    case 32:
+      fname = "llvm.ppc.altivec.lvewx";
+      if (mlir::isa<mlir::IntegerType>(vecResTyInfo.eleTy))
+        intrinResTy = mlirTy;
+      else
+        intrinResTy = mVecI32Ty;
+      break;
+    default:
+      llvm_unreachable("invalid vector for vec_lde");
+    }
+    break;
+  case VecOp::Ldl:
+    fname = "llvm.ppc.altivec.lvxl";
+    intrinResTy = mVecI32Ty;
+    break;
+  case VecOp::Lxvp:
+    fname = "llvm.ppc.vsx.lxvp";
+    intrinResTy = fir::VectorType::get(256, mlir::IntegerType::get(context, 1));
+    break;
+  case VecOp::Xld2: {
+    fname = isBEVecElemOrderOnLE() ? "llvm.ppc.vsx.lxvd2x.be"
+                                   : "llvm.ppc.vsx.lxvd2x";
+    // llvm.ppc.altivec.lxvd2x* returns <2 x double>
+    intrinResTy = mlir::VectorType::get(2, mlir::FloatType::getF64(context));
+  } break;
+  case VecOp::Xlw4:
+    fname = isBEVecElemOrderOnLE() ? "llvm.ppc.vsx.lxvw4x.be"
+                                   : "llvm.ppc.vsx.lxvw4x";
+    // llvm.ppc.altivec.lxvw4x* returns <4xi32>
+    intrinResTy = mVecI32Ty;
+    break;
+  default:
+    llvm_unreachable("invalid vector operation for generator");
+  }
+
+  auto funcType{
+      mlir::FunctionType::get(context, {addr.getType()}, {intrinResTy})};
+  auto funcOp{builder.addNamedFunction(loc, fname, funcType)};
+  auto result{
+      builder.create<fir::CallOp>(loc, funcOp, parsedArgs).getResult(0)};
+
+  if (vop == VecOp::Lxvp)
+    return result;
+
+  if (intrinResTy != mlirTy)
+    result = builder.create<mlir::vector::BitCastOp>(loc, mlirTy, result);
+
+  if (vop != VecOp::Xld2 && vop != VecOp::Xlw4 && isBEVecElemOrderOnLE())
+    return builder.createConvert(
+        loc, firTy,
+        reverseVectorElements(builder, loc, result, vecResTyInfo.len));
+
+  return builder.createConvert(loc, firTy, result);
+}
+
+// VEC_LVSL, VEC_LVSR
+template <VecOp vop>
+fir::ExtendedValue
+PPCIntrinsicLibrary::genVecLvsGrp(mlir::Type resultType,
+                                  llvm::ArrayRef<fir::ExtendedValue> args) {
+  assert(args.size() == 2);
+  auto context{builder.getContext()};
+  auto arg0{getBase(args[0])};
+  auto arg1{getBase(args[1])};
+
+  auto vecTyInfo{getVecTypeFromFirType(resultType)};
+  auto mlirTy{vecTyInfo.toMlirVectorType(context)};
+  auto firTy{vecTyInfo.toFirVectorType()};
+
+  // Convert arg0 to i64 type if needed
+  auto i64ty{mlir::IntegerType::get(context, 64)};
+  if (arg0.getType() != i64ty)
+    arg0 = builder.create<fir::ConvertOp>(loc, i64ty, arg0);
+
+  // offset is modulo 16, so shift left 56 bits and then right 56 bits to clear
+  //   upper 56 bit while preserving sign
+  auto shiftVal{builder.createIntegerConstant(loc, i64ty, 56)};
+  auto offset{builder.create<mlir::arith::ShLIOp>(loc, arg0, shiftVal)};
+  auto offset2{builder.create<mlir::arith::ShRSIOp>(loc, offset, shiftVal)};
+
+  // Add the offsetArg to %addr of arg1
+  auto addr{addOffsetToAddress(builder, loc, arg1, offset2)};
+  llvm::SmallVector<mlir::Value, 4> parsedArgs{addr};
+
+  llvm::StringRef fname{};
+  switch (vop) {
+  case VecOp::Lvsl:
+    fname = "llvm.ppc.altivec.lvsl";
+    break;
+  case VecOp::Lvsr:
+    fname = "llvm.ppc.altivec.lvsr";
+    break;
+  default:
+    llvm_unreachable("invalid vector operation for generator");
+  }
+  auto funcType{mlir::FunctionType::get(context, {addr.getType()}, {mlirTy})};
+  auto funcOp{builder.addNamedFunction(loc, fname, funcType)};
+  auto result{
+      builder.create<fir::CallOp>(loc, funcOp, parsedArgs).getResult(0)};
+
+  if (isNativeVecElemOrderOnLE())
+    return builder.createConvert(
+        loc, firTy, reverseVectorElements(builder, loc, result, vecTyInfo.len));
+
+  return builder.createConvert(loc, firTy, result);
+}
+
 // VEC_NMADD, VEC_MSUB
 template <VecOp vop>
 fir::ExtendedValue
@@ -1584,12 +2344,19 @@ PPCIntrinsicLibrary::genVecShift(mlir::Type resultType,
       shiftVal = shiftVal << 2;
     shiftVal &= 0xF;
     llvm::SmallVector<int64_t, 16> mask;
-    for (int i = 16; i < 32; ++i)
-      mask.push_back(i - shiftVal);
-
-    // Shuffle with mask
-    shftRes = builder.create<mlir::vector::ShuffleOp>(loc, mlirVecArgs[1],
-                                                      mlirVecArgs[0], mask);
+    // Shuffle with mask based on the endianness
+    const auto triple{fir::getTargetTriple(builder.getModule())};
+    if (triple.isLittleEndian()) {
+      for (int i = 16; i < 32; ++i)
+        mask.push_back(i - shiftVal);
+      shftRes = builder.create<mlir::vector::ShuffleOp>(loc, mlirVecArgs[1],
+                                                        mlirVecArgs[0], mask);
+    } else {
+      for (int i = 0; i < 16; ++i)
+        mask.push_back(i + shiftVal);
+      shftRes = builder.create<mlir::vector::ShuffleOp>(loc, mlirVecArgs[0],
+                                                        mlirVecArgs[1], mask);
+    }
 
     // Bitcast to the original type
     if (shftRes.getType() != mlirTyArgs[0])
@@ -1603,6 +2370,85 @@ PPCIntrinsicLibrary::genVecShift(mlir::Type resultType,
   return shftRes;
 }
 
+// VEC_SPLAT, VEC_SPLATS, VEC_SPLAT_S32
+template <VecOp vop>
+fir::ExtendedValue
+PPCIntrinsicLibrary::genVecSplat(mlir::Type resultType,
+                                 llvm::ArrayRef<fir::ExtendedValue> args) {
+  auto context{builder.getContext()};
+  auto argBases{getBasesForArgs(args)};
+
+  mlir::vector::SplatOp splatOp{nullptr};
+  mlir::Type retTy{nullptr};
+  switch (vop) {
+  case VecOp::Splat: {
+    assert(args.size() == 2);
+    auto vecTyInfo{getVecTypeFromFir(argBases[0])};
+
+    auto extractOp{genVecExtract(resultType, args)};
+    splatOp = builder.create<mlir::vector::SplatOp>(
+        loc, *(extractOp.getUnboxed()), vecTyInfo.toMlirVectorType(context));
+    retTy = vecTyInfo.toFirVectorType();
+    break;
+  }
+  case VecOp::Splats: {
+    assert(args.size() == 1);
+    auto vecTyInfo{getVecTypeFromEle(argBases[0])};
+
+    splatOp = builder.create<mlir::vector::SplatOp>(
+        loc, argBases[0], vecTyInfo.toMlirVectorType(context));
+    retTy = vecTyInfo.toFirVectorType();
+    break;
+  }
+  case VecOp::Splat_s32: {
+    assert(args.size() == 1);
+    auto eleTy{builder.getIntegerType(32)};
+    auto intOp{builder.createConvert(loc, eleTy, argBases[0])};
+
+    // the intrinsic always returns vector(integer(4))
+    splatOp = builder.create<mlir::vector::SplatOp>(
+        loc, intOp, mlir::VectorType::get(4, eleTy));
+    retTy = fir::VectorType::get(4, eleTy);
+    break;
+  }
+  default:
+    llvm_unreachable("invalid vector operation for generator");
+  }
+  return builder.createConvert(loc, retTy, splatOp);
+}
+
+fir::ExtendedValue
+PPCIntrinsicLibrary::genVecXlds(mlir::Type resultType,
+                                llvm::ArrayRef<fir::ExtendedValue> args) {
+  assert(args.size() == 2);
+  auto arg0{getBase(args[0])};
+  auto arg1{getBase(args[1])};
+
+  // Prepare the return type in FIR.
+  auto vecTyInfo{getVecTypeFromFirType(resultType)};
+  auto mlirTy{vecTyInfo.toMlirVectorType(builder.getContext())};
+  auto firTy{vecTyInfo.toFirVectorType()};
+
+  // Add the %val of arg0 to %addr of arg1
+  auto addr{addOffsetToAddress(builder, loc, arg1, arg0)};
+
+  auto i64Ty{mlir::IntegerType::get(builder.getContext(), 64)};
+  auto i64VecTy{mlir::VectorType::get(2, i64Ty)};
+  auto i64RefTy{builder.getRefType(i64Ty)};
+  auto addrConv{builder.create<fir::ConvertOp>(loc, i64RefTy, addr)};
+
+  auto addrVal{builder.create<fir::LoadOp>(loc, addrConv)};
+  auto splatRes{builder.create<mlir::vector::SplatOp>(loc, addrVal, i64VecTy)};
+
+  mlir::Value result{nullptr};
+  if (mlirTy != splatRes.getType()) {
+    result = builder.create<mlir::vector::BitCastOp>(loc, mlirTy, splatRes);
+  } else
+    result = splatRes;
+
+  return builder.createConvert(loc, firTy, result);
+}
+
 const char *getMmaIrIntrName(MMAOp mmaOp) {
   switch (mmaOp) {
   case MMAOp::AssembleAcc:
@@ -1613,6 +2459,128 @@ const char *getMmaIrIntrName(MMAOp mmaOp) {
     return "llvm.ppc.mma.disassemble.acc";
   case MMAOp::DisassemblePair:
     return "llvm.ppc.vsx.disassemble.pair";
+  case MMAOp::Xxmfacc:
+    return "llvm.ppc.mma.xxmfacc";
+  case MMAOp::Xxmtacc:
+    return "llvm.ppc.mma.xxmtacc";
+  case MMAOp::Xxsetaccz:
+    return "llvm.ppc.mma.xxsetaccz";
+  case MMAOp::Pmxvbf16ger2:
+    return "llvm.ppc.mma.pmxvbf16ger2";
+  case MMAOp::Pmxvbf16ger2nn:
+    return "llvm.ppc.mma.pmxvbf16ger2nn";
+  case MMAOp::Pmxvbf16ger2np:
+    return "llvm.ppc.mma.pmxvbf16ger2np";
+  case MMAOp::Pmxvbf16ger2pn:
+    return "llvm.ppc.mma.pmxvbf16ger2pn";
+  case MMAOp::Pmxvbf16ger2pp:
+    return "llvm.ppc.mma.pmxvbf16ger2pp";
+  case MMAOp::Pmxvf16ger2:
+    return "llvm.ppc.mma.pmxvf16ger2";
+  case MMAOp::Pmxvf16ger2nn:
+    return "llvm.ppc.mma.pmxvf16ger2nn";
+  case MMAOp::Pmxvf16ger2np:
+    return "llvm.ppc.mma.pmxvf16ger2np";
+  case MMAOp::Pmxvf16ger2pn:
+    return "llvm.ppc.mma.pmxvf16ger2pn";
+  case MMAOp::Pmxvf16ger2pp:
+    return "llvm.ppc.mma.pmxvf16ger2pp";
+  case MMAOp::Pmxvf32ger:
+    return "llvm.ppc.mma.pmxvf32ger";
+  case MMAOp::Pmxvf32gernn:
+    return "llvm.ppc.mma.pmxvf32gernn";
+  case MMAOp::Pmxvf32gernp:
+    return "llvm.ppc.mma.pmxvf32gernp";
+  case MMAOp::Pmxvf32gerpn:
+    return "llvm.ppc.mma.pmxvf32gerpn";
+  case MMAOp::Pmxvf32gerpp:
+    return "llvm.ppc.mma.pmxvf32gerpp";
+  case MMAOp::Pmxvf64ger:
+    return "llvm.ppc.mma.pmxvf64ger";
+  case MMAOp::Pmxvf64gernn:
+    return "llvm.ppc.mma.pmxvf64gernn";
+  case MMAOp::Pmxvf64gernp:
+    return "llvm.ppc.mma.pmxvf64gernp";
+  case MMAOp::Pmxvf64gerpn:
+    return "llvm.ppc.mma.pmxvf64gerpn";
+  case MMAOp::Pmxvf64gerpp:
+    return "llvm.ppc.mma.pmxvf64gerpp";
+  case MMAOp::Pmxvi16ger2:
+    return "llvm.ppc.mma.pmxvi16ger2";
+  case MMAOp::Pmxvi16ger2pp:
+    return "llvm.ppc.mma.pmxvi16ger2pp";
+  case MMAOp::Pmxvi16ger2s:
+    return "llvm.ppc.mma.pmxvi16ger2s";
+  case MMAOp::Pmxvi16ger2spp:
+    return "llvm.ppc.mma.pmxvi16ger2spp";
+  case MMAOp::Pmxvi4ger8:
+    return "llvm.ppc.mma.pmxvi4ger8";
+  case MMAOp::Pmxvi4ger8pp:
+    return "llvm.ppc.mma.pmxvi4ger8pp";
+  case MMAOp::Pmxvi8ger4:
+    return "llvm.ppc.mma.pmxvi8ger4";
+  case MMAOp::Pmxvi8ger4pp:
+    return "llvm.ppc.mma.pmxvi8ger4pp";
+  case MMAOp::Pmxvi8ger4spp:
+    return "llvm.ppc.mma.pmxvi8ger4spp";
+  case MMAOp::Xvbf16ger2:
+    return "llvm.ppc.mma.xvbf16ger2";
+  case MMAOp::Xvbf16ger2nn:
+    return "llvm.ppc.mma.xvbf16ger2nn";
+  case MMAOp::Xvbf16ger2np:
+    return "llvm.ppc.mma.xvbf16ger2np";
+  case MMAOp::Xvbf16ger2pn:
+    return "llvm.ppc.mma.xvbf16ger2pn";
+  case MMAOp::Xvbf16ger2pp:
+    return "llvm.ppc.mma.xvbf16ger2pp";
+  case MMAOp::Xvf16ger2:
+    return "llvm.ppc.mma.xvf16ger2";
+  case MMAOp::Xvf16ger2nn:
+    return "llvm.ppc.mma.xvf16ger2nn";
+  case MMAOp::Xvf16ger2np:
+    return "llvm.ppc.mma.xvf16ger2np";
+  case MMAOp::Xvf16ger2pn:
+    return "llvm.ppc.mma.xvf16ger2pn";
+  case MMAOp::Xvf16ger2pp:
+    return "llvm.ppc.mma.xvf16ger2pp";
+  case MMAOp::Xvf32ger:
+    return "llvm.ppc.mma.xvf32ger";
+  case MMAOp::Xvf32gernn:
+    return "llvm.ppc.mma.xvf32gernn";
+  case MMAOp::Xvf32gernp:
+    return "llvm.ppc.mma.xvf32gernp";
+  case MMAOp::Xvf32gerpn:
+    return "llvm.ppc.mma.xvf32gerpn";
+  case MMAOp::Xvf32gerpp:
+    return "llvm.ppc.mma.xvf32gerpp";
+  case MMAOp::Xvf64ger:
+    return "llvm.ppc.mma.xvf64ger";
+  case MMAOp::Xvf64gernn:
+    return "llvm.ppc.mma.xvf64gernn";
+  case MMAOp::Xvf64gernp:
+    return "llvm.ppc.mma.xvf64gernp";
+  case MMAOp::Xvf64gerpn:
+    return "llvm.ppc.mma.xvf64gerpn";
+  case MMAOp::Xvf64gerpp:
+    return "llvm.ppc.mma.xvf64gerpp";
+  case MMAOp::Xvi16ger2:
+    return "llvm.ppc.mma.xvi16ger2";
+  case MMAOp::Xvi16ger2pp:
+    return "llvm.ppc.mma.xvi16ger2pp";
+  case MMAOp::Xvi16ger2s:
+    return "llvm.ppc.mma.xvi16ger2s";
+  case MMAOp::Xvi16ger2spp:
+    return "llvm.ppc.mma.xvi16ger2spp";
+  case MMAOp::Xvi4ger8:
+    return "llvm.ppc.mma.xvi4ger8";
+  case MMAOp::Xvi4ger8pp:
+    return "llvm.ppc.mma.xvi4ger8pp";
+  case MMAOp::Xvi8ger4:
+    return "llvm.ppc.mma.xvi8ger4";
+  case MMAOp::Xvi8ger4pp:
+    return "llvm.ppc.mma.xvi8ger4pp";
+  case MMAOp::Xvi8ger4spp:
+    return "llvm.ppc.mma.xvi8ger4spp";
   }
   llvm_unreachable("getMmaIrIntrName");
 }
@@ -1627,6 +2595,157 @@ mlir::FunctionType getMmaIrFuncType(mlir::MLIRContext *context, MMAOp mmaOp) {
     return genMmaDisassembleFuncType(context, mmaOp);
   case MMAOp::DisassemblePair:
     return genMmaDisassembleFuncType(context, mmaOp);
+  case MMAOp::Xxmfacc:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 0);
+  case MMAOp::Xxmtacc:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 0);
+  case MMAOp::Xxsetaccz:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 0);
+  case MMAOp::Pmxvbf16ger2:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvbf16ger2nn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvbf16ger2np:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvbf16ger2pn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvbf16ger2pp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvf16ger2:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvf16ger2nn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvf16ger2np:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvf16ger2pn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvf16ger2pp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvf32ger:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 2);
+  case MMAOp::Pmxvf32gernn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 2);
+  case MMAOp::Pmxvf32gernp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 2);
+  case MMAOp::Pmxvf32gerpn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 2);
+  case MMAOp::Pmxvf32gerpp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 2);
+  case MMAOp::Pmxvf64ger:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 1, /*Vector*/ 1,
+                            /*Integer*/ 2);
+  case MMAOp::Pmxvf64gernn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 1, /*Vector*/ 1,
+                            /*Integer*/ 2);
+  case MMAOp::Pmxvf64gernp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 1, /*Vector*/ 1,
+                            /*Integer*/ 2);
+  case MMAOp::Pmxvf64gerpn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 1, /*Vector*/ 1,
+                            /*Integer*/ 2);
+  case MMAOp::Pmxvf64gerpp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 1, /*Vector*/ 1,
+                            /*Integer*/ 2);
+  case MMAOp::Pmxvi16ger2:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvi16ger2pp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvi16ger2s:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvi16ger2spp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvi4ger8:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvi4ger8pp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvi8ger4:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvi8ger4pp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Pmxvi8ger4spp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2,
+                            /*Integer*/ 3);
+  case MMAOp::Xvbf16ger2:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvbf16ger2nn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvbf16ger2np:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvbf16ger2pn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvbf16ger2pp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvf16ger2:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvf16ger2nn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvf16ger2np:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvf16ger2pn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvf16ger2pp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvf32ger:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvf32gernn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvf32gernp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvf32gerpn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvf32gerpp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvf64ger:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 1, /*Vector*/ 1);
+  case MMAOp::Xvf64gernn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 1, /*Vector*/ 1);
+  case MMAOp::Xvf64gernp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 1, /*Vector*/ 1);
+  case MMAOp::Xvf64gerpn:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 1, /*Vector*/ 1);
+  case MMAOp::Xvf64gerpp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 1, /*Vector*/ 1);
+  case MMAOp::Xvi16ger2:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvi16ger2pp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvi16ger2s:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvi16ger2spp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvi4ger8:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvi4ger8pp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvi8ger4:
+    return genMmaVqFuncType(context, /*Quad*/ 0, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvi8ger4pp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
+  case MMAOp::Xvi8ger4spp:
+    return genMmaVqFuncType(context, /*Quad*/ 1, /*Pair*/ 0, /*Vector*/ 2);
   }
   llvm_unreachable("getMmaIrFuncType");
 }
@@ -1652,7 +2771,8 @@ void PPCIntrinsicLibrary::genMmaIntr(llvm::ArrayRef<fir::ExtendedValue> args) {
   } else if (HandlerOp == MMAHandlerOp::SubToFuncReverseArgOnLE) {
     // Reverse argument order on little-endian target only.
     // The reversal does not depend on the setting of non-native-order option.
-    if (Fortran::evaluate::isHostLittleEndian) {
+    const auto triple{fir::getTargetTriple(builder.getModule())};
+    if (triple.isLittleEndian()) {
       // Load the arguments in reverse order.
       argStart = args.size() - 1;
       // The first argument becomes function result. Stop at the second
@@ -1715,33 +2835,6 @@ void PPCIntrinsicLibrary::genMmaIntr(llvm::ArrayRef<fir::ExtendedValue> args) {
   }
 }
 
-static mlir::Value addOffsetToAddress(fir::FirOpBuilder &builder,
-                                      mlir::Location loc, mlir::Value baseAddr,
-                                      mlir::Value offset) {
-  auto typeExtent{fir::SequenceType::getUnknownExtent()};
-  // Construct an !fir.ref<!ref.array<?xi8>> type
-  auto arrRefTy{builder.getRefType(fir::SequenceType::get(
-      {typeExtent}, mlir::IntegerType::get(builder.getContext(), 8)))};
-  // Convert arg to !fir.ref<!ref.array<?xi8>>
-  auto resAddr{builder.create<fir::ConvertOp>(loc, arrRefTy, baseAddr)};
-
-  return builder.create<fir::CoordinateOp>(loc, arrRefTy, resAddr, offset);
-}
-
-static mlir::Value reverseVectorElements(fir::FirOpBuilder &builder,
-                                         mlir::Location loc, mlir::Value v,
-                                         int64_t len) {
-  assert(v.getType().isa<mlir::VectorType>());
-  assert(len > 0);
-  llvm::SmallVector<int64_t, 16> mask;
-  for (int64_t i = 0; i < len; ++i) {
-    mask.push_back(len - 1 - i);
-  }
-
-  auto undefVec{builder.create<fir::UndefOp>(loc, v.getType())};
-  return builder.create<mlir::vector::ShuffleOp>(loc, v, undefVec, mask);
-}
-
 // VEC_ST, VEC_STE
 template <VecOp vop>
 void PPCIntrinsicLibrary::genVecStore(llvm::ArrayRef<fir::ExtendedValue> args) {
@@ -1788,6 +2881,11 @@ void PPCIntrinsicLibrary::genVecStore(llvm::ArrayRef<fir::ExtendedValue> args) {
       assert(false && "unknown type");
     break;
   }
+  case VecOp::Stxvp:
+    // __vector_pair type
+    stTy = mlir::VectorType::get(256, mlir::IntegerType::get(context, 1));
+    fname = "llvm.ppc.vsx.stxvp";
+    break;
   default:
     llvm_unreachable("invalid vector operation for generator");
   }
@@ -1798,11 +2896,18 @@ void PPCIntrinsicLibrary::genVecStore(llvm::ArrayRef<fir::ExtendedValue> args) {
 
   llvm::SmallVector<mlir::Value, 4> biArgs;
 
-  mlir::Value newArg1;
+  if (vop == VecOp::Stxvp) {
+    biArgs.push_back(argBases[0]);
+    biArgs.push_back(addr);
+    builder.create<fir::CallOp>(loc, funcOp, biArgs);
+    return;
+  }
+
   auto vecTyInfo{getVecTypeFromFirType(argBases[0].getType())};
   auto cnv{builder.createConvert(loc, vecTyInfo.toMlirVectorType(context),
                                  argBases[0])};
 
+  mlir::Value newArg1{nullptr};
   if (stTy != arg1TyInfo.toMlirVectorType(context))
     newArg1 = builder.create<mlir::vector::BitCastOp>(loc, stTy, cnv);
   else
@@ -1816,13 +2921,6 @@ void PPCIntrinsicLibrary::genVecStore(llvm::ArrayRef<fir::ExtendedValue> args) {
   biArgs.push_back(addr);
 
   builder.create<fir::CallOp>(loc, funcOp, biArgs);
-}
-
-static mlir::NamedAttribute getAlignmentAttr(fir::FirOpBuilder &builder,
-                                             const int val) {
-  auto i64ty{mlir::IntegerType::get(builder.getContext(), 64)};
-  auto alignAttr{mlir::IntegerAttr::get(i64ty, val)};
-  return builder.getNamedAttr("alignment", alignAttr);
 }
 
 // VEC_XST, VEC_XST_BE, VEC_STXV, VEC_XSTD2, VEC_XSTW4

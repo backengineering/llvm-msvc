@@ -8,6 +8,46 @@
 
 import os, pathlib
 
+header_restrictions = {
+    # headers with #error directives
+    "atomic": "!defined(_LIBCPP_HAS_NO_ATOMIC_HEADER)",
+    "stdatomic.h": "!defined(_LIBCPP_HAS_NO_ATOMIC_HEADER)",
+
+    # headers with #error directives
+    "ios": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "locale.h": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    # transitive includers of the above headers
+    "clocale": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "codecvt": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "experimental/regex": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "fstream": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "iomanip": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "iostream": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "istream": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "locale": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "ostream": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "regex": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "sstream": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "streambuf": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+    "strstream": "!defined(_LIBCPP_HAS_NO_LOCALIZATION)",
+
+    # headers with #error directives
+    "barrier": "!defined(_LIBCPP_HAS_NO_THREADS)",
+    "future": "!defined(_LIBCPP_HAS_NO_THREADS)",
+    "latch": "!defined(_LIBCPP_HAS_NO_THREADS)",
+    "semaphore": "!defined(_LIBCPP_HAS_NO_THREADS)",
+    "shared_mutex": "!defined(_LIBCPP_HAS_NO_THREADS)",
+    "stop_token": "!defined(_LIBCPP_HAS_NO_THREADS)",
+    "thread": "!defined(_LIBCPP_HAS_NO_THREADS)",
+
+    # headers with #error directives
+    "wchar.h": "!defined(_LIBCPP_HAS_NO_WIDE_CHARACTERS)",
+    "wctype.h": "!defined(_LIBCPP_HAS_NO_WIDE_CHARACTERS)",
+    # transitive includers of the above headers
+    "cwchar": "!defined(_LIBCPP_HAS_NO_WIDE_CHARACTERS)",
+    "cwctype": "!defined(_LIBCPP_HAS_NO_WIDE_CHARACTERS)",
+}
+
 lit_header_restrictions = {
     "barrier": "// UNSUPPORTED: no-threads, c++03, c++11, c++14, c++17",
     "clocale": "// UNSUPPORTED: no-localization",
@@ -101,6 +141,26 @@ mandatory_inclusions = {
     "vector": ["compare", "initializer_list"],
 }
 
+
+# These headers are not yet implemented in libc++
+#
+# These headers are required by the latest (draft) Standard but have not been
+# implemented yet. They are used in the generated module input. The C++23 standard
+# modules will fail to build if a header is added but this list is not updated.
+headers_not_available = [
+    "flat_map",
+    "flat_set",
+    "generator",
+    "hazard_pointer",
+    "rcu",
+    "spanstream",
+    "stacktrace",
+    "stdfloat",
+    "syncstream",
+    "text_encoding",
+]
+
+
 def is_header(file):
     """Returns whether the given file is a header (i.e. not a directory or the modulemap file)."""
     return (
@@ -119,6 +179,19 @@ toplevel_headers = sorted(
     p.relative_to(include).as_posix() for p in include.glob("[a-z]*") if is_header(p)
 )
 experimental_headers = sorted(
-    p.relative_to(include).as_posix() for p in include.glob("experimental/[a-z]*") if is_header(p)
+    p.relative_to(include).as_posix()
+    for p in include.glob("experimental/[a-z]*")
+    if is_header(p)
 )
 public_headers = toplevel_headers + experimental_headers
+
+# The headers used in the std and std.compat modules.
+#
+# This is the set of all C++23-and-later headers, excluding C compatibility headers.
+module_headers = [
+    header
+    for header in toplevel_headers
+    if not header.endswith(".h")
+    # These headers have been removed in C++20 so are never part of a module.
+    and not header in ["ccomplex", "ciso646", "cstdbool", "ctgmath"]
+]
