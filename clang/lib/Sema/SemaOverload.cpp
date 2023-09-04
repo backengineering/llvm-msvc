@@ -12731,8 +12731,10 @@ Sema::ResolveAddressOfOverloadedFunction(Expr *AddressOfExpr,
   if (NumMatches == 0 && ShouldComplain) {
     if (Resolver.IsInvalidFormOfPointerToMemberFunction())
       Resolver.ComplainIsInvalidFormOfPointerToMemberFunction();
+#ifndef _WIN32
     else
       Resolver.ComplainNoMatchesFound();
+#endif
   }
   else if (NumMatches > 1 && ShouldComplain)
     Resolver.ComplainMultipleMatchesFound();
