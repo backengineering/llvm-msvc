@@ -434,7 +434,7 @@ def warn_implicit_function_decl : Warning<
   InGroup<ImplicitFunctionDeclare>, DefaultIgnore;
 def ext_implicit_function_decl_c99 : ExtWarn<
   "call to undeclared function %0; ISO C99 and later do not support implicit "
-  "function declarations">, InGroup<ImplicitFunctionDeclare>, DefaultError;
+  "function declarations">, InGroup<ImplicitFunctionDeclare>, DefaultIgnore;
 def note_function_suggestion : Note<"did you mean %0?">;
 
 def err_ellipsis_first_param : Error<
