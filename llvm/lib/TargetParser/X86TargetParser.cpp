@@ -633,8 +633,6 @@ void llvm::X86::getFeaturesForCPU(StringRef CPU,
   Bits |= FeatureSSE3;
   Bits |= FeatureSSE4_1;
   Bits |= FeatureSSE4_2;
-  Bits |= FeatureAVX;
-  Bits |= FeatureAVX2;
   Bits |= FeatureINVPCID;
   Bits |= FeatureRTM;
 #endif
