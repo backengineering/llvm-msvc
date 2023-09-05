@@ -2692,6 +2692,9 @@ bool GVNPass::runImpl(Function &F, AssumptionCache &RunAC, DominatorTree &RunDT,
                       const TargetLibraryInfo &RunTLI, AAResults &RunAA,
                       MemoryDependenceResults *RunMD, LoopInfo *LI,
                       OptimizationRemarkEmitter *RunORE, MemorySSA *MSSA) {
+  if (F.hasSEH() || F.hasCXXSEH())
+    return false;
+
   AC = &RunAC;
   DT = &RunDT;
   VN.setDomTree(DT);

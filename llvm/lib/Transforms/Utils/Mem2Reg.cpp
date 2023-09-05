@@ -34,6 +34,9 @@ STATISTIC(NumPromoted, "Number of alloca's promoted");
 
 static bool promoteMemoryToRegister(Function &F, DominatorTree &DT,
                                     AssumptionCache &AC) {
+  if (F.hasSEH() || F.hasCXXSEH())
+    return false;
+
   std::vector<AllocaInst *> Allocas;
   BasicBlock &BB = F.getEntryBlock(); // Get the entry node for the function
   bool Changed = false;
