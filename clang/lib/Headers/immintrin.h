@@ -62,12 +62,12 @@
 #endif
 
 #if !(defined(_MSC_VER) || defined(__SCE__)) || __has_feature(modules) ||      \
-    defined(__AVX__)
+    defined(__AVX__) || defined(__llvmmsvc__)
 #include <avxintrin.h>
 #endif
 
 #if !(defined(_MSC_VER) || defined(__SCE__)) || __has_feature(modules) ||      \
-    defined(__AVX2__)
+    defined(__AVX2__) || defined(__llvmmsvc__)
 #include <avx2intrin.h>
 #endif
 
