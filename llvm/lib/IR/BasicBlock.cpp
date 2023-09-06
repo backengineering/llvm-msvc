@@ -276,6 +276,20 @@ BasicBlock::getFirstNonPHIOrDbgOrLifetime(bool SkipPseudoOp) const {
   return nullptr;
 }
 
+const Instruction *
+BasicBlock::getFirstNonPHIOrDbgOrAllocaOrLifetime(bool SkipPseudoOp) const {
+  auto It = this->getFirstNonPHIOrDbgOrLifetime()->getIterator();
+  while (It != this->end()) {
+    if (isa<AllocaInst>(*It))
+      ++It;
+    else
+      break;
+  }
+  if (It != this->end())
+    return &*It;
+  return nullptr;
+}
+
 BasicBlock::const_iterator BasicBlock::getFirstInsertionPt() const {
   const Instruction *FirstNonPHI = getFirstNonPHI();
   if (!FirstNonPHI)
