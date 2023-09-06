@@ -280,7 +280,7 @@ const Instruction *
 BasicBlock::getFirstNonPHIOrDbgOrAllocaOrLifetime(bool SkipPseudoOp) const {
   auto It = this->getFirstNonPHIOrDbgOrLifetime(SkipPseudoOp)->getIterator();
   while (It != this->end()) {
-    if (isa<AllocaInst>(*It))
+    if (isa<AllocaInst>(*It) || (SkipPseudoOp && isa<PseudoProbeInst>(*It)))
       ++It;
     else
       break;
