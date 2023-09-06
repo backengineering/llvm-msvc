@@ -120,6 +120,9 @@ public:
   bool isVolatile() const { return IsVolatileBlock; }
   void setVolatile(bool Volatile = true) { IsVolatileBlock = Volatile; }
 
+  /// BasicBlock has inline asm
+  bool hasInlineAsm();
+
   /// Get the context in which this basic block lives.
   LLVMContext &getContext() const;
 
