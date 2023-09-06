@@ -1846,24 +1846,10 @@ bool Function::callsFunctionThatReturnsTwice() const {
 
 /// Function has inline asm
 bool Function::hasInlineAsm() {
-  bool HasInline = false;
   for (auto &BB : *this)
-    for (auto &I : BB) {
-      if (CallInst *CallIst = dyn_cast<CallInst>(&I)) {
-        if (CallIst->isInlineAsm()) {
-          HasInline = true;
-          break;
-        }
-      } else if (InvokeInst *InvokeIst = dyn_cast<InvokeInst>(&I)) {
-        if (InvokeIst->isInlineAsm()) {
-          HasInline = true;
-          break;
-        }
-      }
-      if (HasInline)
-        break;
-    }
-  return HasInline;
+    if (BB.hasInlineAsm())
+      return true;
+  return false;
 }
 
 Constant *Function::getPersonalityFn() const {
