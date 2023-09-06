@@ -278,7 +278,7 @@ BasicBlock::getFirstNonPHIOrDbgOrLifetime(bool SkipPseudoOp) const {
 
 const Instruction *
 BasicBlock::getFirstNonPHIOrDbgOrAllocaOrLifetime(bool SkipPseudoOp) const {
-  auto It = this->getFirstNonPHIOrDbgOrLifetime()->getIterator();
+  auto It = this->getFirstNonPHIOrDbgOrLifetime(SkipPseudoOp)->getIterator();
   while (It != this->end()) {
     if (isa<AllocaInst>(*It))
       ++It;
