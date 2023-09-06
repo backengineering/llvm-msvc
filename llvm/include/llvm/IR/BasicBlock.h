@@ -266,7 +266,7 @@ public:
   }
 
   /// Returns a pointer to the first instruction in this block that is not a
-  /// PHINode, a debug intrinsic, a alloca, or a lifetime intrinsic, or any pseudo
+  /// PHINode, a debug intrinsic, an alloca, or a lifetime intrinsic, or any pseudo
   /// operation if \c SkipPseudoOp is true.
   const Instruction *
   getFirstNonPHIOrDbgOrAllocaOrLifetime(bool SkipPseudoOp = true) const;
