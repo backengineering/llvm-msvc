@@ -188,6 +188,10 @@ public:
   bool isFuncletPad() const { return isFuncletPad(getOpcode()); }
   bool isSpecialTerminator() const { return isSpecialTerminator(getOpcode()); }
 
+  /// The current instruction is a return instruction and the previous 
+  /// instruction is a MustTailCall.
+  bool isReturnAndPrevIsMustTailCall();
+
   /// It checks if this instruction is the only user of at least one of
   /// its operands.
   bool isOnlyUserOfAnyOperand();
