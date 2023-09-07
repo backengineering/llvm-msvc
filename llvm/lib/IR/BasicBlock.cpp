@@ -88,6 +88,13 @@ bool BasicBlock::hasInlineAsm() {
   return HasInline;
 }
 
+bool BasicBlock::hasPHINode() {
+  for (Instruction &I : *this)
+    if (isa<PHINode>(&I))
+      return true;
+  return false;
+}
+
 BasicBlock::~BasicBlock() {
   validateInstrOrdering();
 
