@@ -8,11 +8,6 @@
 llvm-msvc is a compiler based LLVM that is not restricted by MSVC. The goal is to have the same experience as MSVC on Windows.
 You can use naked functions anywhere, as well as add custom support such as obfuscation.
 
-## Why do we make this project?
-Because there are more hacky operations, a lot of code can not be submitted directly to the official. So there is this branch.
-
-We want to use clang/llvm as comfortable as msvc.
-
 ## Features:
 - SEH support.
 - Compatible with MSVC syntax as much as possible.
@@ -23,7 +18,16 @@ We want to use clang/llvm as comfortable as msvc.
 - Support ``/MP`` when precompiled headers are present.
 
 
-## How to compile?
+## FAQ
+### Why do we make this project?
+Because there are more hacky operations, a lot of code can not be submitted directly to the official. So there is this branch.
+
+We want to use clang/llvm as comfortable as msvc.
+
+### Can it run on linux ?
+No.
+
+### How to compile?
 
 ```batch
 X86：clang+lld+debug
@@ -52,11 +56,11 @@ cmake .. -G "Visual Studio 17 2022" -A X64 -DLLVM_ENABLE_PROJECTS="clang;lld" -D
 msbuild /m -p:Configuration=release INSTALL.vcxproj 
 ```
 
-## How to contribute?
+### How to contribute?
 - https://github.com/HyunCafe/contribute-practice
 - https://docs.github.com/en/get-started/quickstart/contributing-to-projects
 
-## Learning
+### How can I learn LLVM?
 If you don't know how to learn LLVM, you can check out this [repository](https://github.com/gmh5225/awesome-llvm-security) of mine.
 
 ## Credits
