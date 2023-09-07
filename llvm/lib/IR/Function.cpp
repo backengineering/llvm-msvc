@@ -404,7 +404,8 @@ Function::Function(FunctionType *Ty, LinkageTypes Linkage, unsigned AddrSpace,
                    computeAddrSpace(AddrSpace, ParentModule)),
       NumArgs(Ty->getNumParams()), IsVolatileFunction(false),
       IsFastISelDisabled(false), IsSEHFilterFunction(false),
-      IsSEHFinallyFunction(false), DisableCodeGenPreparePass(false) {
+      IsSEHFinallyFunction(false), DisableCodeGenPreparePass(false),
+      DisableBlockPlacementPass(false) {
   assert(FunctionType::isValidReturnType(getReturnType()) &&
          "invalid return type");
   setGlobalObjectSubClassData(0);
