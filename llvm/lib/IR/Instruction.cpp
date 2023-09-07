@@ -191,6 +191,14 @@ Instruction *Instruction::getInsertionPointAfterDef() {
   return &*InsertPt;
 }
 
+bool Instruction::isReturnAndPrevIsMustTailCall() {
+  Instruction *PrevInst = this->getPrevNode();
+  if (isa<ReturnInst>(this) && PrevInst != nullptr && isa<CallInst>(PrevInst) &&
+      cast<CallInst>(PrevInst)->isMustTailCall())
+    return true;
+  return false;
+}
+
 bool Instruction::isOnlyUserOfAnyOperand() {
   return any_of(operands(), [](Value *V) { return V->hasOneUser(); });
 }
