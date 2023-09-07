@@ -20,9 +20,9 @@ You can use naked functions anywhere, as well as add custom support such as obfu
 
 ## FAQ
 ### Why do we make this project?
-Because there are more hacky operations, a lot of code can not be submitted directly to the official. So there is this branch.
-
-We want to use clang/llvm as comfortable as msvc.
+- Clang uses the GCC standard, MSVC has its own special syntax.
+- Waiting for official fix is ​​too long.
+- Some of the code is rather hacky. Unable to submit to official.
 
 ### Can it run on linux ?
 No.
