@@ -84,6 +84,7 @@ private:
   bool IsSEHFilterFunction : 1;           ///< Is SEHFilterFunction?
   bool IsSEHFinallyFunction : 1;          ///< Is SEHFinallyFunction?
   bool DisableCodeGenPreparePass : 1;     ///< Disable CodeGenPreparePass?
+  bool DisableBlockPlacementPass : 1;     ///< Disable MachineBlockPlacement?
 
   bool HasSEH = false;                    ///< Function has SEH
   bool HasCXXSEH = false;                 ///< Function has CXXSEH
@@ -223,6 +224,14 @@ public:
   }
   void setDisableCodeGenPreparePass(bool Disable = true) {
     DisableCodeGenPreparePass = Disable;
+  }
+
+  /// Disable MachineBlockPlacement?
+  bool doesDisableBlockPlacementPass() const {
+    return DisableBlockPlacementPass;
+  }
+  void setDisableBlockPlacementPass(bool Disable = true) {
+    DisableBlockPlacementPass = Disable;
   }
 
   /// Function has SEH
