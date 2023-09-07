@@ -123,6 +123,9 @@ public:
   /// BasicBlock has inline asm
   bool hasInlineAsm();
 
+  /// BasicBlock has PHINode
+  bool hasPHINode();
+
   /// Get the context in which this basic block lives.
   LLVMContext &getContext() const;
 
