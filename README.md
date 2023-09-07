@@ -24,8 +24,6 @@ You can use naked functions anywhere, as well as add custom support such as obfu
 - Waiting for official fix is ​​too long.
 - Some of the code is rather hacky. Unable to submit to official.
 
-### Can it run on linux ?
-No.
 
 ### How to compile?
 
@@ -62,6 +60,12 @@ msbuild /m -p:Configuration=release INSTALL.vcxproj
 
 ### How can I learn LLVM?
 If you don't know how to learn LLVM, you can check out this [repository](https://github.com/gmh5225/awesome-llvm-security) of mine.
+
+### Can it run on linux ?
+No.
+
+### Can it run on MacOS ?
+No.
 
 ## Credits
 - LLVM
