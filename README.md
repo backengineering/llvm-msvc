@@ -61,10 +61,10 @@ msbuild /m -p:Configuration=release INSTALL.vcxproj
 ### How can I learn LLVM?
 If you don't know how to learn LLVM, you can check out this [repository](https://github.com/gmh5225/awesome-llvm-security) of mine.
 
-### Can it run on linux ?
+### Can it run on linux?
 No.
 
-### Can it run on MacOS ?
+### Can it run on MacOS?
 No.
 
 ## Credits
