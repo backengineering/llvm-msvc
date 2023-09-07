@@ -64,7 +64,7 @@ If you don't know how to learn LLVM, you can check out this [repository](https:/
 ### Can it run on linux?
 No.
 
-### Can it run on MacOS?
+### Can it run on macos?
 No.
 
 ## Credits
