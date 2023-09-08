@@ -2372,7 +2372,7 @@ void GVNPass::assignBlockRPONumber(Function &F) {
 
 bool GVNPass::replaceOperandsForInBlockEquality(Instruction *Instr) const {
   bool Changed = false;
-  if (Instr->isVolatile())
+  if (Instr->isVolatile() && !Instr->isPHINodeOrSelectInstOrSwitchInst())
     return Changed;
   for (unsigned OpNum = 0; OpNum < Instr->getNumOperands(); ++OpNum) {
     Value *Operand = Instr->getOperand(OpNum);
@@ -2547,7 +2547,7 @@ bool GVNPass::processInstruction(Instruction *I) {
   if (isa<DbgInfoIntrinsic>(I))
     return false;
 
-  if (I->isVolatile())
+  if (I->isVolatile() && !I->isPHINodeOrSelectInstOrSwitchInst())
     return false;
 
   // If the instruction can be easily simplified then do so now in preference
@@ -2802,7 +2802,7 @@ bool GVNPass::processBlock(BasicBlock *BB) {
 
     for (auto *I : InstrsToErase) {
       // Skip volatile instructions.
-      if (I->isVolatile())
+      if (I->isVolatile() && !I->isPHINodeOrSelectInstOrSwitchInst())
         continue;
       assert(I->getParent() == BB && "Removing instruction from wrong block?");
       LLVM_DEBUG(dbgs() << "GVN removed: " << *I << '\n');
@@ -2878,7 +2878,7 @@ bool GVNPass::performScalarPRE(Instruction *CurInst) {
       isa<DbgInfoIntrinsic>(CurInst))
     return false;
 
-  if (CurInst->isVolatile())
+  if (CurInst->isVolatile() && !CurInst->isPHINodeOrSelectInstOrSwitchInst())
     return false;
 
   // Don't do PRE on compares. The PHI would prevent CodeGenPrepare from
