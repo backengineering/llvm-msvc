@@ -797,7 +797,7 @@ private:
     }
 
     bool isVolatile() const {
-      if (Inst->isVolatile())
+      if (Inst->isVolatile() && !Inst->isPHINodeOrSelectInstOrSwitchInst())
         return true;
       if (IntrID != 0)
         return Info.IsVolatile;
