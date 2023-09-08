@@ -3345,6 +3345,9 @@ bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
   if (MF.getFunction().doesDisableBlockPlacementPass())
     return false;
 
+  if (MF.getFunction().hasSEH() || MF.getFunction().hasCXXSEH())
+    return false;
+
   // Check for single-block functions and skip them.
   if (std::next(MF.begin()) == MF.end())
     return false;
