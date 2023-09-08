@@ -44,7 +44,7 @@ static bool runImpl(Function &F, const SimplifyQuery &SQ) {
         if (!ToSimplify->empty() && !ToSimplify->count(&I))
           continue;
 
-        if (I.isVolatile())
+        if (I.isVolatile() && !I.isPHINodeOrSelectInstOrSwitchInst())
           continue;
 
         // Don't waste time simplifying dead/unused instructions.
