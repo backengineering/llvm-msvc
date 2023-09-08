@@ -1804,7 +1804,7 @@ struct DSEState {
           continue;
 
         Instruction *DefI = Def->getMemoryInst();
-        if (DefI->isVolatile())
+        if (DefI->isVolatile() && !DefI->isPHINodeOrSelectInstOrSwitchInst())
           continue;
         auto DefLoc = getLocForWrite(DefI);
         if (!DefLoc || !isRemovable(DefI))
@@ -1992,7 +1992,7 @@ struct DSEState {
     bool Changed = false;
     for (auto OI : IOL) {
       Instruction *DeadI = OI.first;
-      if (DeadI->isVolatile())
+      if (DeadI->isVolatile() && !DeadI->isPHINodeOrSelectInstOrSwitchInst())
         continue;
       MemoryLocation Loc = *getLocForWrite(DeadI);
       assert(isRemovable(DeadI) && "Expect only removable instruction");
@@ -2021,7 +2021,8 @@ struct DSEState {
         continue;
 
       Instruction *DefInst = Def->getMemoryInst();
-      if (DefInst->isVolatile())
+      if (DefInst->isVolatile() &&
+          !DefInst->isPHINodeOrSelectInstOrSwitchInst())
         continue;
       auto MaybeDefLoc = getLocForWrite(DefInst);
       if (!MaybeDefLoc || !isRemovable(DefInst))
@@ -2084,7 +2085,7 @@ static bool eliminateDeadStores(Function &F, AliasAnalysis &AA, MemorySSA &MSSA,
     if (State.SkipStores.count(KillingDef))
       continue;
     Instruction *KillingI = KillingDef->getMemoryInst();
-    if (KillingI->isVolatile())
+    if (KillingI->isVolatile() && !KillingI->isPHINodeOrSelectInstOrSwitchInst())
       continue;
 
     std::optional<MemoryLocation> MaybeKillingLoc;
