@@ -807,6 +807,12 @@ void Instruction::setVolatile(bool Volatile) {
   }
 }
 
+bool Instruction::isPHINodeOrSelectInstOrSwitchInst() const {
+  if (isa<PHINode>(this) || isa<SelectInst>(this) || isa<SwitchInst>(this))
+    return true;
+  return false;
+}
+
 Type *Instruction::getAccessType() const {
   switch (getOpcode()) {
   case Instruction::Store:

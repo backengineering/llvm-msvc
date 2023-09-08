@@ -663,6 +663,9 @@ public:
   bool isVolatile() const LLVM_READONLY;
   void setVolatile(bool Volatile = true);
 
+  /// Return true if this instruction is PHINode/SelectInst/SwitchInst.
+  bool isPHINodeOrSelectInstOrSwitchInst() const;
+
   /// Return the type this instruction accesses in memory, if any.
   Type *getAccessType() const LLVM_READONLY;
 
