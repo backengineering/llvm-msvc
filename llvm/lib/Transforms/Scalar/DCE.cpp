@@ -88,7 +88,7 @@ RedundantDbgInstEliminationPass::run(Function &F, FunctionAnalysisManager &AM) {
 static bool DCEInstruction(Instruction *I,
                            SmallSetVector<Instruction *, 16> &WorkList,
                            const TargetLibraryInfo *TLI) {
-  if (I->isVolatile())
+  if (I->isVolatile() && !I->isPHINodeOrSelectInstOrSwitchInst())
     return false;
   if (isInstructionTriviallyDead(I, TLI)) {
     if (!DebugCounter::shouldExecute(DCECounter))
