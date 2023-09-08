@@ -763,8 +763,6 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   Builder.defineMacro("__clang__"); // Clang Frontend
   Builder.defineMacro("__llvmmsvc__"); // LLVM-MSVC Frontend
   Builder.defineMacro("_LLVM_MSC_VER"); // LLVM-MSVC Frontend
-  Builder.defineMacro("__llvmmsvc__private");  // LLVM-MSVC private Frontend
-  Builder.defineMacro("_LLVM_MSC_PRIVATE_VER"); // LLVM-MSVC private Frontend
 #define TOSTR2(X) #X
 #define TOSTR(X) TOSTR2(X)
   Builder.defineMacro("__clang_major__", TOSTR(CLANG_VERSION_MAJOR));
