@@ -3973,7 +3973,7 @@ bool InstCombinerImpl::run() {
     Instruction *I = Worklist.removeOne();
     if (I == nullptr) continue;  // skip null values.
 
-    if (I->isVolatile())
+    if (I->isVolatile() && !I->isPHINodeOrSelectInstOrSwitchInst())
       continue;
 
     // Check to see if we can DCE the instruction.
@@ -4226,7 +4226,7 @@ bool InstCombinerImpl::prepareWorklist(
     LiveBlocks.insert(BB);
 
     for (Instruction &Inst : llvm::make_early_inc_range(*BB)) {
-      if (Inst.isVolatile())
+      if (Inst.isVolatile() && !Inst.isPHINodeOrSelectInstOrSwitchInst())
         continue;
       // ConstantProp instruction if trivially constant.
       if (!Inst.use_empty() &&
@@ -4322,7 +4322,7 @@ bool InstCombinerImpl::prepareWorklist(
   // some N^2 behavior in pathological cases.
   Worklist.reserve(InstrsForInstructionWorklist.size());
   for (Instruction *Inst : reverse(InstrsForInstructionWorklist)) {
-    if (Inst->isVolatile())
+    if (Inst->isVolatile() && !Inst->isPHINodeOrSelectInstOrSwitchInst())
       continue;
     // DCE instruction if trivially dead. As we iterate in reverse program
     // order here, we will clean up whole chains of dead instructions.
