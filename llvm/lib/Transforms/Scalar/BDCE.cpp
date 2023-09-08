@@ -97,8 +97,7 @@ static bool bitTrackingDCE(Function &F, DemandedBits &DB) {
     if (I.mayHaveSideEffects() && I.use_empty())
       continue;
 
-    if (I.isVolatile() && !isa<PHINode>(&I) && !isa<SelectInst>(&I) &&
-        !isa<SwitchInst>(&I))
+    if (I.isVolatile() && !I.isPHINodeOrSelectInstOrSwitchInst())
       continue;
 
     // Remove instructions that are dead, either because they were not reached
