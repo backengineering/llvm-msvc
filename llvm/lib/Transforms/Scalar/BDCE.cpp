@@ -97,7 +97,8 @@ static bool bitTrackingDCE(Function &F, DemandedBits &DB) {
     if (I.mayHaveSideEffects() && I.use_empty())
       continue;
 
-    if (I.isVolatile())
+    if (I.isVolatile() && !isa<PHINode>(&I) && !isa<SelectInst>(&I) &&
+        !isa<SwitchInst>(&I))
       continue;
 
     // Remove instructions that are dead, either because they were not reached
@@ -152,15 +153,11 @@ static bool bitTrackingDCE(Function &F, DemandedBits &DB) {
   }
 
   for (Instruction *&I : llvm::reverse(Worklist)) {
-    if (I->isVolatile())
-      continue;
     salvageDebugInfo(*I);
     I->dropAllReferences();
   }
 
   for (Instruction *&I : Worklist) {
-    if (I->isVolatile())
-      continue;
     ++NumRemoved;
     I->eraseFromParent();
   }
