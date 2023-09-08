@@ -327,7 +327,7 @@ bool MergedLoadStoreMotion::mergeStores(BasicBlock *HeadBB) {
     ++RBI;
 
     // Skip volatile instructions.
-    if (I->isVolatile())
+    if (I->isVolatile() && !I->isPHINodeOrSelectInstOrSwitchInst())
       continue;
 
     // Don't sink non-simple (atomic, volatile) stores.
