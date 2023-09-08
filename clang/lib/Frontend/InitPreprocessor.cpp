@@ -761,8 +761,10 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   // Compiler version introspection macros.
   Builder.defineMacro("__llvm__");  // LLVM Backend
   Builder.defineMacro("__clang__"); // Clang Frontend
-  Builder.defineMacro("__llvmmsvc__"); // llvmmsvc Frontend
+  Builder.defineMacro("__llvmmsvc__"); // LLVM-MSVC Frontend
   Builder.defineMacro("_LLVM_MSC_VER"); // LLVM-MSVC Frontend
+  Builder.defineMacro("__llvmmsvc__private");  // LLVM-MSVC private Frontend
+  Builder.defineMacro("_LLVM_MSC_PRIVATE_VER"); // LLVM-MSVC private Frontend
 #define TOSTR2(X) #X
 #define TOSTR(X) TOSTR2(X)
   Builder.defineMacro("__clang_major__", TOSTR(CLANG_VERSION_MAJOR));
@@ -1339,16 +1341,8 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
 
 #ifdef _WIN32
   // #define offsetof
-  Builder.append("#ifndef offsetof");
-  Builder.append("#if defined _MSC_VER && !defined _CRT_USE_BUILTIN_OFFSETOF");
-  Builder.append("    #ifdef __cplusplus");
-  Builder.append("        #define offsetof(s,m) ((::size_t)&reinterpret_cast<char const volatile&>((((s*)0)->m)))");
-  Builder.append("    #else");
-  Builder.append("        #define offsetof(s,m) ((size_t)&(((s*)0)->m))");
-  Builder.append("    #endif");
-  Builder.append("#else");
-  Builder.append("    #define offsetof(s,m) __builtin_offsetof(s,m)");
-  Builder.append("#endif");
+  Builder.append("#if !defined(offsetof) || __has_feature(modules)");
+  Builder.append("#define offsetof(t, d) __builtin_offsetof(t, d)");
   Builder.append("#endif");
 #endif
 }
