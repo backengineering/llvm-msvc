@@ -1,1 +1,1 @@
-#define CLANG_LLVM_MSVC_VERSION "v3.0.6"
+#define CLANG_LLVM_MSVC_VERSION "v3.0.7"
