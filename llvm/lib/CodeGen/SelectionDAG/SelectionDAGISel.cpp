@@ -1338,7 +1338,12 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
   llvm::WinEHFuncInfo *EHInfo = MF->getWinEHFuncInfo();
   if (!EHInfo)
     return;
-  if (MMI.getModule()->getDataLayout().getPointerSizeInBits() == 32)
+  auto PersonalityFn = MF->getFunction().getPersonalityFn();
+  if (!PersonalityFn)
+    return;
+  EHPersonality Personality = classifyEHPersonality(PersonalityFn);
+  if (!(Personality == EHPersonality::MSVC_CXX ||
+        Personality == EHPersonality::MSVC_TableSEH))
     return;
   if (MF->getFunction().hasCXXEH())
     return;
