@@ -549,6 +549,9 @@ public:
                               bool Before = false) {
     return splitBasicBlock(I->getIterator(), BBName, Before);
   }
+  /// Split the basic block into two basic blocks at the instruction
+  /// without PHINode/Dbg/Alloc/Lifetime.
+  BasicBlock *splitBasicBlockWithoutPHIAndDbgAndAllocAndLifetime();
 
   /// Split the basic block into two basic blocks at the specified instruction
   /// and insert the new basic blocks as the predecessor of the current block.
