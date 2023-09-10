@@ -512,6 +512,14 @@ BasicBlock *BasicBlock::splitBasicBlock(iterator I, const Twine &BBName,
   return New;
 }
 
+BasicBlock *BasicBlock::splitBasicBlockWithoutPHIAndDbgAndAllocAndLifetime() {
+  Instruction *Inst = getFirstNonPHIOrDbgOrAllocaOrLifetime();
+  if (Inst)
+    return splitBasicBlock(Inst, this->getName() +
+                                     "WithoutPHIAndDbgAndAllocAndLifetime");
+  return nullptr;
+}
+
 BasicBlock *BasicBlock::splitBasicBlockBefore(iterator I, const Twine &BBName) {
   assert(getTerminator() &&
          "Can't use splitBasicBlockBefore on degenerate BB!");
