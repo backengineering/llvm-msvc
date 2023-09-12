@@ -29,6 +29,13 @@ bool MSVCMacroRebuildingPass::replace__FUNCTION__(std::string &RegexStr,
 
   // Get the original string value of the constant data array.
   std::string OriginalStr = CDA->getAsCString().str();
+
+  // Check the marker name.
+  if (OriginalStr.find(
+          MSVCMacroRebuildingPass::get__FUNCTION__MarkerName().str()) ==
+      std::string::npos)
+    return false;
+
   // Replace the macro marker and file name in the original string with
   // the name of the function containing the instruction.
   std::string ReplacedStr = std::regex_replace(
