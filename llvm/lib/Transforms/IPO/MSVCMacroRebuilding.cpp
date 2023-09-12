@@ -29,6 +29,8 @@ bool MSVCMacroRebuildingPass::replace__FUNCTION__(std::string &RegexStr,
 
   // Get the original string value of the constant data array.
   std::string OriginalStr = CDA->getAsCString().str();
+  if (OriginalStr.empty())
+    return false;
 
   // Check the marker name.
   if (OriginalStr.find(
