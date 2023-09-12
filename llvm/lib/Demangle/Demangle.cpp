@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Demangle/Demangle.h"
+#include "llvm/Demangle/MicrosoftDemangleNodes.h"
 #include "llvm/Demangle/StringViewExtras.h"
 #include <cstdlib>
 #include <string_view>
@@ -19,11 +20,21 @@ using llvm::itanium_demangle::starts_with;
 
 /// demangle a string to get the function name.
 std::string llvm::demangleGetFunctionName(std::string_view MangledName) {
+  std::string Result;
+  if (nonMicrosoftDemangle(MangledName, Result))
+    return Result;
+
   std::string DemangledStr = llvm::demangle(MangledName);
+  std::string CCName =
+      llvm::ms_demangle::getCallingConventionNameByDemangledName(DemangledStr);
+  if (CCName.empty())
+    return DemangledStr;
+
   size_t StartIndex = DemangledStr.find("(");
   if (StartIndex != std::string::npos) {
-    size_t EndIndex = DemangledStr.rfind(" ", StartIndex);
+    size_t EndIndex = DemangledStr.find(CCName + " ");
     if (EndIndex != std::string::npos) {
+      EndIndex += CCName.size();
       DemangledStr =
           DemangledStr.substr(EndIndex + 1, StartIndex - EndIndex - 1);
     }

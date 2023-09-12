@@ -117,6 +117,29 @@ static void outputCallingConvention(OutputBuffer &OB, CallingConv CC) {
   }
 }
 
+std::string llvm::ms_demangle::getCallingConventionNameByDemangledName(
+    std::string_view DemangledName) {
+  if (DemangledName.find("__cdecl") != std::string::npos)
+    return "__cdecl";
+  if (DemangledName.find("__fastcall") != std::string::npos)
+    return "__fastcall";
+  if (DemangledName.find("__stdcall") != std::string::npos)
+    return "__stdcall";
+  if (DemangledName.find("__thiscall") != std::string::npos)
+    return "__thiscall";
+  if (DemangledName.find("__pascal") != std::string::npos)
+    return "__pascal";
+  if (DemangledName.find("__regcall") != std::string::npos)
+    return "__regcall";
+  if (DemangledName.find("__eabi") != std::string::npos)
+    return "__eabi";
+  if (DemangledName.find("__vectorcall") != std::string::npos)
+    return "__vectorcall";
+  if (DemangledName.find("__clrcall") != std::string::npos)
+    return "__clrcall";
+  return "";
+}
+
 std::string Node::toString(OutputFlags Flags) const {
   OutputBuffer OB;
   this->output(OB, Flags);

@@ -623,6 +623,9 @@ struct FunctionSymbolNode : public SymbolNode {
   FunctionSignatureNode *Signature = nullptr;
 };
 
+std::string
+getCallingConventionNameByDemangledName(std::string_view DemangledName);
+
 } // namespace ms_demangle
 } // namespace llvm
 
