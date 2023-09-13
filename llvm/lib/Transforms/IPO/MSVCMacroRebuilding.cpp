@@ -31,6 +31,8 @@ bool MSVCMacroRebuildingPass::replace__FUNCTION__(std::string &RegexStr,
   std::string OriginalStr = CDA->getAsCString().str();
   if (OriginalStr.empty())
     return false;
+  if (OriginalStr.length() < 20)
+    return false;
 
   // Check the marker name.
   if (OriginalStr.find(
