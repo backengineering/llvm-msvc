@@ -1356,6 +1356,8 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
     // Filter IPToState when BB is nullptr
     if (BB == nullptr)
       continue;
+    if (!EHInfo->BlockToStateMap.contains(BB))
+      continue;
     int State = EHInfo->BlockToStateMap[BB];
     if (BB->getFirstMayFaultInst()) {
       // Report IP range only for blocks with Faulty inst
