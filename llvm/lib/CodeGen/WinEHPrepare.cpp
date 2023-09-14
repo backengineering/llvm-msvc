@@ -483,7 +483,8 @@ static void calculateSEHStateNumbers(WinEHFuncInfo &FuncInfo,
                                      const Instruction *FirstNonPHI,
                                      int ParentState) {
   const BasicBlock *BB = FirstNonPHI->getParent();
-  assert(BB->isEHPad() && "no a funclet!");
+  if (!BB->isEHPad())
+    return;
 
   if (auto *CatchSwitch = dyn_cast<CatchSwitchInst>(FirstNonPHI)) {
     assert(FuncInfo.EHPadStateMap.count(CatchSwitch) == 0 &&
