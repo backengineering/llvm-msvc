@@ -216,7 +216,7 @@ static void calculateStateNumbersForInvokes(const Function *Fn,
   }
 }
 
-// See comments below for calculateSEHStateForAsynchEH().
+// See comments below for calculateSEHStateForWinEH().
 // State - incoming State of normal paths
 struct WorkItem {
   const BasicBlock *Block;
@@ -287,7 +287,7 @@ void llvm::calculateCXXStateForAsynchEH(const BasicBlock *BB, int State,
 //     the lowest State trumphs others.
 //   If some exits flow to unreachable, propagation on those paths terminate,
 //     not affecting remaining blocks.
-void llvm::calculateSEHStateForAsynchEH(const BasicBlock *BB, int State,
+void llvm::calculateSEHStateForWinEH(const BasicBlock *BB, int State,
                                         WinEHFuncInfo &EHInfo) {
   SmallVector<struct WorkItem *, 8> WorkList;
   struct WorkItem *WI = new WorkItem(BB, State);
@@ -602,7 +602,7 @@ void llvm::calculateSEHStateNumbers(const Function *Fn,
   calculateStateNumbersForInvokes(Fn, FuncInfo);
 
   const BasicBlock *EntryBB = &(Fn->getEntryBlock());
-  calculateSEHStateForAsynchEH(EntryBB, -1, FuncInfo);
+  calculateSEHStateForWinEH(EntryBB, -1, FuncInfo);
 }
 
 void llvm::calculateWinCXXEHStateNumbers(const Function *Fn,

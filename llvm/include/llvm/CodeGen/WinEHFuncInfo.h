@@ -130,7 +130,7 @@ void calculateClrEHStateNumbers(const Function *Fn, WinEHFuncInfo &FuncInfo);
 void calculateCXXStateForAsynchEH(const BasicBlock *BB, int State,
                                   WinEHFuncInfo &FuncInfo);
                                   
-void calculateSEHStateForAsynchEH(const BasicBlock *BB, int State,
+void calculateSEHStateForWinEH(const BasicBlock *BB, int State,
                                   WinEHFuncInfo &FuncInfo);
 
 } // end namespace llvm
