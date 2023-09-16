@@ -136,6 +136,9 @@ MachineInstr::MachineInstr(MachineFunction &MF, const MachineInstr &MI)
 
   // Copy all the sensible flags.
   setFlags(MI.Flags);
+
+  // Set dirty flag
+  setItisDirty(MI.IsDirty);
 }
 
 void MachineInstr::moveBefore(MachineInstr *MovePos) {
