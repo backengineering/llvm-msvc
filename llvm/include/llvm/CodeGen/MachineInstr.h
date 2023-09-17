@@ -349,6 +349,11 @@ public:
   /// Clear the AsmPrinter bitvector.
   void clearAsmPrinterFlags() { AsmPrinterFlags = 0; }
 
+  /// Get the previous MachineInstr.
+  /// If current MachineInstr is the first instruction of the first basic block,
+  /// returns null.
+  MachineInstr *getPrevMachineInstr();
+
   /// Return whether an AsmPrinter flag is set.
   bool getAsmPrinterFlag(CommentFlag Flag) const {
     assert(isUInt<LLVM_MI_ASMPRINTERFLAGS_BITS>(unsigned(Flag)) &&

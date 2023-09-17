@@ -141,6 +141,21 @@ MachineInstr::MachineInstr(MachineFunction &MF, const MachineInstr &MI)
   setItisDirty(MI.IsDirty);
 }
 
+MachineInstr *MachineInstr::getPrevMachineInstr() {
+  MachineBasicBlock *MBB = this->getParent();
+  if (!MBB)
+    return nullptr;
+  MachineBasicBlock::iterator MBBI = this->getIterator();
+  while (MBBI == MBB->begin()) {
+    if (MBB == &MBB->getParent()->front())
+      return nullptr;
+    MBB = MBB->getPrevNode();
+    MBBI = MBB->end();
+  }
+  --MBBI;
+  return &*MBBI;
+}
+
 void MachineInstr::moveBefore(MachineInstr *MovePos) {
   MovePos->getParent()->splice(MovePos, getParent(), getIterator());
 }
