@@ -57,7 +57,7 @@ public:
     OK_FDStream,
   };
 
-private:
+public:
   OStreamKind Kind;
 
   /// The buffer is handled in such a way that the buffer is
@@ -134,6 +134,10 @@ public:
   uint64_t tell() const { return current_pos() + GetNumBytesInBuffer(); }
 
   OStreamKind get_kind() const { return Kind; }
+
+  std::string get_str() {
+    return StringRef(OutBufStart, OutBufEnd - OutBufStart).str();
+  }
 
   //===--------------------------------------------------------------------===//
   // Configuration Interface
