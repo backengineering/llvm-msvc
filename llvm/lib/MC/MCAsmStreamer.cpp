@@ -44,6 +44,7 @@ using namespace llvm;
 namespace {
 
 class MCAsmStreamer final : public MCStreamer {
+public:
   std::unique_ptr<formatted_raw_ostream> OSOwner;
   formatted_raw_ostream &OS;
   const MCAsmInfo *MAI;
