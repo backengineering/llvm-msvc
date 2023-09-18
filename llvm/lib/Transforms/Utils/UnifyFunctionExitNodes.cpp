@@ -115,6 +115,9 @@ bool unifyReturnBlocks(Function &F) {
 // all unreachable blocks.
 bool UnifyFunctionExitNodesLegacyPass::runOnFunction(Function &F) {
   bool Changed = false;
+  if (F.hasSEH() || F.hasCXXSEH())
+    return false;
+
   Changed |= unifyUnreachableBlocks(F);
   Changed |= unifyReturnBlocks(F);
   return Changed;
