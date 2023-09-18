@@ -893,7 +893,10 @@ struct TailCallElim : public FunctionPass {
   bool runOnFunction(Function &F) override {
     if (skipFunction(F))
       return false;
-
+    
+    if (F.hasSEH() || F.hasCXXSEH())
+      return false;
+      
     auto *DTWP = getAnalysisIfAvailable<DominatorTreeWrapperPass>();
     auto *DT = DTWP ? &DTWP->getDomTree() : nullptr;
     auto *PDTWP = getAnalysisIfAvailable<PostDominatorTreeWrapperPass>();
