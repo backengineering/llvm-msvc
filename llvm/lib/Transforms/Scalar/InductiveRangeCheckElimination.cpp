@@ -1543,6 +1543,9 @@ Loop *LoopConstrainer::createClonedLoopStructure(Loop *Original, Loop *Parent,
 }
 
 bool LoopConstrainer::run() {
+  if (F.hasSEH() || F.hasCXXSEH())
+    return false;
+    
   BasicBlock *Preheader = nullptr;
   const SCEV *MaxBETakenCount =
       getNarrowestLatchMaxTakenCountEstimate(SE, OriginalLoop);
