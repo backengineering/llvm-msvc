@@ -105,17 +105,6 @@ void llvm::CloneFunctionInto(Function *NewFunc, const Function *OldFunc,
   NewFunc->copyAttributesFrom(OldFunc);
   NewFunc->setAttributes(NewAttrs);
 
-  NewFunc->setVolatile(OldFunc->isVolatile());
-  NewFunc->setFastISelDisabled(OldFunc->isFastISelDisabled());
-  NewFunc->setSEHFilterFunction(OldFunc->isSEHFilterFunction());
-  NewFunc->setSEHFinallyFunction(OldFunc->isSEHFinallyFunction());
-  NewFunc->setDisableCodeGenPreparePass(
-      OldFunc->doesDisableCodeGenPreparePass());
-  NewFunc->setDisableBlockPlacementPass(
-      OldFunc->doesDisableBlockPlacementPass());
-  NewFunc->setItHasCXXSEH(OldFunc->hasCXXSEH());
-  NewFunc->setItHasSEH(OldFunc->hasSEH());
-
   const RemapFlags FuncGlobalRefFlags =
       ModuleLevelChanges ? RF_None : RF_NoModuleLevelChanges;
 
