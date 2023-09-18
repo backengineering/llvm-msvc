@@ -284,6 +284,29 @@ def SanitizeMemTag : EnumAttr<"sanitize_memtag", [FnAttr]>;
 /// this attribute will always be lowered with hardening enabled.
 def SpeculativeLoadHardening : EnumAttr<"speculative_load_hardening",
                                         [FnAttr]>;
+/// Is this a volatile function?
+def IsVolatileFunction : EnumAttr<"is_volatile_function", [FnAttr]>;
+
+/// Is fast-isel for this function disabled?
+def IsFastISelDisabled : EnumAttr<"is_fastisel_disabled", [FnAttr]>;
+
+/// Is SEHFilterFunction?
+def IsSEHFilterFunction : EnumAttr<"is_sehfilter_function", [FnAttr]>;
+
+/// Is IsSEHFinallyFunction?
+def IsSEHFinallyFunction : EnumAttr<"is_sehfinally_function", [FnAttr]>;
+
+/// Disable CodeGenPreparePass?
+def DisableCodeGenPreparePass : EnumAttr<"disable_codegen_prepare_pass", [FnAttr]>;
+
+/// Disable MachineBlockPlacement?
+def DisableBlockPlacementPass : EnumAttr<"disable_blockplacement_pass", [FnAttr]>;
+
+/// Function has SEH
+def HasSEH : EnumAttr<"has_seh", [FnAttr]>;
+
+/// Function has CXXSEH
+def HasCXXSEH : EnumAttr<"has_cxxseh", [FnAttr]>;
 
 /// Argument is swift error.
 def SwiftError : EnumAttr<"swifterror", [ParamAttr]>;
