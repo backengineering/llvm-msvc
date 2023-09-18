@@ -79,15 +79,6 @@ private:
   AttributeList AttributeSets;            ///< Parameter attributes
   StringRef AnnotationStrings;            ///< Annotation strings
   SmallVector<StringRef> AnnotationVec;   ///< Annotation vector
-  bool IsVolatileFunction : 1;            ///< Is this a volatile function?
-  bool IsFastISelDisabled : 1;            ///< Is fast-isel for this function disabled?
-  bool IsSEHFilterFunction : 1;           ///< Is SEHFilterFunction?
-  bool IsSEHFinallyFunction : 1;          ///< Is SEHFinallyFunction?
-  bool DisableCodeGenPreparePass : 1;     ///< Disable CodeGenPreparePass?
-  bool DisableBlockPlacementPass : 1;     ///< Disable MachineBlockPlacement?
-
-  bool HasSEH = false;                    ///< Function has SEH
-  bool HasCXXSEH = false;                 ///< Function has CXXSEH
 
   /*
    * Value::SubclassData
@@ -203,60 +194,80 @@ public:
   void addAnnotationToVector(StringRef Strs) { AnnotationVec.push_back(Strs); }
 
   /// If the value is a volatile function, we will preserve it.
-  bool isVolatile() const { return IsVolatileFunction; }
-  void setVolatile(bool Volatile = true) { IsVolatileFunction = Volatile; }
+  bool isVolatile() const {
+    return hasFnAttribute(Attribute::IsVolatileFunction);
+  }
+  void setVolatile(bool Volatile = true) {
+    Volatile ? addFnAttr(Attribute::IsVolatileFunction)
+             : removeFnAttr(Attribute::IsVolatileFunction);
+  }
+
+  /// Indicate that whether we should disable fast-isel for this function.
+  bool isFastISelDisabled() const {
+    return hasFnAttribute(Attribute::IsFastISelDisabled);
+  }
+  void setFastISelDisabled(bool Disabled = true) {
+    Disabled ? addFnAttr(Attribute::IsFastISelDisabled)
+             : removeFnAttr(Attribute::IsFastISelDisabled);
+  }
 
   /// Is SEHFilterFunction?
-  bool isSEHFilterFunction() const { return IsSEHFilterFunction; }
+  bool isSEHFilterFunction() const {
+    return hasFnAttribute(Attribute::IsSEHFilterFunction);
+  }
   void setSEHFilterFunction(bool SEHFilterFunction = true) {
-    IsSEHFilterFunction = SEHFilterFunction;
+    SEHFilterFunction ? addFnAttr(Attribute::IsSEHFilterFunction)
+                      : removeFnAttr(Attribute::IsSEHFilterFunction);
   }
 
   /// Is SEHFinallyFunction?
-  bool isSEHFinallyFunction() const { return IsSEHFinallyFunction; }
+  bool isSEHFinallyFunction() const {
+    return hasFnAttribute(Attribute::IsSEHFinallyFunction);
+  }
   void setSEHFinallyFunction(bool SEHFinallyFunction = true) {
-    IsSEHFinallyFunction = SEHFinallyFunction;
+    SEHFinallyFunction ? addFnAttr(Attribute::IsSEHFinallyFunction)
+                       : removeFnAttr(Attribute::IsSEHFinallyFunction);
   }
 
   /// Disable CodeGenPreparePass?
   bool doesDisableCodeGenPreparePass() const {
-    return DisableCodeGenPreparePass;
+    return hasFnAttribute(Attribute::DisableCodeGenPreparePass);
   }
   void setDisableCodeGenPreparePass(bool Disable = true) {
-    DisableCodeGenPreparePass = Disable;
+    Disable ? addFnAttr(Attribute::DisableCodeGenPreparePass)
+            : removeFnAttr(Attribute::DisableCodeGenPreparePass);
   }
 
   /// Disable MachineBlockPlacement?
   bool doesDisableBlockPlacementPass() const {
-    return DisableBlockPlacementPass;
+    return hasFnAttribute(Attribute::DisableBlockPlacementPass);
   }
   void setDisableBlockPlacementPass(bool Disable = true) {
-    DisableBlockPlacementPass = Disable;
+    Disable ? addFnAttr(Attribute::DisableBlockPlacementPass)
+            : removeFnAttr(Attribute::DisableBlockPlacementPass);
   }
 
   /// Function has SEH
-  bool hasSEH() const { return HasSEH; }
-  void setItHasSEH(bool Set) { HasSEH = Set; }
+  bool hasSEH() const { return hasFnAttribute(Attribute::HasSEH); }
+  void setItHasSEH(bool Set) {
+    Set ? addFnAttr(Attribute::HasSEH) : removeFnAttr(Attribute::HasSEH);
+  }
 
   /// Function has CXXSEH
-  bool hasCXXSEH() const { return HasCXXSEH; }
-  void setItHasCXXSEH(bool Set) { HasCXXSEH = Set; }
+  bool hasCXXSEH() const { return hasFnAttribute(Attribute::HasCXXSEH); }
+  void setItHasCXXSEH(bool Set) {
+    Set ? addFnAttr(Attribute::HasCXXSEH) : removeFnAttr(Attribute::HasCXXSEH);
+  }
 
   /// Function has CXXEH
   bool hasCXXEH() const {
     return (classifyEHPersonality(getPersonalityFn()) ==
             EHPersonality::MSVC_CXX) &&
-           !HasCXXSEH;
+           !hasCXXSEH();
   }
 
   /// Function has inline asm
   bool hasInlineAsm();
-
-  /// Indicate that whether we should disable fast-isel for this function.
-  bool isFastISelDisabled() const { return IsFastISelDisabled; }
-  void setFastISelDisabled(bool Disabled = true) {
-    IsFastISelDisabled = Disabled;
-  }
 
   /// isVarArg - Return true if this function takes a variable number of
   /// arguments.
