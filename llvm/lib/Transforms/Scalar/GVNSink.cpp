@@ -569,6 +569,9 @@ public:
   GVNSink() = default;
 
   bool run(Function &F) {
+    if (F.hasSEH() || F.hasCXXSEH())
+      return false;
+      
     LLVM_DEBUG(dbgs() << "GVNSink: running on function @" << F.getName()
                       << "\n");
 
