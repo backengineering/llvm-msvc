@@ -527,6 +527,8 @@ bool TargetInfo::initFeatureMap(
   setFeatureEnabled(Features, "sse3", true);
   setFeatureEnabled(Features, "sse4.1", true);
   setFeatureEnabled(Features, "sse4.2", true);
+  setFeatureEnabled(Features, "invpcid", true);
+  setFeatureEnabled(Features, "rtm", true);
 #endif
 
   for (const auto &F : FeatureVec) {
