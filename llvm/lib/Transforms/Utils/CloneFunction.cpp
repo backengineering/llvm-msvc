@@ -47,6 +47,13 @@ BasicBlock *llvm::CloneBasicBlock(const BasicBlock *BB, ValueToValueMapTy &VMap,
   if (BB->hasName())
     NewBB->setName(BB->getName() + NameSuffix);
 
+  NewBB->setItisSEHTryBeginBlock(BB->isSEHTryBeginBlock());
+  NewBB->setItisSEHTryEndBlock(BB->isCXXSEHTryEndBlock());
+  NewBB->setItisSEHExceptEnterBlock(BB->isSEHExceptEnterBlock());
+  NewBB->setItisSEHExceptExitBlock(BB->isSEHExceptExitBlock());
+  NewBB->setItisCXXSEHTryBeginBlock(BB->isCXXSEHTryBeginBlock());
+  NewBB->setItisCXXSEHTryEndBlock(BB->isCXXSEHTryEndBlock());
+
   bool hasCalls = false, hasDynamicAllocas = false, hasMemProfMetadata = false;
   Module *TheModule = F ? F->getParent() : nullptr;
 
