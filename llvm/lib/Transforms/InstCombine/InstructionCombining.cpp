@@ -4350,6 +4350,9 @@ static bool combineInstructionsOverFunction(
     LoopInfo *LI) {
   auto &DL = F.getParent()->getDataLayout();
 
+  if (F.hasSEH() || F.hasCXXSEH())
+    return false;
+    
   /// Builder - This is an IRBuilder that automatically inserts new
   /// instructions into the worklist when they are created.
   IRBuilder<TargetFolder, IRBuilderCallbackInserter> Builder(
