@@ -1451,9 +1451,10 @@ template <typename PEHeaderTy> void Writer::writeHeader() {
   dos->Magic[0] = 'M';
   dos->Magic[1] = 'Z';
   dos->UsedBytesInTheLastPage = dosStubSize % 512;
-  dos->FileSizeInPages = divideCeil(dosStubSize, 512);
+  dos->FileSizeInPages = 3;
   dos->HeaderSizeInParagraphs = sizeof(dos_header) / 16;
-
+  dos->MaximumExtraParagraphs = 0xFFFF;
+  dos->InitialSP = 0xB8;
   dos->AddressOfRelocationTable = sizeof(dos_header);
   dos->AddressOfNewExeHeader = dosStubSize;
 
