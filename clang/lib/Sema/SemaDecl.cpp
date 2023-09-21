@@ -4323,9 +4323,10 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD, Scope *S,
 
     PrevDiag = diag::note_previous_builtin_declaration;
   }
-
+#ifndef _WIN32
   Diag(New->getLocation(), diag::err_conflicting_types) << New->getDeclName();
   Diag(OldLocation, PrevDiag) << Old << Old->getType();
+#endif
   return true;
 }
 
