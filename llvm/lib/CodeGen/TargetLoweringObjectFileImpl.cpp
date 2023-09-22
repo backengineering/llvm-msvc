@@ -72,7 +72,7 @@ using namespace llvm;
 using namespace dwarf;
 
 static cl::opt<bool> JumpTableInFunctionSection(
-    "jumptable-in-function-section", cl::Hidden, cl::init(false),
+    "jumptable-in-function-section", cl::Hidden, cl::init(true),
     cl::desc("Putting Jump Table in function section"));
 
 static void GetObjCImageInfo(Module &M, unsigned &Version, unsigned &Flags,
