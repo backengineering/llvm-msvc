@@ -253,9 +253,6 @@ public:
     Set ? addFnAttr(Attribute::HasSEH) : removeFnAttr(Attribute::HasSEH);
   }
 
-  /// Function has SEH/CXXSEH
-  bool hasSEHOrCXXSEH() const { return hasSEH() || hasCXXSEH(); }
-
   /// Function has CXXSEH
   bool hasCXXSEH() const { return hasFnAttribute(Attribute::HasCXXSEH); }
   void setItHasCXXSEH(bool Set) {
