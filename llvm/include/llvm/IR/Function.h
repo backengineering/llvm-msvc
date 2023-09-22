@@ -259,6 +259,9 @@ public:
     Set ? addFnAttr(Attribute::HasCXXSEH) : removeFnAttr(Attribute::HasCXXSEH);
   }
 
+  /// Function has SEH/CXXSEH
+  bool hasSEHOrCXXSEH() const { return hasSEH() || hasCXXSEH(); }
+
   /// Function has CXXEH
   bool hasCXXEH() const {
     return (classifyEHPersonality(getPersonalityFn()) ==
