@@ -919,7 +919,7 @@ void Writer::createSections() {
     // for the specific sections.
     if (ctx.config.driver && (name == ".text" || name == ".data" ||
                               name == ".rdata" || name == ".pdata") ||
-        ((outChars & (code | r | x)) == (code | r | x)))
+        ((outChars & (code | r | x)) == (code | r | x)) && name != "PAGE")
       outChars |= nonpaged;
     OutputSection *&sec = sections[{name, outChars}];
     if (!sec) {
