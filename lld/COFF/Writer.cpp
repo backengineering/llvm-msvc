@@ -988,7 +988,11 @@ void Writer::createSections() {
     PartialSection *pSec = it.second;
     StringRef name = getOutputSectionName(pSec->name);
     uint32_t outChars = pSec->characteristics;
-
+          
+    // Not useful at the moment.
+    if (name == ".retplne")
+      continue;
+          
     if (name == ".CRT") {
       // In link.exe, there is a special case for the I386 target where .CRT
       // sections are treated as if they have output characteristics DATA | R if
