@@ -178,6 +178,11 @@ bool llvm::DemotePHIToStack(Function &F) {
   if (F.begin()->size() == 0)
     return Changed;
 
+  BasicBlock *BBEntry = &F.getEntryBlock();
+  BasicBlock::iterator IT = BBEntry->begin();
+  while (isa<AllocaInst>(IT))
+    ++IT;
+
   SmallPtrSet<PHINode *, 8> PHIsToDemote;
   for (auto &BB : F)
     for (auto &I : BB)
@@ -185,12 +190,14 @@ bool llvm::DemotePHIToStack(Function &F) {
         PHIsToDemote.insert(cast<PHINode>(&I));
 
   if (!PHIsToDemote.empty()) {
-    for (PHINode *PN : PHIsToDemote) {
-      Instruction *AllocaPoint = F.begin()->getTerminator();
-      if (AllocaPoint) {
-        Changed |= DemotePHIToStack(PN, AllocaPoint) != nullptr;
-      }
-    }
+    CastInst *AllocaInsertionPoint = new BitCastInst(
+        Constant::getNullValue(Type::getInt32Ty(F.getContext())),
+        Type::getInt32Ty(F.getContext()), "reg2mem alloca point", &*IT);
+
+    for (PHINode *PN : PHIsToDemote)
+      DemotePHIToStack(PN, AllocaInsertionPoint);
+
+    Changed = true;
   }
 
   return Changed;
