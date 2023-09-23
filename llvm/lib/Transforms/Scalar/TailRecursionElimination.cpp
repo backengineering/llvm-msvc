@@ -894,7 +894,7 @@ struct TailCallElim : public FunctionPass {
     if (skipFunction(F))
       return false;
     
-    if (F.hasSEH() || F.hasCXXSEH())
+    if (F.hasSEHOrCXXSEH())
       return false;
       
     auto *DTWP = getAnalysisIfAvailable<DominatorTreeWrapperPass>();
