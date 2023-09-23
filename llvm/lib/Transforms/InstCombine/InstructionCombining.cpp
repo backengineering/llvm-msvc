@@ -4350,7 +4350,7 @@ static bool combineInstructionsOverFunction(
     LoopInfo *LI) {
   auto &DL = F.getParent()->getDataLayout();
 
-  if (F.hasSEH() || F.hasCXXSEH())
+  if (F.hasSEHOrCXXSEH())
     return false;
     
   /// Builder - This is an IRBuilder that automatically inserts new
