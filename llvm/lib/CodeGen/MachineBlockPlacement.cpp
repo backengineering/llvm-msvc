@@ -3345,7 +3345,7 @@ bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
   if (MF.getFunction().doesDisableBlockPlacementPass())
     return false;
 
-  if (MF.getFunction().hasSEH() || MF.getFunction().hasCXXSEH())
+  if (MF.getFunction().hasSEHOrCXXSEH())
     return false;
 
   // Check for single-block functions and skip them.
