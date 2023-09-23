@@ -2692,7 +2692,7 @@ bool GVNPass::runImpl(Function &F, AssumptionCache &RunAC, DominatorTree &RunDT,
                       const TargetLibraryInfo &RunTLI, AAResults &RunAA,
                       MemoryDependenceResults *RunMD, LoopInfo *LI,
                       OptimizationRemarkEmitter *RunORE, MemorySSA *MSSA) {
-  if (F.hasSEH() || F.hasCXXSEH())
+  if (F.hasSEHOrCXXSEH())
     return false;
 
   AC = &RunAC;
