@@ -1523,10 +1523,10 @@ template <typename PEHeaderTy> void Writer::writeHeader() {
   pe->FileAlignment = config->fileAlign;
   pe->MajorImageVersion = config->majorImageVersion;
   pe->MinorImageVersion = config->minorImageVersion;
-  // Chang the value to 4 to support win-xp
+  // Change the value to 4 to support win-xp
   pe->MajorOperatingSystemVersion = 4;
   pe->MinorOperatingSystemVersion = 0;
-  // Chang the value to 4 to support win-xp
+  // Change the value to 4 to support win-xp
   pe->MajorSubsystemVersion = 4;
   pe->MinorSubsystemVersion = 0;
   pe->Subsystem = config->subsystem;
