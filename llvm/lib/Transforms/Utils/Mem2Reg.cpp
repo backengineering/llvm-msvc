@@ -34,7 +34,7 @@ STATISTIC(NumPromoted, "Number of alloca's promoted");
 
 static bool promoteMemoryToRegister(Function &F, DominatorTree &DT,
                                     AssumptionCache &AC) {
-  if (F.hasSEH() || F.hasCXXSEH())
+  if (F.hasSEHOrCXXSEH())
     return false;
 
   std::vector<AllocaInst *> Allocas;
