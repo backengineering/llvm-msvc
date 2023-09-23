@@ -1960,7 +1960,8 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   else
     parseMerge(".idata=.rdata");
   parseMerge(".didat=.rdata");
-  parseMerge(".edata=.rdata");
+  if (!config->driver)
+    parseMerge(".edata=.rdata");
   parseMerge(".xdata=.rdata");
   parseMerge(".00cfg=.rdata");
   parseMerge(".voltbl=.rdata");
