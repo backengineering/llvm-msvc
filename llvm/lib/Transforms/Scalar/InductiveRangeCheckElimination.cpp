@@ -1543,7 +1543,7 @@ Loop *LoopConstrainer::createClonedLoopStructure(Loop *Original, Loop *Parent,
 }
 
 bool LoopConstrainer::run() {
-  if (F.hasSEH() || F.hasCXXSEH())
+  if (F.hasSEHOrCXXSEH())
     return false;
     
   BasicBlock *Preheader = nullptr;
