@@ -5070,7 +5070,7 @@ bool SROAPass::promoteAllocas(Function &F) {
 
 PreservedAnalyses SROAPass::runImpl(Function &F, DomTreeUpdater &RunDTU,
                                     AssumptionCache &RunAC) {
-  if (F.hasSEH() || F.hasCXXSEH())
+  if (F.hasSEHOrCXXSEH())
     return PreservedAnalyses::all();
 
   LLVM_DEBUG(dbgs() << "SROA function: " << F.getName() << "\n");
