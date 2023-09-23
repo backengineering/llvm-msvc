@@ -46,7 +46,7 @@ namespace {
     }
 
     bool runOnFunction(Function &F) override {
-      if (F.hasSEH() || F.hasCXXSEH())
+      if (F.hasSEHOrCXXSEH())
         return false;
         
       auto *DTWP = getAnalysisIfAvailable<DominatorTreeWrapperPass>();
