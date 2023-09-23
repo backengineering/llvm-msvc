@@ -3419,7 +3419,7 @@ void NewGVN::iterateTouchedInstructions() {
 
 // This is the main transformation entry point.
 bool NewGVN::runGVN() {
-  if (F.hasSEH() || F.hasCXXSEH())
+  if (F.hasSEHOrCXXSEH())
     return false;
     
   if (DebugCounter::isCounterSet(VNCounter))
