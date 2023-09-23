@@ -780,7 +780,10 @@ void AsmPrinter::emitGlobalVariable(const GlobalVariable *GV) {
 
   // Determine to which section this global should be emitted.
   MCSection *TheSection = getObjFileLowering().SectionForGlobal(GV, GVKind, TM);
-
+  if (GV->getParent() && GV->getParent()->getModuleFlag("ms-kernel") &&
+      GV->isConstant())
+    TheSection = LLVMMSVCCOFFSection;
+    
   // If we have a bss global going to a section that supports the
   // zerofill directive, do so here.
   if (GVKind.isBSS() && MAI->hasMachoZeroFillDirective() &&
