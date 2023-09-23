@@ -265,7 +265,7 @@ static bool iterativelySimplifyCFG(Function &F, const TargetTransformInfo &TTI,
 static bool simplifyFunctionCFGImpl(Function &F, const TargetTransformInfo &TTI,
                                     DominatorTree *DT,
                                     const SimplifyCFGOptions &Options) {
-  if (F.hasSEH() || F.hasCXXSEH())
+  if (F.hasSEHOrCXXSEH())
     return false;
     
   DomTreeUpdater DTU(DT, DomTreeUpdater::UpdateStrategy::Eager);
