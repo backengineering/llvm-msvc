@@ -250,6 +250,10 @@ SectionKind TargetLoweringObjectFile::getKindForGlobal(const GlobalObject *GO,
   // If the global is marked constant, we can put it into a mergable section,
   // a mergable string section, or general .data if it contains relocations.
   if (GVar->isConstant()) {
+    // Handle global constants in windows driver
+    if (GO->getParent() && GO->getParent()->getModuleFlag("ms-kernel"))
+      return SectionKind::getText();
+
     // If the initializer for the global contains something that requires a
     // relocation, then we may have to drop this into a writable data section
     // even though it is marked const.
