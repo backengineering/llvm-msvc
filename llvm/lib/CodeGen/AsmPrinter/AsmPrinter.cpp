@@ -2517,7 +2517,12 @@ void AsmPrinter::emitConstantPool() {
 
     MCSection *S = getObjFileLowering().getSectionForConstant(
         getDataLayout(), Kind, C, Alignment);
-
+    // Handle mergeable constants in windows driver.
+    if (Kind.isMergeableConst() && MF->getFunction().getParent() &&
+        MF->getFunction().getParent()->getModuleFlag("ms-kernel") &&
+        TM.getTargetTriple().isOSBinFormatCOFF())
+      S = LLVMMSVCCOFFSection;
+      
     // The number of sections are small, just do a linear search from the
     // last section to the first.
     bool Found = false;
