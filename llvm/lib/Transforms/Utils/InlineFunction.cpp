@@ -2708,7 +2708,21 @@ llvm::InlineResult llvm::InlineFunction(CallBase &CB, InlineFunctionInfo &IFI,
 
     if (MergeAttributes)
       AttributeFuncs::mergeAttributesForInlining(*Caller, *CalledFunc);
-
+#ifdef _WIN32
+    // Set 'volatile' to the new BB and instructions.
+    OrigBB->setVolatile(true);
+    for (auto &I : *OrigBB) {
+      if (I.isEHPad())
+        continue;
+      if (I.isPHINodeOrSelectInstOrSwitchInst())
+        continue;
+      if (isa<InvokeInst>(&I))
+        continue;
+      if (isa<IntrinsicInst>(&I))
+        continue;
+      I.setVolatile(true);
+    }
+#endif
     // We are now done with the inlining.
     return InlineResult::success();
   }
@@ -2872,6 +2886,20 @@ llvm::InlineResult llvm::InlineFunction(CallBase &CB, InlineFunctionInfo &IFI,
 
   if (MergeAttributes)
     AttributeFuncs::mergeAttributesForInlining(*Caller, *CalledFunc);
-
+#ifdef _WIN32
+  // Set 'volatile' to the new BB and instructions.
+  AfterCallBB->setVolatile(true);
+  for (auto &I : *AfterCallBB) {
+    if (I.isEHPad())
+      continue;
+    if (I.isPHINodeOrSelectInstOrSwitchInst())
+      continue;
+    if (isa<InvokeInst>(&I))
+      continue;
+    if (isa<IntrinsicInst>(&I))
+      continue;
+    I.setVolatile(true);
+  }
+#endif
   return InlineResult::success();
 }
