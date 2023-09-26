@@ -7172,7 +7172,11 @@ QualType ASTContext::isPromotableBitField(Expr *E) const {
   // FIXME: C does not permit promotion of an enum bit-field whose rank is
   //        greater than that of 'int'. We perform that promotion to match GCC.
   if (BitWidth < IntSize)
+#ifdef _WIN32
+    return {};
+#else
     return IntTy;
+#endif
 
   if (BitWidth == IntSize)
     return FT->isSignedIntegerType() ? IntTy : UnsignedIntTy;
