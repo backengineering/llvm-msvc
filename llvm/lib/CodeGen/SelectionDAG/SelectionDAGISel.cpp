@@ -398,7 +398,7 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
     TM.Options.EnableFastISel = OldEnableFastISel;
   });
 
-  if (OptLevel == CodeGenOpt::None) {
+  if (OptLevel == CodeGenOptLevel::None) {
     if (MF->getFunction().hasInlineAsm())
       TM.Options.EnableFastISel = false;
   }
