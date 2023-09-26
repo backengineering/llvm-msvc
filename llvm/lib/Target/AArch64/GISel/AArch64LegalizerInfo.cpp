@@ -283,7 +283,7 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST)
       .scalarize(0)
       // Regardless of FP16 support, widen 16-bit elements to 32-bits.
       .minScalar(0, s32)
-      .libcallFor({s32, s64, v2s32, v4s32, v2s64});
+      .libcallFor({s32, s64});
 
   getActionDefinitionsBuilder(G_INSERT)
       .legalIf(all(typeInSet(0, {s32, s64, p0}),
@@ -696,12 +696,11 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST)
         return Query.Types[0] != EltTy;
       })
       .minScalar(2, s64)
-      .legalIf([=](const LegalityQuery &Query) {
+      .customIf([=](const LegalityQuery &Query) {
         const LLT &VecTy = Query.Types[1];
         return VecTy == v2s16 || VecTy == v4s16 || VecTy == v8s16 ||
                VecTy == v4s32 || VecTy == v2s64 || VecTy == v2s32 ||
-               VecTy == v8s8 || VecTy == v16s8 || VecTy == v2s32 ||
-               VecTy == v2p0;
+               VecTy == v8s8 || VecTy == v16s8 || VecTy == v2p0;
       })
       .minScalarOrEltIf(
           [=](const LegalityQuery &Query) {
@@ -733,8 +732,7 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST)
 
   getActionDefinitionsBuilder(G_INSERT_VECTOR_ELT)
       .legalIf(typeInSet(0, {v16s8, v8s8, v8s16, v4s16, v4s32, v2s32, v2s64}))
-      .clampMinNumElements(0, s16, 4)
-      .clampMaxNumElements(0, s16, 8);
+      .widenVectorEltsToVectorMinSize(0, 64);
 
   getActionDefinitionsBuilder(G_BUILD_VECTOR)
       .legalFor({{v8s8, s8},
@@ -1022,6 +1020,8 @@ bool AArch64LegalizerInfo::legalizeCustom(LegalizerHelper &Helper,
     return legalizeMemOps(MI, Helper);
   case TargetOpcode::G_FCOPYSIGN:
     return legalizeFCopySign(MI, Helper);
+  case TargetOpcode::G_EXTRACT_VECTOR_ELT:
+    return legalizeExtractVectorElt(MI, MRI, Helper);
   }
 
   llvm_unreachable("expected switch to return");
@@ -1790,7 +1790,7 @@ bool AArch64LegalizerInfo::legalizeFCopySign(MachineInstr &MI,
   if (DstSize == 64)
     Mask = MIRBuilder.buildFNeg(VecTy, Mask);
 
-  auto Sel = MIRBuilder.buildInstr(AArch64::G_BIT, {VecTy}, {Ins1, Ins2, Mask});
+  auto Sel = MIRBuilder.buildInstr(AArch64::G_BSP, {VecTy}, {Mask, Ins2, Ins1});
 
   // Build an unmerge whose 0th elt is the original G_FCOPYSIGN destination. We
   // want this to eventually become an EXTRACT_SUBREG.
@@ -1800,4 +1800,15 @@ bool AArch64LegalizerInfo::legalizeFCopySign(MachineInstr &MI,
   MIRBuilder.buildUnmerge(DstRegs, Sel);
   MI.eraseFromParent();
   return true;
+}
+
+bool AArch64LegalizerInfo::legalizeExtractVectorElt(
+    MachineInstr &MI, MachineRegisterInfo &MRI, LegalizerHelper &Helper) const {
+  assert(MI.getOpcode() == TargetOpcode::G_EXTRACT_VECTOR_ELT);
+  auto VRegAndVal =
+      getIConstantVRegValWithLookThrough(MI.getOperand(2).getReg(), MRI);
+  if (VRegAndVal)
+    return true;
+  return Helper.lowerExtractInsertVectorElt(MI) !=
+         LegalizerHelper::LegalizeResult::UnableToLegalize;
 }

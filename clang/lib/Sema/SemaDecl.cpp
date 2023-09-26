@@ -8874,7 +8874,7 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
   }
 
   if (T->isRVVType())
-    checkRVVTypeSupport(T, NewVD->getLocation(), cast<ValueDecl>(CurContext));
+    checkRVVTypeSupport(T, NewVD->getLocation(), cast<Decl>(CurContext));
 }
 
 /// Perform semantic checking on a newly-created variable
@@ -11688,20 +11688,22 @@ static bool CheckMultiVersionFunction(Sema &S, FunctionDecl *NewFD,
   FunctionDecl *OldFD = OldDecl->getAsFunction();
 
   if (!OldFD->isMultiVersion() && MVKind == MultiVersionKind::None) {
-    // No target_version attributes mean default
-    if (!NewTVA) {
-      const auto *OldTVA = OldFD->getAttr<TargetVersionAttr>();
-      if (OldTVA) {
-        NewFD->addAttr(TargetVersionAttr::CreateImplicit(
-            S.Context, "default", NewFD->getSourceRange()));
-        NewFD->setIsMultiVersion();
-        OldFD->setIsMultiVersion();
-        OldDecl = OldFD;
-        Redeclaration = true;
-        return true;
-      }
+    if (NewTVA || !OldFD->getAttr<TargetVersionAttr>())
+      return false;
+    if (!NewFD->getType()->getAs<FunctionProtoType>()) {
+      // Multiversion declaration doesn't have prototype.
+      S.Diag(NewFD->getLocation(), diag::err_multiversion_noproto);
+      NewFD->setInvalidDecl();
+    } else {
+      // No "target_version" attribute is equivalent to "default" attribute.
+      NewFD->addAttr(TargetVersionAttr::CreateImplicit(
+          S.Context, "default", NewFD->getSourceRange()));
+      NewFD->setIsMultiVersion();
+      OldFD->setIsMultiVersion();
+      OldDecl = OldFD;
+      Redeclaration = true;
     }
-    return false;
+    return true;
   }
 
   // Multiversioned redeclarations aren't allowed to omit the attribute, except
@@ -11977,7 +11979,7 @@ bool Sema::CheckFunctionDeclaration(Scope *S, FunctionDecl *NewFD,
       // struct B { struct Y { ~Y(); }; using X = Y; };
       // template struct A<B>;
       if (NewFD->getFriendObjectKind() == Decl::FriendObjectKind::FOK_None ||
-          !Destructor->getThisType()->isDependentType()) {
+          !Destructor->getThisObjectType()->isDependentType()) {
         CXXRecordDecl *Record = Destructor->getParent();
         QualType ClassType = Context.getTypeDeclType(Record);
 
@@ -12401,10 +12403,7 @@ void Sema::ActOnHLSLTopLevelFunction(FunctionDecl *FD) {
     case llvm::Triple::Library:
       break;
     default:
-      // TODO: This should probably just be llvm_unreachable and we should
-      // reject triples with random ABIs and such when we build the target.
-      // For now, crash.
-      llvm::report_fatal_error("Unhandled environment in triple");
+      llvm_unreachable("Unhandled environment in triple");
     }
   }
 }
@@ -15365,6 +15364,10 @@ LambdaScopeInfo *Sema::RebuildLambdaScopeInfo(CXXMethodDecl *CallOperator) {
   LSI->CallOperator = CallOperator;
   LSI->Lambda = LambdaClass;
   LSI->ReturnType = CallOperator->getReturnType();
+  // This function in calls in situation where the context of the call operator
+  // is not entered, so we set AfterParameterList to false, so that
+  // `tryCaptureVariable` finds explicit captures in the appropriate context.
+  LSI->AfterParameterList = false;
   const LambdaCaptureDefault LCD = LambdaClass->getLambdaCaptureDefault();
 
   if (LCD == LCD_None)
@@ -18540,13 +18543,10 @@ TranslateIvarVisibility(tok::ObjCKeywordKind ivarVisibility) {
 
 /// ActOnIvar - Each ivar field of an objective-c class is passed into this
 /// in order to create an IvarDecl object for it.
-Decl *Sema::ActOnIvar(Scope *S,
-                                SourceLocation DeclStart,
-                                Declarator &D, Expr *BitfieldWidth,
-                                tok::ObjCKeywordKind Visibility) {
+Decl *Sema::ActOnIvar(Scope *S, SourceLocation DeclStart, Declarator &D,
+                      Expr *BitWidth, tok::ObjCKeywordKind Visibility) {
 
   IdentifierInfo *II = D.getIdentifier();
-  Expr *BitWidth = (Expr*)BitfieldWidth;
   SourceLocation Loc = DeclStart;
   if (II) Loc = D.getIdentifierLoc();
 
@@ -18609,9 +18609,8 @@ Decl *Sema::ActOnIvar(Scope *S,
   }
 
   // Construct the decl.
-  ObjCIvarDecl *NewID = ObjCIvarDecl::Create(Context, EnclosingContext,
-                                             DeclStart, Loc, II, T,
-                                             TInfo, ac, (Expr *)BitfieldWidth);
+  ObjCIvarDecl *NewID = ObjCIvarDecl::Create(
+      Context, EnclosingContext, DeclStart, Loc, II, T, TInfo, ac, BitWidth);
 
   if (II) {
     NamedDecl *PrevDecl = LookupSingleName(S, II, Loc, LookupMemberName,

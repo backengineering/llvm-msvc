@@ -932,21 +932,21 @@ protected:
 
 /// Look for a meaningful debug location on the instruction or it's
 /// operands.
-static Instruction *getDebugLocFromInstOrOperands(Instruction *I) {
+static DebugLoc getDebugLocFromInstOrOperands(Instruction *I) {
   if (!I)
-    return I;
+    return DebugLoc();
 
   DebugLoc Empty;
   if (I->getDebugLoc() != Empty)
-    return I;
+    return I->getDebugLoc();
 
   for (Use &Op : I->operands()) {
     if (Instruction *OpInst = dyn_cast<Instruction>(Op))
       if (OpInst->getDebugLoc() != Empty)
-        return OpInst;
+        return OpInst->getDebugLoc();
   }
 
-  return I;
+  return I->getDebugLoc();
 }
 
 /// Write a \p DebugMsg about vectorization to the debug output stream. If \p I
@@ -2444,7 +2444,8 @@ void InnerLoopVectorizer::vectorizeInterleaveGroup(
 
   for (unsigned Part = 0; Part < UF; Part++) {
     Value *AddrPart = State.get(Addr, VPIteration(Part, 0));
-    State.setDebugLocFromInst(AddrPart);
+    if (auto *I = dyn_cast<Instruction>(AddrPart))
+      State.setDebugLocFrom(I->getDebugLoc());
 
     // Notice current instruction could be any index. Need to adjust the address
     // to the member of index 0.
@@ -2465,7 +2466,7 @@ void InnerLoopVectorizer::vectorizeInterleaveGroup(
     AddrParts.push_back(AddrPart);
   }
 
-  State.setDebugLocFromInst(Instr);
+  State.setDebugLocFrom(Instr->getDebugLoc());
   Value *PoisonVec = PoisonValue::get(VecTy);
 
   auto CreateGroupMask = [this, &BlockInMask, &State, &InterleaveFactor](
@@ -2668,8 +2669,8 @@ void InnerLoopVectorizer::scalarizeInstruction(const Instruction *Instr,
 
   RepRecipe->setFlags(Cloned);
 
-  if (Instr->getDebugLoc())
-    State.setDebugLocFromInst(Instr);
+  if (auto DL = Instr->getDebugLoc())
+    State.setDebugLocFrom(DL);
 
   // Replace the operands of the cloned instructions with their scalar
   // equivalents in the new loop.
@@ -2985,7 +2986,8 @@ PHINode *InnerLoopVectorizer::createInductionResumeValue(
 
     // Compute the end value for the additional bypass (if applicable).
     if (AdditionalBypass.first) {
-      B.SetInsertPoint(&(*AdditionalBypass.first->getFirstInsertionPt()));
+      B.SetInsertPoint(AdditionalBypass.first,
+                       AdditionalBypass.first->getFirstInsertionPt());
       EndValueFromAdditionalBypass =
           emitTransformedIndex(B, AdditionalBypass.second, II.getStartValue(),
                                Step, II.getKind(), II.getInductionBinOp());
@@ -3580,7 +3582,8 @@ void InnerLoopVectorizer::fixVectorizedLoop(VPTransformState &State,
 
   // Fix LCSSA phis not already fixed earlier. Extracts may need to be generated
   // in the exit block, so update the builder.
-  State.Builder.SetInsertPoint(State.CFG.ExitBB->getFirstNonPHI());
+  State.Builder.SetInsertPoint(State.CFG.ExitBB,
+                               State.CFG.ExitBB->getFirstNonPHIIt());
   for (const auto &KV : Plan.getLiveOuts())
     KV.second->fixPhi(Plan, State);
 
@@ -3765,7 +3768,7 @@ void InnerLoopVectorizer::fixFixedOrderRecurrence(
   }
 
   // Fix the initial value of the original recurrence in the scalar loop.
-  Builder.SetInsertPoint(&*LoopScalarPreHeader->begin());
+  Builder.SetInsertPoint(LoopScalarPreHeader, LoopScalarPreHeader->begin());
   PHINode *Phi = cast<PHINode>(PhiR->getUnderlyingValue());
   auto *Start = Builder.CreatePHI(Phi->getType(), 2, "scalar.recur.init");
   auto *ScalarInit = PhiR->getStartValue()->getLiveInIRValue();
@@ -3789,7 +3792,8 @@ void InnerLoopVectorizer::fixReduction(VPReductionPHIRecipe *PhiR,
   RecurKind RK = RdxDesc.getRecurrenceKind();
   TrackingVH<Value> ReductionStartValue = RdxDesc.getRecurrenceStartValue();
   Instruction *LoopExitInst = RdxDesc.getLoopExitInstr();
-  State.setDebugLocFromInst(ReductionStartValue);
+  if (auto *I = dyn_cast<Instruction>(&*ReductionStartValue))
+    State.setDebugLocFrom(I->getDebugLoc());
 
   VPValue *LoopExitInstDef = PhiR->getBackedgeValue();
   // This is the vector-clone of the value that leaves the loop.
@@ -3799,9 +3803,10 @@ void InnerLoopVectorizer::fixReduction(VPReductionPHIRecipe *PhiR,
   // the PHIs and the values we are going to write.
   // This allows us to write both PHINodes and the extractelement
   // instructions.
-  Builder.SetInsertPoint(&*LoopMiddleBlock->getFirstInsertionPt());
+  Builder.SetInsertPoint(LoopMiddleBlock,
+                         LoopMiddleBlock->getFirstInsertionPt());
 
-  State.setDebugLocFromInst(LoopExitInst);
+  State.setDebugLocFrom(LoopExitInst->getDebugLoc());
 
   Type *PhiTy = OrigPhi->getType();
 
@@ -3818,16 +3823,14 @@ void InnerLoopVectorizer::fixReduction(VPReductionPHIRecipe *PhiR,
       SelectInst *Sel = nullptr;
       for (User *U : VecLoopExitInst->users()) {
         if (isa<SelectInst>(U)) {
-          assert(!Sel && "Reduction exit feeding two selects");
+          assert((!Sel || U == Sel) &&
+                 "Reduction exit feeding two different selects");
           Sel = cast<SelectInst>(U);
         } else
           assert(isa<PHINode>(U) && "Reduction exit must feed Phi's or select");
       }
       assert(Sel && "Reduction exit feeds no select");
       State.reset(LoopExitInstDef, Sel, Part);
-
-      if (isa<FPMathOperator>(Sel))
-        Sel->setFastMathFlags(RdxDesc.getFastMathFlags());
 
       // If the target can create a predicated operator for the reduction at no
       // extra cost in the loop (for example a predicated vadd), it can be
@@ -3864,7 +3867,8 @@ void InnerLoopVectorizer::fixReduction(VPReductionPHIRecipe *PhiR,
           RdxParts[Part] = Extnd;
         }
     }
-    Builder.SetInsertPoint(&*LoopMiddleBlock->getFirstInsertionPt());
+    Builder.SetInsertPoint(LoopMiddleBlock,
+                           LoopMiddleBlock->getFirstInsertionPt());
     for (unsigned Part = 0; Part < UF; ++Part) {
       RdxParts[Part] = Builder.CreateTrunc(RdxParts[Part], RdxVecTy);
       State.reset(LoopExitInstDef, RdxParts[Part], Part);
@@ -3882,7 +3886,7 @@ void InnerLoopVectorizer::fixReduction(VPReductionPHIRecipe *PhiR,
   // conditional branch, and (c) other passes may add new predecessors which
   // terminate on this line. This is the easiest way to ensure we don't
   // accidentally cause an extra step back into the loop while debugging.
-  State.setDebugLocFromInst(LoopMiddleBlock->getTerminator());
+  State.setDebugLocFrom(LoopMiddleBlock->getTerminator()->getDebugLoc());
   if (PhiR->isOrdered())
     ReducedPartRdx = State.get(LoopExitInstDef, UF - 1);
   else {
@@ -3906,7 +3910,7 @@ void InnerLoopVectorizer::fixReduction(VPReductionPHIRecipe *PhiR,
   // target reduction in the loop using a Reduction recipe.
   if (VF.isVector() && !PhiR->isInLoop()) {
     ReducedPartRdx =
-        createTargetReduction(Builder, TTI, RdxDesc, ReducedPartRdx, OrigPhi);
+        createTargetReduction(Builder, RdxDesc, ReducedPartRdx, OrigPhi);
     // If the reduction can be performed in a smaller type, we need to extend
     // the reduction to the wider type before we branch to the original loop.
     if (PhiTy != RdxDesc.getRecurrenceType())
@@ -3943,7 +3947,8 @@ void InnerLoopVectorizer::fixReduction(VPReductionPHIRecipe *PhiR,
   // inside the loop, create the final store here.
   if (StoreInst *SI = RdxDesc.IntermediateStore) {
     StoreInst *NewSI =
-        Builder.CreateStore(ReducedPartRdx, SI->getPointerOperand());
+        Builder.CreateAlignedStore(ReducedPartRdx, SI->getPointerOperand(),
+                                   SI->getAlign());
     propagateMetadata(NewSI, SI);
 
     // If the reduction value is used in other places,
@@ -7909,8 +7914,8 @@ EpilogueVectorizerEpilogueLoop::createEpilogueVectorizedLoopSkeleton(
   // Generate a resume induction for the vector epilogue and put it in the
   // vector epilogue preheader
   Type *IdxTy = Legal->getWidestInductionType();
-  PHINode *EPResumeVal = PHINode::Create(IdxTy, 2, "vec.epilog.resume.val",
-                                         LoopVectorPreHeader->getFirstNonPHI());
+  PHINode *EPResumeVal = PHINode::Create(IdxTy, 2, "vec.epilog.resume.val");
+  EPResumeVal->insertBefore(LoopVectorPreHeader->getFirstNonPHIIt());
   EPResumeVal->addIncoming(EPI.VectorTripCount, VecEpilogueIterationCountCheck);
   EPResumeVal->addIncoming(ConstantInt::get(IdxTy, 0),
                            EPI.MainLoopIterationCountCheck);
@@ -8811,10 +8816,8 @@ LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(VFRange &Range) {
   for (ElementCount VF : Range)
     IVUpdateMayOverflow |= !isIndvarOverflowCheckKnownFalse(&CM, VF);
 
-  Instruction *DLInst =
-      getDebugLocFromInstOrOperands(Legal->getPrimaryInduction());
-  addCanonicalIVRecipes(*Plan, Legal->getWidestInductionType(),
-                        DLInst ? DLInst->getDebugLoc() : DebugLoc(),
+  DebugLoc DL = getDebugLocFromInstOrOperands(Legal->getPrimaryInduction());
+  addCanonicalIVRecipes(*Plan, Legal->getWidestInductionType(), DL,
                         CM.getTailFoldingStyle(IVUpdateMayOverflow));
 
   // Proactively create header mask. Masks for other blocks are created on
@@ -9135,7 +9138,7 @@ void LoopVectorizationPlanner::adjustRecipesForReductions(
       }
 
       VPReductionRecipe *RedRecipe = new VPReductionRecipe(
-          RdxDesc, CurrentLinkI, PreviousLinkV, VecOp, CondOp, &TTI);
+          RdxDesc, CurrentLinkI, PreviousLinkV, VecOp, CondOp);
       // Append the recipe to the end of the VPBasicBlock because we need to
       // ensure that it comes after all of it's inputs, including CondOp.
       // Note that this transformation may leave over dead recipes (including
@@ -9156,12 +9159,19 @@ void LoopVectorizationPlanner::adjustRecipesForReductions(
       VPReductionPHIRecipe *PhiR = dyn_cast<VPReductionPHIRecipe>(&R);
       if (!PhiR || PhiR->isInLoop())
         continue;
+      const RecurrenceDescriptor &RdxDesc = PhiR->getRecurrenceDescriptor();
       VPValue *Cond =
           RecipeBuilder.createBlockInMask(OrigLoop->getHeader(), *Plan);
       VPValue *Red = PhiR->getBackedgeValue();
       assert(Red->getDefiningRecipe()->getParent() != LatchVPBB &&
              "reduction recipe must be defined before latch");
-      Builder.createNaryOp(Instruction::Select, {Cond, Red, PhiR});
+      FastMathFlags FMFs = RdxDesc.getFastMathFlags();
+      Type *PhiTy = PhiR->getOperand(0)->getLiveInIRValue()->getType();
+      auto *Select =
+          PhiTy->isFloatingPointTy()
+              ? new VPInstruction(Instruction::Select, {Cond, Red, PhiR}, FMFs)
+              : new VPInstruction(Instruction::Select, {Cond, Red, PhiR});
+      Select->insertBefore(&*Builder.getInsertPoint());
     }
   }
 
@@ -9359,7 +9369,7 @@ void VPReductionRecipe::execute(VPTransformState &State) {
       PrevInChain = NewRed;
     } else {
       PrevInChain = State.get(getChainOp(), Part);
-      NewRed = createTargetReduction(State.Builder, TTI, RdxDesc, NewVecOp);
+      NewRed = createTargetReduction(State.Builder, RdxDesc, NewVecOp);
     }
     if (RecurrenceDescriptor::isMinMaxRecurrenceKind(Kind)) {
       NextInChain = createMinMaxOp(State.Builder, RdxDesc.getRecurrenceKind(),
@@ -9466,7 +9476,8 @@ void VPWidenMemoryInstructionRecipe::execute(VPTransformState &State) {
     const DataLayout &DL =
         Builder.GetInsertBlock()->getModule()->getDataLayout();
     Type *IndexTy = State.VF.isScalable() && (isReverse() || Part > 0)
-                        ? DL.getIndexType(ScalarDataTy->getPointerTo())
+                        ? DL.getIndexType(PointerType::getUnqual(
+                              ScalarDataTy->getContext()))
                         : Builder.getInt32Ty();
     bool InBounds = false;
     if (auto *gep = dyn_cast<GetElementPtrInst>(Ptr->stripPointerCasts()))
@@ -9499,7 +9510,7 @@ void VPWidenMemoryInstructionRecipe::execute(VPTransformState &State) {
 
   // Handle Stores:
   if (SI) {
-    State.setDebugLocFromInst(SI);
+    State.setDebugLocFrom(SI->getDebugLoc());
 
     for (unsigned Part = 0; Part < State.UF; ++Part) {
       Instruction *NewSI = nullptr;
@@ -9532,7 +9543,7 @@ void VPWidenMemoryInstructionRecipe::execute(VPTransformState &State) {
 
   // Handle loads.
   assert(LI && "Must have a load instruction");
-  State.setDebugLocFromInst(LI);
+  State.setDebugLocFrom(LI->getDebugLoc());
   for (unsigned Part = 0; Part < State.UF; ++Part) {
     Value *NewLI;
     if (CreateGatherScatter) {

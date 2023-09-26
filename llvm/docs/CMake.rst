@@ -600,9 +600,15 @@ enabled sub-projects. Nearly all of these variable names begin with
   If enabled, the Z3 constraint solver is activated for the Clang static analyzer.
   A recent version of the z3 library needs to be available on the system.
 
-**LLVM_ENABLE_ZLIB**:BOOL
-  Enable building with zlib to support compression/uncompression in LLVM tools.
-  Defaults to ON.
+**LLVM_ENABLE_ZLIB**:STRING
+  Used to decide if LLVM tools should support compression/decompression with
+  zlib. Allowed values are ``OFF``, ``ON`` (default, enable if zlib is found),
+  and ``FORCE_ON`` (error if zlib is not found).
+
+**LLVM_ENABLE_ZSTD**:STRING
+  Used to decide if LLVM tools should support compression/decompression with
+  zstd. Allowed values are ``OFF``, ``ON`` (default, enable if zstd is found),
+  and ``FORCE_ON`` (error if zstd is not found).
 
 **LLVM_EXPERIMENTAL_TARGETS_TO_BUILD**:STRING
   Semicolon-separated list of experimental targets to build and linked into
@@ -770,12 +776,6 @@ enabled sub-projects. Nearly all of these variable names begin with
   Defines the set of compile flags used to enable UBSan. Only used if
   ``LLVM_USE_SANITIZER`` contains ``Undefined``. This can be used to override
   the default set of UBSan flags.
-
-**LLVM_USE_CRT_{target}**:STRING
-  On Windows, tells which version of the C runtime library (CRT) should be used.
-  For example, -DLLVM_USE_CRT_RELEASE=MT would statically link the CRT into the
-  LLVM tools and library. This is deprecated; use ``CMAKE_MSVC_RUNTIME_LIBRARY``
-  instead.
 
 **LLVM_USE_INTEL_JITEVENTS**:BOOL
   Enable building support for Intel JIT Events API. Defaults to OFF.

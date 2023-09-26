@@ -1909,6 +1909,15 @@ static PredefinedExpr::IdentKind getPredefinedExprKind(tok::TokenKind Kind) {
   }
 }
 
+/// getPredefinedExprDecl - Returns Decl of a given DeclContext that can be used
+/// to determine the value of a PredefinedExpr. This can be either a
+/// block, lambda, captured statement, function, otherwise a nullptr.
+static Decl *getPredefinedExprDecl(DeclContext *DC) {
+  while (DC && !isa<BlockDecl, CapturedDecl, FunctionDecl, ObjCMethodDecl>(DC))
+    DC = DC->getParent();
+  return cast_or_null<Decl>(DC);
+}
+
 /// getUDSuffixLoc - Create a SourceLocation for a ud-suffix, given the
 /// location of the token and the offset of the ud-suffix within it.
 static SourceLocation getUDSuffixLoc(Sema &S, SourceLocation TokLoc,
@@ -1989,7 +1998,7 @@ Sema::ExpandFunctionLocalPredefinedMacros(ArrayRef<Token> Toks) {
   // Note: Although function local macros are defined only inside functions,
   // we ensure a valid `CurrentDecl` even outside of a function. This allows
   // expansion of macros into empty string literals without additional checks.
-  Decl *CurrentDecl = getCurLocalScopeDecl();
+  Decl *CurrentDecl = getPredefinedExprDecl(CurContext);
   if (!CurrentDecl)
     CurrentDecl = Context.getTranslationUnitDecl();
 
@@ -3216,8 +3225,8 @@ Sema::PerformObjectMemberConversion(Expr *From,
     if (Method->isStatic())
       return From;
 
-    DestType = Method->getThisType();
-    DestRecordType = DestType->getPointeeType();
+    DestType = Method->getThisType().getNonReferenceType();
+    DestRecordType = Method->getThisObjectType();
 
     if (FromType->getAs<PointerType>()) {
       FromRecordType = FromType->getPointeeType();
@@ -3710,7 +3719,7 @@ static void ConvertUTF8ToWideString(unsigned CharByteWidth, StringRef Source,
 
 ExprResult Sema::BuildPredefinedExpr(SourceLocation Loc,
                                      PredefinedExpr::IdentKind IK) {
-  Decl *currentDecl = getCurLocalScopeDecl();
+  Decl *currentDecl = getPredefinedExprDecl(CurContext);
   if (!currentDecl) {
     Diag(Loc, diag::ext_predef_outside_function);
     currentDecl = Context.getTranslationUnitDecl();
@@ -19134,6 +19143,7 @@ MarkVarDeclODRUsed(ValueDecl *V, SourceLocation Loc, Sema &SemaRef,
                                : diag::note_cuda_host_var);
       }
     } else if (VarTarget == Sema::CVT_Device &&
+               !Var->hasAttr<CUDASharedAttr>() &&
                (UserTarget == Sema::CFT_Host ||
                 UserTarget == Sema::CFT_HostDevice)) {
       // Record a CUDA/HIP device side variable if it is ODR-used
