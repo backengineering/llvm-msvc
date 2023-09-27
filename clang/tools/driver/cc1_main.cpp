@@ -25,6 +25,7 @@
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/FrontendTool/Utils.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Config/llvm-config.h"
 #include "llvm/LinkAllPasses.h"
@@ -224,6 +225,15 @@ static int PrintSupportedExtensions(std::string TargetStr) {
 }
 
 int cc1_main(ArrayRef<const char *> Argv, const char *Argv0, void *MainAddr) {
+  clock_t StartTime = clock();
+  StringRef FileName = StringRef(Argv[Argv.size() - 1]);
+  auto ExitClock = llvm::make_scope_exit([&]() {
+    clock_t EndTime = clock();
+    auto Delta = (double)(EndTime - StartTime) / CLOCKS_PER_SEC;
+    llvm::outs() << "llvm-msvc(" << CLANG_LLVM_MSVC_VERSION << ") spent "
+                 << llvm::format("%.3f", Delta) << "s in " << FileName << "\n";
+  });
+  
   ensureSufficientStack();
 
   std::unique_ptr<CompilerInstance> Clang(new CompilerInstance());
