@@ -376,7 +376,6 @@ static int ExecuteCC1Tool(SmallVectorImpl<const char *> &ArgV,
 }
 
 int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
-  clock_t StartTime = clock();
   noteBottomOfStack();
   llvm::InitLLVM X(Argc, Argv);
   llvm::setBugReportMsg("PLEASE submit a bug report to " BUG_REPORT_URL
@@ -423,10 +422,6 @@ int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
   
   if (Args.size() >= 2 && StringRef(Args[1]).startswith("-cc1")) {
     int Ret = ExecuteCC1Tool(Args, ToolContext);
-    clock_t EndTime = clock();
-    auto Delta = (double)(EndTime - StartTime) / CLOCKS_PER_SEC;
-    llvm::outs() << "llvm-msvc(" << CLANG_LLVM_MSVC_VERSION << ") spent "
-                 << llvm::format("%.3f", Delta) << "s in " << FileName << "\n";
     return Ret;
   }
 
