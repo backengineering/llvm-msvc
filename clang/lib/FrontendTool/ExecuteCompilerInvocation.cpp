@@ -200,7 +200,7 @@ bool ExecuteCompilerInvocation(CompilerInstance *Clang) {
   if (Clang->getFrontendOpts().ShowHelp) {
     driver::getDriverOptTable().printHelp(
         llvm::outs(), "clang -cc1 [options] file...",
-        "LLVM 'Clang' Compiler: http://clang.llvm.org",
+        "llvm-msvc Compiler: https://github.com/backengineering/llvm-msvc",
         /*ShowHidden=*/false, /*ShowAllAliases=*/false,
         llvm::opt::Visibility(driver::options::CC1Option));
     return true;
