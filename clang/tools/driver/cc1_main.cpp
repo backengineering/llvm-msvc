@@ -11,7 +11,7 @@
 // demonstration and testing purposes.
 //
 //===----------------------------------------------------------------------===//
-
+#include "version.h"
 #include "clang/Basic/Stack.h"
 #include "clang/Basic/TargetOptions.h"
 #include "clang/CodeGen/ObjectFilePCHContainerOperations.h"
