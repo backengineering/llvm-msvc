@@ -1430,7 +1430,7 @@ unsigned SourceManager::getLineNumber(FileID FID, unsigned FilePos,
   }
 
   // If this is the first use of line information for this buffer, compute the
-  /// SourceLineCache for it on demand.
+  // SourceLineCache for it on demand.
   if (!Content->SourceLineCache) {
     std::optional<llvm::MemoryBufferRef> Buffer =
         Content->getBufferOrNone(Diag, getFileManager(), SourceLocation());
