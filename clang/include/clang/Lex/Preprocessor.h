@@ -132,7 +132,7 @@ class Preprocessor {
   llvm::unique_function<void(const clang::Token &)> OnToken;
   std::shared_ptr<PreprocessorOptions> PPOpts;
   DiagnosticsEngine        *Diags;
-  const LangOptions &LangOpts;
+  LangOptions &LangOpts;
   const TargetInfo *Target = nullptr;
   const TargetInfo *AuxTarget = nullptr;
   FileManager       &FileMgr;
