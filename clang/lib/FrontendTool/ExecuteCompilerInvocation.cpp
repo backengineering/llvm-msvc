@@ -223,7 +223,7 @@ bool ExecuteCompilerInvocation(CompilerInstance *Clang) {
   if (!Clang->getFrontendOpts().LLVMArgs.empty()) {
     unsigned NumArgs = Clang->getFrontendOpts().LLVMArgs.size();
     auto Args = std::make_unique<const char*[]>(NumArgs + 2);
-    Args[0] = "clang (LLVM option parsing)";
+    Args[0] = "llvm-msvc (LLVM option parsing)";
     for (unsigned i = 0; i != NumArgs; ++i)
       Args[i + 1] = Clang->getFrontendOpts().LLVMArgs[i].c_str();
     Args[NumArgs + 1] = nullptr;
