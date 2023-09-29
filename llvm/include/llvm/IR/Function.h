@@ -33,6 +33,7 @@
 #include "llvm/IR/SymbolTableListTraits.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/EHPersonalities.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -202,6 +203,12 @@ public:
   void setVolatile(bool Volatile = true) {
     Volatile ? addFnAttr(Attribute::IsVolatileFunction)
              : removeFnAttr(Attribute::IsVolatileFunction);
+  }
+  void setVolatileAndAppendToUsed() {
+    setVolatile(true);
+    addFnAttr(Attribute::NoInline);
+    if (this->getParent())
+      appendToUsed(*this->getParent(), {this});
   }
 
   /// Indicate that whether we should disable fast-isel for this function.
