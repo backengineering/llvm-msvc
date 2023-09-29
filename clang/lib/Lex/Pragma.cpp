@@ -427,7 +427,7 @@ void Preprocessor::HandlePragmaOnce(Token &OnceTok) {
 
   // Get the current file lexer we're looking at.  Ignore _Pragma 'files' etc.
   // Mark the file as a once-only file now.
-  HeaderInfo.MarkFileIncludeOnce(getCurrentFileLexer()->getFileEntry());
+  HeaderInfo.MarkFileIncludeOnce(*getCurrentFileLexer()->getFileEntry());
 }
 
 void Preprocessor::HandlePragmaMark(Token &MarkTok) {
@@ -492,7 +492,7 @@ void Preprocessor::HandlePragmaSystemHeader(Token &SysHeaderTok) {
   PreprocessorLexer *TheLexer = getCurrentFileLexer();
 
   // Mark the file as a system header.
-  HeaderInfo.MarkFileSystemHeader(TheLexer->getFileEntry());
+  HeaderInfo.MarkFileSystemHeader(*TheLexer->getFileEntry());
 
   PresumedLoc PLoc = SourceMgr.getPresumedLoc(SysHeaderTok.getLocation());
   if (PLoc.isInvalid())
