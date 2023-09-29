@@ -39,6 +39,30 @@ std::string llvm::demangleGetFunctionName(std::string_view MangledName) {
           DemangledStr.substr(EndIndex + 1, StartIndex - EndIndex - 1);
     }
   }
+
+  // Handle ctor/dtor
+  {
+    size_t SplitPos = DemangledStr.find("::");
+    if (SplitPos != std::string::npos) {
+      std::string Part1 = DemangledStr.substr(0, SplitPos);
+      std::string Part2 = DemangledStr.substr(SplitPos + 2);
+      bool IsCtorOrDtor = false;
+      if (Part1 == Part2) {
+        // ctor
+        IsCtorOrDtor = true;
+      } else if ("~" + Part1 == Part2) {
+        // dtor
+        IsCtorOrDtor = true;
+      }
+
+      if (IsCtorOrDtor) {
+        SplitPos = DemangledStr.rfind("<");
+        if (SplitPos != std::string::npos)
+          DemangledStr = DemangledStr.substr(0, SplitPos);
+      }
+    }
+  }
+
   return DemangledStr;
 }
 
