@@ -2196,6 +2196,7 @@ static void handleNakedAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
 static void handleVolatileAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   D->addAttr(::new (S.Context) VolatileAttr(S.Context, AL));
+  D->addAttr(::new (S.Context) UsedAttr(S.Context, AL));
 }
 
 static void handleNoReturnAttr(Sema &S, Decl *D, const ParsedAttr &Attrs) {
