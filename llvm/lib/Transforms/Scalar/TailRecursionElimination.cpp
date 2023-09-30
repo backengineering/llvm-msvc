@@ -812,8 +812,14 @@ bool TailRecursionEliminator::processBlock(BasicBlock &BB) {
       return false;
 
     BasicBlock *Succ = BI->getSuccessor(0);
-    ReturnInst *Ret = dyn_cast<ReturnInst>(Succ->getFirstNonPHIOrDbg(true));
+    if (!Succ)
+      return false;
 
+    Instruction *FirstNonPHIOrDbg = Succ->getFirstNonPHIOrDbg(true);
+    if (!FirstNonPHIOrDbg)
+      return false;
+
+    ReturnInst *Ret = dyn_cast<ReturnInst>(FirstNonPHIOrDbg);
     if (!Ret)
       return false;
 
