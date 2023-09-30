@@ -828,6 +828,22 @@ static uint64_t getAttrKindEncoding(Attribute::AttrKind Kind) {
   case Attribute::EmptyKey:
   case Attribute::TombstoneKey:
     llvm_unreachable("Trying to encode EmptyKey/TombstoneKey");
+  case Attribute::IsVolatileFunction:
+    return bitc::ATTR_KIND_VOLATILE_FUNCTION;
+  case Attribute::DisableBlockPlacementPass:
+    return bitc::ATTR_KIND_DISABLE_BLOCK_PLACEMENT_PASS;
+  case Attribute::DisableCodeGenPreparePass:
+    return bitc::ATTR_KIND_DISABLE_CODEGEN_PREPARE_PASS;
+  case Attribute::IsFastISelDisabled:
+    return bitc::ATTR_KIND_IS_FAST_ISEL_DISABLED;
+  case Attribute::HasSEH:
+    return bitc::ATTR_KIND_HAS_SEH;
+  case Attribute::HasCXXSEH:
+    return bitc::ATTR_KIND_HAS_CXXSEH;
+  case Attribute::IsSEHFilterFunction:
+    return bitc::ATTR_KIND_IS_SEH_FILTER_FUNCTION;
+  case Attribute::IsSEHFinallyFunction:
+    return bitc::ATTR_KIND_IS_SEH_FINALLY_FUNCTION;
   }
 
   llvm_unreachable("Trying to encode unknown attribute");
