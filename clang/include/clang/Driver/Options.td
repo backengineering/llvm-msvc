@@ -7982,6 +7982,7 @@ def : CLFlag<"Qgather-">, Alias<mno_gather>,
       HelpText<"Disable generation of gather instructions in auto-vectorization(x86 only)">;
 def : CLFlag<"Qscatter-">, Alias<mno_scatter>,
       HelpText<"Disable generation of scatter instructions in auto-vectorization(x86 only)">;
+def _SLASH_GL : CLFlag<"GL">, HelpText<"Whole Program Optimization">, Alias<flto_EQ>, AliasArgs<["full"]>;
 
 // Non-aliases:
 
@@ -8202,7 +8203,6 @@ def _SLASH_G2 : CLFlag<"G2">;
 def _SLASH_Ge : CLFlag<"Ge">;
 def _SLASH_Gh : CLFlag<"Gh">;
 def _SLASH_GH : CLFlag<"GH">;
-def _SLASH_GL : CLFlag<"GL">;
 def _SLASH_GL_ : CLFlag<"GL-">;
 def _SLASH_Gm : CLFlag<"Gm">;
 def _SLASH_Gm_ : CLFlag<"Gm-">;
