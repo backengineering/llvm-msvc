@@ -56,7 +56,7 @@ struct Config {
   std::optional<CodeModel::Model> CodeModel;
   CodeGenOptLevel CGOptLevel = CodeGenOptLevel::Default;
   CodeGenFileType CGFileType = CodeGenFileType::ObjectFile;
-  unsigned OptLevel = 2;
+  unsigned OptLevel = 0;
   bool VerifyEach = false;
   bool DisableVerify = false;
 
