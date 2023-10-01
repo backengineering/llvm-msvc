@@ -236,6 +236,7 @@ add_llvm_component_library(LLVMSupport
   SystemUtils.cpp
   TarWriter.cpp
   ThreadPool.cpp
+  tinyxml2.cpp
   TimeProfiler.cpp
   Timer.cpp
   ToolOutputFile.cpp
