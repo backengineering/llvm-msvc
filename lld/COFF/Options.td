@@ -91,6 +91,7 @@ def pdbstripped : P<"pdbstripped", "Stripped PDB file path">;
 def pdbstream : Joined<["/", "-", "/?", "-?"], "pdbstream:">,
     MetaVarName<"<name>=<file>">,
     HelpText<"Embed the contents of <file> in the PDB as named stream <name>">;
+def fullpdbpath : F<"fullpdbpath">, HelpText<"Output pdb full path">;
 def section : P<"section", "Specify section attributes">;
 def stack   : P<"stack", "Size of the stack">;
 def stub    : P<"stub", "Specify DOS stub file">;
