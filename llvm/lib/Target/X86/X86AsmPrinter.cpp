@@ -939,8 +939,9 @@ void X86AsmPrinter::emitEndOfAsmFile(Module &M) {
           (TT.getArch() == Triple::x86) ? "__fltused" : "_fltused";
       MCSymbol *S = MMI->getContext().getOrCreateSymbol(SymbolName);
       OutStreamer->emitSymbolAttribute(S, MCSA_Global);
-      OutStreamer->emitAssignment(S,
-                                  MCConstantExpr::create(0, MMI->getContext()));
+      if (M.getModuleFlag("ms-kernel"))
+        OutStreamer->emitAssignment(
+            S, MCConstantExpr::create(0, MMI->getContext()));
       return;
     }
   } else if (TT.isOSBinFormatELF()) {
