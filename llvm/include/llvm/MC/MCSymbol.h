@@ -341,7 +341,8 @@ public:
 
   /// Return the size of a 'common' symbol.
   uint64_t getCommonSize() const {
-    assert(isCommon() && "Not a 'common' symbol!");
+    if (!isCommon())
+      return 0;
     return CommonSize;
   }
 
