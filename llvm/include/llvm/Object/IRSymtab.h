@@ -212,12 +212,14 @@ struct Symbol {
   bool isExecutable() const { return (Flags >> S::FB_executable) & 1; }
 
   uint64_t getCommonSize() const {
-    assert(isCommon());
+    if (!isCommon())
+      return 0;
     return CommonSize;
   }
 
   uint32_t getCommonAlignment() const {
-    assert(isCommon());
+    if (!isCommon())
+      return 0;
     return CommonAlign;
   }
 
