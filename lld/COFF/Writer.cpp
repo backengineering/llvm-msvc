@@ -340,6 +340,10 @@ void OutputSection::setPermissions(uint32_t c) {
   header.Characteristics |= c;
 }
 
+void OutputSection::appendPermissions(uint32_t c) {
+  header.Characteristics |= c;
+}
+
 void OutputSection::merge(OutputSection *other) {
   chunks.insert(chunks.end(), other->chunks.begin(), other->chunks.end());
   other->chunks.clear();
