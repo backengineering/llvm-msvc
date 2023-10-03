@@ -45,6 +45,7 @@ public:
   void insertChunkAtStart(Chunk *c);
   void merge(OutputSection *other);
   void setPermissions(uint32_t c);
+  void appendPermissions(uint32_t c);
   uint64_t getRVA() const { return header.VirtualAddress; }
   uint64_t getFileOff() const { return header.PointerToRawData; }
   void writeHeaderTo(uint8_t *buf, bool isDebug);
