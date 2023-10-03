@@ -172,6 +172,9 @@ public:
   // like stack guard, safeseh, /guard:cf, or other things.
   uint32_t feat00Flags = 0;
 
+  // True if this object file is compiled with /kernel
+  bool doesKernelDriver() { return feat00Flags & 0x40000000; }
+
   // True if this object file is compatible with SEH.  COFF-specific and
   // x86-only. COFF spec 5.10.1. The .sxdata section.
   bool hasSafeSEH() { return feat00Flags & 0x1; }
