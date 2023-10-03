@@ -1707,9 +1707,17 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   config->driverWdm = args.hasArg(OPT_driver_wdm) ||
                       args.hasArg(OPT_driver_uponly_wdm) ||
                       args.hasArg(OPT_driver_wdm_uponly);
-  config->driver =
+  config->driver |=
       config->driverUponly || config->driverWdm || args.hasArg(OPT_driver);
-
+          
+  // Check if any ObjFile instance has kernel enabled
+  for (ObjFile *file : ctx.objFileInstances) {
+    if (file->doesKernelDriver()) {
+      config->driver = true;
+      break;
+    }
+  }
+          
   // Handle /pdb
   bool shouldCreatePDB =
       (debug == DebugKind::Full || debug == DebugKind::GHash ||
