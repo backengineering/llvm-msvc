@@ -304,7 +304,6 @@ private:
   OutputSection *idataSec;
   OutputSection *edataSec;
   OutputSection *didatSec;
-  OutputSection *INITSec;
   OutputSection *rsrcSec;
   OutputSection *relocSec;
   OutputSection *ctorsSec;
@@ -941,8 +940,6 @@ void Writer::createSections() {
   idataSec = createSection(".idata", data | r);
   edataSec = createSection(".edata", data | r);
   didatSec = createSection(".didat", data | r);
-  if (ctx.config.driver)
-    INITSec = createSection("INIT", code | discardable | x | r);
   rsrcSec = createSection(".rsrc", data | r);
   relocSec = createSection(".reloc", data | discardable | r);
   ctorsSec = createSection(".ctors", data | r | w);
