@@ -837,12 +837,12 @@ void Writer::addSyntheticIdata() {
 
   // The loader assumes a specific order of data.
   // Add each type in the correct order.
-  add(".idata$2", idata.dirs);
-  add(".idata$4", idata.lookups);
+  add(ctx.config.driver ? "INIT$2" : ".idata$2", idata.dirs);
+  add(ctx.config.driver ? "INIT$4" : ".idata$4", idata.lookups);
   add(".idata$5", idata.addresses);
   if (!idata.hints.empty())
-    add(".idata$6", idata.hints);
-  add(".idata$7", idata.dllNames);
+    add(ctx.config.driver ? "INIT$6" : ".idata$6", idata.hints);
+  add(ctx.config.driver ? "INIT$7" : ".idata$7", idata.dllNames);
 }
 
 // Locate the first Chunk and size of the import directory list and the
@@ -850,7 +850,8 @@ void Writer::addSyntheticIdata() {
 void Writer::locateImportTables() {
   uint32_t rdata = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ;
 
-  if (PartialSection *importDirs = findPartialSection(".idata$2", rdata)) {
+  if (PartialSection *importDirs = findPartialSection(
+          ctx.config.driver ? "INIT$2" : ".idata$2", rdata)) {
     if (!importDirs->chunks.empty())
       importTableStart = importDirs->chunks.front();
     for (Chunk *c : importDirs->chunks)
