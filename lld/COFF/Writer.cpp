@@ -828,33 +828,45 @@ bool Writer::fixGnuImportChunks() {
 // terminator in .idata$2.
 void Writer::addSyntheticIdata() {
   uint32_t rdata = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ;
+  uint32_t INIT2 = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ |
+                   IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_DISCARDABLE |
+                   IMAGE_SCN_MEM_NOT_PAGED;
+  uint32_t selectOutChars = ctx.config.driver ? INIT2 : rdata;
+
   idata.create(ctx);
 
   // Add the .idata content in the right section groups, to allow
   // chunks from other linked in object files to be grouped together.
   // See Microsoft PE/COFF spec 5.4 for details.
-  auto add = [&](StringRef n, std::vector<Chunk *> &v) {
-    PartialSection *pSec = createPartialSection(n, rdata);
+  auto add = [&](StringRef n, std::vector<Chunk *> &v, uint32_t outChars) {
+    PartialSection *pSec = createPartialSection(n, outChars);
     pSec->chunks.insert(pSec->chunks.end(), v.begin(), v.end());
   };
 
   // The loader assumes a specific order of data.
   // Add each type in the correct order.
-  add(ctx.config.driver ? "INIT$2" : ".idata$2", idata.dirs);
-  add(ctx.config.driver ? "INIT$4" : ".idata$4", idata.lookups);
-  add(".idata$5", idata.addresses);
+  add(ctx.config.driver ? "INIT2$2" : ".idata$2", idata.dirs, selectOutChars);
+  add(ctx.config.driver ? "INIT2$4" : ".idata$4", idata.lookups,
+      selectOutChars);
+  add(".idata$5", idata.addresses, rdata);
   if (!idata.hints.empty())
-    add(ctx.config.driver ? "INIT$6" : ".idata$6", idata.hints);
-  add(ctx.config.driver ? "INIT$7" : ".idata$7", idata.dllNames);
+    add(ctx.config.driver ? "INIT2$6" : ".idata$6", idata.hints,
+        selectOutChars);
+  add(ctx.config.driver ? "INIT2$7" : ".idata$7", idata.dllNames,
+      selectOutChars);
 }
 
 // Locate the first Chunk and size of the import directory list and the
 // IAT.
 void Writer::locateImportTables() {
   uint32_t rdata = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ;
+  uint32_t INIT2 = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ |
+                   IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_DISCARDABLE |
+                   IMAGE_SCN_MEM_NOT_PAGED;
+  uint32_t selectOutChars = ctx.config.driver ? INIT2 : rdata;
 
   if (PartialSection *importDirs = findPartialSection(
-          ctx.config.driver ? "INIT$2" : ".idata$2", rdata)) {
+          ctx.config.driver ? "INIT2$2" : ".idata$2", selectOutChars)) {
     if (!importDirs->chunks.empty())
       importTableStart = importDirs->chunks.front();
     for (Chunk *c : importDirs->chunks)
