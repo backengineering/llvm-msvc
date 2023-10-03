@@ -2014,8 +2014,12 @@ void Writer::setSectionPermissions() {
     StringRef name = p.first;
     uint32_t perm = p.second;
     for (OutputSection *sec : ctx.outputSections)
-      if (sec->name == name)
-        sec->setPermissions(perm);
+      if (sec->name == name) {
+        if (ctx.config.driver && name == "INIT")
+          sec->appendPermissions(perm);
+        else
+          sec->setPermissions(perm);
+      }
   }
 }
 
