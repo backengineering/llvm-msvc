@@ -1711,11 +1711,13 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
       config->driverUponly || config->driverWdm || args.hasArg(OPT_driver);
           
   // Check if any ObjFile instance has kernel enabled
-  for (ObjFile *file : ctx.objFileInstances) {
-    if (file->doesKernelDriver()) {
-      config->driver = true;
-      break;
-    }
+  if (!config->driver) {
+    for (ObjFile *file : ctx.objFileInstances) {
+      if (file->doesKernelDriver()) {
+        config->driver = true;
+        break;
+      }
+    }  
   }
           
   // Handle /pdb
