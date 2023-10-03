@@ -1978,7 +1978,9 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   parseMerge(".voltbl=.rdata");
   parseMerge("newworld=.rdata");
   parseMerge(".bss=.data");
-
+  if (config->driver)
+    parseMerge("INIT2=INIT");
+          
   if (config->mingw) {
     parseMerge(".ctors=.rdata");
     parseMerge(".dtors=.rdata");
