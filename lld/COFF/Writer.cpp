@@ -1052,7 +1052,11 @@ void Writer::createSections() {
   };
   llvm::stable_sort(ctx.outputSections,
                     [&](const OutputSection *s, const OutputSection *t) {
-                      return sectionOrder(s) < sectionOrder(t);
+                        if (s->name == "INIT2" && t->name == ".reloc")
+                          return true;
+                        if (s->name == "INIT2" && t->name == ".rsrc")
+                          return true;
+                        return sectionOrder(s) < sectionOrder(t);
                     });
 }
 
