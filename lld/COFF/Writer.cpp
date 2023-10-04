@@ -1032,6 +1032,8 @@ void Writer::createSections() {
 
   // Finally, move some output sections to the end.
   auto sectionOrder = [&](const OutputSection *s) {
+    if (ctx.config.driver && s->name == "INIT2")
+      return 1;
     // Move DISCARDABLE (or non-memory-mapped) sections to the end of file
     // because the loader cannot handle holes. Stripping can remove other
     // discardable ones than .reloc, which is first of them (created early).
@@ -1040,22 +1042,18 @@ void Writer::createSections() {
       // discardable sections. Stripping only removes the sections named
       // .debug_* - thus try to avoid leaving holes after stripping.
       if (s->name.starts_with(".debug_"))
-        return 3;
-      return 2;
+        return 4;
+      return 3;
     }
     // .rsrc should come at the end of the non-discardable sections because its
     // size may change by the Win32 UpdateResources() function, causing
     // subsequent sections to move (see https://crbug.com/827082).
     if (s == rsrcSec)
-      return 1;
+      return 2;
     return 0;
   };
   llvm::stable_sort(ctx.outputSections,
                     [&](const OutputSection *s, const OutputSection *t) {
-                        if (s->name == "INIT2" && t->name == ".reloc")
-                          return true;
-                        if (s->name == "INIT2" && t->name == ".rsrc")
-                          return true;
                         return sectionOrder(s) < sectionOrder(t);
                     });
 }
