@@ -4011,6 +4011,38 @@ InvokeInst::InvokeInst(FunctionType *Ty, Value *Func, BasicBlock *IfNormal,
 }
 
 //===----------------------------------------------------------------------===//
+//                          CallOrInvokeInst Class
+//===----------------------------------------------------------------------===//
+class CallOrInvokeInst : public Instruction {
+public:
+  // Methods for support type inquiry through isa, cast, and dyn_cast:
+  static bool classof(const Instruction *I) {
+    return ((I->getOpcode() == Instruction::Invoke) ||
+            (I->getOpcode() == Instruction::Call));
+  }
+  static bool classof(const Value *V) {
+    return isa<Instruction>(V) && classof(cast<Instruction>(V));
+  }
+
+  Function *getCalledFunction() const {
+    if (auto *CallIst = dyn_cast<CallInst>(this)) {
+      return CallIst->getCalledFunction();
+    } else if (auto *InvokeIst = dyn_cast<InvokeInst>(this)) {
+      return InvokeIst->getCalledFunction();
+    }
+    return nullptr;
+  }
+
+  void setCalledOperand(Function *Fn) {
+    if (auto *CallIst = dyn_cast<CallInst>(this)) {
+      CallIst->setCalledFunction(Fn);
+    } else if (auto *InvokeIst = dyn_cast<InvokeInst>(this)) {
+      InvokeIst->setCalledFunction(Fn);
+    }
+  }
+};
+
+//===----------------------------------------------------------------------===//
 //                              CallBrInst Class
 //===----------------------------------------------------------------------===//
 
