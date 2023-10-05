@@ -4033,7 +4033,7 @@ public:
     return nullptr;
   }
 
-  void setCalledOperand(Function *Fn) {
+  void setCalledFunction(Function *Fn) {
     if (auto *CallIst = dyn_cast<CallInst>(this)) {
       CallIst->setCalledFunction(Fn);
     } else if (auto *InvokeIst = dyn_cast<InvokeInst>(this)) {
