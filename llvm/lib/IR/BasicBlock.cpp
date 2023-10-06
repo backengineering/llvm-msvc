@@ -96,8 +96,8 @@ bool BasicBlock::hasPHINode() {
 }
 
 // Transform BlockA->BlockB to BlockA->BlockStub->BlockB
-BasicBlock *BasicBlock::createStubBlock(BasicBlock *BlockA,
-                                        BasicBlock *BlockB) {
+BasicBlock *BasicBlock::createStubBlock(BasicBlock *BlockB) {
+  BasicBlock *BlockA = this;
   BasicBlock *NewBlock = BasicBlock::Create(BlockA->getContext(), "StubBlock",
                                             BlockA->getParent(), BlockB);
   IRBuilder<> IRB(NewBlock);
