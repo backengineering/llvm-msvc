@@ -95,6 +95,18 @@ bool BasicBlock::hasPHINode() {
   return false;
 }
 
+// Transform BlockA->BlockB to BlockA->BlockStub->BlockB
+BasicBlock *BasicBlock::createStubBlock(BasicBlock *BlockA,
+                                        BasicBlock *BlockB) {
+  BasicBlock *NewBlock = BasicBlock::Create(BlockA->getContext(), "StubBlock",
+                                            BlockA->getParent(), BlockB);
+  IRBuilder<> IRB(NewBlock);
+  IRB.CreateBr(BlockB);
+  BlockA->getTerminator()->replaceSuccessorWith(BlockB, NewBlock);
+  BlockB->replacePhiUsesWith(BlockA, NewBlock);
+  return NewBlock;
+}
+
 BasicBlock::~BasicBlock() {
   validateInstrOrdering();
 
