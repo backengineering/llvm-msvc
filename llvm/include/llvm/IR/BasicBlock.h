@@ -127,7 +127,7 @@ public:
   bool hasPHINode();
 
   // Transform BlockA->BlockB to BlockA->BlockStub->BlockB
-  BasicBlock *createStubBlock(BasicBlock *BlockA, BasicBlock *BlockB);
+  BasicBlock *createStubBlock(BasicBlock *BlockB);
 
   /// Get the context in which this basic block lives.
   LLVMContext &getContext() const;
