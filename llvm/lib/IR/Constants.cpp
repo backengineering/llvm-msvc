@@ -3130,10 +3130,8 @@ bool ConstantDataSequential::isCString() const {
 
 bool ConstantDataSequential::isUnicodeString() const {
   Type *CDSType = this->getElementType();
-  Type *GVType = IntegerType::getInt16Ty(this->getContext());
-  if (CDSType != GVType) {
+  if (CDSType != IntegerType::getInt16Ty(this->getContext()))
     return false;
-  }
 
   StringRef RawDataValues = this->getRawDataValues();
   unsigned int NumElements = this->getNumElements();
