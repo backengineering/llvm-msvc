@@ -644,6 +644,10 @@ public:
   /// and does not contains any other null bytes.
   bool isCString() const;
 
+  /// This method returns true if the array is unicode string, ends with a null
+  /// byte,
+  bool isUnicodeString() const;
+
   /// If this array is isString(), then this method returns the array as a
   /// StringRef. Otherwise, it asserts out.
   StringRef getAsString() const {
