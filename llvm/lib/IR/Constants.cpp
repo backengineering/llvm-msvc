@@ -3128,6 +3128,29 @@ bool ConstantDataSequential::isCString() const {
   return !Str.drop_back().contains(0);
 }
 
+bool ConstantDataSequential::isUnicodeString() const {
+  Type *CDSType = this->getElementType();
+  Type *GVType = IntegerType::getInt16Ty(this->getContext());
+  if (CDSType != GVType) {
+    return false;
+  }
+
+  StringRef RawDataValues = this->getRawDataValues();
+  unsigned int NumElements = this->getNumElements();
+  size_t Length = NumElements * sizeof(unsigned short);
+
+  if (RawDataValues[Length - 1] == 0 &&
+      RawDataValues[Length - sizeof(unsigned short)] == 0) {
+    for (unsigned int i = 0; i < Length - sizeof(unsigned short) - 1; ++i)
+      if (RawDataValues[i] == 0 && RawDataValues[i + 1] == 0)
+        return false;
+
+    return true;
+  }
+
+  return false;
+}
+
 bool ConstantDataVector::isSplatData() const {
   const char *Base = getRawDataValues().data();
 
