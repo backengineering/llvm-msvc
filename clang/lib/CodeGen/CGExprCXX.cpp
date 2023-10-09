@@ -215,7 +215,7 @@ RValue CodeGenFunction::EmitCXXMemberOrOperatorMemberCallExpr(
 
   // Compute the object pointer.
   bool CanUseVirtualCall = MD->isVirtual() && !HasQualifier;
-  if (CanUseVirtualCall) {
+  if (CanUseVirtualCall && Base->isImplicitCXXThis()) {
     // [MSVC Compatibility]
     if (CurFuncDecl && (CurFuncDecl->getKind() == Decl::CXXConstructor) &&
         (MD->getParent() && MD->getParent()->getKind() == Decl::CXXRecord)) {
