@@ -3993,6 +3993,7 @@ void X86FrameLowering::adjustFrameForMsvcCxxEh(MachineFunction &MF) const {
         unsigned Align = MFI.getObjectAlign(FrameIndex).value();
         MinFixedObjOffset -= std::abs(MinFixedObjOffset) % Align;
         MinFixedObjOffset -= MFI.getObjectSize(FrameIndex);
+        MinFixedObjOffset -= std::abs(MinFixedObjOffset) % Align;
         MFI.setObjectOffset(FrameIndex, MinFixedObjOffset);
       }
     }
