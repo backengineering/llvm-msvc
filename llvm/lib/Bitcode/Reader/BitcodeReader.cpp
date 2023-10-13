@@ -2072,6 +2072,8 @@ static Attribute::AttrKind getAttrFromCode(uint64_t Code) {
     return Attribute::IsSEHFilterFunction;
   case bitc::ATTR_KIND_IS_SEH_FINALLY_FUNCTION:
     return Attribute::IsSEHFinallyFunction;
+  case bitc::ATTR_KIND_OPTIMIZE_FOR_DEBUGGING:
+    return Attribute::OptimizeForDebugging;
   }
 }
 

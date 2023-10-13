@@ -844,6 +844,8 @@ static uint64_t getAttrKindEncoding(Attribute::AttrKind Kind) {
     return bitc::ATTR_KIND_IS_SEH_FILTER_FUNCTION;
   case Attribute::IsSEHFinallyFunction:
     return bitc::ATTR_KIND_IS_SEH_FINALLY_FUNCTION;
+  case Attribute::OptimizeForDebugging:
+    return bitc::ATTR_KIND_OPTIMIZE_FOR_DEBUGGING;
   }
 
   llvm_unreachable("Trying to encode unknown attribute");
