@@ -3135,11 +3135,14 @@ bool ConstantDataSequential::isUnicodeString() const {
 
   StringRef RawDataValues = this->getRawDataValues();
   unsigned int NumElements = this->getNumElements();
+  if (NumElements < sizeof(unsigned short))
+    return false;
+
   size_t Length = NumElements * sizeof(unsigned short);
 
   if (RawDataValues[Length - 1] == 0 &&
       RawDataValues[Length - sizeof(unsigned short)] == 0) {
-    for (unsigned int i = 0; i < Length - sizeof(unsigned short) - 1; ++i)
+    for (size_t i = 0; i < Length - sizeof(unsigned short) - 1; ++i)
       if (RawDataValues[i] == 0 && RawDataValues[i + 1] == 0)
         return false;
 
