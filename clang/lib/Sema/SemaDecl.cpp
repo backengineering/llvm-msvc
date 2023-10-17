@@ -14398,8 +14398,10 @@ void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
         Diag(Notes[I].first, Notes[I].second);
     } else if (GlobalStorage && var->hasAttr<ConstInitAttr>()) {
       auto *Attr = var->getAttr<ConstInitAttr>();
+#ifndef _WIN32
       Diag(var->getLocation(), diag::err_require_constant_init_failed)
           << Init->getSourceRange();
+#endif
       Diag(Attr->getLocation(), diag::note_declared_required_constant_init_here)
           << Attr->getRange() << Attr->isConstinit();
       for (auto &it : Notes)
