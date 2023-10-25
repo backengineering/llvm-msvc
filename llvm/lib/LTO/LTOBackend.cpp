@@ -187,6 +187,9 @@ static void RegisterPassPlugins(ArrayRef<std::string> PassPlugins,
 #define HANDLE_EXTENSION(Ext)                                                  \
   get##Ext##PluginInfo().RegisterPassBuilderCallbacks(PB);
 #include "llvm/Support/Extension.def"
+  for (auto PassCallback : ListRegisterPassBuilderCallbacks) {
+    PassCallback(PB);
+  }
 
   // Load requested pass plugins and let them register pass builder callbacks
   for (auto &PluginFN : PassPlugins) {

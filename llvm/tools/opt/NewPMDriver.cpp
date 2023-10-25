@@ -431,6 +431,9 @@ bool llvm::runPassPipeline(
 #define HANDLE_EXTENSION(Ext)                                                  \
   get##Ext##PluginInfo().RegisterPassBuilderCallbacks(PB);
 #include "llvm/Support/Extension.def"
+  for (auto PassCallback : ListRegisterPassBuilderCallbacks) {
+    PassCallback(PB);
+  }
 
   // Specially handle the alias analysis manager so that we can register
   // a custom pipeline of AA passes with it.
