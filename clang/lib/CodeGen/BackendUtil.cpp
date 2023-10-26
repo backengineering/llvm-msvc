@@ -912,7 +912,10 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
 #define HANDLE_EXTENSION(Ext)                                                  \
   get##Ext##PluginInfo().RegisterPassBuilderCallbacks(PB);
 #include "llvm/Support/Extension.def"
-
+  for (auto PassCallback : ListRegisterPassBuilderCallbacks) {
+    PassCallback(PB);
+  }
+  
   // Register the target library analysis directly and give it a customized
   // preset TLI.
   std::unique_ptr<TargetLibraryInfoImpl> TLII(
