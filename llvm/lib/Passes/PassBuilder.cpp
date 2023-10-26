@@ -2099,5 +2099,7 @@ void PassBuilder::registerParseTopLevelPipelineCallback(
   TopLevelPipelineParsingCallbacks.push_back(C);
 }
 
+namespace llvm {
 llvm::SmallVector<std::function<void(PassBuilder &)>>
     ListRegisterPassBuilderCallbacks;
+}
