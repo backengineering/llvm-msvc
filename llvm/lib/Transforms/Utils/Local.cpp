@@ -1707,6 +1707,34 @@ bool llvm::LowerDbgDeclare(Function &F) {
   return Changed;
 }
 
+/// Lowers constant expression.
+bool llvm::LowerConstantExpr(Function &F) {
+    bool Changed = false;
+
+    for (BasicBlock &BB : F) {
+        // Skip EHPad basic block.
+        if (BB.isEHPad()) continue;
+
+        for (Instruction &I : BB) {
+            // Skip PHINode
+            if (isa<PHINode>(&I)) continue;
+
+            // Skip EHPad instruction
+            if (I.isEHPad()) continue;
+
+            for (unsigned int i = 0; i < I.getNumOperands(); ++i) {
+                if (auto *Expr = dyn_cast<ConstantExpr>(I.getOperand(i))) {
+                    auto *CloneExpr = Expr->getAsInstruction();
+                    I.replaceUsesOfWith(Expr, CloneExpr);
+                    CloneExpr->insertBefore(&I);
+                    Changed = true;
+                }
+            }
+        }
+    }
+    return Changed;
+}
+
 /// Propagate dbg.value intrinsics through the newly inserted PHIs.
 void llvm::insertDebugValuesForPHIs(BasicBlock *BB,
                                     SmallVectorImpl<PHINode *> &InsertedPHIs) {

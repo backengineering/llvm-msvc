@@ -278,6 +278,9 @@ void ConvertDebugDeclareToDebugValue(DbgVariableIntrinsic *DII,
 /// llvm.dbg.value intrinsics.
 bool LowerDbgDeclare(Function &F);
 
+/// Lowers constant expression.
+bool LowerConstantExpr(Function &F);
+
 /// Propagate dbg.value intrinsics through the newly inserted PHIs.
 void insertDebugValuesForPHIs(BasicBlock *BB,
                               SmallVectorImpl<PHINode *> &InsertedPHIs);
