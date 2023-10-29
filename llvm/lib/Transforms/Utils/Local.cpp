@@ -1718,7 +1718,7 @@ bool llvm::LowerConstantExpr(Function &F) {
         for (Instruction &I : BB) {
             // Skip PHINode
             if (isa<PHINode>(&I)) continue;
-            // Skip EHPad IntrinsicInst
+            // Skip IntrinsicInst
             if (isa<IntrinsicInst>(&I)) continue;
             // Skip EHPad instruction
             if (I.isEHPad()) continue;
