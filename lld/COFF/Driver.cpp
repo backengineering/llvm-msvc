@@ -2247,8 +2247,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
 
   if (!config->dynamicBase &&
       (config->machine == ARMNT || config->machine == ARM64))
-    error("/dynamicbase:no is not compatible with " +
-          machineToStr(config->machine));
+    config->dynamicBase = true;
 
   // Handle /export
   for (auto *arg : args.filtered(OPT_export)) {
