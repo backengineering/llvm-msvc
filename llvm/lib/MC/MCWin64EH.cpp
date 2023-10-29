@@ -295,7 +295,7 @@ static int64_t GetAbsDifference(MCStreamer &Streamer, const MCSymbol *LHS,
   std::optional<int64_t> MaybeDiff =
       GetOptionalAbsDifference(Streamer, LHS, RHS);
   if (!MaybeDiff)
-    report_fatal_error("Failed to evaluate function length in SEH unwind info");
+    return 0;
   return *MaybeDiff;
 }
 
