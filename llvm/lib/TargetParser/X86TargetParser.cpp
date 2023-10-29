@@ -627,7 +627,16 @@ void llvm::X86::getFeaturesForCPU(StringRef CPU,
   // Remove the 64-bit feature which we only use to validate if a CPU can
   // be used with 64-bit mode.
   Bits &= ~Feature64BIT;
-
+  // [MSVC Compatibility]
+#ifdef _WIN32
+  // Matches Microsoft's default support.
+  Bits |= FeatureSSE3;
+  Bits |= FeatureSSE4_1;
+  Bits |= FeatureSSE4_2;
+  Bits |= FeatureINVPCID;
+  Bits |= FeatureRTM;
+  Bits |= FeatureFSGSBASE;
+#endif
   // Add the string version of all set bits.
   for (unsigned i = 0; i != CPU_FEATURE_MAX; ++i)
     if (Bits[i] && !FeatureInfos[i].getName(NeedPlus).empty())
