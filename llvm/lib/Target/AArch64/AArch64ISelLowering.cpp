@@ -1050,8 +1050,9 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
 
   // Set required alignment.
   setMinFunctionAlignment(Align(4));
-  // Set preferred alignments.
-  setPrefLoopAlignment(STI.getPrefLoopAlignment());
+  // Set preferred alignments. (exclude windows)
+  if (!Subtarget->isTargetWindows())
+    setPrefLoopAlignment(STI.getPrefLoopAlignment());
   setMaxBytesForAlignment(STI.getMaxBytesForLoopAlignment());
   setPrefFunctionAlignment(STI.getPrefFunctionAlignment());
 
