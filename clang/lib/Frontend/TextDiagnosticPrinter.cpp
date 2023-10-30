@@ -117,11 +117,9 @@ void TextDiagnosticPrinter::HandleDiagnostic(DiagnosticsEngine::Level Level,
     // Filter out 'win-sdk' warnings that are not needed.
     auto LocationStr =
         Info.getLocation().printToString(Info.getSourceManager());
-    for (auto &Str : WinSDKWarningList) {
-      if (LocationStr.find(Str) != std::string::npos) {
+    for (auto &Str : WinSDKWarningList)
+      if (LocationStr.find(Str) != std::string::npos)
         return;
-      }
-    }
   }
 #endif
 
