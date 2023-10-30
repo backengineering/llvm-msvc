@@ -111,8 +111,6 @@ void TextDiagnosticPrinter::HandleDiagnostic(DiagnosticsEngine::Level Level,
 #ifdef _WIN32
   if (Level == DiagnosticsEngine::Level::Note)
     return;
-#endif
-
   // Check that source manager exists before issuing warnings.
   if (Info.hasSourceManager() && Level != DiagnosticsEngine::Level::Error &&
       Level != DiagnosticsEngine::Level::Fatal) {
@@ -125,7 +123,7 @@ void TextDiagnosticPrinter::HandleDiagnostic(DiagnosticsEngine::Level Level,
       }
     }
   }
-
+#endif
   // Default implementation (Warnings/errors count).
   DiagnosticConsumer::HandleDiagnostic(Level, Info);
 
