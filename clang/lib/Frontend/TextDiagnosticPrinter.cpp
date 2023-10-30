@@ -114,15 +114,16 @@ void TextDiagnosticPrinter::HandleDiagnostic(DiagnosticsEngine::Level Level,
 #endif
 
   // Check that source manager exists before issuing warnings.
-  if (Info.hasSourceManager()) {
-      // Filter out 'win-sdk' warnings that are not needed.
-      auto LocationStr =
-          Info.getLocation().printToString(Info.getSourceManager());
-      for (auto &Str : WinSDKWarningList) {
-          if (LocationStr.find(Str) != std::string::npos) {
-              return;
-          }
+  if (Info.hasSourceManager() && Level != DiagnosticsEngine::Level::Error &&
+      Level != DiagnosticsEngine::Level::Fatal) {
+    // Filter out 'win-sdk' warnings that are not needed.
+    auto LocationStr =
+        Info.getLocation().printToString(Info.getSourceManager());
+    for (auto &Str : WinSDKWarningList) {
+      if (LocationStr.find(Str) != std::string::npos) {
+        return;
       }
+    }
   }
 
   // Default implementation (Warnings/errors count).
