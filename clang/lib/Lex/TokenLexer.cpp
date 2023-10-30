@@ -875,6 +875,11 @@ bool TokenLexer::pasteTokens(Token &LHSTok, ArrayRef<Token> TokenStream,
       // error.  This occurs with "x ## +"  and other stuff.  Return with LHSTok
       // unmodified and with RHS as the next token to lex.
       if (isInvalid) {
+#ifdef _WIN32
+        // It's OK on windows
+        if (LHSTok.is(tok::amp))
+          return true;
+#endif
         // Explicitly convert the token location to have proper expansion
         // information so that the user knows where it came from.
         SourceManager &SM = PP.getSourceManager();
