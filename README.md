@@ -9,11 +9,11 @@ llvm-msvc is a compiler based LLVM that is not restricted by MSVC. The goal is t
 You can use naked functions anywhere, as well as add custom support such as obfuscation.
 
 ## Features:
-- SEH support.
 - Compatible with MSVC syntax as much as possible.
-- Windows Driver support(x64/ARM64).
-- Intrinsic support.
-- Naked X64 inline asm support.
+- Enhance SEH stability.
+- Add some special Intrinsic(``__vmx_vmread``/``__vmx_write``).
+- Support x64/ARM64 windows drivers.
+- Support naked X64 inline asm.
 - Support multiple cores compilation.
 - Support ``/MP`` when precompiled headers are present.
 - Support ``/GL`` (LTO optimization).
