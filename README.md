@@ -11,11 +11,12 @@ You can use naked functions anywhere, as well as add custom support such as obfu
 ## Features:
 - SEH support.
 - Compatible with MSVC syntax as much as possible.
-- Windows Driver support.(x64/ARM64)
+- Windows Driver support(x64/ARM64).
 - Intrinsic support.
 - Naked X64 inline asm support.
 - Support multiple cores compilation.
 - Support ``/MP`` when precompiled headers are present.
+- Support ``/GL`` (LTO optimization).
 
 
 ## FAQ
