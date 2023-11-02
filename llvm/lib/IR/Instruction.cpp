@@ -793,16 +793,16 @@ void Instruction::setVolatile(bool Volatile) {
   IsVolatileInstruction = Volatile;
   switch (getOpcode()) {
   case Instruction::AtomicRMW:
-    cast<AtomicRMWInst>(this)->setVolatile(true);
+    cast<AtomicRMWInst>(this)->setVolatile(Volatile);
     break;
   case Instruction::Store:
-    cast<StoreInst>(this)->setVolatile(true);
+    cast<StoreInst>(this)->setVolatile(Volatile);
     break;
   case Instruction::Load:
-    cast<LoadInst>(this)->setVolatile(true);
+    cast<LoadInst>(this)->setVolatile(Volatile);
     break;
   case Instruction::AtomicCmpXchg:
-    cast<AtomicCmpXchgInst>(this)->setVolatile(true);
+    cast<AtomicCmpXchgInst>(this)->setVolatile(Volatile);
     break;
   }
 }
