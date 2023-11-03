@@ -860,7 +860,8 @@ public:
   /// print - Print out the MachineFunction in a format suitable for debugging
   /// to the specified stream.
   void print(raw_ostream &OS, const SlotIndexes* = nullptr) const;
-
+  void println(raw_ostream &OS, const SlotIndexes * = nullptr) const;
+  
   /// viewCFG - This function is meant for use from the debugger.  You can just
   /// say 'call F->viewCFG()' and a ghostview window should pop up from the
   /// program, displaying the CFG of the current function with the code for each
