@@ -1933,6 +1933,13 @@ void MachineInstr::print(raw_ostream &OS, ModuleSlotTracker &MST,
     OS << '\n';
 }
 
+void MachineInstr::println(raw_ostream &OS, ModuleSlotTracker &MST,
+                           bool IsStandalone, bool SkipOpers, bool SkipDebugLoc,
+                           bool AddNewLine, const TargetInstrInfo *TII) const {
+  print(OS, MST, IsStandalone, SkipOpers, SkipDebugLoc, AddNewLine, TII);
+  OS << "\n";
+}
+
 bool MachineInstr::addRegisterKilled(Register IncomingReg,
                                      const TargetRegisterInfo *RegInfo,
                                      bool AddIfNotFound) {

@@ -1797,7 +1797,14 @@ public:
   void print(raw_ostream &OS, bool IsStandalone = true, bool SkipOpers = false,
              bool SkipDebugLoc = false, bool AddNewLine = true,
              const TargetInstrInfo *TII = nullptr) const;
+  void println(raw_ostream &OS, bool IsStandalone = true, bool SkipOpers = false,
+             bool SkipDebugLoc = false, bool AddNewLine = true,
+             const TargetInstrInfo *TII = nullptr) const;
   void print(raw_ostream &OS, ModuleSlotTracker &MST, bool IsStandalone = true,
+             bool SkipOpers = false, bool SkipDebugLoc = false,
+             bool AddNewLine = true,
+             const TargetInstrInfo *TII = nullptr) const;
+  void println(raw_ostream &OS, ModuleSlotTracker &MST, bool IsStandalone = true,
              bool SkipOpers = false, bool SkipDebugLoc = false,
              bool AddNewLine = true,
              const TargetInstrInfo *TII = nullptr) const;

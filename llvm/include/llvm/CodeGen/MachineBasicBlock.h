@@ -1139,7 +1139,11 @@ public:
   void dump() const;
   void print(raw_ostream &OS, const SlotIndexes * = nullptr,
              bool IsStandalone = true) const;
+  void println(raw_ostream &OS, const SlotIndexes * = nullptr,
+             bool IsStandalone = true) const;
   void print(raw_ostream &OS, ModuleSlotTracker &MST,
+             const SlotIndexes * = nullptr, bool IsStandalone = true) const;
+  void println(raw_ostream &OS, ModuleSlotTracker &MST,
              const SlotIndexes * = nullptr, bool IsStandalone = true) const;
 
   enum PrintNameFlag {

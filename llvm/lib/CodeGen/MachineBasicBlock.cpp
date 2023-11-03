@@ -334,6 +334,12 @@ std::string MachineBasicBlock::getFullName() const {
   return Name;
 }
 
+void MachineBasicBlock::println(raw_ostream &OS, const SlotIndexes *Indexes,
+                                bool IsStandalone) const {
+  print(OS, Indexes, IsStandalone);
+  OS << "\n";
+}
+
 void MachineBasicBlock::print(raw_ostream &OS, const SlotIndexes *Indexes,
                               bool IsStandalone) const {
   const MachineFunction *MF = getParent();
@@ -461,6 +467,13 @@ void MachineBasicBlock::print(raw_ostream &OS, ModuleSlotTracker &MST,
     OS.indent(2) << "; Irreducible loop header weight: " << *IrrLoopHeaderWeight
                  << '\n';
   }
+}
+
+void MachineBasicBlock::println(raw_ostream &OS, ModuleSlotTracker &MST,
+                                const SlotIndexes *Indexes,
+                                bool IsStandalone) const {
+  print(OS, MST, Indexes, IsStandalone);
+  OS << "\n";
 }
 
 /// Print the basic block's name as:
