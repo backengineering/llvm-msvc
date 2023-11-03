@@ -4597,6 +4597,12 @@ void Function::print(raw_ostream &ROS, AssemblyAnnotationWriter *AAW,
   W.printFunction(this);
 }
 
+void Function::println(raw_ostream &ROS, AssemblyAnnotationWriter *AAW,
+                       bool ShouldPreserveUseListOrder, bool IsForDebug) const {
+  print(ROS, AAW, ShouldPreserveUseListOrder, IsForDebug);
+  ROS << "\n";
+}
+
 void BasicBlock::print(raw_ostream &ROS, AssemblyAnnotationWriter *AAW,
                      bool ShouldPreserveUseListOrder,
                      bool IsForDebug) const {
@@ -4606,6 +4612,13 @@ void BasicBlock::print(raw_ostream &ROS, AssemblyAnnotationWriter *AAW,
                    IsForDebug,
                    ShouldPreserveUseListOrder);
   W.printBasicBlock(this);
+}
+
+void BasicBlock::println(raw_ostream &ROS, AssemblyAnnotationWriter *AAW,
+                         bool ShouldPreserveUseListOrder,
+                         bool IsForDebug) const {
+  print(ROS, AAW, ShouldPreserveUseListOrder, IsForDebug);
+  ROS << "\n";
 }
 
 void Module::print(raw_ostream &ROS, AssemblyAnnotationWriter *AAW,
@@ -4702,6 +4715,11 @@ void Value::print(raw_ostream &ROS, bool IsForDebug) const {
   print(ROS, MST, IsForDebug);
 }
 
+void Value::println(raw_ostream &ROS, bool IsForDebug) const {
+  print(ROS, IsForDebug);
+  ROS << "\n";
+}
+
 void Value::print(raw_ostream &ROS, ModuleSlotTracker &MST,
                   bool IsForDebug) const {
   formatted_raw_ostream OS(ROS);
@@ -4746,6 +4764,12 @@ void Value::print(raw_ostream &ROS, ModuleSlotTracker &MST,
   } else {
     llvm_unreachable("Unknown value to print out!");
   }
+}
+
+void Value::println(raw_ostream &ROS, ModuleSlotTracker &MST,
+                    bool IsForDebug) const {
+  print(ROS, MST, IsForDebug);
+  ROS << "\n";
 }
 
 /// Print without a type, skipping the TypePrinting object.

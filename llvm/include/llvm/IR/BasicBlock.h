@@ -427,7 +427,10 @@ public:
   void print(raw_ostream &OS, AssemblyAnnotationWriter *AAW = nullptr,
              bool ShouldPreserveUseListOrder = false,
              bool IsForDebug = false) const;
-
+  void println(raw_ostream &OS, AssemblyAnnotationWriter *AAW = nullptr,
+             bool ShouldPreserveUseListOrder = false,
+             bool IsForDebug = false) const;
+             
   //===--------------------------------------------------------------------===//
   /// Instruction iterator methods
   ///

@@ -234,7 +234,10 @@ public:
   /// Implement operator<< on Value.
   /// @{
   void print(raw_ostream &O, bool IsForDebug = false) const;
+  void println(raw_ostream &O, bool IsForDebug = false) const;
   void print(raw_ostream &O, ModuleSlotTracker &MST,
+             bool IsForDebug = false) const;
+  void println(raw_ostream &O, ModuleSlotTracker &MST,
              bool IsForDebug = false) const;
   /// @}
 
