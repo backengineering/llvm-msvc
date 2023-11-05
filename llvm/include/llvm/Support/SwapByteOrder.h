@@ -14,6 +14,7 @@
 #ifndef LLVM_SUPPORT_SWAPBYTEORDER_H
 #define LLVM_SUPPORT_SWAPBYTEORDER_H
 
+#include "llvm/ADT/STLForwardCompat.h"
 #include "llvm/ADT/bit.h"
 #include <cstddef>
 #include <cstdint>
@@ -82,8 +83,7 @@ inline double getSwappedBytes(double C) {
 
 template <typename T>
 inline std::enable_if_t<std::is_enum_v<T>, T> getSwappedBytes(T C) {
-  return static_cast<T>(
-      llvm::byteswap(static_cast<std::underlying_type_t<T>>(C)));
+  return static_cast<T>(llvm::byteswap(llvm::to_underlying(C)));
 }
 
 template<typename T>
