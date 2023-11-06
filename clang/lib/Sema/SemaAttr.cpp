@@ -797,7 +797,7 @@ void Sema::ActOnPragmaMSAllocText(
     IdentifierInfo *II;
     SourceLocation Loc;
     std::tie(II, Loc) = Function;
-
+#ifndef _WIN32
     DeclarationName DN(II);
     NamedDecl *ND = LookupSingleName(TUScope, DN, Loc, LookupOrdinaryName);
     if (!ND) {
@@ -815,7 +815,7 @@ void Sema::ActOnPragmaMSAllocText(
       Diag(Loc, diag::err_pragma_alloc_text_c_linkage);
       return;
     }
-
+#endif
     FunctionToSectionMap[II->getName()] = std::make_tuple(Section, Loc);
   }
 }
