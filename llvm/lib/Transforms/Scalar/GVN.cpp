@@ -2257,13 +2257,15 @@ bool GVNPass::ValueTable::areCallValsEqual(uint32_t Num, uint32_t NewNum,
 uint32_t GVNPass::ValueTable::phiTranslateImpl(const BasicBlock *Pred,
                                                const BasicBlock *PhiBlock,
                                                uint32_t Num, GVNPass &Gvn) {
-  if (PHINode *PN = NumberingPhi[Num]) {
-    for (unsigned i = 0; i != PN->getNumIncomingValues(); ++i) {
-      if (PN->getParent() == PhiBlock && PN->getIncomingBlock(i) == Pred)
-        if (uint32_t TransVal = lookup(PN->getIncomingValue(i), false))
-          return TransVal;
+  if (NumberingPhi.find(Num) != NumberingPhi.end()) {
+    if (PHINode *PN = NumberingPhi[Num]) {
+      for (unsigned i = 0; i != PN->getNumIncomingValues(); ++i) {
+        if (PN->getParent() == PhiBlock && PN->getIncomingBlock(i) == Pred)
+          if (uint32_t TransVal = lookup(PN->getIncomingValue(i), false))
+            return TransVal;
+      }
+      return Num;
     }
-    return Num;
   }
 
   // If there is any value related with Num is defined in a BB other than
