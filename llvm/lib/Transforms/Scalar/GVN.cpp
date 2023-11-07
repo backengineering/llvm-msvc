@@ -2693,6 +2693,9 @@ bool GVNPass::runImpl(Function &F, AssumptionCache &RunAC, DominatorTree &RunDT,
   if (F.hasSEHOrCXXSEH())
     return false;
 
+  if (F.hasFnAttribute(llvm::Attribute::OptimizeNone))
+    return false;
+          
   AC = &RunAC;
   DT = &RunDT;
   VN.setDomTree(DT);
