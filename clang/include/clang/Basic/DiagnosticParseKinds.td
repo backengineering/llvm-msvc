@@ -594,7 +594,7 @@ def err_except_spec_unparsed : Error<
   "unexpected end of exception specification">;
 def ext_dynamic_exception_spec : ExtWarn<
   "ISO C++17 does not allow dynamic exception specifications">,
-  InGroup<DynamicExceptionSpec>, DefaultError;
+  InGroup<DynamicExceptionSpec>, DefaultIgnore;
 def warn_exception_spec_deprecated : Warning<
   "dynamic exception specifications are deprecated">,
   InGroup<DeprecatedDynamicExceptionSpec>, DefaultIgnore;
