@@ -2197,17 +2197,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
     if (std::optional<StringRef> path = findLibIfNew("Psapi.lib"))
       enqueuePath(*path, false, false);
   }
-          
-  // Check if any ObjFile instance has kernel enabled
-  if (!config->driver) {
-    for (ObjFile *file : ctx.objFileInstances) {
-      if (file->doesKernelDriver()) {
-        config->driver = true;
-        break;
-      }
-    }  
-  }
-          
+
   // Handle /RELEASE
   if (args.hasArg(OPT_release))
     config->writeCheckSum = true;
