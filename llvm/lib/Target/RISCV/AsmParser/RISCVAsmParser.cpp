@@ -259,6 +259,7 @@ class RISCVAsmParser : public MCTargetAsmParser {
 
   std::unique_ptr<RISCVOperand> defaultMaskRegOp() const;
   std::unique_ptr<RISCVOperand> defaultFRMArgOp() const;
+  std::unique_ptr<RISCVOperand> defaultFRMArgLegacyOp() const;
 
 public:
   enum RISCVMatchResultTy {
@@ -563,6 +564,7 @@ public:
 
   /// Return true if the operand is a valid floating point rounding mode.
   bool isFRMArg() const { return Kind == KindTy::FRM; }
+  bool isFRMArgLegacy() const { return Kind == KindTy::FRM; }
   bool isRTZArg() const { return isFRMArg() && FRM.FRM == RISCVFPRndMode::RTZ; }
 
   /// Return true if the operand is a valid fli.s floating-point immediate.
@@ -2975,8 +2977,7 @@ void RISCVAsmParser::emitToStreamer(MCStreamer &S, const MCInst &Inst) {
 
 void RISCVAsmParser::emitLoadImm(MCRegister DestReg, int64_t Value,
                                  MCStreamer &Out) {
-  RISCVMatInt::InstSeq Seq =
-      RISCVMatInt::generateInstSeq(Value, getSTI().getFeatureBits());
+  RISCVMatInt::InstSeq Seq = RISCVMatInt::generateInstSeq(Value, getSTI());
 
   MCRegister SrcReg = RISCV::X0;
   for (const RISCVMatInt::Inst &Inst : Seq) {
@@ -3254,6 +3255,11 @@ std::unique_ptr<RISCVOperand> RISCVAsmParser::defaultMaskRegOp() const {
 
 std::unique_ptr<RISCVOperand> RISCVAsmParser::defaultFRMArgOp() const {
   return RISCVOperand::createFRMArg(RISCVFPRndMode::RoundingMode::DYN,
+                                    llvm::SMLoc());
+}
+
+std::unique_ptr<RISCVOperand> RISCVAsmParser::defaultFRMArgLegacyOp() const {
+  return RISCVOperand::createFRMArg(RISCVFPRndMode::RoundingMode::RNE,
                                     llvm::SMLoc());
 }
 

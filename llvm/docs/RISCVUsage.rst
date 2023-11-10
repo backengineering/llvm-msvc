@@ -90,6 +90,8 @@ on support follow.
      ``F``            Supported
      ``H``            Assembly Support
      ``M``            Supported
+     ``Smaia``        Supported
+     ``Ssaia``        Supported
      ``Svinval``      Assembly Support
      ``Svnapot``      Assembly Support
      ``Svpbmt``       Supported
@@ -106,16 +108,17 @@ on support follow.
      ``Zcb``          Supported
      ``Zcd``          Supported
      ``Zcf``          Supported
-     ``Zcmp``         Assembly Support
+     ``Zcmp``         Supported
      ``Zcmt``         Assembly Support
      ``Zdinx``        Supported
+     ``Zfa``          Supported
      ``Zfh``          Supported
      ``Zfhmin``       Supported
      ``Zfinx``        Supported
      ``Zhinx``        Supported
      ``Zhinxmin``     Supported
      ``Zicbom``       Assembly Support
-     ``Zicbop``       Assembly Support
+     ``Zicbop``       Supported
      ``Zicboz``       Assembly Support
      ``Zicntr``       (`See Note <#riscv-i2p1-note>`__)
      ``Zicsr``        (`See Note <#riscv-i2p1-note>`__)
@@ -187,17 +190,8 @@ LLVM supports (to various degrees) a number of experimental extensions.  All exp
 
 The primary goal of experimental support is to assist in the process of ratification by providing an existence proof of an implementation, and simplifying efforts to validate the value of a proposed extension against large code bases.  Experimental extensions are expected to either transition to ratified status, or be eventually removed.  The decision on whether to accept an experimental extension is currently done on an entirely case by case basis; if you want to propose one, attending the bi-weekly RISC-V sync-up call is strongly advised.
 
-``experimental-smaia``
-  LLVM implements the `Ratification candidate 3 <https://github.com/riscv/riscv-aia/releases/tag/1.0-RC3>`_.
-
-``experimental-ssaia``
-  LLVM implements the `Ratification candidate 3 <https://github.com/riscv/riscv-aia/releases/tag/1.0-RC3>`_.
-
 ``experimental-zacas``
   LLVM implements the `1.0-rc1 draft specification <https://github.com/riscv/riscv-zacas/releases/tag/v1.0-rc1>`_.
-
-``experimental-zfa``
-  LLVM implements the `0.2 draft specification <https://github.com/riscv/riscv-isa-manual/releases/download/draft-20230131-c0b298a/zfa-20230414.pdf>`__.
 
 ``experimental-zfbfmin``, ``experimental-zvfbfmin``, ``experimental-zvfbfwma``
   LLVM implements assembler support for the `0.8.0 draft specification <https://github.com/riscv/riscv-bfloat16/releases/tag/20230629>`_.

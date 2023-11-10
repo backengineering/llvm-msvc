@@ -505,6 +505,9 @@ enum FastMathMap {
   AllowReassoc    = (1 << 7)
 };
 
+/// Flags for serializing PossiblyNonNegInst's SubclassOptionalData contents.
+enum PossiblyNonNegInstOptionalFlags { PNNI_NON_NEG = 0 };
+
 /// PossiblyExactOperatorOptionalFlags - Flags for serializing
 /// PossiblyExactOperator's SubclassOptionalData contents.
 enum PossiblyExactOperatorOptionalFlags { PEO_EXACT = 0 };
@@ -722,6 +725,8 @@ enum AttributeKindCodes {
   ATTR_KIND_IS_SEH_FILTER_FUNCTION = 94,
   ATTR_KIND_IS_SEH_FINALLY_FUNCTION = 95,
   ATTR_KIND_OPTIMIZE_FOR_DEBUGGING = 96,
+  ATTR_KIND_WRITABLE = 97,
+  ATTR_KIND_CORO_ONLY_DESTROY_WHEN_COMPLETE = 98,
 };
 
 enum ComdatSelectionKindCodes {

@@ -384,8 +384,8 @@ inline uint64_t alignToPowerOf2(uint64_t Value, uint64_t Align) {
          "Align must be a power of 2");
   // Replace unary minus to avoid compilation error on Windows:
   // "unary minus operator applied to unsigned type, result still unsigned"
-  uint64_t NegAlign = (~Align) + 1;
-  return (Value + Align - 1) & NegAlign;
+  uint64_t negAlign = (~Align) + 1;
+  return (Value + Align - 1) & negAlign;
 }
 
 /// If non-zero \p Skew is specified, the return value will be a minimal integer

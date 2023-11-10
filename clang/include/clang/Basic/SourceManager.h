@@ -43,6 +43,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
+#include "llvm/ADT/PagedVector.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -166,17 +167,21 @@ public:
   ///
   /// When true, the original entry may be a virtual file that does not
   /// exist.
+  LLVM_PREFERRED_TYPE(bool)
   unsigned BufferOverridden : 1;
 
   /// True if this content cache was initially created for a source file
   /// considered to be volatile (likely to change between stat and open).
+  LLVM_PREFERRED_TYPE(bool)
   unsigned IsFileVolatile : 1;
 
   /// True if this file may be transient, that is, if it might not
   /// exist at some later point in time when this content entry is used,
   /// after serialization and deserialization.
+  LLVM_PREFERRED_TYPE(bool)
   unsigned IsTransient : 1;
 
+  LLVM_PREFERRED_TYPE(bool)
   mutable unsigned IsBufferInvalid : 1;
 
   ContentCache()
@@ -310,6 +315,7 @@ class FileInfo {
   unsigned NumCreatedFIDs : 31;
 
   /// Whether this FileInfo has any \#line directives.
+  LLVM_PREFERRED_TYPE(bool)
   unsigned HasLineDirectives : 1;
 
   /// The content cache and the characteristic of the file.
@@ -481,6 +487,7 @@ static_assert(sizeof(FileInfo) <= sizeof(ExpansionInfo),
 class SLocEntry {
   static constexpr int OffsetBits = 8 * sizeof(SourceLocation::UIntTy) - 1;
   SourceLocation::UIntTy Offset : OffsetBits;
+  LLVM_PREFERRED_TYPE(bool)
   SourceLocation::UIntTy IsExpansion : 1;
   union {
     FileInfo File;
@@ -503,6 +510,14 @@ public:
   const ExpansionInfo &getExpansion() const {
     assert(isExpansion() && "Not a macro expansion SLocEntry!");
     return Expansion;
+  }
+
+  /// Creates an incomplete SLocEntry that is only able to report its offset.
+  static SLocEntry getOffsetOnly(SourceLocation::UIntTy Offset) {
+    assert(!(Offset & (1ULL << OffsetBits)) && "Offset is too large");
+    SLocEntry E;
+    E.Offset = Offset;
+    return E;
   }
 
   static SLocEntry get(SourceLocation::UIntTy Offset, const FileInfo &FI) {
@@ -538,6 +553,12 @@ public:
   /// \returns true if an error occurred that prevented the source-location
   /// entry from being loaded.
   virtual bool ReadSLocEntry(int ID) = 0;
+
+  /// Get the index ID for the loaded SourceLocation offset.
+  ///
+  /// \returns Invalid index ID (0) if an error occurred that prevented the
+  /// SLocEntry  from being loaded.
+  virtual int getSLocEntryID(SourceLocation::UIntTy SLocOffset) = 0;
 
   /// Retrieve the module import location and name for the given ID, if
   /// in fact it was loaded from a module (rather than, say, a precompiled
@@ -705,7 +726,12 @@ class SourceManager : public RefCountedBase<SourceManager> {
   ///
   /// Negative FileIDs are indexes into this table. To get from ID to an index,
   /// use (-ID - 2).
-  SmallVector<SrcMgr::SLocEntry, 0> LoadedSLocEntryTable;
+  llvm::PagedVector<SrcMgr::SLocEntry> LoadedSLocEntryTable;
+
+  /// For each allocation in LoadedSLocEntryTable, we keep the first FileID.
+  /// We assume exactly one allocation per AST file, and use that to determine
+  /// whether two FileIDs come from the same AST file.
+  SmallVector<FileID, 0> LoadedSLocEntryAllocBegin;
 
   /// The starting offset of the next local SLocEntry.
   ///
@@ -728,6 +754,12 @@ class SourceManager : public RefCountedBase<SourceManager> {
   ///
   /// Same indexing as LoadedSLocEntryTable.
   llvm::BitVector SLocEntryLoaded;
+
+  /// A bitmap that indicates whether the entries of LoadedSLocEntryTable
+  /// have already had their offset loaded from the external source.
+  ///
+  /// Superset of SLocEntryLoaded. Same indexing as SLocEntryLoaded.
+  llvm::BitVector SLocEntryOffsetLoaded;
 
   /// An external source for source location entries.
   ExternalSLocEntrySource *ExternalSLocEntries = nullptr;
@@ -882,13 +914,6 @@ public:
 
   /// Create a new FileID that represents the specified file
   /// being \#included from the specified IncludePosition.
-  ///
-  /// This translates NULL into standard input.
-  FileID createFileID(const FileEntry *SourceFile, SourceLocation IncludePos,
-                      SrcMgr::CharacteristicKind FileCharacter,
-                      int LoadedID = 0,
-                      SourceLocation::UIntTy LoadedOffset = 0);
-
   FileID createFileID(FileEntryRef SourceFile, SourceLocation IncludePos,
                       SrcMgr::CharacteristicKind FileCharacter,
                       int LoadedID = 0,
@@ -914,7 +939,7 @@ public:
 
   /// Get the FileID for \p SourceFile if it exists. Otherwise, create a
   /// new FileID for the \p SourceFile.
-  FileID getOrCreateFileID(const FileEntry *SourceFile,
+  FileID getOrCreateFileID(FileEntryRef SourceFile,
                            SrcMgr::CharacteristicKind FileCharacter);
 
   /// Creates an expansion SLocEntry for the substitution of an argument into a
@@ -948,12 +973,12 @@ public:
   ///
   /// Returns std::nullopt if the buffer is not valid.
   std::optional<llvm::MemoryBufferRef>
-  getMemoryBufferForFileOrNone(const FileEntry *File);
+  getMemoryBufferForFileOrNone(FileEntryRef File);
 
   /// Retrieve the memory buffer associated with the given file.
   ///
   /// Returns a fake buffer if there isn't a real one.
-  llvm::MemoryBufferRef getMemoryBufferForFileOrFake(const FileEntry *File) {
+  llvm::MemoryBufferRef getMemoryBufferForFileOrFake(FileEntryRef File) {
     if (auto B = getMemoryBufferForFileOrNone(File))
       return *B;
     return getFakeBufferForRecovery();
@@ -966,7 +991,7 @@ public:
   ///
   /// \param Buffer the memory buffer whose contents will be used as the
   /// data in the given source file.
-  void overrideFileContents(const FileEntry *SourceFile,
+  void overrideFileContents(FileEntryRef SourceFile,
                             const llvm::MemoryBufferRef &Buffer) {
     overrideFileContents(SourceFile, llvm::MemoryBuffer::getMemBuffer(Buffer));
   }
@@ -978,12 +1003,8 @@ public:
   ///
   /// \param Buffer the memory buffer whose contents will be used as the
   /// data in the given source file.
-  void overrideFileContents(const FileEntry *SourceFile,
-                            std::unique_ptr<llvm::MemoryBuffer> Buffer);
   void overrideFileContents(FileEntryRef SourceFile,
-                            std::unique_ptr<llvm::MemoryBuffer> Buffer) {
-    overrideFileContents(&SourceFile.getFileEntry(), std::move(Buffer));
-  }
+                            std::unique_ptr<llvm::MemoryBuffer> Buffer);
 
   /// Override the given source file with another one.
   ///
@@ -1654,6 +1675,11 @@ public:
   std::pair<bool, bool>
   isInTheSameTranslationUnit(std::pair<FileID, unsigned> &LOffs,
                              std::pair<FileID, unsigned> &ROffs) const;
+
+  /// Determines whether the two decomposed source location is in the same TU.
+  bool isInTheSameTranslationUnitImpl(
+      const std::pair<FileID, unsigned> &LOffs,
+      const std::pair<FileID, unsigned> &ROffs) const;
 
   /// Determines the order of 2 source locations in the "source location
   /// address space".

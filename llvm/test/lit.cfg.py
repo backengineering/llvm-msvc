@@ -477,10 +477,6 @@ if config.target_triple:
     if not config.target_triple.startswith(("nvptx", "xcore")):
         config.available_features.add("object-emission")
 
-# Allow checking for specific details in the host triple
-if config.host_triple:
-    config.available_features.add('host=%s' % config.host_triple)
-
 if config.have_llvm_driver:
     config.available_features.add("llvm-driver")
 
@@ -582,9 +578,6 @@ if not re.match(
     config.target_triple,
 ) and not re.match(r"^arm64(e)?-apple-(macos|darwin)", config.target_triple):
     config.available_features.add("debug_frame")
-
-if config.have_libxar:
-    config.available_features.add("xar")
 
 if config.enable_threads:
     config.available_features.add("thread_support")

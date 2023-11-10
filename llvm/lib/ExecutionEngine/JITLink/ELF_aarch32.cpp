@@ -17,7 +17,6 @@
 #include "llvm/ExecutionEngine/JITLink/aarch32.h"
 #include "llvm/Object/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
-#include "llvm/Support/Endian.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/TargetParser/ARMTargetParser.h"
 
@@ -54,6 +53,10 @@ Expected<aarch32::EdgeKind_aarch32> getJITLinkEdgeKind(uint32_t ELFType) {
     return aarch32::Thumb_MovwAbsNC;
   case ELF::R_ARM_THM_MOVT_ABS:
     return aarch32::Thumb_MovtAbs;
+  case ELF::R_ARM_THM_MOVW_PREL_NC:
+    return aarch32::Thumb_MovwPrelNC;
+  case ELF::R_ARM_THM_MOVT_PREL:
+    return aarch32::Thumb_MovtPrel;
   }
 
   return make_error<JITLinkError>(
@@ -84,6 +87,10 @@ Expected<uint32_t> getELFRelocationType(Edge::Kind Kind) {
     return ELF::R_ARM_THM_MOVW_ABS_NC;
   case aarch32::Thumb_MovtAbs:
     return ELF::R_ARM_THM_MOVT_ABS;
+  case aarch32::Thumb_MovwPrelNC:
+    return ELF::R_ARM_THM_MOVW_PREL_NC;
+  case aarch32::Thumb_MovtPrel:
+    return ELF::R_ARM_THM_MOVT_PREL;
   }
 
   return make_error<JITLinkError>(formatv("Invalid aarch32 edge {0:d}: ",
@@ -114,7 +121,7 @@ private:
   }
 };
 
-template <support::endianness DataEndianness>
+template <llvm::endianness DataEndianness>
 class ELFLinkGraphBuilder_aarch32
     : public ELFLinkGraphBuilder<ELFType<DataEndianness, false>> {
 private:
@@ -265,7 +272,7 @@ createLinkGraphFromELFObject_aarch32(MemoryBufferRef ObjectBuffer) {
   case Triple::arm:
   case Triple::thumb: {
     auto &ELFFile = cast<ELFObjectFile<ELF32LE>>(**ELFObj).getELFFile();
-    return ELFLinkGraphBuilder_aarch32<support::little>(
+    return ELFLinkGraphBuilder_aarch32<llvm::endianness::little>(
                (*ELFObj)->getFileName(), ELFFile, TT, std::move(*Features),
                ArmCfg)
         .buildGraph();
@@ -273,7 +280,7 @@ createLinkGraphFromELFObject_aarch32(MemoryBufferRef ObjectBuffer) {
   case Triple::armeb:
   case Triple::thumbeb: {
     auto &ELFFile = cast<ELFObjectFile<ELF32BE>>(**ELFObj).getELFFile();
-    return ELFLinkGraphBuilder_aarch32<support::big>(
+    return ELFLinkGraphBuilder_aarch32<llvm::endianness::big>(
                (*ELFObj)->getFileName(), ELFFile, TT, std::move(*Features),
                ArmCfg)
         .buildGraph();

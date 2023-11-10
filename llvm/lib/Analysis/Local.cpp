@@ -28,6 +28,13 @@ Value *llvm::emitGEPOffset(IRBuilderBase *Builder, const DataLayout &DL,
   // If the GEP is inbounds, we know that none of the addressing operations will
   // overflow in a signed sense.
   bool isInBounds = GEPOp->isInBounds() && !NoAssumptions;
+  auto AddOffset = [&](Value *Offset) {
+    if (Result)
+      Result = Builder->CreateAdd(Result, Offset, GEP->getName() + ".offs",
+                                  false /*NUW*/, isInBounds /*NSW*/);
+    else
+      Result = Offset;
+  };
 
   // Build a mask for high order bits.
   unsigned IntPtrWidth = IntIdxTy->getScalarType()->getIntegerBitWidth();
@@ -38,8 +45,8 @@ Value *llvm::emitGEPOffset(IRBuilderBase *Builder, const DataLayout &DL,
   for (User::op_iterator i = GEP->op_begin() + 1, e = GEP->op_end(); i != e;
        ++i, ++GTI) {
     Value *Op = *i;
-    uint64_t Size = DL.getTypeAllocSize(GTI.getIndexedType()) & PtrSizeMask;
-    Value *Offset;
+    TypeSize TSize = DL.getTypeAllocSize(GTI.getIndexedType());
+    uint64_t Size = TSize.getKnownMinValue() & PtrSizeMask;
     if (Constant *OpC = dyn_cast<Constant>(Op)) {
       if (OpC->isZeroValue())
         continue;
@@ -51,42 +58,28 @@ Value *llvm::emitGEPOffset(IRBuilderBase *Builder, const DataLayout &DL,
         if (!Size)
           continue;
 
-        Offset = ConstantInt::get(IntIdxTy, Size);
-      } else {
-        // Splat the constant if needed.
-        if (IntIdxTy->isVectorTy() && !OpC->getType()->isVectorTy())
-          OpC = ConstantVector::getSplat(
-              cast<VectorType>(IntIdxTy)->getElementCount(), OpC);
-
-        Constant *Scale = ConstantInt::get(IntIdxTy, Size);
-        Constant *OC =
-            ConstantExpr::getIntegerCast(OpC, IntIdxTy, true /*SExt*/);
-        Offset =
-            ConstantExpr::getMul(OC, Scale, false /*NUW*/, isInBounds /*NSW*/);
+        AddOffset(ConstantInt::get(IntIdxTy, Size));
+        continue;
       }
-    } else {
-      // Splat the index if needed.
-      if (IntIdxTy->isVectorTy() && !Op->getType()->isVectorTy())
-        Op = Builder->CreateVectorSplat(
-            cast<FixedVectorType>(IntIdxTy)->getNumElements(), Op);
-
-      // Convert to correct type.
-      if (Op->getType() != IntIdxTy)
-        Op = Builder->CreateIntCast(Op, IntIdxTy, true, Op->getName() + ".c");
-      if (Size != 1) {
-        // We'll let instcombine(mul) convert this to a shl if possible.
-        Op = Builder->CreateMul(Op, ConstantInt::get(IntIdxTy, Size),
-                                GEP->getName() + ".idx", false /*NUW*/,
-                                isInBounds /*NSW*/);
-      }
-      Offset = Op;
     }
 
-    if (Result)
-      Result = Builder->CreateAdd(Result, Offset, GEP->getName() + ".offs",
-                                  false /*NUW*/, isInBounds /*NSW*/);
-    else
-      Result = Offset;
+    // Splat the index if needed.
+    if (IntIdxTy->isVectorTy() && !Op->getType()->isVectorTy())
+      Op = Builder->CreateVectorSplat(
+          cast<FixedVectorType>(IntIdxTy)->getNumElements(), Op);
+
+    // Convert to correct type.
+    if (Op->getType() != IntIdxTy)
+      Op = Builder->CreateIntCast(Op, IntIdxTy, true, Op->getName() + ".c");
+    if (Size != 1 || TSize.isScalable()) {
+      // We'll let instcombine(mul) convert this to a shl if possible.
+      auto *ScaleC = ConstantInt::get(IntIdxTy, Size);
+      Value *Scale =
+          !TSize.isScalable() ? ScaleC : Builder->CreateVScale(ScaleC);
+      Op = Builder->CreateMul(Op, Scale, GEP->getName() + ".idx", false /*NUW*/,
+                              isInBounds /*NSW*/);
+    }
+    AddOffset(Op);
   }
   return Result ? Result : Constant::getNullValue(IntIdxTy);
 }

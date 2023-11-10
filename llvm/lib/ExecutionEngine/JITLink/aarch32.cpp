@@ -305,8 +305,7 @@ void writeImmediate(WritableArmRelocation &R, uint32_t Imm) {
 }
 
 Expected<int64_t> readAddendData(LinkGraph &G, Block &B, const Edge &E) {
-  support::endianness Endian = G.getEndianness();
-  assert(Endian != support::native && "Declare as little or big explicitly");
+  llvm::endianness Endian = G.getEndianness();
 
   Edge::Kind Kind = E.getKind();
   const char *BlockWorkingMem = B.getContent().data();
@@ -378,12 +377,14 @@ Expected<int64_t> readAddendThumb(LinkGraph &G, Block &B, const Edge &E,
                   : decodeImmBT4BlT1BlxT2(R.Hi, R.Lo);
 
   case Thumb_MovwAbsNC:
+  case Thumb_MovwPrelNC:
     if (!checkOpcode<Thumb_MovwAbsNC>(R))
       return makeUnexpectedOpcodeError(G, R, Kind);
     // Initial addend is interpreted as a signed value
     return SignExtend64<16>(decodeImmMovtT1MovwT3(R.Hi, R.Lo));
 
   case Thumb_MovtAbs:
+  case Thumb_MovtPrel:
     if (!checkOpcode<Thumb_MovtAbs>(R))
       return makeUnexpectedOpcodeError(G, R, Kind);
     // Initial addend is interpreted as a signed value
@@ -404,13 +405,12 @@ Error applyFixupData(LinkGraph &G, Block &B, const Edge &E) {
   char *FixupPtr = BlockWorkingMem + E.getOffset();
 
   auto Write32 = [FixupPtr, Endian = G.getEndianness()](int64_t Value) {
-    assert(Endian != native && "Must be explicit: little or big");
     assert(isInt<32>(Value) && "Must be in signed 32-bit range");
     uint32_t Imm = static_cast<int32_t>(Value);
-    if (LLVM_LIKELY(Endian == little))
-      endian::write32<little>(FixupPtr, Imm);
+    if (LLVM_LIKELY(Endian == llvm::endianness::little))
+      endian::write32<llvm::endianness::little>(FixupPtr, Imm);
     else
-      endian::write32<big>(FixupPtr, Imm);
+      endian::write32<llvm::endianness::big>(FixupPtr, Imm);
   };
 
   Edge::Kind Kind = E.getKind();
@@ -612,6 +612,20 @@ Error applyFixupThumb(LinkGraph &G, Block &B, const Edge &E,
     writeImmediate<Thumb_MovtAbs>(R, encodeImmMovtT1MovwT3(Value));
     return Error::success();
   }
+  case Thumb_MovwPrelNC: {
+    if (!checkOpcode<Thumb_MovwAbsNC>(R))
+      return makeUnexpectedOpcodeError(G, R, Kind);
+    uint16_t Value = ((TargetAddress + Addend - FixupAddress) & 0xffff);
+    writeImmediate<Thumb_MovwAbsNC>(R, encodeImmMovtT1MovwT3(Value));
+    return Error::success();
+  }
+  case Thumb_MovtPrel: {
+    if (!checkOpcode<Thumb_MovtAbs>(R))
+      return makeUnexpectedOpcodeError(G, R, Kind);
+    uint16_t Value = (((TargetAddress + Addend - FixupAddress) >> 16) & 0xffff);
+    writeImmediate<Thumb_MovtAbs>(R, encodeImmMovtT1MovwT3(Value));
+    return Error::success();
+  }
 
   default:
     return make_error<JITLinkError>(
@@ -661,6 +675,8 @@ const char *getEdgeKindName(Edge::Kind K) {
     KIND_NAME_CASE(Thumb_Jump24)
     KIND_NAME_CASE(Thumb_MovwAbsNC)
     KIND_NAME_CASE(Thumb_MovtAbs)
+    KIND_NAME_CASE(Thumb_MovwPrelNC)
+    KIND_NAME_CASE(Thumb_MovtPrel)
   default:
     return getGenericEdgeKindName(K);
   }

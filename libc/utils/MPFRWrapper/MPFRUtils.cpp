@@ -72,6 +72,7 @@ static inline mpfr_rnd_t get_mpfr_rounding_mode(RoundingMode mode) {
     return MPFR_RNDN;
     break;
   }
+  __builtin_unreachable();
 }
 
 class MPFRNumber {
@@ -283,6 +284,12 @@ public:
   MPFRNumber log1p() const {
     MPFRNumber result(*this);
     mpfr_log1p(result.value, value, mpfr_rounding);
+    return result;
+  }
+
+  MPFRNumber pow(const MPFRNumber &b) {
+    MPFRNumber result(*this);
+    mpfr_pow(result.value, value, b.value, mpfr_rounding);
     return result;
   }
 
@@ -625,6 +632,8 @@ binary_operation_one_output(Operation op, InputType x, InputType y,
     return inputX.fmod(inputY);
   case Operation::Hypot:
     return inputX.hypot(inputY);
+  case Operation::Pow:
+    return inputX.pow(inputY);
   default:
     __builtin_unreachable();
   }

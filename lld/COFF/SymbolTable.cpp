@@ -62,6 +62,10 @@ void SymbolTable::addFile(InputFile *file) {
       // message("llvm-msvc linker reading object " + toString(file));
       ctx.objFileInstances.push_back(f);
     } else if (auto *f = dyn_cast<BitcodeFile>(file)) {
+      if (ltoCompilationDone) {
+        error("LTO object file " + toString(file) + " linked in after "
+              "doing LTO compilation.");
+      }
       ctx.bitcodeFileInstances.push_back(f);
     } else if (auto *f = dyn_cast<ImportFile>(file)) {
       ctx.importFileInstances.push_back(f);
@@ -474,6 +478,7 @@ void SymbolTable::reportUnresolvable() {
 }
 
 void SymbolTable::resolveRemainingUndefines() {
+  llvm::TimeTraceScope timeScope("Resolve remaining undefined symbols");
   SmallPtrSet<Symbol *, 8> undefs;
   DenseMap<Symbol *, Symbol *> localImports;
 
@@ -877,9 +882,11 @@ Symbol *SymbolTable::addUndefined(StringRef name) {
 }
 
 void SymbolTable::compileBitcodeFiles() {
+  ltoCompilationDone = true;
   if (ctx.bitcodeFileInstances.empty())
     return;
 
+  llvm::TimeTraceScope timeScope("Compile bitcode");
   ScopedTimer t(ctx.ltoTimer);
   lto.reset(new BitcodeCompiler(ctx));
   for (BitcodeFile *f : ctx.bitcodeFileInstances)

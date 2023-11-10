@@ -84,13 +84,11 @@ libcxx/include/__algorithm/swap_ranges.h
 libcxx/include/__algorithm/transform.h
 libcxx/include/__algorithm/uniform_random_bit_generator_adaptor.h
 libcxx/include/__algorithm/unwrap_iter.h
-libcxx/include/__algorithm/unwrap_range.h
 libcxx/include/any
 libcxx/include/array
 libcxx/include/__atomic/atomic_base.h
 libcxx/include/__atomic/atomic_flag.h
 libcxx/include/__atomic/atomic.h
-libcxx/include/__atomic/atomic_init.h
 libcxx/include/__atomic/atomic_lock_free.h
 libcxx/include/__atomic/atomic_sync.h
 libcxx/include/__atomic/check_memory_order.h
@@ -292,7 +290,6 @@ libcxx/include/__iterator/unreachable_sentinel.h
 libcxx/include/__iterator/wrap_iter.h
 libcxx/include/latch
 libcxx/include/limits
-libcxx/include/limits.h
 libcxx/include/list
 libcxx/include/__locale
 libcxx/include/locale
@@ -420,7 +417,6 @@ libcxx/include/regex
 libcxx/include/scoped_allocator
 libcxx/include/semaphore
 libcxx/include/set
-libcxx/include/setjmp.h
 libcxx/include/span
 libcxx/include/__split_buffer
 libcxx/include/sstream
@@ -495,6 +491,7 @@ libcxx/src/any.cpp
 libcxx/src/atomic.cpp
 libcxx/src/barrier.cpp
 libcxx/src/bind.cpp
+libcxx/src/call_once.cpp
 libcxx/src/charconv.cpp
 libcxx/src/chrono.cpp
 libcxx/src/condition_variable.cpp
@@ -524,12 +521,10 @@ libcxx/src/include/ryu/ryu.h
 libcxx/src/include/sso_allocator.h
 libcxx/src/ios.cpp
 libcxx/src/iostream.cpp
-libcxx/src/legacy_debug_handler.cpp
 libcxx/src/locale.cpp
 libcxx/src/memory.cpp
 libcxx/src/mutex.cpp
 libcxx/src/mutex_destructor.cpp
-libcxx/src/new.cpp
 libcxx/src/optional.cpp
 libcxx/src/pstl/libdispatch.cpp
 libcxx/src/random.cpp
@@ -592,14 +587,6 @@ libcxx/test/libcxx/algorithms/specialized.algorithms/special.mem.concepts/nothro
 libcxx/test/libcxx/assertions/customize_verbose_abort.compile-time.pass.cpp
 libcxx/test/libcxx/assertions/customize_verbose_abort.link-time.pass.cpp
 libcxx/test/libcxx/assertions/deprecated-link-time-custom-handler.pass.cpp
-libcxx/test/libcxx/assertions/modes/debug_mode_enabled_in_tu.pass.cpp
-libcxx/test/libcxx/assertions/modes/debug.pass.cpp
-libcxx/test/libcxx/assertions/modes/enabling_assertions_enables_safe_mode.pass.cpp
-libcxx/test/libcxx/assertions/modes/hardened_mode_enabled_in_tu.pass.cpp
-libcxx/test/libcxx/assertions/modes/hardened.pass.cpp
-libcxx/test/libcxx/assertions/modes/safe_mode_enabled_in_tu.pass.cpp
-libcxx/test/libcxx/assertions/modes/safe.pass.cpp
-libcxx/test/libcxx/assertions/modes/unchecked.pass.cpp
 libcxx/test/libcxx/atomics/atomics.align/align.pass.cpp
 libcxx/test/libcxx/atomics/atomics.flag/init_bool.pass.cpp
 libcxx/test/libcxx/atomics/atomics.order/memory_order.underlying_type.pass.cpp
@@ -713,7 +700,6 @@ libcxx/test/libcxx/containers/views/views.span/span.elem/assert.op_idx.pass.cpp
 libcxx/test/libcxx/containers/views/views.span/span.sub/assert.first.pass.cpp
 libcxx/test/libcxx/containers/views/views.span/span.sub/assert.last.pass.cpp
 libcxx/test/libcxx/containers/views/views.span/span.sub/assert.subspan.pass.cpp
-libcxx/test/libcxx/debug/containers/associative_containers.pass.cpp
 libcxx/test/libcxx/debug/containers.multithread.pass.cpp
 libcxx/test/libcxx/debug/containers/sequence_container_iterators.pass.cpp
 libcxx/test/libcxx/debug/containers/string.pass.cpp
@@ -832,7 +818,6 @@ libcxx/test/libcxx/iterators/predef.iterators/__unconstrained_reverse_iterator/t
 libcxx/test/libcxx/iterators/stream.iterators/ostreambuf.iterator/ostreambuf.iter.ops/failed.pass.cpp
 libcxx/test/libcxx/iterators/unwrap_iter.pass.cpp
 libcxx/test/libcxx/language.support/cxa_deleted_virtual.pass.cpp
-libcxx/test/libcxx/language.support/support.dynamic/aligned_alloc_availability.verify.cpp
 libcxx/test/libcxx/language.support/support.dynamic/libcpp_deallocate.sh.cpp
 libcxx/test/libcxx/language.support/support.dynamic/new_faligned_allocation.pass.cpp
 libcxx/test/libcxx/language.support/support.rtti/type.info/type_info.comparison.apple.compile.pass.cpp
@@ -1135,7 +1120,6 @@ libcxx/test/std/algorithms/alg.nonmodifying/alg.all_of/ranges.all_of.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.any_of/any_of.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.any_of/ranges.any_of.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.count/count_if.pass.cpp
-libcxx/test/std/algorithms/alg.nonmodifying/alg.count/count.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.count/pstl.count_if.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.count/pstl.count.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.count/ranges.count_if.pass.cpp
@@ -1146,8 +1130,6 @@ libcxx/test/std/algorithms/alg.nonmodifying/alg.equal/ranges.equal.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.find.end/find_end.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.find.end/find_end_pred.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.find.end/ranges.find_end.pass.cpp
-libcxx/test/std/algorithms/alg.nonmodifying/alg.find/find_if_not.pass.cpp
-libcxx/test/std/algorithms/alg.nonmodifying/alg.find/find_if.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.find.first.of/find_first_of.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.find.first.of/find_first_of_pred.pass.cpp
 libcxx/test/std/algorithms/alg.nonmodifying/alg.find.first.of/ranges.find_first_of.pass.cpp
@@ -2660,7 +2642,6 @@ libcxx/test/std/containers/views/mdspan/layout_left/index_operator.pass.cpp
 libcxx/test/std/containers/views/mdspan/layout_left/required_span_size.pass.cpp
 libcxx/test/std/containers/views/mdspan/layout_right/index_operator.pass.cpp
 libcxx/test/std/containers/views/mdspan/layout_right/required_span_size.pass.cpp
-libcxx/test/std/containers/views/mdspan/mdspan/CustomTestLayouts.h
 libcxx/test/std/containers/views/mdspan/mdspan/conversion.pass.cpp
 libcxx/test/std/containers/views/mdspan/mdspan/types.pass.cpp
 libcxx/test/std/containers/views/views.span/range_concept_conformance.compile.pass.cpp
@@ -2729,7 +2710,6 @@ libcxx/test/std/depr/depr.c.headers/inttypes_h.compile.pass.cpp
 libcxx/test/std/depr/depr.c.headers/limits_h.compile.pass.cpp
 libcxx/test/std/depr/depr.c.headers/locale_h.compile.pass.cpp
 libcxx/test/std/depr/depr.c.headers/math_h.pass.cpp
-libcxx/test/std/depr/depr.c.headers/setjmp_h.compile.pass.cpp
 libcxx/test/std/depr/depr.c.headers/signal_h.compile.pass.cpp
 libcxx/test/std/depr/depr.c.headers/stdarg_h.compile.pass.cpp
 libcxx/test/std/depr/depr.c.headers/stdbool_h.compile.pass.cpp
@@ -3484,10 +3464,8 @@ libcxx/test/std/input.output/string.streams/ostringstream/ostringstream.cons/str
 libcxx/test/std/input.output/string.streams/ostringstream/ostringstream.members/str.pass.cpp
 libcxx/test/std/input.output/string.streams/ostringstream/types.pass.cpp
 libcxx/test/std/input.output/string.streams/stringbuf/stringbuf.assign/member_swap.pass.cpp
-libcxx/test/std/input.output/string.streams/stringbuf/stringbuf.assign/move.pass.cpp
 libcxx/test/std/input.output/string.streams/stringbuf/stringbuf.assign/nonmember_swap.pass.cpp
 libcxx/test/std/input.output/string.streams/stringbuf/stringbuf.cons/default.pass.cpp
-libcxx/test/std/input.output/string.streams/stringbuf/stringbuf.cons/move.pass.cpp
 libcxx/test/std/input.output/string.streams/stringbuf/stringbuf.cons/string.pass.cpp
 libcxx/test/std/input.output/string.streams/stringbuf/stringbuf.members/str.pass.cpp
 libcxx/test/std/input.output/string.streams/stringbuf/stringbuf.virtuals/overflow.pass.cpp
@@ -3945,7 +3923,6 @@ libcxx/test/std/language.support/support.rtti/bad.typeid/bad_typeid.pass.cpp
 libcxx/test/std/language.support/support.rtti/type.info/type_info.equal.pass.cpp
 libcxx/test/std/language.support/support.rtti/type.info/type_info_hash.pass.cpp
 libcxx/test/std/language.support/support.rtti/type.info/type_info.pass.cpp
-libcxx/test/std/language.support/support.runtime/csetjmp.pass.cpp
 libcxx/test/std/language.support/support.runtime/csignal.pass.cpp
 libcxx/test/std/language.support/support.runtime/cstdarg.pass.cpp
 libcxx/test/std/language.support/support.runtime/cstdbool.pass.cpp
@@ -5269,7 +5246,6 @@ libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.inner/ba
 libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.inner/ctor.default.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.inner/ctor.outer_iterator.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.inner/equal.pass.cpp
-libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.inner/increment.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.inner/iter_move.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.inner/iter_swap.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.inner/types.compile.pass.cpp
@@ -5279,11 +5255,8 @@ libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.outer/ct
 libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.outer/equal.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.outer/types.compile.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.outer.value/ctor.default.pass.cpp
-libcxx/test/std/ranges/range.adaptors/range.lazy.split/range.lazy.split.outer.value/view_interface.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.lazy.split/types.h
-libcxx/test/std/ranges/range.adaptors/range.lazy.split/view_interface.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.reverse/adaptor.pass.cpp
-libcxx/test/std/ranges/range.adaptors/range.reverse/base.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.reverse/begin.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.reverse/borrowing.compile.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.reverse/ctad.compile.pass.cpp
@@ -5304,7 +5277,6 @@ libcxx/test/std/ranges/range.adaptors/range.take/ctad.compile.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.take/ctor.default.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.take/range_concept_conformance.compile.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.take/sentinel/ctor.pass.cpp
-libcxx/test/std/ranges/range.adaptors/range.take/sentinel/eq.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.take/size.pass.cpp
 libcxx/test/std/ranges/range.adaptors/range.take/types.h
 libcxx/test/std/ranges/range.adaptors/range.take.while/adaptor.pass.cpp
@@ -5361,7 +5333,6 @@ libcxx/test/std/ranges/range.factories/range.iota.view/iterator/ctor.value.pass.
 libcxx/test/std/ranges/range.factories/range.iota.view/iterator/decrement.pass.cpp
 libcxx/test/std/ranges/range.factories/range.iota.view/iterator/increment.pass.cpp
 libcxx/test/std/ranges/range.factories/range.iota.view/iterator/member_typedefs.compile.pass.cpp
-libcxx/test/std/ranges/range.factories/range.iota.view/iterator/minus.pass.cpp
 libcxx/test/std/ranges/range.factories/range.iota.view/iterator/star.pass.cpp
 libcxx/test/std/ranges/range.factories/range.iota.view/iterator/subscript.pass.cpp
 libcxx/test/std/ranges/range.factories/range.iota.view/range_concept_conformance.compile.pass.cpp
@@ -5616,9 +5587,6 @@ libcxx/test/std/thread/futures/futures.errors/equivalent_int_error_condition.pas
 libcxx/test/std/thread/futures/futures.errors/future_category.pass.cpp
 libcxx/test/std/thread/futures/futures.errors/make_error_code.pass.cpp
 libcxx/test/std/thread/futures/futures.errors/make_error_condition.pass.cpp
-libcxx/test/std/thread/futures/futures.future_error/code.pass.cpp
-libcxx/test/std/thread/futures/futures.future_error/types.pass.cpp
-libcxx/test/std/thread/futures/futures.future_error/what.pass.cpp
 libcxx/test/std/thread/futures/futures.overview/future_errc.pass.cpp
 libcxx/test/std/thread/futures/futures.overview/future_status.pass.cpp
 libcxx/test/std/thread/futures/futures.overview/is_error_code_enum_future_errc.pass.cpp
@@ -6277,7 +6245,6 @@ libcxx/test/std/utilities/expected/expected.expected/observers/deref.pass.cpp
 libcxx/test/std/utilities/expected/expected.expected/observers/error.pass.cpp
 libcxx/test/std/utilities/expected/expected.expected/observers/has_value.pass.cpp
 libcxx/test/std/utilities/expected/expected.expected/observers/value.pass.cpp
-libcxx/test/std/utilities/expected/expected.expected/swap/member.swap.pass.cpp
 libcxx/test/std/utilities/expected/expected.unexpected/ctad.compile.pass.cpp
 libcxx/test/std/utilities/expected/expected.unexpected/ctor/ctor.inplace.pass.cpp
 libcxx/test/std/utilities/expected/expected.unexpected/ctor/ctor.move.pass.cpp
@@ -6297,7 +6264,6 @@ libcxx/test/std/utilities/expected/expected.void/observers/deref.pass.cpp
 libcxx/test/std/utilities/expected/expected.void/observers/error.pass.cpp
 libcxx/test/std/utilities/expected/expected.void/observers/has_value.pass.cpp
 libcxx/test/std/utilities/expected/expected.void/swap/free.swap.pass.cpp
-libcxx/test/std/utilities/expected/expected.void/swap/member.swap.pass.cpp
 libcxx/test/std/utilities/format/format.arguments/format.args/get.pass.cpp
 libcxx/test/std/utilities/format/format.arguments/format.args/types.compile.pass.cpp
 libcxx/test/std/utilities/format/format.arguments/format.arg/visit_format_arg.pass.cpp
@@ -6518,7 +6484,6 @@ libcxx/test/std/utilities/memory/allocator.traits/allocator.traits.types/void_po
 libcxx/test/std/utilities/memory/allocator.traits/allocator_type.pass.cpp
 libcxx/test/std/utilities/memory/allocator.traits/rebind_traits.pass.cpp
 libcxx/test/std/utilities/memory/allocator.traits/value_type.pass.cpp
-libcxx/test/std/utilities/memory/allocator.uses/allocator.uses.construction/uses_allocator_construction_args.pass.cpp
 libcxx/test/std/utilities/memory/allocator.uses/allocator.uses.trait/uses_allocator.pass.cpp
 libcxx/test/std/utilities/memory/c.malloc/nothing_to_do.pass.cpp
 libcxx/test/std/utilities/memory/default.allocator/allocator.ctor.pass.cpp
@@ -7240,7 +7205,6 @@ libcxx/test/support/archetypes.h
 libcxx/test/support/archetypes.ipp
 libcxx/test/support/asan_testing.h
 libcxx/test/support/assert_macros.h
-libcxx/test/support/boolean_testable.h
 libcxx/test/support/callable_types.h
 libcxx/test/support/charconv_test_helpers.h
 libcxx/test/support/check_assertion.h
@@ -7318,4 +7282,6 @@ libcxx/utils/ci/Dockerfile
 libcxx/utils/ci/macos-ci-setup
 libcxx/utils/ci/run-buildbot
 libcxx/utils/ci/run-buildbot-container
+libcxx/utils/ci/vendor/android/Dockerfile
+libcxx/utils/ci/vendor/android/run-buildbot-container
 libcxx/utils/libcxx-lit

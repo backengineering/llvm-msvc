@@ -95,6 +95,15 @@ private:
   /// from meta data in the file.
   void discoverFileObjects();
 
+  /// Check whether we should use DT_FINI or DT_FINI_ARRAY for instrumentation.
+  /// DT_FINI is preferred; DT_FINI_ARRAY is only used when no DT_FINI entry was
+  /// found.
+  Error discoverRtFiniAddress();
+
+  /// If DT_FINI_ARRAY is used for instrumentation, update the relocation of its
+  /// first entry to point to the instrumentation library's fini address.
+  void updateRtFiniReloc();
+
   /// Create and initialize metadata rewriters for this instance.
   void initializeMetadataManager();
 
@@ -509,11 +518,11 @@ private:
   };
 
   /// AArch64 PLT sections.
-  const PLTSectionInfo AArch64_PLTSections[3] = {
-      {".plt"}, {".iplt"}, {nullptr}};
+  const PLTSectionInfo AArch64_PLTSections[4] = {
+      {".plt"}, {".plt.got"}, {".iplt"}, {nullptr}};
 
   /// RISCV PLT sections.
-  const PLTSectionInfo RISCV_PLTSections[3] = {{".plt"}, {nullptr}};
+  const PLTSectionInfo RISCV_PLTSections[2] = {{".plt"}, {nullptr}};
 
   /// Return PLT information for a section with \p SectionName or nullptr
   /// if the section is not PLT.
@@ -584,7 +593,8 @@ private:
 MCPlusBuilder *createMCPlusBuilder(const Triple::ArchType Arch,
                                    const MCInstrAnalysis *Analysis,
                                    const MCInstrInfo *Info,
-                                   const MCRegisterInfo *RegInfo);
+                                   const MCRegisterInfo *RegInfo,
+                                   const MCSubtargetInfo *STI);
 
 } // namespace bolt
 } // namespace llvm

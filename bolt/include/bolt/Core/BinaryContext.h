@@ -680,6 +680,15 @@ public:
   /// the execution of the binary is completed.
   std::optional<uint64_t> FiniFunctionAddress;
 
+  /// DT_FINI.
+  std::optional<uint64_t> FiniAddress;
+
+  /// DT_FINI_ARRAY. Only used when DT_FINI is not set.
+  std::optional<uint64_t> FiniArrayAddress;
+
+  /// DT_FINI_ARRAYSZ. Only used when DT_FINI is not set.
+  std::optional<uint64_t> FiniArraySize;
+
   /// Page alignment used for code layout.
   uint64_t PageAlign{HugePageSize};
 
@@ -871,6 +880,15 @@ public:
     return nullptr;
   }
 
+  /// Retrieves a reference to ELF's _GLOBAL_OFFSET_TABLE_ symbol, which points
+  /// at GOT, or null if it is not present in the input binary symtab.
+  BinaryData *getGOTSymbol();
+
+  /// Checks if symbol name refers to ELF's _GLOBAL_OFFSET_TABLE_ symbol
+  bool isGOTSymbol(StringRef SymName) const {
+    return SymName == "_GLOBAL_OFFSET_TABLE_";
+  }
+
   /// Return true if \p SymbolName was generated internally and was not present
   /// in the input binary.
   bool isInternalSymbolName(const StringRef Name) {
@@ -932,7 +950,7 @@ public:
   bool registerFragment(BinaryFunction &TargetFunction,
                         BinaryFunction &Function) const;
 
-  /// Add unterprocedural reference for \p Function to \p Address
+  /// Add interprocedural reference for \p Function to \p Address
   void addInterproceduralReference(BinaryFunction *Function, uint64_t Address) {
     InterproceduralReferences.push_back({Function, Address});
   }
