@@ -5,8 +5,7 @@
 [![Github All Releases](https://img.shields.io/github/downloads/backengineering/llvm-msvc/total.svg)](https://github.com/backengineering/llvm-msvc/releases) 
 [![GitHub release](https://img.shields.io/github/release/backengineering/llvm-msvc.svg)](https://github.com/backengineering/llvm-msvc/releases) 
 
-llvm-msvc is a compiler based LLVM that is not restricted by MSVC. The goal is to have the same experience as MSVC on Windows.
-You can use naked functions anywhere, as well as add custom support such as obfuscation.
+llvm-msvc is a compiler based on LLVM that isn't limited by MSVC. The aim is to provide the same experience as MSVC on Windows. You can use naked functions anywhere and also add custom support like obfuscation.
 
 ## Features:
 - Compatible with MSVC syntax as much as possible.
