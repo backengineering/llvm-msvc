@@ -21,9 +21,9 @@ You can use naked functions anywhere, as well as add custom support such as obfu
 
 ## FAQ
 ### Why do we make this project?
-- Clang uses the GCC standard, MSVC has its own special syntax.
-- Some of the code is rather hacky. Unable to submit to official.
-- Waiting for official fix is ​​too long.
+- Clang follows the GCC standard, while MSVC has its own unique syntax.
+- Some of the code is pretty hacky. Can't submit it officially.
+- Waiting for the official fix takes too long.
 
 ### How to compile?
 
