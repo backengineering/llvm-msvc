@@ -10,13 +10,13 @@ You can use naked functions anywhere, as well as add custom support such as obfu
 
 ## Features:
 - Compatible with MSVC syntax as much as possible.
-- Enhance SEH stability.
-- Add some special Intrinsic(``__vmx_vmread``/``__vmx_write``).
-- Support x64/ARM64 windows drivers.
-- Support naked X64 inline asm.
-- Support multiple cores compilation.
-- Support ``/MP`` when precompiled headers are present.
-- Support ``/GL`` (LTO optimization).
+- Improved SEH stability.
+- Added some special Intrinsic functions(``__vmx_vmread``/``__vmx_write``).
+- Supports x64/ARM64 windows drivers.
+- Allows naked X64 inline asm.
+- Enables multiple cores compilation.
+- Supports ``/MP`` when precompiled headers are present.
+- Supports ``/GL`` (LTO optimization).
 
 
 ## FAQ
