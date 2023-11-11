@@ -134,6 +134,9 @@ static bool IVUseShouldUsePostIncValue(Instruction *User, Value *Operand,
 /// add its users to the IVUsesByStride set and return true.  Otherwise, return
 /// false.
 bool IVUsers::AddUsersIfInteresting(Instruction *I) {
+  if (!I->getParent())
+    return false;
+
   const DataLayout &DL = I->getModule()->getDataLayout();
 
   // Add this IV user to the Processed set before returning false to ensure that
