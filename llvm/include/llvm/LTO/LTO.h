@@ -110,7 +110,7 @@ class InputFile {
 public:
   class Symbol;
 
-private:
+public:
   // FIXME: Remove LTO class friendship once we have bitcode symbol tables.
   friend LTO;
   InputFile() = default;
