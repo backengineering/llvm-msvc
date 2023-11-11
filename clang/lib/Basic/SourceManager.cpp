@@ -722,6 +722,7 @@ SourceManager::createExpansionLocImpl(const ExpansionInfo &Info,
     return SourceLocation::getMacroLoc(LoadedOffset);
   }
   LocalSLocEntryTable.push_back(SLocEntry::get(NextLocalOffset, Info));
+#ifndef _WIN32
   if (NextLocalOffset + Length + 1 <= NextLocalOffset ||
       NextLocalOffset + Length + 1 > CurrentLoadedOffset) {
     Diag.Report(SourceLocation(), diag::err_sloc_space_too_large);
@@ -732,6 +733,7 @@ SourceManager::createExpansionLocImpl(const ExpansionInfo &Info,
     // locations causes compiler to run indefinitely.
     llvm::report_fatal_error("ran out of source locations");
   }
+#endif
   // See createFileID for that +1.
   NextLocalOffset += Length + 1;
   return SourceLocation::getMacroLoc(NextLocalOffset - (Length + 1));
