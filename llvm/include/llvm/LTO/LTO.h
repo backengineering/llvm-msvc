@@ -301,7 +301,7 @@ public:
   /// by LTO but might not be visible from bitcode symbol table.
   static ArrayRef<const char*> getRuntimeLibcallSymbols();
 
-private:
+public:
   Config Conf;
 
   struct RegularLTOState {
