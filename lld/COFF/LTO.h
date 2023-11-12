@@ -46,7 +46,7 @@ public:
   void add(BitcodeFile &f);
   std::vector<InputFile *> compile();
 
-private:
+public:
   std::unique_ptr<llvm::lto::LTO> ltoObj;
   std::vector<std::pair<std::string, SmallString<0>>> buf;
   std::vector<std::unique_ptr<MemoryBuffer>> files;
