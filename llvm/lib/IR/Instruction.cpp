@@ -130,6 +130,30 @@ Instruction *Instruction::getPrevOrNextInst(bool Previous) {
   return ResInst;
 }
 
+bool Instruction::isBefore(Instruction *SecondInst) {
+  BasicBlock *ThisBB = this->getParent();
+  BasicBlock *SecondBB = SecondInst->getParent();
+  if (ThisBB == nullptr || SecondBB == nullptr)
+    return false;
+  if (ThisBB != SecondBB)
+    return false;
+  bool Found = false;
+  for (BasicBlock::iterator I = ThisBB->begin(), E = ThisBB->end(); I != E;
+       ++I) {
+    if (Found) {
+      if (&(*I) == SecondInst)
+        return true;
+    }
+    if (&(*I) == this)
+      Found = true;
+  }
+  return false;
+}
+
+bool Instruction::isAfter(Instruction *SecondInst) {
+  return SecondInst->isBefore(this);
+}
+
 void Instruction::insertBefore(Instruction *InsertPos) {
   insertBefore(InsertPos->getIterator());
 }
