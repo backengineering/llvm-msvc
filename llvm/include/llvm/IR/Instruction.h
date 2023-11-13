@@ -175,6 +175,18 @@ public:
   /// Get the next instruction
   Instruction *getNextInst() { return getPrevOrNextInst(false); }
 
+  /// Check if this instruction is before the given instruction in the same basic
+  /// block. Returns true if this instruction precedes the given instruction,
+  /// otherwise returns false. If the instructions belong to different basic
+  /// blocks, returns false.
+  bool isBefore(Instruction *SecondInst);
+
+  /// Check if this instruction is after the given instruction in the same basic
+  /// block. Returns true if this instruction follows the given instruction,
+  /// otherwise returns false. If the instructions belong to different basic
+  /// blocks, returns false.
+  bool isAfter(Instruction *SecondInst);
+
   /// Insert an unlinked instruction into a basic block immediately before
   /// the specified instruction.
   void insertBefore(Instruction *InsertPos);
