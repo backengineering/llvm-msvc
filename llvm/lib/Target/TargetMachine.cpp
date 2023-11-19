@@ -42,6 +42,7 @@ TargetMachine::~TargetMachine() = default;
 bool TargetMachine::isLargeData(const GlobalVariable *GV) const {
   if (getTargetTriple().getArch() != Triple::x86_64 || GV->isThreadLocal())
     return false;
+    
   if (getCodeModel() != CodeModel::Medium && getCodeModel() != CodeModel::Large)
     return false;
 

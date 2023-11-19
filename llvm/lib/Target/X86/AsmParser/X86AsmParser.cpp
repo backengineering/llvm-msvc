@@ -106,6 +106,9 @@ class X86AsmParser : public MCTargetAsmParser {
 
   DispEncoding ForcedDispEncoding = DispEncoding_Default;
 
+  // Does this instruction use apx extended register?
+  bool UseApxExtendedReg = false;
+
 private:
   SMLoc consumeToken() {
     MCAsmParser &Parser = getParser();
@@ -1425,6 +1428,9 @@ bool X86AsmParser::MatchRegisterByName(MCRegister &RegNo, StringRef RegName,
                    SMRange(StartLoc, EndLoc));
     }
   }
+
+  if (X86II::isApxExtendedReg(RegNo))
+    UseApxExtendedReg = true;
 
   // If this is "db[0-15]", match it as an alias
   // for dr[0-15].
@@ -3144,6 +3150,7 @@ bool X86AsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
   // Reset the forced VEX encoding.
   ForcedVEXEncoding = VEXEncoding_Default;
   ForcedDispEncoding = DispEncoding_Default;
+  UseApxExtendedReg = false;
 
   // Parse pseudo prefixes.
   while (true) {
@@ -4013,6 +4020,9 @@ static unsigned getPrefixes(OperandVector &Operands) {
 unsigned X86AsmParser::checkTargetMatchPredicate(MCInst &Inst) {
   unsigned Opc = Inst.getOpcode();
   const MCInstrDesc &MCID = MII.get(Opc);
+
+  if (UseApxExtendedReg && !X86II::canUseApxExtendedReg(MCID))
+    return Match_Unsupported;
 
   if (ForcedVEXEncoding == VEXEncoding_EVEX &&
       (MCID.TSFlags & X86II::EncodingMask) != X86II::EVEX)
