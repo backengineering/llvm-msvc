@@ -16850,12 +16850,8 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     return CI;
   }
   case X86::BI_xbegin: {
-    llvm::FunctionType *FTy = llvm::FunctionType::get(Int32Ty, false);
-    llvm::InlineAsm *IA = llvm::InlineAsm::get(
-        FTy, ".byte 0xc7,0xf8 ; .long 0", "={ax},0,~{memory},~{dirflag},~{fpsr},~{flags}",
-        /*hasSideEffects=*/true);
-    llvm::CallInst *CI = Builder.CreateCall(IA, ConstantInt::get(Int32Ty, -1));
-    return CI;
+    return Builder.CreateIntrinsic(VoidTy, llvm::Intrinsic::x86_xbegin,
+                                   {ConstantInt::get(Int32Ty, -1)});
   }
   case X86::BI_xend: {
     llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, false);
