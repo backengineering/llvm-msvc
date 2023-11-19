@@ -8594,7 +8594,7 @@ Value *CodeGenFunction::EmitARMBuiltinExpr(unsigned BuiltinID,
     Function *F = CGM.getIntrinsic(Intrinsic::prefetch, Address->getType());
     return Builder.CreateCall(F, {Address, RW, Locality, Data});
   }
-	
+
   // Handle MSVC intrinsics before argument evaluation to prevent double
   // evaluation.
   if (std::optional<MSVCIntrin> MsvcIntId = translateArmToMsvcIntrin(BuiltinID))
@@ -16772,11 +16772,12 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
         FTy, "rdmsr", "={dx},={ax},{cx},~{dirflag},~{fpsr},~{flags}",
         /*hasSideEffects=*/true);
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
-    auto EDX = Builder.CreateExtractValue(CI, 0);
-    auto EAX = Builder.CreateExtractValue(CI, 1);
-    auto RDX = Builder.CreateZExt(EDX, Int64Ty);
-    auto LeftRDX = Builder.CreateShl(RDX, Builder.getInt64(32), "", true);
-    auto RightRAX = Builder.CreateZExt(EAX, Int64Ty);
+    llvm::Value *EDX = Builder.CreateExtractValue(CI, 0);
+    llvm::Value *EAX = Builder.CreateExtractValue(CI, 1);
+    llvm::Value *RDX = Builder.CreateZExt(EDX, Int64Ty);
+    llvm::Value *LeftRDX =
+        Builder.CreateShl(RDX, Builder.getInt64(32), "", true);
+    llvm::Value *RightRAX = Builder.CreateZExt(EAX, Int64Ty);
     return Builder.CreateOr(LeftRDX, RightRAX);
   }
   case X86::BI__writemsr: {
@@ -16785,18 +16786,19 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     llvm::InlineAsm *IA = llvm::InlineAsm::get(
         FTy, "wrmsr", "{ax},{dx},{cx},~{dirflag},~{fpsr},~{flags}",
         /*hasSideEffects=*/true);
-    auto EDX = Builder.CreateLShr(Ops[1], Builder.getInt64(32), "");
+    llvm::Value *EDX = Builder.CreateLShr(Ops[1], Builder.getInt64(32), "");
     llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[1], EDX, Ops[0]});
     return CI;
   }
   case X86::BI__readpmc: {
-    auto CI =
+    llvm::CallInst *CI =
         Builder.CreateCall(CGM.getIntrinsic(Intrinsic::x86_rdpmc), {Ops[0]});
     return CI;
   }
   case X86::BI__rdtscp: {
-    auto CI = Builder.CreateCall(CGM.getIntrinsic(Intrinsic::x86_rdtscp));
-    auto Aux = Builder.CreateExtractValue(CI, {1});
+    llvm::CallInst *CI =
+        Builder.CreateCall(CGM.getIntrinsic(Intrinsic::x86_rdtscp));
+    llvm::Value *Aux = Builder.CreateExtractValue(CI, {1});
     Builder.CreateDefaultAlignedStore(Aux, Ops[0]);
     return Builder.CreateExtractValue(CI, {0});
   }
