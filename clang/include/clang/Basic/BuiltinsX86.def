@@ -2169,6 +2169,7 @@ TARGET_HEADER_BUILTIN(__writedr, "vUiz", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
 TARGET_HEADER_BUILTIN(__readeflags, "z", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
 TARGET_HEADER_BUILTIN(__writeeflags, "vz", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
 
+BUILTIN(__builtin_ia32_rdmsr, "ULLiUNi", "")
 TARGET_HEADER_BUILTIN(__readmsr, "ULLiUNi", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
 TARGET_HEADER_BUILTIN(__writemsr, "vUNiULLi", "nh", INTRIN_H, ALL_MS_LANGUAGES, "")
 
