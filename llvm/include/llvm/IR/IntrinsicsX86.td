@@ -56,6 +56,13 @@ let TargetPrefix = "x86" in {
               Intrinsic<[llvm_i64_ty], [llvm_i32_ty], []>;
 }
 
+
+// Read MSR.
+let TargetPrefix = "x86" in {
+  def int_x86_rdmsr : ClangBuiltin<"__builtin_ia32_rdmsr">,
+              Intrinsic<[llvm_i64_ty], [llvm_i32_ty], []>;
+}
+
 // Read processor ID.
 let TargetPrefix = "x86" in {
   def int_x86_rdpid : ClangBuiltin<"__builtin_ia32_rdpid">,
