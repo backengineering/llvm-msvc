@@ -104,8 +104,8 @@ unsigned short __readfsword(unsigned long);
 unsigned long __readfsdword(unsigned long);
 unsigned __int64 __readfsqword(unsigned long);
 #endif
-unsigned __int64 __readmsr(unsigned long);
-unsigned __int64 __readpmc(unsigned long);
+unsigned long long __readmsr(unsigned long);
+unsigned long long __readpmc(unsigned long);
 unsigned long __segmentlimit(unsigned long);
 void __sidt(void *);
 void __stosb(unsigned char *, unsigned char, size_t);
