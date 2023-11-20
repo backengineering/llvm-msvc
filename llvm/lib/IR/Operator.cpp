@@ -132,8 +132,8 @@ bool GEPOperator::accumulateConstantOffset(
   for (auto GTI = begin, GTE = end; GTI != GTE; ++GTI) {
     // Scalable vectors are multiplied by a runtime constant.
     bool ScalableType = false;
-    if (GTI.getIndexedType())
-        ScalableType = GTI.getIndexedType()->isScalableTy();
+    if (Type* Ty = GTI.getIndexedType())
+      ScalableType = Ty->isScalableTy();
 
     Value *V = GTI.getOperand();
     StructType *STy = GTI.getStructTypeOrNull();
