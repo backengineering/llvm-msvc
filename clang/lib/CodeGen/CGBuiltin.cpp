@@ -16766,20 +16766,8 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                                    {Ops[0]});
   }
   case X86::BI__readmsr: {
-    llvm::FunctionType *FTy = llvm::FunctionType::get(
-        llvm::StructType::get(getLLVMContext(), {Int32Ty, Int32Ty}, Int32Ty),
-        false);
-    llvm::InlineAsm *IA = llvm::InlineAsm::get(
-        FTy, "rdmsr", "={dx},={ax},{cx},~{dirflag},~{fpsr},~{flags}",
-        /*hasSideEffects=*/true);
-    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0]});
-    llvm::Value *EDX = Builder.CreateExtractValue(CI, 0);
-    llvm::Value *EAX = Builder.CreateExtractValue(CI, 1);
-    llvm::Value *RDX = Builder.CreateZExt(EDX, Int64Ty);
-    llvm::Value *LeftRDX =
-        Builder.CreateShl(RDX, Builder.getInt64(32), "", true);
-    llvm::Value *RightRAX = Builder.CreateZExt(EAX, Int64Ty);
-    return Builder.CreateOr(LeftRDX, RightRAX);
+    return Builder.CreateIntrinsic(Int64Ty, llvm::Intrinsic::x86_rdmsr,
+                                   {Ops[0]});
   }
   case X86::BI__writemsr: {
     llvm::FunctionType *FTy =
