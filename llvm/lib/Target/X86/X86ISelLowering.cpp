@@ -26865,6 +26865,8 @@ static SDValue LowerINTRINSIC_W_CHAIN(SDValue Op, const X86Subtarget &Subtarget,
                             Results);
     return DAG.getMergeValues(Results, dl);
   }
+  // Read MSR.
+  case RDMSR:
   // Read Performance Monitoring Counters.
   case RDPMC:
   // Read Processor Register.
@@ -26873,6 +26875,7 @@ static SDValue LowerINTRINSIC_W_CHAIN(SDValue Op, const X86Subtarget &Subtarget,
   case XGETBV: {
     SmallVector<SDValue, 2> Results;
 
+    // RDMSR uses ECX to select the index of the MSR to read.
     // RDPMC uses ECX to select the index of the performance counter to read.
     // RDPRU uses ECX to select the processor register to read.
     // XGETBV uses ECX to select the index of the XCR register to return.
@@ -32718,6 +32721,10 @@ void X86TargetLowering::ReplaceNodeResults(SDNode *N,
                                      Results);
     case Intrinsic::x86_rdpmc:
       expandIntrinsicWChainHelper(N, dl, DAG, X86::RDPMC, X86::ECX, Subtarget,
+                                  Results);
+      return;
+    case Intrinsic::x86_rdmsr:
+      expandIntrinsicWChainHelper(N, dl, DAG, X86::RDMSR, X86::ECX, Subtarget,
                                   Results);
       return;
     case Intrinsic::x86_rdpru:
