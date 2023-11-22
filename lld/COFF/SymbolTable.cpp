@@ -463,8 +463,10 @@ void SymbolTable::reportUnresolvable() {
     StringRef name = undef->getName();
     if (name.starts_with("__imp_")) {
       Symbol *imp = find(name.substr(strlen("__imp_")));
-      if (imp && isa<Defined>(imp))
+      if (Defined *def = dyn_cast_or_null<Defined>(imp)) {
+        def->isUsedInRegularObj = true;
         continue;
+      }
     }
     if (name.contains("_PchSym_"))
       continue;

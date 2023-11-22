@@ -2228,7 +2228,6 @@ CHECK_SIMPLE_CLAUSE(CancellationConstructType, OMPC_cancellation_construct_type)
 CHECK_SIMPLE_CLAUSE(Doacross, OMPC_doacross)
 CHECK_SIMPLE_CLAUSE(OmpxAttribute, OMPC_ompx_attribute)
 CHECK_SIMPLE_CLAUSE(OmpxBare, OMPC_ompx_bare)
-CHECK_SIMPLE_CLAUSE(Fail, OMPC_fail)
 
 CHECK_REQ_SCALAR_INT_CLAUSE(Grainsize, OMPC_grainsize)
 CHECK_REQ_SCALAR_INT_CLAUSE(NumTasks, OMPC_num_tasks)
@@ -2749,6 +2748,17 @@ void OmpStructureChecker::Enter(const parser::OmpClause::Device &x) {
   const auto &device{std::get<1>(deviceClause.t)};
   RequiresPositiveParameter(
       llvm::omp::Clause::OMPC_device, device, "device expression");
+  std::optional<parser::OmpDeviceClause::DeviceModifier> modifier =
+      std::get<0>(deviceClause.t);
+  if (modifier &&
+      *modifier == parser::OmpDeviceClause::DeviceModifier::Ancestor) {
+    if (GetContext().directive != llvm::omp::OMPD_target) {
+      context_.Say(GetContext().clauseSource,
+          "The ANCESTOR device-modifier must not appear on the DEVICE clause on"
+          " any directive other than the TARGET construct. Found on %s construct."_err_en_US,
+          parser::ToUpperCaseLetters(getDirectiveName(GetContext().directive)));
+    }
+  }
 }
 
 void OmpStructureChecker::Enter(const parser::OmpClause::Depend &x) {

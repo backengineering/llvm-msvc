@@ -745,8 +745,8 @@ public:
     const auto resType = getSparseTensorType(op);
     if (!resType.hasEncoding())
       return failure();
-    Location loc = op.getLoc();
 
+    Location loc = op.getLoc();
     // Deal with copy.
     if (op.getCopy()) {
       auto desc = getDescriptorFromTensorTuple(adaptor.getCopy());
@@ -768,16 +768,14 @@ public:
       return success();
     }
 
-    // Construct the dim/lvl sizes and the (unused) dim2lvl/lvl2dim buffers.
-    SmallVector<Value> dimSizesValues;
+    if (!resType.isIdentity()) {
+      return rewriter.notifyMatchFailure(
+          op, "try run --sparse-reinterpret-map before codegen");
+    }
+    // Level size equals to dimension size since lvl2dim map is an identity map.
     SmallVector<Value> lvlSizesValues;
-    Value dimSizesBuffer;
-    Value dim2lvlBuffer;
-    Value lvl2dimBuffer;
     createDimSizes(rewriter, loc, resType, adaptor.getDynamicSizes(),
-                   dimSizesValues);
-    genMapBuffers(rewriter, loc, resType, dimSizesValues, dimSizesBuffer,
-                  lvlSizesValues, dim2lvlBuffer, lvl2dimBuffer);
+                   /*dimSizesValues=*/lvlSizesValues);
 
     // Construct allocation for each field.
     Value sizeHint = op.getSizeHint();
@@ -809,19 +807,17 @@ public:
     const auto resType = getSparseTensorType(op);
     if (!resType.hasEncoding())
       return failure();
+
+    if (!resType.isIdentity()) {
+      return rewriter.notifyMatchFailure(
+          op, "try run --sparse-reinterpret-map before codegen");
+    }
+
     Location loc = op.getLoc();
-
-    // Construct the dim/lvl sizes and the (unused) dim2lvl/lvl2dim buffers.
-    SmallVector<Value> dimSizesValues;
+    // Level size equals to dimension size since lvl2dim map is an identity map.
     SmallVector<Value> lvlSizesValues;
-    Value dimSizesBuffer;
-    Value dim2lvlBuffer;
-    Value lvl2dimBuffer;
     createDimSizes(rewriter, loc, resType, adaptor.getDynamicSizes(),
-                   dimSizesValues);
-    genMapBuffers(rewriter, loc, resType, dimSizesValues, dimSizesBuffer,
-                  lvlSizesValues, dim2lvlBuffer, lvl2dimBuffer);
-
+                   /*dimSizesValues=*/lvlSizesValues);
     // Construct allocation for each field.
     Value sizeHint; // none
     SmallVector<Value> fields;
@@ -1345,7 +1341,7 @@ struct SparseAssembleOpConverter : public OpConversionPattern<AssembleOp> {
         continue;
       }
 
-      if (isDLTWithPos(dlt)) {
+      if (isWithPosDLT(dlt)) {
         assert(isCompressedDLT(dlt) || isLooseCompressedDLT(dlt));
         if (isLooseCompressedDLT(dlt)) {
           memSize = rewriter.create<arith::MulIOp>(loc, memSize, c2);
@@ -1360,7 +1356,7 @@ struct SparseAssembleOpConverter : public OpConversionPattern<AssembleOp> {
         memSize = genIndexLoad(rewriter, loc, desc.getPosMemRef(lvl), posBack);
         posBack = rewriter.create<arith::SubIOp>(loc, posBack, c1);
       }
-      assert(isDLTWithCrd(dlt) && lvl <= trailCOOStart);
+      assert(isWithCrdDLT(dlt) && lvl <= trailCOOStart);
       // FIXME: This seems to be unnecessarily complex, can we simplify it?
       if (lvl == trailCOOStart) {
         Value cooSz = rewriter.create<arith::MulIOp>(
