@@ -1383,7 +1383,7 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
   // not, add them to AvailableValues.
   for (Instruction &Inst : make_early_inc_range(*BB)) {
     // Do not optimize functions have the 'NoInline' attribute.
-    if (const CallOrInvokeInst *CI = dyn_cast<CallOrInvokeInst>(&Inst)) {
+    if (CallOrInvokeInst *CI = dyn_cast<CallOrInvokeInst>(&Inst)) {
       if (CI->getCalledFunction() &&
           CI->getCalledFunction()->hasFnAttribute(Attribute::NoInline)) {
         continue;
