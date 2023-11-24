@@ -1978,29 +1978,62 @@ bool llvm::LowerDbgDeclare(Function &F) {
 /// Lowers constant expression.
 bool llvm::LowerConstantExpr(Function &F) {
     bool Changed = false;
+    llvm::SmallVector<Instruction *, 16> SavedCEList;
 
     for (BasicBlock &BB : F) {
         // Skip EHPad basic block.
         if (BB.isEHPad()) continue;
-
         for (Instruction &I : BB) {
-            // Skip PHINode
-            if (isa<PHINode>(&I)) continue;
-            // Skip IntrinsicInst
-            if (isa<IntrinsicInst>(&I)) continue;
             // Skip EHPad instruction
             if (I.isEHPad()) continue;
-
-            for (unsigned int i = 0; i < I.getNumOperands(); ++i) {
-                if (auto *Expr = dyn_cast<ConstantExpr>(I.getOperand(i))) {
-                    auto *CloneExpr = Expr->getAsInstruction();
-                    I.replaceUsesOfWith(Expr, CloneExpr);
-                    CloneExpr->insertBefore(&I);
-                    Changed = true;
+            // Skip IntrinsicInst
+            if (isa<IntrinsicInst>(&I)) continue;
+            for (unsigned int Index = 0; Index < I.getNumOperands(); ++Index) {
+                if (ConstantExpr *CE =
+                        dyn_cast<ConstantExpr>(I.getOperand(Index))) {
+                    SavedCEList.push_back(&I);
                 }
             }
         }
     }
+
+    if (SavedCEList.size()) Changed = true;
+
+    while (SavedCEList.size()) {
+        Instruction *I = SavedCEList.back();
+        SavedCEList.pop_back();
+
+        if (PHINode *PHI = dyn_cast<PHINode>(I)) {
+            for (unsigned int Index = 0; Index < PHI->getNumIncomingValues();
+                 ++Index) {
+                Instruction *InsertPt =
+                    PHI->getIncomingBlock(Index)->getTerminator();
+                if (ConstantExpr *CE =
+                        dyn_cast<ConstantExpr>(PHI->getIncomingValue(Index))) {
+                    Instruction *NewInst = CE->getAsInstruction();
+                    NewInst->insertBefore(InsertPt);
+                    for (unsigned int Index2 = Index;
+                         Index2 < PHI->getNumIncomingValues(); ++Index2) {
+                        if ((PHI->getIncomingBlock(Index2)) ==
+                            PHI->getIncomingBlock(Index))
+                            PHI->setIncomingValue(Index2, NewInst);
+                    }
+                    SavedCEList.push_back(NewInst);
+                }
+            }
+        } else {
+            for (unsigned int Index = 0; Index < I->getNumOperands(); ++Index) {
+                if (ConstantExpr *CE =
+                        dyn_cast<ConstantExpr>(I->getOperand(Index))) {
+                    Instruction *NewInst = CE->getAsInstruction();
+                    NewInst->insertBefore(I);
+                    I->replaceUsesOfWith(CE, NewInst);
+                    SavedCEList.push_back(NewInst);
+                }
+            }
+        }
+    }
+
     return Changed;
 }
 
