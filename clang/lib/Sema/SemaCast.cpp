@@ -1465,7 +1465,9 @@ static TryCastResult TryStaticCast(Sema &Self, ExprResult &SrcExpr,
         // 'pointer-to-function'.
         if (!CStyle && Self.getLangOpts().MSVCCompat &&
             DestPointee->isFunctionType()) {
+#ifndef _WIN32
           Self.Diag(OpRange.getBegin(), diag::ext_ms_cast_fn_obj) << OpRange;
+#endif
           Kind = CK_BitCast;
           return TC_Success;
         }
