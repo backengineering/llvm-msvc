@@ -417,14 +417,6 @@ bool llvm::wouldInstructionBeTriviallyDeadOnUnusedPaths(
 
 bool llvm::wouldInstructionBeTriviallyDead(const Instruction *I,
                                            const TargetLibraryInfo *TLI) {
-  // Do not optimize functions have the 'NoInline' attribute.
-  if (const CallOrInvokeInst *CI = dyn_cast<CallOrInvokeInst>(I)) {
-    if (CI->getCalledFunction() &&
-        CI->getCalledFunction()->hasFnAttribute(Attribute::NoInline)) {
-      return false;
-    }
-  }
-
   if (I->isTerminator())
     return false;
 
