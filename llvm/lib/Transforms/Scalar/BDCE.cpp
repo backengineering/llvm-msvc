@@ -97,6 +97,14 @@ static bool bitTrackingDCE(Function &F, DemandedBits &DB) {
     if (I.mayHaveSideEffects() && I.use_empty())
       continue;
 
+    // Do not optimize functions have the 'NoInline' attribute.
+    if (CallOrInvokeInst *CI = dyn_cast<CallOrInvokeInst>(&I)) {
+      if (CI->getCalledFunction() &&
+          CI->getCalledFunction()->hasFnAttribute(Attribute::NoInline)) {
+        continue;
+      }
+    }
+
     // Remove instructions that are dead, either because they were not reached
     // during analysis or have no demanded bits.
     if (DB.isInstructionDead(&I) ||
