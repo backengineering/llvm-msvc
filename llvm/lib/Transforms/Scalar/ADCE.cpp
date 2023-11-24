@@ -578,10 +578,26 @@ ADCEChanged AggressiveDeadCodeElimination::removeDeadInstructions() {
     salvageDebugInfo(I);
   }
 
-  for (Instruction *&I : Worklist)
-    I->dropAllReferences();
+  // Do not optimize functions have the 'NoInline' attribute.
+  auto hasNoInline = [](Instruction &I) -> bool {
+    if (CallOrInvokeInst *CI = dyn_cast<CallOrInvokeInst>(&I)) {
+      if (CI->getCalledFunction() &&
+          CI->getCalledFunction()->hasFnAttribute(Attribute::NoInline)) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   for (Instruction *&I : Worklist) {
+    if (hasNoInline(*I))
+      continue;
+    I->dropAllReferences();
+  }
+
+  for (Instruction *&I : Worklist) {
+    if (hasNoInline(*I))
+      continue;
     ++NumRemoved;
     I->eraseFromParent();
   }
