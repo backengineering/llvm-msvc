@@ -225,8 +225,8 @@ Non-comprehensive list of changes in this release
   determined at runtime.
 * The ``__datasizeof`` keyword has been added. It is similar to ``sizeof``
   except that it returns the size of a type ignoring tail padding.
-* ``__builtin_classify_type()`` now classifies ``_BitInt`` values as the return value ``18``,
-  to match GCC 14's behavior.
+* ``__builtin_classify_type()`` now classifies ``_BitInt`` values as the return value ``18``
+  and vector types as return value ``19``, to match GCC 14's behavior.
 
 New Compiler Flags
 ------------------
@@ -333,6 +333,10 @@ Attribute Changes in Clang
       void func() {
         [[clang::code_align(A)]] for(;;) { }
       }
+
+- Clang now introduced ``[[clang::coro_lifetimebound]]`` attribute.
+  All parameters of a function are considered to be lifetime bound if the function
+  returns a type annotated with ``[[clang::coro_lifetimebound]]`` and ``[[clang::coro_return_type]]``.
 
 Improvements to Clang's diagnostics
 -----------------------------------
@@ -610,6 +614,9 @@ Bug Fixes in This Version
   inside a lambda. (`#61460 <https://github.com/llvm/llvm-project/issues/61460>`_)
 - Fix crash during instantiation of some class template specializations within class
   templates. Fixes (`#70375 <https://github.com/llvm/llvm-project/issues/70375>`_)
+- Fix crash during code generation of C++ coroutine initial suspend when the return
+  type of await_resume is not trivially destructible.
+  Fixes (`#63803 <https://github.com/llvm/llvm-project/issues/63803>`_)
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
