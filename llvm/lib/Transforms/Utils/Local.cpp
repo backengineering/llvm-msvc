@@ -1986,8 +1986,6 @@ bool llvm::LowerConstantExpr(Function &F) {
         for (Instruction &I : BB) {
             // Skip EHPad instruction
             if (I.isEHPad()) continue;
-            // Skip IntrinsicInst
-            if (isa<IntrinsicInst>(&I)) continue;
             for (unsigned int Index = 0; Index < I.getNumOperands(); ++Index) {
                 if (ConstantExpr *CE =
                         dyn_cast<ConstantExpr>(I.getOperand(Index))) {
