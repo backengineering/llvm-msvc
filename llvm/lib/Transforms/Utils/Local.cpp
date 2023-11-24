@@ -1978,7 +1978,7 @@ bool llvm::LowerDbgDeclare(Function &F) {
 /// Lowers constant expression.
 bool llvm::LowerConstantExpr(Function &F) {
     bool Changed = false;
-    llvm::SmallVector<Instruction *, 16> SavedCEList;
+    llvm::SmallVector<Instruction *, 16> SavedList;
 
     for (BasicBlock &BB : F) {
         // Skip EHPad basic block.
@@ -1991,17 +1991,17 @@ bool llvm::LowerConstantExpr(Function &F) {
             for (unsigned int Index = 0; Index < I.getNumOperands(); ++Index) {
                 if (ConstantExpr *CE =
                         dyn_cast<ConstantExpr>(I.getOperand(Index))) {
-                    SavedCEList.push_back(&I);
+                    SavedList.push_back(&I);
                 }
             }
         }
     }
 
-    if (SavedCEList.size()) Changed = true;
+    if (SavedList.size()) Changed = true;
 
-    while (SavedCEList.size()) {
-        Instruction *I = SavedCEList.back();
-        SavedCEList.pop_back();
+    while (SavedList.size()) {
+        Instruction *I = SavedList.back();
+        SavedList.pop_back();
 
         if (PHINode *PHI = dyn_cast<PHINode>(I)) {
             for (unsigned int Index = 0; Index < PHI->getNumIncomingValues();
@@ -2018,7 +2018,7 @@ bool llvm::LowerConstantExpr(Function &F) {
                             PHI->getIncomingBlock(Index))
                             PHI->setIncomingValue(Index2, NewInst);
                     }
-                    SavedCEList.push_back(NewInst);
+                    SavedList.push_back(NewInst);
                 }
             }
         } else {
@@ -2028,7 +2028,7 @@ bool llvm::LowerConstantExpr(Function &F) {
                     Instruction *NewInst = CE->getAsInstruction();
                     NewInst->insertBefore(I);
                     I->replaceUsesOfWith(CE, NewInst);
-                    SavedCEList.push_back(NewInst);
+                    SavedList.push_back(NewInst);
                 }
             }
         }
