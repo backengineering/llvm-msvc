@@ -765,6 +765,8 @@ void LazyValueInfoImpl::intersectAssumeOrGuardBlockValueConstantRange(
     return;
 
   BasicBlock *BB = BBI->getParent();
+  if (!BB)
+    return;
   for (auto &AssumeVH : AC->assumptionsFor(Val)) {
     if (!AssumeVH)
       continue;
