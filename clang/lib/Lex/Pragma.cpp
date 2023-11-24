@@ -117,7 +117,9 @@ void PragmaNamespace::HandlePragma(Preprocessor &PP,
                                           : StringRef(),
                   /*IgnoreNull=*/false);
   if (!Handler) {
+#ifndef _WIN32
     PP.Diag(Tok, diag::warn_pragma_ignored);
+#endif
     return;
   }
 
