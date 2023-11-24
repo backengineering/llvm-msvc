@@ -1382,14 +1382,6 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
   // See if any instructions in the block can be eliminated.  If so, do it.  If
   // not, add them to AvailableValues.
   for (Instruction &Inst : make_early_inc_range(*BB)) {
-    // Do not optimize functions have the 'NoInline' attribute.
-    if (CallOrInvokeInst *CI = dyn_cast<CallOrInvokeInst>(&Inst)) {
-      if (CI->getCalledFunction() &&
-          CI->getCalledFunction()->hasFnAttribute(Attribute::NoInline)) {
-        continue;
-      }
-    }
-
     // Dead instructions should just be removed.
     if (isInstructionTriviallyDead(&Inst, &TLI)) {
       LLVM_DEBUG(dbgs() << "EarlyCSE DCE: " << Inst << '\n');
