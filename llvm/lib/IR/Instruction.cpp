@@ -1092,7 +1092,18 @@ bool Instruction::mayThrow(bool IncludePhaseOneUnwind) const {
 }
 
 bool Instruction::mayHaveSideEffects() const {
-  return mayWriteToMemory() || mayThrow() || !willReturn();
+  // Do not optimize functions have the 'NoInline' attribute.
+  auto hasNoInline = [](const Instruction &I) -> bool {
+    if (const CallOrInvokeInst *CI = dyn_cast<CallOrInvokeInst>(&I)) {
+      if (CI->getCalledFunction() &&
+          CI->getCalledFunction()->hasFnAttribute(Attribute::NoInline)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  return mayWriteToMemory() || mayThrow() || !willReturn() ||
+         hasNoInline(*this);
 }
 
 bool Instruction::isSafeToRemove() const {
