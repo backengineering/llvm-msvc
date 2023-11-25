@@ -8564,10 +8564,10 @@ Sema::ActOnCastExpr(Scope *S, SourceLocation LParenLoc,
     if (Result.isInvalid()) return ExprError();
     CastExpr = Result.get();
   }
-
+#ifndef _WIN32
   if (getLangOpts().CPlusPlus && !castType->isVoidType())
     Diag(LParenLoc, diag::warn_old_style_cast) << CastExpr->getSourceRange();
-
+#endif
   CheckTollFreeBridgeCast(castType, CastExpr);
 
   CheckObjCBridgeRelatedCast(castType, CastExpr);
