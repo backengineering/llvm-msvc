@@ -917,12 +917,13 @@ void CastOperation::CheckDynamicCast() {
   // dynamic_cast is not available with -fno-rtti.
   // As an exception, dynamic_cast to void* is available because it doesn't
   // use RTTI.
+#ifndef _WIN32
   if (!Self.getLangOpts().RTTI && !DestPointee->isVoidType()) {
     Self.Diag(OpRange.getBegin(), diag::err_no_dynamic_cast_with_fno_rtti);
     SrcExpr = ExprError();
     return;
   }
-
+#endif
   // Warns when dynamic_cast is used with RTTI data disabled.
   if (!Self.getLangOpts().RTTIData) {
     bool MicrosoftABI =
