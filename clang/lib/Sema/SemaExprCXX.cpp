@@ -674,10 +674,11 @@ Sema::ActOnCXXTypeid(SourceLocation OpLoc, SourceLocation LParenLoc,
       return ExprError(Diag(OpLoc, diag::err_need_header_before_typeid));
   }
 
+#ifndef _WIN32
   if (!getLangOpts().RTTI) {
     return ExprError(Diag(OpLoc, diag::err_no_typeid_with_fno_rtti));
   }
-
+#endif
   QualType TypeInfoType = Context.getTypeDeclType(CXXTypeInfoDecl);
 
   if (isType) {
@@ -8861,7 +8862,7 @@ ExprResult Sema::ActOnFinishFullExpr(Expr *FE, SourceLocation CC,
     FullExpr = IgnoredValueConversions(FullExpr.get());
     if (FullExpr.isInvalid())
       return ExprError();
-    
+
     DiagnoseUnusedExprResult(FullExpr.get(), diag::warn_unused_expr);
   }
 
