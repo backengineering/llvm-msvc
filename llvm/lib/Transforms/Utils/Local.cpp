@@ -464,18 +464,7 @@ bool llvm::wouldInstructionBeTriviallyDead(const Instruction *I,
     }
   }
 
-  // Do not optimize functions have the 'NoInline' attribute.
-  auto hasNoInline = [](const Instruction &I) -> bool {
-    if (const CallOrInvokeInst *CI = dyn_cast<CallOrInvokeInst>(&I)) {
-      if (CI->getCalledFunction() &&
-          CI->getCalledFunction()->hasFnAttribute(Attribute::NoInline)) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  if (!I->mayHaveSideEffects() && !hasNoInline(*I))
+  if (!I->mayHaveSideEffects())
     return true;
 
   // Special case intrinsics that "may have side effects" but can be deleted
