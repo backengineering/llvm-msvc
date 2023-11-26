@@ -9,10 +9,10 @@ llvm-msvc is a compiler based on LLVM that isn't limited by MSVC. The aim is to 
 
 ## Features:
 - Compatible with MSVC syntax as much as possible.
-- Improved SEH stability.
+- Improved ``SEH`` stability.
 - Added some special Intrinsic functions(``__vmx_vmread``/``__vmx_write``).
-- Supports x64/ARM64 windows drivers.
-- Allows naked X64 inline asm.
+- Supports ``x64``/``ARM64`` windows drivers.
+- Allows naked ``X64`` inline asm.
 - Enables multiple cores compilation.
 - Supports ``/MP`` when precompiled headers are present.
 - Supports ``/GL`` (LTO optimization).
