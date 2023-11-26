@@ -80,8 +80,8 @@ private:
   std::unique_ptr<ValueSymbolTable>
       SymTab;                             ///< Symbol table of args/instructions
   AttributeList AttributeSets;            ///< Parameter attributes
-  StringRef AnnotationStrings;            ///< Annotation strings
-  SmallVector<StringRef> AnnotationVec;   ///< Annotation vector
+  std::string AnnotationStrings;          ///< Annotation strings
+  SmallVector<std::string> AnnotationVec; ///< Annotation vector 
 
   /*
    * Value::SubclassData
@@ -213,12 +213,14 @@ public:
   LLVMContext &getContext() const;
 
   /// Get/Set annotation strings.
-  StringRef getAnnotationStrings() const { return AnnotationStrings; }
-  void setAnnotationStrings(StringRef Strs) { AnnotationStrings = Strs; }
+  std::string getAnnotationStrings() const { return AnnotationStrings; }
+  void setAnnotationStrings(std::string Strs) { AnnotationStrings = Strs; }
 
   /// Get/Add annotation to the annotation vector.
-  SmallVector<StringRef> &getAnnotationVector() { return AnnotationVec; }
-  void addAnnotationToVector(StringRef Strs) { AnnotationVec.push_back(Strs); }
+  SmallVector<std::string> &getAnnotationVector() { return AnnotationVec; }
+  void addAnnotationToVector(std::string Strs) {
+    AnnotationVec.push_back(Strs);
+  }
 
   /// If the value is a volatile function, we will preserve it.
   bool isVolatile() const {
