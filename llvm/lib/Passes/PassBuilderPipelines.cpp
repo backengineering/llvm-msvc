@@ -1501,7 +1501,7 @@ PassBuilder::buildPerModuleDefaultPipeline(OptimizationLevel Level,
   ModulePassManager MPM;
 
   // Convert @llvm.global.annotations to !annotation metadata.
-  MPM.addPass(Annotation2MetadataPass());
+  MPM.addPassToFront(Annotation2MetadataPass());
 
   // Force any function attributes we want the rest of the pipeline to observe.
   MPM.addPass(ForceFunctionAttrsPass());
@@ -1553,7 +1553,7 @@ PassBuilder::buildThinLTOPreLinkDefaultPipeline(OptimizationLevel Level) {
   ModulePassManager MPM;
 
   // Convert @llvm.global.annotations to !annotation metadata.
-  MPM.addPass(Annotation2MetadataPass());
+  MPM.addPassToFront(Annotation2MetadataPass());
 
   // Force any function attributes we want the rest of the pipeline to observe.
   MPM.addPass(ForceFunctionAttrsPass());
