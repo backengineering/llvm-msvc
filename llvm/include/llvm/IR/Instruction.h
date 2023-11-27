@@ -459,6 +459,10 @@ public:
   /// Return the debug location for this node as a DebugLoc.
   const DebugLoc &getDebugLoc() const { return DbgLoc; }
 
+  /// Get source row and column location.
+  /// Returns false if unknown location. 
+  bool getSrcLoc(int64_t &Row, int64_t &Col) const;
+  
   /// Fetch the debug location for this node, unless this is a debug intrinsic,
   /// in which case fetch the debug location of the next non-debug node.
   const DebugLoc &getStableDebugLoc() const;

@@ -14,6 +14,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/IR/AttributeMask.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
@@ -1153,6 +1154,15 @@ Instruction::getPrevNonDebugInstruction(bool SkipPseudoOp) const {
     if (!isa<DbgInfoIntrinsic>(I) && !(SkipPseudoOp && isa<PseudoProbeInst>(I)))
       return I;
   return nullptr;
+}
+
+bool Instruction::getSrcLoc(int64_t &Row, int64_t &Col) const {
+  DiagnosticLocation Loc(this->getDebugLoc());
+  if (!Loc.isValid())
+    return false;
+  Row = (int64_t)Loc.getLine();
+  Col = (int64_t)Loc.getColumn();
+  return true;
 }
 
 const DebugLoc &Instruction::getStableDebugLoc() const {
