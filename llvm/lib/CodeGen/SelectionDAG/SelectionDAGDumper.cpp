@@ -1089,6 +1089,11 @@ LLVM_DUMP_METHOD void SDNode::dumprFull(const SelectionDAG *G) const {
 }
 #endif
 
+void SDNode::println(raw_ostream& OS, const SelectionDAG* G) const {
+  print(OS, G);
+  OS << "\n";
+}
+
 void SDNode::print(raw_ostream &OS, const SelectionDAG *G) const {
   printr(OS, G);
   // Under VerboseDAGDumping divergence will be printed always.

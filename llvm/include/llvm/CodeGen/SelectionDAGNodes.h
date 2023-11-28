@@ -1025,6 +1025,7 @@ public:
   void print_types(raw_ostream &OS, const SelectionDAG *G) const;
   void print_details(raw_ostream &OS, const SelectionDAG *G) const;
   void print(raw_ostream &OS, const SelectionDAG *G = nullptr) const;
+  void println(raw_ostream &OS, const SelectionDAG *G = nullptr) const;
   void printr(raw_ostream &OS, const SelectionDAG *G = nullptr) const;
 
   /// Print a SelectionDAG node and all children down to
