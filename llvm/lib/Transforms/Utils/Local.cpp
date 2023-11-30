@@ -667,6 +667,13 @@ simplifyAndDCEInstruction(Instruction *I,
                           SmallSetVector<Instruction *, 16> &WorkList,
                           const DataLayout &DL,
                           const TargetLibraryInfo *TLI) {
+  if (!I)
+    return false;
+  if (!I->getParent())
+    return false;
+  if (!I->getFunction())
+    return false;
+
   if (isInstructionTriviallyDead(I, TLI)) {
     salvageDebugInfo(*I);
 
