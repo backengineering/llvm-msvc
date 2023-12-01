@@ -216,7 +216,7 @@ public:
       return -1;
 
     UseCycle = DefCycle - UseCycle + 1;
-    if (UseCycle > 0 &&
+    if (UseCycle > 0u &&
         hasPipelineForwarding(DefClass, DefIdx, UseClass, UseIdx))
       // FIXME: This assumes one cycle benefit for every pipeline forwarding.
       --UseCycle;
