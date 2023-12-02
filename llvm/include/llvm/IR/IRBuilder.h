@@ -1746,6 +1746,16 @@ public:
     return CreateXor(V, Constant::getAllOnesValue(V->getType()), Name);
   }
 
+  // Not(a And b)
+  Value *CreateNand(Value *LHS, Value *RHS, const Twine &Name = "") {
+    return CreateNot(CreateAnd(LHS, RHS), Name);
+  }
+
+  // Not(a Or b)
+  Value *CreateNor(Value *LHS, Value *RHS, const Twine &Name = "") {
+    return CreateNot(CreateOr(LHS, RHS), Name);
+  }
+
   Value *CreateUnOp(Instruction::UnaryOps Opc,
                     Value *V, const Twine &Name = "",
                     MDNode *FPMathTag = nullptr) {
