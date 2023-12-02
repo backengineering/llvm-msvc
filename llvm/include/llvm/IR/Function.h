@@ -246,6 +246,15 @@ public:
              : removeFnAttr(Attribute::IsFastISelDisabled);
   }
 
+  /// Indicate that whether we should disable stack probe for this function.
+  bool doesDisableStackProbe() const {
+    return hasFnAttribute("no-stack-arg-probe");
+  }
+  void setDoesDisableStackProbe(bool Disabled = true) {
+    Disabled ? addFnAttr("no-stack-arg-probe")
+             : removeFnAttr("no-stack-arg-probe");
+  }
+
   /// Is SEHFilterFunction?
   bool isSEHFilterFunction() const {
     return hasFnAttribute(Attribute::IsSEHFilterFunction);
