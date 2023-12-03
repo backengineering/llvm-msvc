@@ -2464,13 +2464,9 @@ void Parser::ParseOptionalCXX11VirtSpecifierSeq(VirtSpecifiers &VS,
       Diag(Tok.getLocation(), diag::err_override_control_interface)
           << VirtSpecifiers::getSpecifierName(Specifier);
     } else if (Specifier == VirtSpecifiers::VS_Sealed) {
-#ifndef _WIN32
       Diag(Tok.getLocation(), diag::ext_ms_sealed_keyword);
-#endif
     } else if (Specifier == VirtSpecifiers::VS_Abstract) {
-#ifndef _WIN32
       Diag(Tok.getLocation(), diag::ext_ms_abstract_keyword);
-#endif
     } else if (Specifier == VirtSpecifiers::VS_GNU_Final) {
       Diag(Tok.getLocation(), diag::ext_warn_gnu_final);
     } else {
@@ -3548,12 +3544,10 @@ void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
                            ? diag::warn_cxx98_compat_override_control_keyword
                            : diag::ext_override_control_keyword)
             << VirtSpecifiers::getSpecifierName(Specifier);
-#ifndef _WIN32
       else if (Specifier == VirtSpecifiers::VS_Sealed)
         Diag(FinalLoc, diag::ext_ms_sealed_keyword);
       else if (Specifier == VirtSpecifiers::VS_Abstract)
         Diag(AbstractLoc, diag::ext_ms_abstract_keyword);
-#endif
       else if (Specifier == VirtSpecifiers::VS_GNU_Final)
         Diag(FinalLoc, diag::ext_warn_gnu_final);
     }
