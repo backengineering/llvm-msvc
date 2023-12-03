@@ -5267,7 +5267,7 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       if (Enum->enumerator_begin() == Enum->enumerator_end() &&
           !Enum->getIdentifier() && !Enum->isInvalidDecl())
         DeclaresAnything = false;
-
+#ifndef _WIN32
   if (!DS.isMissingDeclaratorOk()) {
     // Customize diagnostic for a typedef missing a name.
     if (DS.getStorageClassSpec() == DeclSpec::SCS_typedef)
@@ -5276,7 +5276,7 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
     else
       DeclaresAnything = false;
   }
-
+#endif
   if (DS.isModulePrivateSpecified() &&
       Tag && Tag->getDeclContext()->isFunctionOrMethod())
     Diag(DS.getModulePrivateSpecLoc(), diag::err_module_private_local_class)
