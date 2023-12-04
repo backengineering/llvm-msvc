@@ -61,6 +61,7 @@
 #include "llvm/TargetParser/SubtargetFeature.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/HipStdPar/HipStdPar.h"
+#include "llvm/Transforms/IPO/Annotation2Metadata.h"
 #include "llvm/Transforms/IPO/EmbedBitcodePass.h"
 #include "llvm/Transforms/IPO/LowerTypeTests.h"
 #include "llvm/Transforms/IPO/ThinLTOBitcodeWriter.h"
@@ -1096,6 +1097,9 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     MPM.addPassToFront(BitcodeAutoGeneratorPrePass(
           CodeGenOpts.AutoGenerateBitcode, "BitcodeAutoGeneratorPre"));
 
+    // Convert @llvm.global.annotations to !annotation metadata.
+    MPM.addPassToFront(Annotation2MetadataPass());
+    
     // MSVC macro rebuilding pass (this pass must be at the top)
     MPM.addPassToFront(MSVCMacroRebuildingPass());
   }
