@@ -832,8 +832,10 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
   unsigned MaxInlineWidthInBits = getTarget().getMaxAtomicInlineWidth();
 
   bool Oversized = getContext().toBits(TInfo.Width) > MaxInlineWidthInBits;
-  bool Misaligned = (Ptr.getAlignment() % TInfo.Width) != 0;
-  bool UseLibcall = Misaligned | Oversized;
+  bool Misaligned = TInfo.Width.getQuantity() == 0
+                        ? true
+                        : (Ptr.getAlignment() % TInfo.Width) != 0;
+  bool UseLibcall = Misaligned || Oversized;
   bool ShouldCastToIntPtrTy = true;
 
   CharUnits MaxInlineWidth =
