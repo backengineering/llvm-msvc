@@ -5,7 +5,7 @@
 [![Github All Releases](https://img.shields.io/github/downloads/backengineering/llvm-msvc/total.svg)](https://github.com/backengineering/llvm-msvc/releases) 
 [![GitHub release](https://img.shields.io/github/release/backengineering/llvm-msvc.svg)](https://github.com/backengineering/llvm-msvc/releases) 
 
-llvm-msvc is a compiler based on LLVM that isn't limited by MSVC. The aim is to provide the same experience as MSVC on Windows. You can use naked functions anywhere and also add custom support like obfuscation.
+``llvm-msvc`` is a compiler based on ``LLVM`` that isn't limited by ``MSVC``. The aim is to provide the same experience as ``MSVC`` on Windows. You can use naked functions anywhere and also add custom support like obfuscation.
 
 ```
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⣀⣀⣠⣼⠂⠀⠀⠀⠀⠙⣦⢀⠀⠀⠀⠀⠀⢶⣤⣀⣀⣀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -32,7 +32,7 @@ llvm-msvc is a compiler based on LLVM that isn't limited by MSVC. The aim is to 
 ```
 
 ## Features:
-- Compatible with MSVC syntax as much as possible.
+- Compatible with ``MSVC`` syntax as much as possible.
 - Improved ``SEH`` stability.
 - Added some special Intrinsic functions(``__vmx_vmread``/``__vmx_write``).
 - Supports ``x64``/``ARM64`` windows drivers.
@@ -44,7 +44,7 @@ llvm-msvc is a compiler based on LLVM that isn't limited by MSVC. The aim is to 
 
 ## FAQ
 ### Why do we make this project?
-- Clang follows the GCC standard, while MSVC has its own unique syntax.
+- ``Clang`` follows the ``GCC`` standard, while ``MSVC`` has its own unique syntax.
 - Some of the code is pretty hacky. Can't submit it officially.
 - Waiting for the official fix takes too long.
 
@@ -82,7 +82,7 @@ msbuild /m -p:Configuration=release INSTALL.vcxproj
 - https://docs.github.com/en/get-started/quickstart/contributing-to-projects
 
 ### How can I learn LLVM?
-If you don't know how to learn LLVM, you can check out this [repository](https://github.com/gmh5225/awesome-llvm-security) of mine.
+If you don't know how to learn ``LLVM``, you can check out this [repository](https://github.com/gmh5225/awesome-llvm-security) of mine.
 
 ### Can it run on linux?
 No.
@@ -91,5 +91,5 @@ No.
 No.
 
 ## Credits
-- LLVM
+- ``LLVM``
 - Some anonymous people
