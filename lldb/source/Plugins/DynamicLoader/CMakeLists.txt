@@ -1,4 +1,6 @@
+if (NOT WIN32)
 add_subdirectory(Darwin-Kernel)
+endif()
 add_subdirectory(FreeBSD-Kernel)
 add_subdirectory(MacOSX-DYLD)
 add_subdirectory(POSIX-DYLD)
