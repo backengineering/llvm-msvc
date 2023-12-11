@@ -481,7 +481,6 @@ void LowerSwitchWrapper::processSwitchInst(
         UnreachableRanges.pop_back();
       } else {
         // Terminate the previous range.
-        assert(Low > LastRange.Low);
         LastRange.High = Low - 1;
       }
       if (High != std::numeric_limits<int64_t>::max()) {
