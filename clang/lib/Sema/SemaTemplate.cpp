@@ -536,7 +536,9 @@ bool Sema::LookupTemplateName(LookupResult &Found,
                                     << Name << LookupCtx << DroppedSpecifier
                                     << SS.getRange());
         } else {
+#ifndef _WIN32
           diagnoseTypo(Corrected, PDiag(diag::err_no_template_suggest) << Name);
+#endif
         }
       }
     }
@@ -6624,6 +6626,9 @@ isNullPointerValueTemplateArgument(Sema &S, NonTypeTemplateParmDecl *Param,
   }
 
   if (EvalResult.Val.isLValue() && !EvalResult.Val.getLValueBase()) {
+#ifdef _WIN32
+    return NPV_NotNullPointer;
+#endif
     // We found a pointer that isn't null, but doesn't refer to an object.
     // We could just return NPV_NotNullPointer, but we can print a better
     // message with the information we have here.
