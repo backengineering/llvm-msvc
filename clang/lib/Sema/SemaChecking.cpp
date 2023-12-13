@@ -11411,7 +11411,8 @@ bool Sema::isATLCStringType(const QualType &Ty) {
   std::string TypeName = Ty.getAsString();
   std::string FullTypeName =
       CanonicalType.getAsString(Context.getPrintingPolicy());
-  if ((TypeName == "CStringA" || TypeName == "CStringW") &&
+  if ((TypeName == "CStringA" || TypeName == "CStringW" ||
+       TypeName == "CString") &&
       FullTypeName._Starts_with("ATL::CStringT"))
     return true;
   return false;
