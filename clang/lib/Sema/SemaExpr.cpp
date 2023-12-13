@@ -6778,6 +6778,10 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
     // Otherwise do argument promotion, (C99 6.5.2.2p7).
     } else {
       for (Expr *A : Args.slice(ArgIx)) {
+#ifdef _WIN32
+        // Hack ATL::CStringT
+        A = ATLCStringTVariadicArgumentPromotion(A, CallLoc);
+#endif
         ExprResult Arg = DefaultVariadicArgumentPromotion(A, CallType, FDecl);
         Invalid |= Arg.isInvalid();
         AllArgs.push_back(Arg.get());
