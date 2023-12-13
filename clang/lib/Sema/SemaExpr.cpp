@@ -1117,7 +1117,7 @@ Expr *Sema::ATLCStringTVariadicArgumentPromotion(Expr *E, SourceLocation Loc) {
 
   std::string FullTypeName =
       E->getType().getCanonicalType().getAsString(Context.getPrintingPolicy());
-  if (FullTypeName._Starts_with("ATL::CStringT")) {
+  if (FullTypeName._Starts_with("ATL::CStringT<")) {
     std::string TypeName = E->getType().getAsString();
     if (TypeName == "CStringA") {
       E = CreateCastExpr(Context.CharTy);
