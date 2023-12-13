@@ -1104,6 +1104,30 @@ ExprResult Sema::DefaultVariadicArgumentPromotion(Expr *E, VariadicCallType CT,
   return E;
 }
 
+// Promotes ATL C String variadic arguments to the appropriate type.
+Expr *Sema::ATLCStringTVariadicArgumentPromotion(Expr *E, SourceLocation Loc) {
+  if (!isATLCStringType(E->getType()))
+    return E;
+
+  auto CreateCastExpr = [this, E, &Loc](QualType TargetType) {
+    return CStyleCastExpr::Create(
+        Context, Context.getPointerType(TargetType.withConst()), VK_PRValue,
+        CK_UserDefinedConversion, E, nullptr, CurFPFeatureOverrides(),
+        Context.getTrivialTypeSourceInfo(
+            Context.getPointerType(TargetType.withConst()), Loc),
+        Loc, Loc);
+  };
+
+  std::string TypeName = E->getType().getAsString();
+  if (TypeName == "CStringA") {
+    E = CreateCastExpr(Context.CharTy);
+  } else if (TypeName == "CStringW") {
+    E = CreateCastExpr(Context.WCharTy);
+  }
+
+  return E;
+}
+
 /// Converts an integer to complex float type.  Helper function of
 /// UsualArithmeticConversions()
 ///

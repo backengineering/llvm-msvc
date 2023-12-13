@@ -12672,6 +12672,9 @@ public:
   ExprResult DefaultVariadicArgumentPromotion(Expr *E, VariadicCallType CT,
                                               FunctionDecl *FDecl);
 
+  // Promotes ATL C String variadic arguments to the appropriate type.
+  Expr *ATLCStringTVariadicArgumentPromotion(Expr *E, SourceLocation Loc);
+
   /// Context in which we're performing a usual arithmetic conversion.
   enum ArithConvKind {
     /// An arithmetic operation.
