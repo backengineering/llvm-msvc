@@ -11405,6 +11405,18 @@ bool Sema::hasCStrMethod(const Expr *E) {
   return false;
 }
 
+/// Check to see if the type is ATL::CStringT
+bool Sema::isATLCStringType(const QualType &Ty) {
+  clang::QualType CanonicalType = Ty.getCanonicalType();
+  std::string TypeName = Ty.getAsString();
+  std::string FullTypeName =
+      CanonicalType.getAsString(Context.getPrintingPolicy());
+  if ((TypeName == "CStringA" || TypeName == "CStringW") &&
+      FullTypeName._Starts_with("ATL::CStringT"))
+    return true;
+  return false;
+}
+
 // Check if a (w)string was passed when a (w)char* was needed, and offer a
 // better diagnostic if so. AT is assumed to be valid.
 // Returns true when a c_str() conversion method is found.

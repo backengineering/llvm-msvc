@@ -12654,6 +12654,9 @@ public:
   /// Check to see if a given expression could have '.c_str()' called on it.
   bool hasCStrMethod(const Expr *E);
 
+  /// Check to see if the type is ATL::CStringT
+  bool isATLCStringType(const QualType &Ty);
+
   /// GatherArgumentsForCall - Collector argument expressions for various
   /// form of call prototypes.
   bool GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
