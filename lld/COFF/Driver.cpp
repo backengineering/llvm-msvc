@@ -516,6 +516,14 @@ void LinkerDriver::parseDirectives(InputFile *file) {
       // [MSVC Compatibility] Handle #pragma comment(linker, "/ALIGN:0x10000")
       parseNumbers(arg->getValue(), &ctx.config.align);
       break;
+    case OPT_incremental:
+      // Handle #pragma comment(linker, "/INCREMENTAL")
+      ctx.config.incremental = true;
+      break;
+    case OPT_incremental_no:
+      // Handle #pragma comment(linker, "/INCREMENTAL:NO")
+      ctx.config.incremental = false;
+      break;
     default:
       error(arg->getSpelling() + " is not allowed in .drectve (" +
             toString(file) + ")");
