@@ -1106,6 +1106,9 @@ ExprResult Sema::DefaultVariadicArgumentPromotion(Expr *E, VariadicCallType CT,
 
 // Promotes ATL C String variadic arguments to the appropriate type.
 Expr *Sema::ATLCStringTVariadicArgumentPromotion(Expr *E, SourceLocation Loc) {
+  if (!isATLCStringType(E->getType()))
+    return E;
+
   auto CreateCastExpr = [this, E, &Loc](QualType TargetType) {
     return CStyleCastExpr::Create(
         Context, Context.getPointerType(TargetType.withConst()), VK_PRValue,
@@ -1117,18 +1120,10 @@ Expr *Sema::ATLCStringTVariadicArgumentPromotion(Expr *E, SourceLocation Loc) {
 
   std::string FullTypeName =
       E->getType().getCanonicalType().getAsString(Context.getPrintingPolicy());
-  if (FullTypeName._Starts_with("ATL::CStringT<")) {
-    std::string TypeName = E->getType().getAsString();
-    if (TypeName == "CStringA") {
-      E = CreateCastExpr(Context.CharTy);
-    } else if (TypeName == "CStringW") {
-      E = CreateCastExpr(Context.WCharTy);
-    } else if (TypeName == "CString") {
-      if (FullTypeName._Starts_with("ATL::CStringT<wchar_t"))
-        E = CreateCastExpr(Context.WCharTy);
-      else if (FullTypeName._Starts_with("ATL::CStringT<char"))
-        E = CreateCastExpr(Context.CharTy);
-    }
+  if (FullTypeName == "ATL::CStringT<wchar_t, StrTraitMFC<wchar_t>>") {
+    E = CreateCastExpr(Context.WCharTy);
+  } else if (FullTypeName == "ATL::CStringT<char, StrTraitMFC<>>") {
+    E = CreateCastExpr(Context.CharTy);
   }
 
   return E;
