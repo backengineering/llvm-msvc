@@ -1109,6 +1109,7 @@ Expr *Sema::ATLCStringTVariadicArgumentPromotion(Expr *E, SourceLocation Loc) {
   if (!isATLCStringType(E->getType()))
     return E;
 
+  // Helper function to create a cast expression to a pointer type with const.
   auto CreateCastExpr = [this, E, &Loc](QualType TargetType) -> Expr * {
     return CStyleCastExpr::Create(
         Context, Context.getPointerType(TargetType.withConst()), VK_PRValue,
@@ -1118,6 +1119,7 @@ Expr *Sema::ATLCStringTVariadicArgumentPromotion(Expr *E, SourceLocation Loc) {
         Loc, Loc);
   };
 
+  // Helper function to build a call to the 'GetBuffer' method.
   auto CreateGetBufferExpr = [this, E]() -> Expr * {
     CXXMethodDecl *GetBufferMethodDecl = getGetBufferMethodDecl(E);
     if (!GetBufferMethodDecl)
