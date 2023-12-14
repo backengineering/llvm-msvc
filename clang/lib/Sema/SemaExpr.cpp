@@ -1109,7 +1109,8 @@ Expr *Sema::ATLCStringTVariadicArgumentPromotion(Expr *E, SourceLocation Loc) {
   if (!isATLCStringType(E->getType()))
     return E;
 
-  auto CreateCastExpr = [this, E, &Loc](QualType TargetType) {
+  auto CreateCastExpr = [this, E,
+                         &Loc](QualType TargetType) -> CStyleCastExpr* {
     return CStyleCastExpr::Create(
         Context, Context.getPointerType(TargetType.withConst()), VK_PRValue,
         CK_UserDefinedConversion, E, nullptr, CurFPFeatureOverrides(),
