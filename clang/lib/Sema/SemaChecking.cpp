@@ -11407,13 +11407,9 @@ bool Sema::hasCStrMethod(const Expr *E) {
 
 /// Check to see if the type is ATL::CStringT
 bool Sema::isATLCStringType(const QualType &Ty) {
-  clang::QualType CanonicalType = Ty.getCanonicalType();
-  std::string TypeName = Ty.getAsString();
-  std::string FullTypeName =
-      CanonicalType.getAsString(Context.getPrintingPolicy());
-  if (FullTypeName._Starts_with("ATL::CStringT<") &&
-      (TypeName == "CStringA" || TypeName == "CStringW" ||
-       TypeName == "CString"))
+  if (Ty.getCanonicalType()
+          .getAsString(Context.getPrintingPolicy())
+          ._Starts_with("ATL::CStringT<"))
     return true;
   return false;
 }
