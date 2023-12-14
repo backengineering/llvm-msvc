@@ -12653,6 +12653,9 @@ private:
 public:
   /// Check to see if a given expression could have '.c_str()' called on it.
   bool hasCStrMethod(const Expr *E);
+  
+  /// Check to see if a given expression could have '.GetBuffer()' called on it.
+  bool hasGetBufferMethod(const Expr *E);
 
   /// Check to see if the type is ATL::CStringT
   bool isATLCStringType(const QualType &Ty);
