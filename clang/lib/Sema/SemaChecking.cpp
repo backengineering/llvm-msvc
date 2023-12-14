@@ -11407,6 +11407,11 @@ bool Sema::hasCStrMethod(const Expr *E) {
 
 /// Check to see if a given expression could have '.GetBuffer()' called on it.
 bool Sema::hasGetBufferMethod(const Expr *E) {
+  return getGetBufferMethodDecl(E) != nullptr;
+}
+
+/// Retrieve the CXXMethodDecl for the '.GetBuffer()' called on the expression.
+CXXMethodDecl *Sema::getGetBufferMethodDecl(const Expr *E) {
   using MethodSet = llvm::SmallPtrSet<CXXMethodDecl *, 1>;
 
   MethodSet Results =
@@ -11414,8 +11419,8 @@ bool Sema::hasGetBufferMethod(const Expr *E) {
   for (MethodSet::iterator MI = Results.begin(), ME = Results.end(); MI != ME;
        ++MI)
     if ((*MI)->getMinRequiredArguments() == 0)
-      return true;
-  return false;
+      return *MI;
+  return nullptr;
 }
 
 /// Check to see if the type is ATL::CStringT

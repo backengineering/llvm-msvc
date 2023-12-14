@@ -12657,6 +12657,9 @@ public:
   /// Check to see if a given expression could have '.GetBuffer()' called on it.
   bool hasGetBufferMethod(const Expr *E);
 
+  /// Retrieve the CXXMethodDecl for the '.GetBuffer()' called on the expression.
+  CXXMethodDecl *getGetBufferMethodDecl(const Expr *E);
+
   /// Check to see if the type is ATL::CStringT
   bool isATLCStringType(const QualType &Ty);
 
