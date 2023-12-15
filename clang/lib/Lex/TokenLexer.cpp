@@ -816,6 +816,7 @@ bool TokenLexer::pasteTokens(Token &LHSTok, ArrayRef<Token> TokenStream,
 
     // Lex the resultant pasted token into Result.
     Token Result;
+#ifdef _WIN32
     // [MSVC Compatibility] Handle '.##identifier' or '->##identifier'
     if ((LHSTok.is(tok::period) || LHSTok.is(tok::arrow)) &&
         RHS.isAnyIdentifier()) {
@@ -832,6 +833,7 @@ bool TokenLexer::pasteTokens(Token &LHSTok, ArrayRef<Token> TokenStream,
       // Returns true the caller should immediately return the token.
       return true;
     }
+#endif
     if (LHSTok.isAnyIdentifier() && RHS.isAnyIdentifier()) {
       // Common paste case: identifier+identifier = identifier.  Avoid creating
       // a lexer and other overhead.
