@@ -16167,6 +16167,46 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
         CGM.getIntrinsic(Intrinsic::addressofreturnaddress, AllocaInt8PtrTy);
     return Builder.CreateCall(F);
   }
+  case X86::BI__movsb: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8PtrTy, Int8PtrTy, SizeTy}),
+        {Int8PtrTy, Int8PtrTy, SizeTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "rep movsb", "={di},={si},={cx},0,1,2,~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1], Ops[2]});
+    return CI;
+  }
+  case X86::BI__movsw: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8PtrTy, Int8PtrTy, SizeTy}),
+        {Int8PtrTy, Int8PtrTy, SizeTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "rep movsw", "={di},={si},={cx},0,1,2,~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1], Ops[2]});
+    return CI;
+  }
+  case X86::BI__movsd: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8PtrTy, Int8PtrTy, SizeTy}),
+        {Int8PtrTy, Int8PtrTy, SizeTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "rep movsd", "={di},={si},={cx},0,1,2,~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1], Ops[2]});
+    return CI;
+  }
+  case X86::BI__movsq: {
+    llvm::FunctionType *FTy = llvm::FunctionType::get(
+        llvm::StructType::get(getLLVMContext(), {Int8PtrTy, Int8PtrTy, SizeTy}),
+        {Int8PtrTy, Int8PtrTy, SizeTy}, false);
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        FTy, "rep movsq", "={di},={si},={cx},0,1,2,~{dirflag},~{fpsr},~{flags}",
+        /*hasSideEffects=*/true);
+    llvm::CallInst *CI = Builder.CreateCall(IA, {Ops[0], Ops[1], Ops[2]});
+    return CI;
+  }
   case X86::BI__stosb: {
     llvm::FunctionType *FTy = llvm::FunctionType::get(
         llvm::StructType::get(getLLVMContext(), {Int8PtrTy, SizeTy}),
