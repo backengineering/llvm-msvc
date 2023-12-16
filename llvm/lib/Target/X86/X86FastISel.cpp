@@ -711,8 +711,7 @@ bool X86FastISel::handleConstantAddresses(const Value *V, X86AddressMode &AM) {
   // Handle constant address.
   if (const GlobalValue *GV = dyn_cast<GlobalValue>(V)) {
     // Can't handle alternate code models yet.
-    if (TM.getCodeModel() != CodeModel::Small &&
-        TM.getCodeModel() != CodeModel::Medium)
+    if (TM.getCodeModel() != CodeModel::Small)
       return false;
 
     // Can't handle TLS yet.
