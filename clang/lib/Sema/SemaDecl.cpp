@@ -17710,11 +17710,12 @@ Sema::ActOnTag(Scope *S, unsigned TagSpec, TagUseKind TUK, SourceLocation KWLoc,
 
       // Diagnose implicit declarations introduced by elaborated types.
       } else if (TUK == TUK_Reference || TUK == TUK_Friend) {
+#ifndef _WIN32
         NonTagKind NTK = getNonTagTypeDeclKind(PrevDecl, Kind);
         Diag(NameLoc, diag::err_tag_reference_conflict) << NTK;
         Diag(PrevDecl->getLocation(), diag::note_previous_decl) << PrevDecl;
         Invalid = true;
-
+#endif
       // Otherwise it's a declaration.  Call out a particularly common
       // case here.
       } else if (TypedefNameDecl *TND = dyn_cast<TypedefNameDecl>(PrevDecl)) {
