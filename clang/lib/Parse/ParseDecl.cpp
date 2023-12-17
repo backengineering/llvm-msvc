@@ -7531,7 +7531,9 @@ void Parser::ParseParameterDeclarationClause(
           Tok.isNot(tok::raw_identifier) && !Tok.isAnnotation() &&
           Tok.getIdentifierInfo() &&
           Tok.getIdentifierInfo()->isKeyword(getLangOpts())) {
+#ifndef _WIN32
         Diag(Tok, diag::err_keyword_as_parameter) << PP.getSpelling(Tok);
+#endif
         // Consume the keyword.
         ConsumeToken();
       }
