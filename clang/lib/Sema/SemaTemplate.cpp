@@ -6724,10 +6724,11 @@ static bool CheckTemplateArgumentNonNullPointer(
     return false;
 
   if (Expr *ArgCast = Arg->IgnoreParenCasts()) {
-    if (ArgCast->getType()->isIntegralOrEnumerationType()) {
+    if (ParamType->isVoidPointerType() &&
+        ArgCast->getType()->isIntegralOrEnumerationType()) {
       llvm::APSInt Value;
       ExprResult ArgResult = S.CheckConvertedConstantExpression(
-          ArgCast, S.Context.getIntPtrType(), Value, Sema::CCEK_TemplateArg);
+          ArgCast, S.Context.getUIntPtrType(), Value, Sema::CCEK_TemplateArg);
       if (!ArgResult.isInvalid()) {
         SugaredConverted = TemplateArgument(
             S.Context, Value, S.Context.getPointerType(ArgCast->getType()));
