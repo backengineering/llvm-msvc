@@ -7681,9 +7681,28 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
     assert(ParamType->getPointeeType()->isIncompleteOrObjectType() &&
            "Only object pointers allowed here");
 
-    if (CheckTemplateArgumentAddressOfObjectOrFunction(
-            *this, Param, ParamType, Arg, SugaredConverted, CanonicalConverted))
+  if (CheckTemplateArgumentAddressOfObjectOrFunction(*this, Param, ParamType,
+                                                       Arg, SugaredConverted,
+                                                       CanonicalConverted)) {
+      if (!ParamType->isNullPtrType()) {
+        if (Expr *ArgCast = Arg->IgnoreParenCasts()) {
+          if (ArgCast->getType()->isIntegralOrEnumerationType()) {
+            llvm::APSInt Value;
+            ExprResult ArgResult = CheckConvertedConstantExpression(
+                ArgCast, Context.getUIntPtrType(), Value, CCEK_TemplateArg);
+            if (!ArgResult.isInvalid()) {
+              SugaredConverted = TemplateArgument(
+                  Context, Value,
+                  Context.getPointerType(Context.getUIntPtrType()));
+              CanonicalConverted =
+                  Context.getCanonicalTemplateArgument(SugaredConverted);
+              return Arg;
+            }
+          }
+        }
+      }
       return ExprError();
+    }
     return Arg;
   }
 
