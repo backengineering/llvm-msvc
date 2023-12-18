@@ -6713,6 +6713,32 @@ static bool CheckTemplateArgumentIsCompatibleWithParameter(
   return false;
 }
 
+/// Checks whether the given template argument is the non-null pointer.
+static bool CheckTemplateArgumentNonNullPointer(
+    Sema &S, NonTypeTemplateParmDecl *Param, QualType ParamType, Expr *Arg,
+    TemplateArgument &SugaredConverted, TemplateArgument &CanonicalConverted) {
+  if (ParamType->isNullPtrType())
+    return false;
+
+  if (Expr *ArgCast = Arg->IgnoreParenCasts()) {
+    if (ArgCast->getType()->isIntegralOrEnumerationType()) {
+      llvm::APSInt Value;
+      ExprResult ArgResult = S.CheckConvertedConstantExpression(
+          ArgCast, S.Context.getUIntPtrType(), Value, Sema::CCEK_TemplateArg);
+      if (!ArgResult.isInvalid()) {
+        SugaredConverted = TemplateArgument(
+            S.Context, Value,
+            S.Context.getPointerType(S.Context.getUIntPtrType()));
+        CanonicalConverted =
+            S.Context.getCanonicalTemplateArgument(SugaredConverted);
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 /// Checks whether the given template argument is the address
 /// of an object or function according to C++ [temp.arg.nontype]p1.
 static bool CheckTemplateArgumentAddressOfObjectOrFunction(
@@ -7684,23 +7710,10 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
   if (CheckTemplateArgumentAddressOfObjectOrFunction(*this, Param, ParamType,
                                                        Arg, SugaredConverted,
                                                        CanonicalConverted)) {
-      if (!ParamType->isNullPtrType()) {
-        if (Expr *ArgCast = Arg->IgnoreParenCasts()) {
-          if (ArgCast->getType()->isIntegralOrEnumerationType()) {
-            llvm::APSInt Value;
-            ExprResult ArgResult = CheckConvertedConstantExpression(
-                ArgCast, Context.getUIntPtrType(), Value, CCEK_TemplateArg);
-            if (!ArgResult.isInvalid()) {
-              SugaredConverted = TemplateArgument(
-                  Context, Value,
-                  Context.getPointerType(Context.getUIntPtrType()));
-              CanonicalConverted =
-                  Context.getCanonicalTemplateArgument(SugaredConverted);
-              return Arg;
-            }
-          }
-        }
-      }
+      if (CheckTemplateArgumentNonNullPointer(*this, Param, ParamType, Arg,
+                                              SugaredConverted,
+                                              CanonicalConverted))
+        return Arg;
       return ExprError();
     }
     return Arg;
