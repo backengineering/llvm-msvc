@@ -6727,11 +6727,15 @@ static bool CheckTemplateArgumentNonNullPointer(
     if (ParamType->isVoidPointerType() &&
         ArgCast->getType()->isIntegralOrEnumerationType()) {
       llvm::APSInt Value;
+      // Convert the argument to an unsigned integer type.
       ExprResult ArgResult = S.CheckConvertedConstantExpression(
           ArgCast, S.Context.getUIntPtrType(), Value, Sema::CCEK_TemplateArg);
       if (!ArgResult.isInvalid()) {
+        // Create a template argument with the converted value and the original
+        // argument type.
         SugaredConverted = TemplateArgument(
             S.Context, Value, S.Context.getPointerType(ArgCast->getType()));
+        // Get the canonical form of the template argument.
         CanonicalConverted =
             S.Context.getCanonicalTemplateArgument(SugaredConverted);
         return true;
