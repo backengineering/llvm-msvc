@@ -6717,6 +6717,10 @@ static bool CheckTemplateArgumentIsCompatibleWithParameter(
 static bool CheckTemplateArgumentNonNullPointer(
     Sema &S, NonTypeTemplateParmDecl *Param, QualType ParamType, Expr *Arg,
     TemplateArgument &SugaredConverted, TemplateArgument &CanonicalConverted) {
+#ifndef _WIN32
+  return false;
+#endif
+
   if (!ParamType->isPointerType())
     return false;
 
