@@ -7717,6 +7717,9 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
                                               SugaredConverted,
                                               CanonicalConverted))
         return Arg;
+      else
+        Diag(Arg->getBeginLoc(), diag::err_template_arg_not_decl_ref)
+            << Arg->getSourceRange();
       return ExprError();
     }
     return Arg;
