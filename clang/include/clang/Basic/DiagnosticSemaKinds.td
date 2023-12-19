@@ -85,6 +85,10 @@ def err_expr_not_cce : Error<
   "%select{case value|enumerator value|non-type template argument|"
   "array size|explicit specifier argument|noexcept specifier argument|"
   "call to 'size()'|call to 'data()'}0 is not a constant expression">;
+def warn_expr_not_cce : Warning<
+  "%select{case value|enumerator value|non-type template argument|"
+  "array size|explicit specifier argument|noexcept specifier argument|"
+  "call to 'size()'|call to 'data()'}0 is not a constant expression">;
 def ext_cce_narrowing : ExtWarn<
   "%select{case value|enumerator value|non-type template argument|"
   "array size|explicit specifier argument|noexcept specifier argument}0 "
