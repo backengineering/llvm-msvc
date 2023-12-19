@@ -1290,6 +1290,10 @@ void Clang::AddPreprocessingOptions(Compilation &C, const JobAction &JA,
       } else {
         CmdArgs.push_back(
             Args.MakeArgString(Twine("-pch-through-header=") + ThroughHeader));
+#ifdef _WIN32
+        CmdArgs.push_back("-internal-isystem");
+        CmdArgs.push_back("./");
+#endif
       }
     }
   }
