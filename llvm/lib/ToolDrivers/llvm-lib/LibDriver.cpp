@@ -226,7 +226,9 @@ static void appendFile(std::vector<NewArchiveMember> &Members,
     llvm::errs() << MB.getBufferIdentifier()
                  << ": not a COFF object, bitcode, archive, import library or "
                     "resource file\n";
+#ifndef _WIN32
     exit(1);
+#endif
   }
 
   // If a user attempts to add an archive to another archive, llvm-lib doesn't
