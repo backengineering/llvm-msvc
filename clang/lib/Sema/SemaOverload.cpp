@@ -6149,8 +6149,13 @@ static ExprResult EvaluateConvertedConstantExpression(
     for (unsigned I = 0; I < Notes.size(); ++I)
       S.Diag(Notes[I].first, Notes[I].second);
   } else {
+#ifdef _WIN32
+    S.Diag(E->getBeginLoc(), diag::warn_expr_not_cce)
+        << CCE << E->getSourceRange();
+#else
     S.Diag(E->getBeginLoc(), diag::err_expr_not_cce)
         << CCE << E->getSourceRange();
+#endif
     for (unsigned I = 0; I < Notes.size(); ++I)
       S.Diag(Notes[I].first, Notes[I].second);
   }
