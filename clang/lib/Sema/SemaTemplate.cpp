@@ -6721,10 +6721,7 @@ static bool CheckTemplateArgumentNonNullPointer(
   return false;
 #endif
 
-  if (!ParamType->isPointerType())
-    return false;
-
-  if (ParamType->isNullPtrType())
+  if (!ParamType->isPointerType() || ParamType->isNullPtrType())
     return false;
 
   if (Expr *ArgCast = Arg->IgnoreParenCasts()) {
