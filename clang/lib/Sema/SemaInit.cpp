@@ -5804,10 +5804,15 @@ static void TryUserDefinedConversion(Sema &S,
     // Therefore we need to do nothing further.
     //
     // FIXME: Mark this copy as extraneous.
+#ifndef _WIN32
     if (!S.getLangOpts().CPlusPlus17)
       Sequence.AddFinalCopy(DestType);
     else if (DestType.hasQualifiers())
       Sequence.AddQualificationConversionStep(DestType, VK_PRValue);
+#else
+    if (DestType.hasQualifiers())
+      Sequence.AddQualificationConversionStep(DestType, VK_PRValue);
+#endif
     return;
   }
 
