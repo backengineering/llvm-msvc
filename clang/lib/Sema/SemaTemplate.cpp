@@ -7310,9 +7310,12 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
   EnterExpressionEvaluationContext ConstantEvaluated(
       *this, Sema::ExpressionEvaluationContext::ConstantEvaluated);
 
-  if ((getLangOpts().CPlusPlus17 && !getLangOpts().MSVCCompat) ||
-      (getLangOpts().MSVCCompat &&
-       getLangOpts().isCompatibleWithMSVC(LangOptions::MSVC2017))) {
+#ifdef _WIN32
+  if (getLangOpts().CPlusPlus17 &&
+      getLangOpts().MSCompatibilityVersion > LangOptions::MSVC2015) {
+#else
+  if (getLangOpts().CPlusPlus17) {
+#endif
     QualType CanonParamType = Context.getCanonicalType(ParamType);
 
     // Avoid making a copy when initializing a template parameter of class type
