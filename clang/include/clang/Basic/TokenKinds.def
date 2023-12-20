@@ -582,6 +582,7 @@ KEYWORD(__declspec                  , 0)
 
 // Microsoft Extension.
 KEYWORD(__cdecl                     , KEYALL)
+KEYWORD(cdecl                       , KEYALL)
 KEYWORD(__stdcall                   , KEYALL)
 KEYWORD(__fastcall                  , KEYALL)
 KEYWORD(__thiscall                  , KEYALL)
