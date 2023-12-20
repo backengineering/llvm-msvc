@@ -17694,9 +17694,13 @@ Sema::ActOnTag(Scope *S, unsigned TagSpec, TagUseKind TUK, SourceLocation KWLoc,
       // Use a better diagnostic if an elaborated-type-specifier
       // found the wrong kind of type on the first
       // (non-redeclaration) lookup.
+#ifndef _WIN32
       if ((TUK == TUK_Reference || TUK == TUK_Friend) &&
           !Previous.isForRedeclaration() &&
           (!dyn_cast<TypedefDecl>(PrevDecl) || !isClassCompatTagKind(Kind))) {
+#else
+      if (!dyn_cast<TypedefDecl>(PrevDecl) || !isClassCompatTagKind(Kind)) {
+#endif
         NonTagKind NTK = getNonTagTypeDeclKind(PrevDecl, Kind);
         Diag(NameLoc, diag::err_tag_reference_non_tag)
             << PrevDecl << NTK << llvm::to_underlying(Kind);
