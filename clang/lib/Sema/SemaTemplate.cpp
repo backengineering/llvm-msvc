@@ -7312,7 +7312,7 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
 
 #ifdef _WIN32
   if (getLangOpts().CPlusPlus17 &&
-      getLangOpts().MSCompatibilityVersion > LangOptions::MSVC2015) {
+      getLangOpts().MSCompatibilityVersion != LangOptions::MSVC2015) {
 #else
   if (getLangOpts().CPlusPlus17) {
 #endif
