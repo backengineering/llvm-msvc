@@ -1442,6 +1442,7 @@ bool Parser::isValidAfterTypeSpecifier(bool CouldBeBitfield) {
            ColonIsSacred;     // _Generic(..., enum E :     2);
   // Microsoft compatibility
   case tok::kw___cdecl:      // struct foo {...} __cdecl      x;
+  case tok::kw_cdecl:        // struct foo {...} cdecl        x;
   case tok::kw___fastcall:   // struct foo {...} __fastcall   x;
   case tok::kw___stdcall:    // struct foo {...} __stdcall    x;
   case tok::kw___thiscall:   // struct foo {...} __thiscall   x;

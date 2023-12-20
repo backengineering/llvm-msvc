@@ -1134,8 +1134,9 @@ Parser::TPResult Parser::TryParseDeclarator(bool mayBeAbstract,
       // '(' attributes declarator ')'
       // '(' abstract-declarator ')'
       if (Tok.isOneOf(tok::kw___attribute, tok::kw___declspec, tok::kw___cdecl,
-                      tok::kw___stdcall, tok::kw___fastcall, tok::kw___thiscall,
-                      tok::kw___regcall, tok::kw___vectorcall))
+                      tok::kw_cdecl, tok::kw___stdcall, tok::kw___fastcall,
+                      tok::kw___thiscall, tok::kw___regcall,
+                      tok::kw___vectorcall))
         return TPResult::True; // attributes indicate declaration
       TPResult TPR = TryParseDeclarator(mayBeAbstract, mayHaveIdentifier);
       if (TPR != TPResult::Ambiguous)
@@ -1540,6 +1541,7 @@ Parser::isCXXDeclarationSpecifier(ImplicitTypenameContext AllowImplicitTypename,
     // Microsoft
   case tok::kw___declspec:
   case tok::kw___cdecl:
+  case tok::kw_cdecl:
   case tok::kw___stdcall:
   case tok::kw___fastcall:
   case tok::kw___thiscall:
@@ -1785,8 +1787,9 @@ Parser::isCXXDeclarationSpecifier(ImplicitTypenameContext AllowImplicitTypename,
       if (Tok.is(tok::annot_typename)) {
         const Token &NextNextToken = PP.LookAhead(1);
         if (NextNextToken.isOneOf(tok::kw___stdcall, tok::kw___cdecl,
-                                  tok::kw___fastcall, tok::kw___thiscall,
-                                  tok::kw___regcall, tok::kw___vectorcall)) {
+                                  tok::kw_cdecl, tok::kw___fastcall,
+                                  tok::kw___thiscall, tok::kw___regcall,
+                                  tok::kw___vectorcall)) {
           const Token &NextToken2 = PP.LookAhead(2);
           const Token &NextToken3 = PP.LookAhead(3);
           if (NextToken2.is(tok::r_paren) && NextToken3.is(tok::l_paren)) {

@@ -925,6 +925,7 @@ void Parser::ParseMicrosoftTypeAttributes(ParsedAttributes &attrs) {
     case tok::kw___thiscall:
     case tok::kw___regcall:
     case tok::kw___cdecl:
+    case tok::kw_cdecl:
     case tok::kw___vectorcall:
     case tok::kw___ptr64:
     case tok::kw___w64:
@@ -937,8 +938,9 @@ void Parser::ParseMicrosoftTypeAttributes(ParsedAttributes &attrs) {
                    Kind);
       // [MSVC Compatibility]
       if (Kind == tok::kw___stdcall || Kind == tok::kw___cdecl ||
-          Kind == tok::kw___fastcall || Kind == tok::kw___thiscall ||
-          Kind == tok::kw___regcall || Kind == tok::kw___vectorcall) {
+          Kind == tok::kw_cdecl || Kind == tok::kw___fastcall ||
+          Kind == tok::kw___thiscall || Kind == tok::kw___regcall ||
+          Kind == tok::kw___vectorcall) {
         if (Tok.is(tok::r_paren) && NextToken().is(tok::l_paren)) {
           ConsumeParen();
         }
@@ -988,6 +990,7 @@ SourceLocation Parser::SkipExtendedMicrosoftTypeAttributes() {
     case tok::kw___stdcall:
     case tok::kw___thiscall:
     case tok::kw___cdecl:
+    case tok::kw_cdecl:
     case tok::kw___vectorcall:
     case tok::kw___ptr32:
     case tok::kw___ptr64:
@@ -3678,7 +3681,7 @@ void Parser::ParseDeclarationSpecifiers(
       ConsumeAnnotationToken(); // The typename
       //[MSVC Compatibility]
       if (Tok.is(tok::l_paren) &&
-          NextToken().isOneOf(tok::kw___stdcall, tok::kw___cdecl,
+          NextToken().isOneOf(tok::kw___stdcall, tok::kw___cdecl, tok::kw_cdecl,
                               tok::kw___fastcall, tok::kw___thiscall,
                               tok::kw___regcall, tok::kw___vectorcall)) {
         const Token &NextNextToken = PP.LookAhead(1);
@@ -3982,6 +3985,7 @@ void Parser::ParseDeclarationSpecifiers(
     case tok::kw___ptr32:
     case tok::kw___w64:
     case tok::kw___cdecl:
+    case tok::kw_cdecl:
     case tok::kw___stdcall:
     case tok::kw___fastcall:
     case tok::kw___thiscall:
@@ -5546,6 +5550,7 @@ bool Parser::isTypeSpecifierQualifier() {
     return getLangOpts().ObjC;
 
   case tok::kw___cdecl:
+  case tok::kw_cdecl:
   case tok::kw___stdcall:
   case tok::kw___fastcall:
   case tok::kw___thiscall:
@@ -5812,6 +5817,7 @@ bool Parser::isDeclarationSpecifier(
 
   case tok::kw___declspec:
   case tok::kw___cdecl:
+  case tok::kw_cdecl:
   case tok::kw___stdcall:
   case tok::kw___fastcall:
   case tok::kw___thiscall:
@@ -6103,6 +6109,7 @@ void Parser::ParseTypeQualifierListOpt(
     case tok::kw___ptr64:
     case tok::kw___ptr32:
     case tok::kw___cdecl:
+    case tok::kw_cdecl:
     case tok::kw___stdcall:
     case tok::kw___fastcall:
     case tok::kw___thiscall:
