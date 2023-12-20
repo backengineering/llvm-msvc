@@ -8592,7 +8592,7 @@ def err_block_decl_ref_not_modifiable_lvalue : Error<
   "variable is not assignable (missing __block type specifier)">;
 def err_lambda_decl_ref_not_modifiable_lvalue : Error<
   "cannot assign to a variable captured by copy in a non-mutable lambda">;
-def err_typecheck_call_not_function : Error<
+def err_typecheck_call_not_function : Warning<
   "called object type %0 is not a function or function pointer">;
 def err_call_incomplete_return : Error<
   "calling function with incomplete return type %0">;
