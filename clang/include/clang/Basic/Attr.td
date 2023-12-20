@@ -1037,7 +1037,7 @@ def CarriesDependency : InheritableParamAttr {
 }
 
 def CDecl : DeclOrTypeAttr {
-  let Spellings = [GCC<"cdecl">, CustomKeyword<"__cdecl">, CustomKeyword<"_cdecl">];
+  let Spellings = [GCC<"cdecl">, CustomKeyword<"__cdecl">, CustomKeyword<"_cdecl">, CustomKeyword<"cdecl">];
 //  let Subjects = [Function, ObjCMethod];
   let Documentation = [Undocumented];
 }
