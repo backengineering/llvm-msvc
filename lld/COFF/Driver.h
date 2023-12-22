@@ -102,7 +102,7 @@ public:
 
   std::unique_ptr<llvm::TarWriter> tar; // for /linkrepro
 
-private:
+public:
   // Searches a file from search paths.
   std::optional<StringRef> findFileIfNew(StringRef filename);
   std::optional<StringRef> findLibIfNew(StringRef filename);

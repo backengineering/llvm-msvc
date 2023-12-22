@@ -226,6 +226,9 @@ void LinkerDriver::parseSection(StringRef s) {
   if (name.empty() || attrs.empty())
     fatal("/section: invalid argument: " + s);
   ctx.config.section[name] = parseSectionAttributes(attrs);
+
+  if (name == ".bss")
+    ctx.config.hasCustomBSSSection = true;
 }
 
 // Parses /aligncomm option argument.

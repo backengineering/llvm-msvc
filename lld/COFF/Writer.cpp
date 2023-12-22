@@ -1469,6 +1469,9 @@ void Writer::mergeSections() {
     lastPdata = pdataSec->chunks.back();
   }
 
+  if (!ctx.config.hasCustomBSSSection)
+    ctx.driver.parseMerge(".bss=.data");
+  
   for (auto &p : ctx.config.merge) {
     StringRef toName = p.second;
     if (p.first == toName)

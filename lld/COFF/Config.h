@@ -321,6 +321,7 @@ struct Configuration {
   bool writeCheckSum = false;
   EmitKind emit = EmitKind::Obj;
   bool allowDuplicateWeak = false;
+  bool hasCustomBSSSection = false;
 };
 
 } // namespace lld::coff
