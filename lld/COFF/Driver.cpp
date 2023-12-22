@@ -2032,6 +2032,10 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   parseMerge(".00cfg=.rdata");
   parseMerge(".voltbl=.rdata");
   parseMerge("newworld=.rdata");
+
+  if (isArm64EC(config->machine))
+    parseMerge(".wowthk=.text");
+          
   if (config->driver)
     parseMerge("INIT2=INIT");
           
