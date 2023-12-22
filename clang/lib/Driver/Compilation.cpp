@@ -302,6 +302,7 @@ int Compilation::ExecuteJob(const Command &Job,
 void Compilation::ExecuteJobsMP(JobList &Jobs,
                                 FailingCommandList &FailingCommands,
                                 bool LogOnly) {
+  // Count the number of PCH (precompiled header) jobs.
   int PCHCount = 0;
   for (auto &Job : Jobs) {
     bool HasPCH = false;
@@ -320,6 +321,17 @@ void Compilation::ExecuteJobsMP(JobList &Jobs,
         return;
     }
   }
+
+  // Count the number of CC1 jobs.
+  int CC1Count = 0;
+  for (auto &Job : Jobs)
+    if (Job.getArguments()[0] == "-cc1")
+      ++CC1Count;
+  // If there is only one CC1 job, set the number of MP cores to 1. This is
+  // because the CC1 job is typically the most expensive job, and running it on
+  // multiple cores can lead to contention for resources and slower build times.
+  if (CC1Count == 1)
+    MPCoresNumber = 1;
 
   // Determine the number of parallel jobs to execute
   int MPJobsSize =
