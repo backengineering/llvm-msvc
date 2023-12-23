@@ -246,6 +246,8 @@ bool convertGBKToUTF8String(StringRef SrcGBK, std::string &Out) {
         i++;
         continue;
       } else {
+        if (i == len - 1)
+          return false;
         if (data[i] >= 0x81 && data[i] <= 0xfe && data[i + 1] >= 0x40 &&
             data[i + 1] <= 0xfe && data[i + 1] != 0xf7) {
           i += 2;
