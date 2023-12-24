@@ -19209,7 +19209,8 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
   // source file with the inline keyword. In this case, we need to set the
   // `ImplicitlyInline` flag to false so that the function is not treated as
   // explicitly inlined.
-  if (Func->getMostRecentDecl()->isInlined() &&
+  if (Func->getMostRecentDecl() && Func->getFirstDecl() &&
+      Func->getMostRecentDecl()->isInlined() &&
       !Func->getFirstDecl()->isInlined()) {
     Func->getMostRecentDecl()->setImplicitlyInline(false);
   }
