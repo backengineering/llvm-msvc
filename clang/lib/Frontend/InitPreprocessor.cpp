@@ -1350,6 +1350,10 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   if (TI.getTriple().isOSBinFormatELF())
     Builder.defineMacro("__ELF__");
 
+  // PE targets define __LLVM_MSVC__PE__
+  if (TI.getTriple().isOSBinFormatCOFF())
+    Builder.defineMacro("__LLVM_MSVC__PE__");
+  
   // Get other target #defines.
   TI.getTargetDefines(LangOpts, Builder);
 
