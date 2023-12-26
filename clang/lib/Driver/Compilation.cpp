@@ -322,15 +322,9 @@ void Compilation::ExecuteJobsMP(JobList &Jobs,
     }
   }
 
-  // Count the number of CC1 jobs.
-  int CC1Count = 0;
-  for (auto &Job : Jobs)
-    if (Job.getArguments()[0] == "-cc1")
-      ++CC1Count;
-  // If there is only one CC1 job, set the number of MP cores to 1. This is
-  // because the CC1 job is typically the most expensive job, and running it on
-  // multiple cores can lead to contention for resources and slower build times.
-  if (CC1Count == 1)
+  // Filter out such as "clang-cl.exe main.cpp".
+  if (Jobs.size() == 2 &&
+      StringRef(Jobs.getJobs()[1]->getArguments()[0]).starts_with("-out:"))
     MPCoresNumber = 1;
 
   // Determine the number of parallel jobs to execute
