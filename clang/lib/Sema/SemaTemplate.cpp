@@ -6939,7 +6939,6 @@ static bool CheckTemplateArgumentAddressOfObjectOrFunction(
     S.Diag(Arg->getBeginLoc(), diag::err_template_arg_not_decl_ref)
         << Arg->getSourceRange();
 #endif
-    S.Diag(Param->getLocation(), diag::note_template_param_here);
     S.NoteTemplateParameterLocation(*Param);
     return true;
   }
@@ -7390,43 +7389,7 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
   // a constant-evaluated context.
   EnterExpressionEvaluationContext ConstantEvaluated(
       *this, Sema::ExpressionEvaluationContext::ConstantEvaluated);
-
-<<<<<<< HEAD
-#ifdef _WIN32
-  if (getLangOpts().CPlusPlus17 &&
-      getLangOpts().MSCompatibilityVersion != LangOptions::MSVC2015) {
-#else
-  if (getLangOpts().CPlusPlus17) {
-#endif
-    QualType CanonParamType = Context.getCanonicalType(ParamType);
-
-    // Avoid making a copy when initializing a template parameter of class type
-    // from a template parameter object of the same type. This is going beyond
-    // the standard, but is required for soundness: in
-    //   template<A a> struct X { X *p; X<a> *q; };
-    // ... we need p and q to have the same type.
-    //
-    // Similarly, don't inject a call to a copy constructor when initializing
-    // from a template parameter of the same type.
-    Expr *InnerArg = Arg->IgnoreParenImpCasts();
-    if (ParamType->isRecordType() && isa<DeclRefExpr>(InnerArg) &&
-        Context.hasSameUnqualifiedType(ParamType, InnerArg->getType())) {
-      NamedDecl *ND = cast<DeclRefExpr>(InnerArg)->getDecl();
-      if (auto *TPO = dyn_cast<TemplateParamObjectDecl>(ND)) {
-
-        SugaredConverted = TemplateArgument(TPO, ParamType);
-        CanonicalConverted =
-            TemplateArgument(TPO->getCanonicalDecl(), CanonParamType);
-        return Arg;
-      }
-      if (isa<NonTypeTemplateParmDecl>(ND)) {
-        SugaredConverted = TemplateArgument(Arg);
-        CanonicalConverted =
-            Context.getCanonicalTemplateArgument(SugaredConverted);
-        return Arg;
-      }
-    }
-
+      
   bool IsConvertedConstantExpression = true;
   if (isa<InitListExpr>(Arg) || ParamType->isRecordType()) {
     InitializationKind Kind = InitializationKind::CreateForInit(
@@ -7455,6 +7418,10 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
     APValue Value;
     ExprResult ArgResult;
     if (IsConvertedConstantExpression) {
+      if (CheckTemplateArgumentNonNullPointer(*this, Param, ParamType, Arg,
+                                              SugaredConverted,
+                                              CanonicalConverted))
+        return Arg;
       ArgResult = BuildConvertedConstantExpression(Arg, ParamType,
                                                    CCEK_TemplateArg, Param);
       if (ArgResult.isInvalid())
