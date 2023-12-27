@@ -131,7 +131,7 @@ void visualstudio::Linker::ConstructJob(Compilation &C, const JobAction &JA,
 
   if (C.getDriver().IsFlangMode()) {
     addFortranRuntimeLibraryPath(TC, Args, CmdArgs);
-    addFortranRuntimeLibs(TC, CmdArgs);
+    addFortranRuntimeLibs(TC, Args, CmdArgs);
 
     // Inform the MSVC linker that we're generating a console application, i.e.
     // one with `main` as the "user-defined" entry point. The `main` function is
@@ -302,7 +302,7 @@ void visualstudio::Linker::ConstructJob(Compilation &C, const JobAction &JA,
     if (A.getOption().matches(options::OPT_l)) {
       StringRef Lib = A.getValue();
       const char *LinkLibArg;
-      if (Lib.endswith(".lib"))
+      if (Lib.ends_with(".lib"))
         LinkLibArg = Args.MakeArgString(Lib);
       else
         LinkLibArg = Args.MakeArgString(Lib + ".lib");

@@ -117,7 +117,7 @@ DenseMap<BasicBlock *, ColorVector> llvm::colorEHFunclets(Function &F) {
   // Note: Despite not being a funclet in the truest sense, a catchswitch is
   // considered to belong to its own funclet for the purposes of coloring.
 
-  DEBUG_WITH_TYPE("winehprepare-coloring",
+  DEBUG_WITH_TYPE("win-eh-prepare-coloring",
                   dbgs() << "\nColoring funclets for " << F.getName() << "\n");
 
   Worklist.push_back({EntryBlock, EntryBlock});
@@ -126,7 +126,7 @@ DenseMap<BasicBlock *, ColorVector> llvm::colorEHFunclets(Function &F) {
     BasicBlock *Visiting;
     BasicBlock *Color;
     std::tie(Visiting, Color) = Worklist.pop_back_val();
-    DEBUG_WITH_TYPE("winehprepare-coloring",
+    DEBUG_WITH_TYPE("win-eh-prepare-coloring",
                     dbgs() << "Visiting " << Visiting->getName() << ", "
                            << Color->getName() << "\n");
     Instruction *VisitingHead = Visiting->getFirstNonPHI();
@@ -141,7 +141,7 @@ DenseMap<BasicBlock *, ColorVector> llvm::colorEHFunclets(Function &F) {
     else
       continue;
 
-    DEBUG_WITH_TYPE("winehprepare-coloring",
+    DEBUG_WITH_TYPE("win-eh-prepare-coloring",
                     dbgs() << "  Assigned color \'" << Color->getName()
                            << "\' to block \'" << Visiting->getName()
                            << "\'.\n");

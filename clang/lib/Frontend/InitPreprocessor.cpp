@@ -815,6 +815,13 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   Builder.defineMacro("__ATOMIC_ACQ_REL", "4");
   Builder.defineMacro("__ATOMIC_SEQ_CST", "5");
 
+  // Define macros for the clang atomic scopes.
+  Builder.defineMacro("__MEMORY_SCOPE_SYSTEM", "0");
+  Builder.defineMacro("__MEMORY_SCOPE_DEVICE", "1");
+  Builder.defineMacro("__MEMORY_SCOPE_WRKGRP", "2");
+  Builder.defineMacro("__MEMORY_SCOPE_WVFRNT", "3");
+  Builder.defineMacro("__MEMORY_SCOPE_SINGLE", "4");
+
   // Define macros for the OpenCL memory scope.
   // The values should match AtomicScopeOpenCLModel::ID enum.
   static_assert(
@@ -1354,6 +1361,15 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   if (TI.getTriple().isOSBinFormatCOFF())
     Builder.defineMacro("__LLVM_MSVC__PE__");
   
+  // Target OS macro definitions.
+  if (PPOpts.DefineTargetOSMacros) {
+    const llvm::Triple &Triple = TI.getTriple();
+#define TARGET_OS(Name, Predicate)                                             \
+  Builder.defineMacro(#Name, (Predicate) ? "1" : "0");
+#include "clang/Basic/TargetOSMacros.def"
+#undef TARGET_OS
+  }
+
   // Get other target #defines.
   TI.getTargetDefines(LangOpts, Builder);
 

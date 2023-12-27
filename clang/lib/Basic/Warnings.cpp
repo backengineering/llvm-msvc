@@ -97,7 +97,7 @@ void clang::ProcessWarningOptions(DiagnosticsEngine &Diags,
       // Check to see if this warning starts with "no-", if so, this is a
       // negative form of the option.
       bool isPositive = true;
-      if (Opt.startswith("no-")) {
+      if (Opt.starts_with("no-")) {
         isPositive = false;
         Opt = Opt.substr(3);
       }
@@ -137,7 +137,7 @@ void clang::ProcessWarningOptions(DiagnosticsEngine &Diags,
       if (Opt == "error")
         isPositive = false;
 #endif
-      if (Opt.startswith("error")) {
+      if (Opt.starts_with("error")) {
         StringRef Specifier;
         if (Opt.size() > 5) {  // Specifier must be present.
           if (Opt[5] != '=' &&
@@ -166,7 +166,7 @@ void clang::ProcessWarningOptions(DiagnosticsEngine &Diags,
       }
 
       // -Wfatal-errors is yet another special case.
-      if (Opt.startswith("fatal-errors")) {
+      if (Opt.starts_with("fatal-errors")) {
         StringRef Specifier;
         if (Opt.size() != 12) {
           if ((Opt[12] != '=' && Opt[12] != '-') || Opt.size() == 13) {
@@ -202,13 +202,12 @@ void clang::ProcessWarningOptions(DiagnosticsEngine &Diags,
       }
     }
 
-    for (unsigned i = 0, e = Opts.Remarks.size(); i != e; ++i) {
-      StringRef Opt = Opts.Remarks[i];
+    for (StringRef Opt : Opts.Remarks) {
       const auto Flavor = diag::Flavor::Remark;
 
       // Check to see if this warning starts with "no-", if so, this is a
       // negative form of the option.
-      bool IsPositive = !Opt.startswith("no-");
+      bool IsPositive = !Opt.starts_with("no-");
       if (!IsPositive) Opt = Opt.substr(3);
 
       auto Severity = IsPositive ? diag::Severity::Remark
