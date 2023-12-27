@@ -1930,6 +1930,8 @@ bool llvm::LowerDbgDeclare(Function &F) {
   SmallVector<DPValue *> DPVs;
   for (auto &FI : F) {
     for (Instruction &BI : FI) {
+      if (BI.isVolatile())
+        continue;
       if (auto *DDI = dyn_cast<DbgDeclareInst>(&BI))
         Dbgs.push_back(DDI);
       for (DPValue &DPV : BI.getDbgValueRange()) {
@@ -2006,7 +2008,6 @@ bool llvm::LowerDbgDeclare(Function &F) {
   return Changed;
 }
 
-<<<<<<< HEAD
 /// Lowers constant expression.
 bool llvm::LowerConstantExpr(Function &F) {
     bool Changed = false;
