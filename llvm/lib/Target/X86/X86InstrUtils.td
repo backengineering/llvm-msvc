@@ -421,6 +421,12 @@ class Ii32PCRel<bits<8> o, Format f, dag outs, dag ins, string asm,
   let Pattern = pattern;
 }
 
+class Ii32EipRel<bits<8> o, Format f, dag outs, dag ins, string asm,
+           list<dag> pattern>
+  : X86Inst<o, f, Imm32PCRel, outs, ins, asm>, REX_W {
+  let Pattern = pattern;
+}
+
 // FPStack Instruction Templates:
 // FPI - Floating Point Instruction template.
 class FPI<bits<8> o, Format F, dag outs, dag ins, string asm>
