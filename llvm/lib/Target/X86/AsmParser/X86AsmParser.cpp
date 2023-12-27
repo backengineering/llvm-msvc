@@ -2625,7 +2625,7 @@ bool X86AsmParser::parseIntelOperand(OperandVector &Operands, StringRef Name) {
       unsigned IndexReg = SM.getIndexReg();
       unsigned Scale = SM.getScale();
       return CreateMemForMSInlineAsm(RegNo, Disp, BaseReg, IndexReg, Scale,
-                                     Start, End, Size, SM.getSymName(),
+                                     false, Start, End, Size, SM.getSymName(),
                                      SM.getIdentifierInfo(), Operands);
     }
 
