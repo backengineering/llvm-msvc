@@ -6162,6 +6162,7 @@ def err_illegal_initializer : Error<
 def err_illegal_initializer_type : Error<"illegal initializer type %0">;
 def ext_init_list_type_narrowing : ExtWarn<
   "type %0 cannot be narrowed to %1 in initializer list">,
+  InGroup<CXX11Narrowing>;
 def ext_init_list_variable_narrowing : ExtWarn<
   "non-constant-expression cannot be narrowed from type %0 to %1 in "
   "initializer list">, InGroup<CXX11Narrowing>;
