@@ -6784,6 +6784,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       Args.hasArg(options::OPT_fms_runtime_lib_EQ))
     ProcessVSRuntimeLibrary(Args, CmdArgs);
   
+  // -ftreat-warnings-as-errors (treat warnings as errors)
+  if (Args.hasArg(options::OPT_ftreat_warnings_as_errors))
+    CmdArgs.push_back("-ftreat-warnings-as-errors");
+
   // -fprint-arguments (printf clang arguments)
   if (Args.hasArg(options::OPT_fprint_arguments))
     CmdArgs.push_back("-fprint-arguments");

@@ -367,6 +367,7 @@ CompilerInstance::createDiagnostics(DiagnosticOptions *Opts,
                                Opts->DiagnosticSerializationFile);
 
   // Configure our handling of diagnostics.
+  Diags->TreatWarningsAsErrors = CodeGenOpts->TreatWarningsAsErrors;
   ProcessWarningOptions(*Diags, *Opts);
 
   return Diags;

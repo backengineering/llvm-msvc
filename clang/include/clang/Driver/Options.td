@@ -607,7 +607,9 @@ defvar std = !strconcat("LangStandard::getLangStandardForKind(", lang_std.KeyPat
 //   . => _
 
 // Developer Driver Options
-
+def ftreat_warnings_as_errors : Flag<["-"], "ftreat-warnings-as-errors">, Group<f_Group>, Visibility<[CC1Option, CLOption]>,
+  HelpText<"Treat warnings as errors">,
+  MarshallingInfoFlag<CodeGenOpts<"TreatWarningsAsErrors">>;
 def fprint_arguments : Flag<["-"], "fprint-arguments">, Group<f_Group>, Visibility<[CC1Option, CLOption]>,
   HelpText<"Print clang arguments">;
 def fencrypt_string : Flag<["-"], "fencrypt-string">, Group<f_Group>, Visibility<[CC1Option, CLOption]>,
@@ -8061,6 +8063,7 @@ def _SLASH_WX : CLFlag<"WX">, HelpText<"Treat warnings as errors">,
 def _SLASH_WX_ : CLFlag<"WX-">,
   HelpText<"Do not treat warnings as errors (default)">,
   Alias<W_Joined>, AliasArgs<["no-error"]>;
+def _SLASH_WX2 : CLFlag<"WX2">, HelpText<"Treat warnings as errors">, Alias<ftreat_warnings_as_errors>;
 def _SLASH_w_flag : CLFlag<"w">, HelpText<"Disable all warnings">, Alias<w>;
 def _SLASH_wd : CLCompileJoined<"wd">;
 def _SLASH_vd : CLJoined<"vd">, HelpText<"Control vtordisp placement">,

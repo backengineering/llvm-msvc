@@ -253,7 +253,7 @@ public:
   /// by ArgumentKind, with a value.
   using ArgumentValue = std::pair<ArgumentKind, intptr_t>;
 
-private:
+public:
   // Used by __extension__
   unsigned char AllExtensionsSilenced = 0;
 
@@ -272,6 +272,9 @@ private:
   // Color printing is enabled.
   bool ShowColors = false;
 
+  // Treat all warnings as errors.
+  bool TreatWarningsAsErrors = false;
+  
   // Which overload candidates to show.
   OverloadsShown ShowOverloads = Ovl_All;
 

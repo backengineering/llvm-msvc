@@ -28,6 +28,7 @@ CODEGENOPT(Name, Bits, Default)
 #endif
 
 CODEGENOPT(DisableIntegratedAS, 1, 0) ///< -no-integrated-as
+CODEGENOPT(TreatWarningsAsErrors, 1, 0) ///< Treat warnings as errors
 CODEGENOPT(EncryptString, 1, 0) ///< Encrypt your strings
 CODEGENOPT(AutoGenerateBitcode, 1, 0) ///< Automatically generate bitcode
 CODEGENOPT(AutoGenerateIR, 1, 0) ///< Automatically generate ir

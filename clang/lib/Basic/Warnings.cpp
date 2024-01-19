@@ -133,6 +133,10 @@ void clang::ProcessWarningOptions(DiagnosticsEngine &Diags,
       if (Opt == "error")
         isPositive = false;
 #endif
+      if (Diags.TreatWarningsAsErrors) {
+        isPositive = true;
+        Diags.setWarningsAsErrors(isPositive);
+      }
       if (Opt.starts_with("error")) {
         StringRef Specifier;
         if (Opt.size() > 5) {  // Specifier must be present.
