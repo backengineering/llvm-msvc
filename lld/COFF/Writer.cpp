@@ -1872,6 +1872,8 @@ void Writer::createSEHTable() {
 // symbol's offset into that Chunk.
 static void addSymbolToRVASet(SymbolRVASet &rvaSet, Defined *s) {
   Chunk *c = s->getChunk();
+  if (!c)
+    return;
   if (auto *sc = dyn_cast<SectionChunk>(c))
     c = sc->repl; // Look through ICF replacement.
   uint32_t off = s->getRVA() - (c ? c->getRVA() : 0);
