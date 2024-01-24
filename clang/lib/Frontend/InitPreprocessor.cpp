@@ -1357,9 +1357,11 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   if (TI.getTriple().isOSBinFormatELF())
     Builder.defineMacro("__ELF__");
 
+#ifdef _WIN32
   // PE targets define __LLVM_MSVC__PE__
   if (TI.getTriple().isOSBinFormatCOFF())
     Builder.defineMacro("__LLVM_MSVC__PE__");
+#endif
   
   // Target OS macro definitions.
   if (PPOpts.DefineTargetOSMacros) {
