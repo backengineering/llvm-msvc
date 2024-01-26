@@ -66,8 +66,6 @@ extern char **environ;
 using namespace llvm;
 using namespace sys;
 
-ProcessInfo::ProcessInfo() : Pid(0), ReturnCode(0) {}
-
 ErrorOr<std::string> sys::findProgramByName(StringRef Name,
                                             ArrayRef<StringRef> Paths) {
   assert(!Name.empty() && "Must have a name!");
