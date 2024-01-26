@@ -11605,11 +11605,10 @@ CXXMethodDecl *Sema::getGetBufferMethodDecl(const Expr *E) {
 
 /// Check to see if the type is ATL::CStringT
 bool Sema::isATLCStringType(const QualType &Ty) {
-  if (Ty.getCanonicalType()
-          .getAsString(Context.getPrintingPolicy())
-          ._Starts_with("ATL::CStringT<"))
-    return true;
-  return false;
+    std::string TypeStr =
+        Ty.getCanonicalType().getAsString(Context.getPrintingPolicy());
+    if (TypeStr.find("ATL::CStringT<") == 0) return true;
+    return false;
 }
 
 // Check if a (w)string was passed when a (w)char* was needed, and offer a
