@@ -258,12 +258,9 @@ void Compilation::ExecuteJobs(const JobList &Jobs,
                               bool LogOnly) {
 #ifdef _WIN32
   bool SupportMP = MPCoresNumber > 1;
-#else
-  bool SupportMP = false;
-#endif
-
   if (SupportMP)
     return ExecuteJobsMP(const_cast<JobList &>(Jobs), FailingCommands, LogOnly);
+#endif
   return ExecuteJobsSingle(Jobs, FailingCommands, LogOnly);
 }
 
