@@ -512,7 +512,7 @@ bool llvm::getAsSignedInteger(StringRef Str, unsigned Radix,
 bool llvm::getAsIntegerWrapper(StringRef Str, unsigned Radix,
                            unsigned long long &Result) {
   if (Str[0] == '-') {
-    int64_t SignedResult = 0;
+    long long SignedResult = 0;
     auto Ret = getAsSignedInteger(Str, Radix, SignedResult);
     Result = static_cast<uint64_t>(SignedResult);
     return Ret;
