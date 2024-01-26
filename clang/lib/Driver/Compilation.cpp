@@ -299,6 +299,7 @@ int Compilation::ExecuteJob(const Command &Job,
 void Compilation::ExecuteJobsMP(JobList &Jobs,
                                 FailingCommandList &FailingCommands,
                                 bool LogOnly) {
+#ifdef _WIN32
   // Count the number of PCH (precompiled header) jobs.
   int PCHCount = 0;
   for (auto &Job : Jobs) {
@@ -427,6 +428,7 @@ void Compilation::ExecuteJobsMP(JobList &Jobs,
       return;
     }
   }
+#endif
 }
 
 void Compilation::initCompilationForDiagnostics() {
