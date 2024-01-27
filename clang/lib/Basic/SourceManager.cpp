@@ -225,6 +225,7 @@ ContentCache::getBufferOrNone(DiagnosticsEngine &Diag, FileManager &FM,
       InvalidBOM = getInvalidBOM(BufStr);
     }
   } else {
+#ifdef _WIN32
     // Trying to convert GBK to UTF8.
     if (llvm::convertGBKToUTF8String(BufStr, StrUtf8)) {
       moveBuffer(StrUtf8);
@@ -233,6 +234,7 @@ ContentCache::getBufferOrNone(DiagnosticsEngine &Diag, FileManager &FM,
       // Verify it again.
       InvalidBOM = getInvalidBOM(BufStr);
     }
+#endif
   }
  
   if (InvalidBOM) {
