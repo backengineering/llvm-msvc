@@ -61,7 +61,7 @@ test/
 # Directories to ignore (do not add trailing '/'s, they skip symlinks).
 #==============================================================================#
 # VS2017 and VSCode config files.
-# .vscode
+.vscode
 .vs
 CppProperties.json
 # pythonenv for github Codespaces
