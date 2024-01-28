@@ -83,7 +83,7 @@ msbuild /m -p:Configuration=release INSTALL.vcxproj
 If you don't know how to learn ``LLVM``, you can check out this [repository](https://github.com/gmh5225/awesome-llvm-security) of mine.
 
 ### Can it run on linux?
-No.
+Yes.
 
 ### Can it run on macos?
 No.
