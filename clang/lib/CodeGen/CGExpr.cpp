@@ -3498,10 +3498,13 @@ void CodeGenFunction::EmitCfiCheckFail() {
       EmitLoadOfScalar(GetAddrOfLocalVar(&ArgAddr), /*Volatile=*/false,
                        CGM.getContext().VoidPtrTy, ArgAddr.getLocation());
 
-  // Data == nullptr means the calling module has trap behaviour for this check.
-  llvm::Value *DataIsNotNullPtr =
-      Builder.CreateICmpNE(Data, llvm::ConstantPointerNull::get(Int8PtrTy));
-  EmitTrapCheck(DataIsNotNullPtr, SanitizerHandler::CFICheckFail);
+  if (!CGM.getCodeGenOpts().DisableCFICheckFail) {
+    // Data == nullptr means the calling module has trap behaviour for this
+    // check.
+    llvm::Value *DataIsNotNullPtr =
+        Builder.CreateICmpNE(Data, llvm::ConstantPointerNull::get(Int8PtrTy));
+    EmitTrapCheck(DataIsNotNullPtr, SanitizerHandler::CFICheckFail);
+  }
 
   llvm::StructType *SourceLocationTy =
       llvm::StructType::get(VoidPtrTy, Int32Ty, Int32Ty);
@@ -3531,17 +3534,20 @@ void CodeGenFunction::EmitCfiCheckFail() {
       {CFITCK_UnrelatedCast, SanitizerKind::CFIUnrelatedCast},
       {CFITCK_ICall, SanitizerKind::CFIICall}};
 
-  SmallVector<std::pair<llvm::Value *, SanitizerMask>, 5> Checks;
-  for (auto CheckKindMaskPair : CheckKinds) {
-    int Kind = CheckKindMaskPair.first;
-    SanitizerMask Mask = CheckKindMaskPair.second;
-    llvm::Value *Cond =
-        Builder.CreateICmpNE(CheckKind, llvm::ConstantInt::get(Int8Ty, Kind));
-    if (CGM.getLangOpts().Sanitize.has(Mask))
-      EmitCheck(std::make_pair(Cond, Mask), SanitizerHandler::CFICheckFail, {},
-                {Data, Addr, ValidVtable});
-    else
-      EmitTrapCheck(Cond, SanitizerHandler::CFICheckFail);
+  if (!CGM.getCodeGenOpts().DisableCFICheckFail) {
+    SmallVector<std::pair<llvm::Value *, SanitizerMask>, 5> Checks;
+    for (auto CheckKindMaskPair : CheckKinds) {
+        int Kind = CheckKindMaskPair.first;
+        SanitizerMask Mask = CheckKindMaskPair.second;
+        llvm::Value *Cond = Builder.CreateICmpNE(
+            CheckKind, llvm::ConstantInt::get(Int8Ty, Kind));
+        if (CGM.getLangOpts().Sanitize.has(Mask))
+            EmitCheck(std::make_pair(Cond, Mask),
+                      SanitizerHandler::CFICheckFail, {},
+                      {Data, Addr, ValidVtable});
+        else
+            EmitTrapCheck(Cond, SanitizerHandler::CFICheckFail);
+    }
   }
 
   FinishFunction();

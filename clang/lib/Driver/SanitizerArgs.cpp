@@ -1265,6 +1265,9 @@ void SanitizerArgs::addArgs(const ToolChain &TC, const llvm::opt::ArgList &Args,
   if (CfiCrossDso)
     CmdArgs.push_back("-fsanitize-cfi-cross-dso");
 
+  if (Args.hasArg(options::OPT_fdisable_cfi_check_fail))
+    CmdArgs.push_back("-fdisable-cfi-check-fail");
+
   if (CfiICallGeneralizePointers)
     CmdArgs.push_back("-fsanitize-cfi-icall-generalize-pointers");
 

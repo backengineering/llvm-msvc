@@ -2431,6 +2431,10 @@ defm sanitize_cfi_cross_dso : BoolOption<"f", "sanitize-cfi-cross-dso",
           "Disable">,
   BothFlags<[], [ClangOption], " control flow integrity (CFI) checks for cross-DSO calls.">>,
   Group<f_clang_Group>;
+def fdisable_cfi_check_fail : Flag<["-"], "fdisable-cfi-check-fail">,
+                                          Group<f_clang_Group>,
+                                          HelpText<"Disables the failure checks in CFI">,
+                                          MarshallingInfoFlag<CodeGenOpts<"DisableCFICheckFail">>;
 def fsanitize_cfi_icall_generalize_pointers : Flag<["-"], "fsanitize-cfi-icall-generalize-pointers">,
                                               Group<f_clang_Group>,
                                               HelpText<"Generalize pointers in CFI indirect call type signature checks">,
