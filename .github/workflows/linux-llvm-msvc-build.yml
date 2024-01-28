@@ -18,7 +18,8 @@ jobs:
           sudo wget -qO /usr/local/bin/ninja.gz https://github.com/ninja-build/ninja/releases/latest/download/ninja-linux.zip \
           && sudo gunzip /usr/local/bin/ninja.gz \
           && sudo chmod a+x /usr/local/bin/ninja \
-          && sudo apt-get install build-essential make cmake
+          && sudo apt-get install build-essential make cmake \
+          && sudo apt-get install p7zip-full p7zip-rar
           
     - name: Checkout Repo
       uses: actions/checkout@v3
