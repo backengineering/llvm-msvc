@@ -1,9 +1,5 @@
 name: linux-llvm-msvc-build
 
-concurrency:
-  group: build-${{ github.head_ref }}
-  cancel-in-progress: true
-
 on: [push, pull_request]
 
 jobs:
