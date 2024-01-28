@@ -3396,6 +3396,10 @@ void CodeGenFunction::EmitCheck(
 void CodeGenFunction::EmitCfiSlowPathCheck(
     SanitizerMask Kind, llvm::Value *Cond, llvm::ConstantInt *TypeId,
     llvm::Value *Ptr, ArrayRef<llvm::Constant *> StaticArgs) {
+
+  if (CGM.getCodeGenOpts().DisableCFISlowPathCheck) 
+    return;
+
   llvm::BasicBlock *Cont = createBasicBlock("cfi.cont");
 
   llvm::BasicBlock *CheckBB = createBasicBlock("cfi.slowpath");
