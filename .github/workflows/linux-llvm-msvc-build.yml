@@ -1,7 +1,6 @@
 name: linux-llvm-msvc-build
 
-on:
-  workflow_dispatch:
+on: [push, pull_request]
 
 jobs:
   build:
