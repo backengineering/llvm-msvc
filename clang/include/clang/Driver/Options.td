@@ -2973,7 +2973,7 @@ def fms_kernel : Flag<["-"], "fms-kernel">, Group<f_Group>,
 // been rewritten in terms of something more generic, remove the Opts.CUDA
 // term here.
 defm declspec : BoolOption<"f", "declspec",
-  LangOpts<"DeclSpecKeyword">, DefaultFalse,
+  LangOpts<"DeclSpecKeyword">, DefaultTrue,
   PosFlag<SetTrue, [], [ClangOption], "Allow", [fms_extensions.KeyPath, fborland_extensions.KeyPath, cuda.KeyPath]>,
   NegFlag<SetFalse, [], [ClangOption], "Disallow">,
   BothFlags<[], [ClangOption, CC1Option],

@@ -6896,7 +6896,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.addOptInFlag(CmdArgs, options::OPT_fborland_extensions,
                     options::OPT_fno_borland_extensions);
 
-  // -fno-declspec is default, except for PS4/PS5.
+  // -fdeclspec is default
   if (Args.hasFlag(options::OPT_fdeclspec, options::OPT_fno_declspec,
                    RawTriple.isPS()))
     CmdArgs.push_back("-fdeclspec");
