@@ -392,13 +392,9 @@ bool Instruction::isOnlyUserOfAnyOperand() {
 }
 
 bool Instruction::hasInlineAsm() {
-  if (CallInst *CallIst = dyn_cast<CallInst>(this)) {
+  if (CallBase *CallIst = dyn_cast<CallBase>(this))
     if (CallIst->isInlineAsm())
       return true;
-  } else if (InvokeInst *InvokeIst = dyn_cast<InvokeInst>(this)) {
-    if (InvokeIst->isInlineAsm())
-      return true;
-  }
   return false;
 }
 
