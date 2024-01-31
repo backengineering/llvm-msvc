@@ -391,6 +391,17 @@ bool Instruction::isOnlyUserOfAnyOperand() {
   return any_of(operands(), [](Value *V) { return V->hasOneUser(); });
 }
 
+bool Instruction::hasInlineAsm() {
+  if (CallInst *CallIst = dyn_cast<CallInst>(this)) {
+    if (CallIst->isInlineAsm())
+      return true;
+  } else if (InvokeInst *InvokeIst = dyn_cast<InvokeInst>(this)) {
+    if (InvokeIst->isInlineAsm())
+      return true;
+  }
+  return false;
+}
+
 void Instruction::setHasNoUnsignedWrap(bool b) {
   cast<OverflowingBinaryOperator>(this)->setHasNoUnsignedWrap(b);
 }

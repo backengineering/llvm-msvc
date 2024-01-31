@@ -279,6 +279,9 @@ public:
   /// its operands.
   bool isOnlyUserOfAnyOperand();
 
+  /// Return true if this instruction is inline assembly.
+  bool hasInlineAsm();
+  
   static const char *getOpcodeName(unsigned Opcode);
 
   static inline bool isTerminator(unsigned Opcode) {
