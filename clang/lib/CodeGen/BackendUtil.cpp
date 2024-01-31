@@ -1109,17 +1109,6 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   {
     // Welcome to llvm-msvc pass
     MPM.addPass(WelcomeToLLVMMSVCPass(true));
-
-    // For /GL(LTO)
-    if (CodeGenOpts.PrepareForLTO && !CodeGenOpts.PrepareForThinLTO) {
-      bool EmitLTOSummary = shouldEmitRegularLTOSummary();
-      if (Action == Backend_EmitBC)
-        MPM.addPass(BitcodeWriterPass(*OS, CodeGenOpts.EmitLLVMUseLists,
-                                      EmitLTOSummary));
-      else
-        MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
-                                    EmitLTOSummary));
-    }
     
     // IR auto generator pass(Post)
     MPM.addPass(IRAutoGeneratorPostPass(CodeGenOpts.AutoGenerateIR,
