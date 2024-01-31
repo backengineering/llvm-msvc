@@ -251,23 +251,10 @@ void BasicBlock::insertInto(Function *NewParent, BasicBlock *InsertBefore) {
 
 /// BasicBlock has inline asm
 bool BasicBlock::hasInlineAsm() {
-  bool HasInline = false;
-  for (auto &I : *this) {
-    if (CallInst *CallIst = dyn_cast<CallInst>(&I)) {
-      if (CallIst->isInlineAsm()) {
-        HasInline = true;
-        break;
-      }
-    } else if (InvokeInst *InvokeIst = dyn_cast<InvokeInst>(&I)) {
-      if (InvokeIst->isInlineAsm()) {
-        HasInline = true;
-        break;
-      }
-    }
-    if (HasInline)
-      break;
-  }
-  return HasInline;
+  for (auto &I : *this)
+    if (I.hasInlineAsm())
+      return true;
+  return false;
 }
 
 bool BasicBlock::hasPHINode() {
