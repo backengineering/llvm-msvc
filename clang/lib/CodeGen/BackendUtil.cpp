@@ -1035,6 +1035,37 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   if (!actionRequiresCodeGen(Action) && CodeGenOpts.VerifyModule)
     MPM.addPass(VerifierPass());
 
+  // Pre pass
+  {
+    // IR auto generator pass(Pre)
+    MPM.addPassToFront(IRAutoGeneratorPrePass(CodeGenOpts.AutoGenerateIR,
+                                                "IRAutoGeneratorPre"));
+
+    // Bitcode auto generator pass(Pre)
+    MPM.addPassToFront(BitcodeAutoGeneratorPrePass(
+          CodeGenOpts.AutoGenerateBitcode, "BitcodeAutoGeneratorPre"));
+
+    // Convert @llvm.global.annotations to !annotation metadata.
+    MPM.addPassToFront(Annotation2MetadataPass());
+    
+    // MSVC macro rebuilding pass (this pass must be at the top)
+    MPM.addPassToFront(MSVCMacroRebuildingPass());
+  }
+
+  // Post pass
+  {
+    // Welcome to llvm-msvc pass
+    MPM.addPass(WelcomeToLLVMMSVCPass(true));
+    
+    // IR auto generator pass(Post)
+    MPM.addPass(IRAutoGeneratorPostPass(CodeGenOpts.AutoGenerateIR,
+                                          "IRAutoGeneratorPost"));
+    
+    // Bitcode auto generator pass(Post)
+    MPM.addPass(BitcodeAutoGeneratorPostPass(CodeGenOpts.AutoGenerateBitcode,
+                                              "BitcodeAutoGeneratorPost"));
+  }
+  
   if (Action == Backend_EmitBC || Action == Backend_EmitLL) {
     if (CodeGenOpts.PrepareForThinLTO && !CodeGenOpts.DisableLLVMPasses) {
       if (!TheModule->getModuleFlag("EnableSplitLTOUnit"))
@@ -1067,7 +1098,7 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
         if (CodeGenOpts.UnifiedLTO)
           TheModule->addModuleFlag(llvm::Module::Error, "UnifiedLTO", uint32_t(1));
       }
-      if (!CodeGenOpts.PrepareForLTO || CodeGenOpts.PrepareForThinLTO) {
+      if (CodeGenOpts.PrepareForLTO || CodeGenOpts.PrepareForThinLTO) {
         if (Action == Backend_EmitBC)
           MPM.addPass(BitcodeWriterPass(*OS, CodeGenOpts.EmitLLVMUseLists,
                                         EmitLTOSummary));
@@ -1086,37 +1117,6 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     // FatLTO always means UnifiedLTO
     if (!TheModule->getModuleFlag("UnifiedLTO"))
       TheModule->addModuleFlag(llvm::Module::Error, "UnifiedLTO", uint32_t(1));
-  }
-
-  // Pre pass
-  {
-    // IR auto generator pass(Pre)
-    MPM.addPassToFront(IRAutoGeneratorPrePass(CodeGenOpts.AutoGenerateIR,
-                                                "IRAutoGeneratorPre"));
-
-    // Bitcode auto generator pass(Pre)
-    MPM.addPassToFront(BitcodeAutoGeneratorPrePass(
-          CodeGenOpts.AutoGenerateBitcode, "BitcodeAutoGeneratorPre"));
-
-    // Convert @llvm.global.annotations to !annotation metadata.
-    MPM.addPassToFront(Annotation2MetadataPass());
-    
-    // MSVC macro rebuilding pass (this pass must be at the top)
-    MPM.addPassToFront(MSVCMacroRebuildingPass());
-  }
-
-  // Post pass
-  {
-    // Welcome to llvm-msvc pass
-    MPM.addPass(WelcomeToLLVMMSVCPass(true));
-    
-    // IR auto generator pass(Post)
-    MPM.addPass(IRAutoGeneratorPostPass(CodeGenOpts.AutoGenerateIR,
-                                          "IRAutoGeneratorPost"));
-    
-    // Bitcode auto generator pass(Post)
-    MPM.addPass(BitcodeAutoGeneratorPostPass(CodeGenOpts.AutoGenerateBitcode,
-                                              "BitcodeAutoGeneratorPost"));
   }
   
   // Print a textual, '-passes=' compatible, representation of pipeline if
