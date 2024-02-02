@@ -2026,28 +2026,30 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   for (auto *arg : args.filtered(OPT_merge))
     parseMerge(arg->getValue());
 
-  // Add default section merging rules after user rules. User rules take
-  // precedence, but we will emit a warning if there is a conflict.
-  parseMerge(".idata=.rdata");
-  parseMerge(".didat=.rdata");
-  if (!config->driver)
-    parseMerge(".edata=.rdata");
-  parseMerge(".xdata=.rdata");
-  parseMerge(".00cfg=.rdata");
-
-  parseMerge(".voltbl=.rdata");
-  parseMerge("newworld=.rdata");
-
-  if (config->driver)
-    parseMerge("INIT2=INIT");
-
-  if (isArm64EC(config->machine))
-    parseMerge(".wowthk=.text");
-
-  if (config->mingw) {
-    parseMerge(".ctors=.rdata");
-    parseMerge(".dtors=.rdata");
-    parseMerge(".CRT=.rdata");
+  if (!config->dontMergeSections) {
+    // Add default section merging rules after user rules. User rules take
+    // precedence, but we will emit a warning if there is a conflict.
+    parseMerge(".idata=.rdata");
+    parseMerge(".didat=.rdata");
+    if (!config->driver)
+      parseMerge(".edata=.rdata");
+    parseMerge(".xdata=.rdata");
+    parseMerge(".00cfg=.rdata");
+    
+    parseMerge(".voltbl=.rdata");
+    parseMerge("newworld=.rdata");
+    
+    if (config->driver)
+      parseMerge("INIT2=INIT");
+    
+    if (isArm64EC(config->machine))
+      parseMerge(".wowthk=.text");
+    
+    if (config->mingw) {
+      parseMerge(".ctors=.rdata");
+      parseMerge(".dtors=.rdata");
+      parseMerge(".CRT=.rdata");
+    }
   }
 
   // Handle /section

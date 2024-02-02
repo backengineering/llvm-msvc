@@ -28,6 +28,9 @@ multiclass B_priv<string name> {
   def _no : F<name#":no">;
 }
 
+def dont_merge_sections: F<"dont-merge-sections">,
+    HelpText<"Each data directory will have its own section">;
+
 def align   : P<"align", "Section alignment">;
 def aligncomm : P<"aligncomm", "Set common symbol alignment">;
 def alternatename : P<"alternatename", "Define weak alias">;
