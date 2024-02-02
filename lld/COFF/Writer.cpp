@@ -1503,7 +1503,7 @@ void Writer::mergeSections() {
     }
   }
 
-  if (!ctx.config.hasCustomBSSSection)
+  if (!ctx.config.hasCustomBSSSection && !ctx.config.dontMergeSections)
     ctx.driver.parseMerge(".bss=.data");
   
   for (auto &p : ctx.config.merge) {
