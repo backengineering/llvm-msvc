@@ -1098,14 +1098,12 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
         if (CodeGenOpts.UnifiedLTO)
           TheModule->addModuleFlag(llvm::Module::Error, "UnifiedLTO", uint32_t(1));
       }
-      if (CodeGenOpts.PrepareForLTO || CodeGenOpts.PrepareForThinLTO) {
-        if (Action == Backend_EmitBC)
-          MPM.addPass(BitcodeWriterPass(*OS, CodeGenOpts.EmitLLVMUseLists,
-                                        EmitLTOSummary));
-        else
-          MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
+      if (Action == Backend_EmitBC)
+        MPM.addPass(BitcodeWriterPass(*OS, CodeGenOpts.EmitLLVMUseLists,
                                       EmitLTOSummary));
-      }
+      else
+        MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
+                                    EmitLTOSummary));
     }
   }
   if (CodeGenOpts.FatLTO) {
