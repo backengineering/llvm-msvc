@@ -140,6 +140,7 @@ struct Configuration {
   bool showSummary = false;
   bool printSearchPaths = false;
   bool enableFullPdbPath = false;
+  bool dontMergeSections = false;
   unsigned debugTypes = static_cast<unsigned>(DebugType::None);
   llvm::SmallVector<llvm::StringRef, 0> mllvmOpts;
   std::vector<std::string> natvisFiles;
