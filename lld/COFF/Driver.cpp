@@ -53,8 +53,8 @@
 #include <future>
 #include <memory>
 #include <optional>
-#include <regex>
 #include <tuple>
+#include <regex>
 
 using namespace llvm;
 using namespace llvm::object;
@@ -244,7 +244,7 @@ void LinkerDriver::addBuffer(std::unique_ptr<MemoryBuffer> mb,
 }
 
 void LinkerDriver::enqueuePathInternal(StringRef path, bool wholeArchive,
-                                       bool lazy) {
+                                   bool lazy) {
   auto future = std::make_shared<std::future<MBErrPair>>(
       createFutureForFile(std::string(path)));
   std::string pathStr = std::string(path);
@@ -540,10 +540,10 @@ StringRef LinkerDriver::findFile(StringRef filename) {
         return saver().save(statOrErr->getName());
     return filename;
   };
-
+  
   if (sys::path::is_absolute(filename))
     return getFilename(filename);
-
+  
   bool hasPathSep = (filename.find_first_of("/\\") != StringRef::npos);
   if (hasPathSep) {
     if (sys::fs::exists(filename.str())) {
@@ -552,7 +552,7 @@ StringRef LinkerDriver::findFile(StringRef filename) {
       return getFilename(filename);
     }
   }
-
+  
   bool hasExt = filename.contains('.');
   for (StringRef dir : searchPaths) {
     SmallString<128> path = dir;
@@ -1512,7 +1512,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   // Parse command line options.
   ArgParser parser(ctx);
   opt::InputArgList args = parser.parse(argsArr);
-
+  
   bool hasPrintArgs = false;
   for (auto arg : args) {
     if (StringRef(arg->getAsString(args)).compare("-fprint-arguments") == 0) {
@@ -1528,7 +1528,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
       llvm::outs() << "\"" << arg->getAsString(args) << "\",\n";
     }
   }
-
+          
   // Initialize time trace profiler.
   config->timeTraceEnabled = args.hasArg(OPT_time_trace_eq);
   config->timeTraceGranularity =
@@ -1761,7 +1761,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
                       args.hasArg(OPT_driver_wdm_uponly);
   config->driver |=
       config->driverUponly || config->driverWdm || args.hasArg(OPT_driver);
-
+          
   // Handle /pdb
   if (shouldCreatePDB) {
     if (auto *arg = args.getLastArg(OPT_pdb))
@@ -2035,16 +2035,16 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
       parseMerge(".edata=.rdata");
     parseMerge(".xdata=.rdata");
     parseMerge(".00cfg=.rdata");
-
+    
     parseMerge(".voltbl=.rdata");
     parseMerge("newworld=.rdata");
-
+    
     if (config->driver)
       parseMerge("INIT2=INIT");
-
+    
     if (isArm64EC(config->machine))
       parseMerge(".wowthk=.text");
-
+    
     if (config->mingw) {
       parseMerge(".ctors=.rdata");
       parseMerge(".dtors=.rdata");
@@ -2147,7 +2147,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
 
   if (args.hasFlag(OPT_inferasanlibs, OPT_inferasanlibs_no, false))
     warn("ignoring '/inferasanlibs', this flag is not supported");
-
+    
   if (config->incremental && args.hasArg(OPT_profile)) {
     warn("ignoring '/incremental' due to '/profile' specification");
     config->incremental = false;
