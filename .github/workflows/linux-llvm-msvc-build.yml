@@ -30,6 +30,7 @@ jobs:
     - name: Build llvm
       run: |
         cmake -G "Ninja" -Bbuild \
+        -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi" \
         -DLLVM_INCLUDE_TESTS=OFF \
         -DLLVM_INCLUDE_EXAMPLES=OFF \
         -DLLDB_ENABLE_PYTHON=OFF \
