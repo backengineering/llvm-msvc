@@ -2026,6 +2026,12 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   for (auto *arg : args.filtered(OPT_merge))
     parseMerge(arg->getValue());
 
+  // Handle /dont-merge-sections
+  if (args.hasArg(OPT_dont_merge_sections)) {
+    config->dontMergeSections = true;
+    warn("Each data directory will have its own section!");
+  }
+          
   if (!config->dontMergeSections) {
     // Add default section merging rules after user rules. User rules take
     // precedence, but we will emit a warning if there is a conflict.
