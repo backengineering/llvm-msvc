@@ -1,4 +1,4 @@
-name: llvm-msvc-build
+name: windows-llvm-msvc-build
 
 on: [push, pull_request]
 
