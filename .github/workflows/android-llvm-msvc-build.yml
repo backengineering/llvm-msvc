@@ -53,7 +53,7 @@ jobs:
         -DCMAKE_INSTALL_PREFIX=install \
         -DCOMPILER_RT_DEFAULT_TARGET_TRIPLE="aarch64-android-android-android" \
         -DCOMPILER_RT_DEFAULT_TARGET_ARCH="aarch64"
-        time cmake --build compiler-rt-build --config Release
+        time cmake --build compiler-rt-build --config ${{ env.BUILD_TYPE }}
         sudo cmake --build compiler-rt-build --target install
 
     - name: Package llvm
