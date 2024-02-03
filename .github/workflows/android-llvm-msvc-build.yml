@@ -48,7 +48,7 @@ jobs:
     - name: Build compiler-rt
       run: |
         CC=install/bin/clang CXX=install/bin/clang++
-        cmake -GNinja -Bcompiler-rt-build compiler-rt \
+        cmake -GNinja -Bcompiler-rt-build llvm-msvc/compiler-rt \
         -DCMAKE_INSTALL_PREFIX=install \
         -DCOMPILER_RT_DEFAULT_TARGET_TRIPLE="aarch64-android-android-android" \
         -DCOMPILER_RT_DEFAULT_TARGET_ARCH="aarch64"
