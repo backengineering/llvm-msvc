@@ -39,38 +39,39 @@ jobs:
         -DLLVM_ENABLE_ZLIB=OFF \
         -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
         -DCPACK_GENERATOR=ZIP \
-        -DCMAKE_INSTALL_PREFIX="$pwd/prefix" \
+        -DCMAKE_INSTALL_PREFIX=install \
         -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" \
         -DLLVM_ENABLE_PROJECTS="clang;lld;lldb" \
         llvm-msvc/llvm
         time cmake --build build --config ${{ env.BUILD_TYPE }}
+        sudo cmake --build build --target install
+        
+    - name: Build compiler-rt
+      run: |
+        CC=install/bin/clang CXX=install/bin/clang++
+        cmake -GNinja -Bcompiler-rt-build compiler-rt \
+        -DCMAKE_INSTALL_PREFIX=install \
+        -DCOMPILER_RT_DEFAULT_TARGET_TRIPLE="aarch64-android-android-android" \
+        -DCOMPILER_RT_DEFAULT_TARGET_ARCH="aarch64"
+        time cmake --build compiler-rt-build --config Release
+        sudo cmake --build compiler-rt-build --target install
 
     - name: Package llvm
-      run: |
-        cmake --build build --target package --config ${{ env.BUILD_TYPE }}
-
+      run: 
+          7z a android-llvm-msvc.zip install
+    
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
       with:
-        name: llvm-msvc
-        path: build/*.zip
-    
-    - name: Get lowercase OS name
-      id: osname
-      uses: ASzc/change-string-case-action@v1
-      with:
-        string: ${{ runner.os }}
-        
-    - name: Archive
-      run:
-        7z a ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip build/*.zip
+        name: android-llvm-msvc
+        path: android-llvm-msvc.zip
     
     - name: Release
       uses: softprops/action-gh-release@v1
       if: ${{ startsWith(github.ref, 'refs/tags/') }}
       with:
         prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-pre') }}
-        files: ${{ github.event.repository.name }}-${{ steps.osname.outputs.lowercase }}.zip
+        files: android-llvm-msvc.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
