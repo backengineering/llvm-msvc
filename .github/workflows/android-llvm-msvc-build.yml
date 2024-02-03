@@ -1,4 +1,4 @@
-name: linux-llvm-msvc-build
+name: android-llvm-msvc-build
 
 on: [push, pull_request]
 
