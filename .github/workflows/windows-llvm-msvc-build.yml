@@ -31,7 +31,6 @@ jobs:
         -DLLVM_ENABLE_ZLIB=OFF `
         -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
         -DLLVM_USE_CRT_RELEASE=MT `
-        -DCPACK_GENERATOR=ZIP `
         -DCMAKE_INSTALL_PREFIX=install `
         -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" `
         -DLLVM_ENABLE_PROJECTS="clang;lld;lldb" `
