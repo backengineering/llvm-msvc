@@ -40,7 +40,7 @@ jobs:
         -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
         -DCMAKE_INSTALL_PREFIX=install \
         -DLLVM_TARGET_ARCH=AArch64 \
-        -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" \
+        -DLLVM_TARGETS_TO_BUILD="AArch64" \
         -DLLVM_ENABLE_PROJECTS="clang;lld;lldb" \
         llvm-msvc/llvm
         time cmake --build build --config ${{ env.BUILD_TYPE }}
