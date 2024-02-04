@@ -21,8 +21,7 @@ jobs:
           && sudo gunzip /usr/local/bin/ninja.gz \
           && sudo chmod a+x /usr/local/bin/ninja \
           && sudo apt-get install build-essential make cmake \
-          && sudo apt-get install p7zip-full p7zip-rar \
-          && sudo apt-get install g++-11-aarch64-linux-gnu libstdc++-11-dev-arm64-cross gcc-11 g++-11
+          && sudo apt-get install p7zip-full p7zip-rar
           
     - name: Checkout Repo
       uses: actions/checkout@v3
@@ -48,16 +47,7 @@ jobs:
         llvm-msvc/llvm
         time cmake --build build --config ${{ env.BUILD_TYPE }}
         cmake --build build --target install
-        
-    - name: Build compiler-rt
-      run: |
-        CC=aarch64-linux-gnu-gcc-11 CXX=aarch64-linux-gnu-g++-11 cmake -GNinja -Bcompiler-rt-build compiler-rt \
-        -DCMAKE_INSTALL_PREFIX=install \
-        -DCOMPILER_RT_DEFAULT_TARGET_TRIPLE="aarch64-android-android-android" \
-        -DCOMPILER_RT_DEFAULT_TARGET_ARCH="aarch64"
-        time cmake --build compiler-rt-build --config ${{ env.BUILD_TYPE }}
-        cmake --build compiler-rt-build --target install
-
+  
     - name: Package llvm
       run: 
           7z a android-llvm-msvc.zip install
