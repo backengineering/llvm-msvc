@@ -108,10 +108,12 @@
 #undef __need_max_align_t
 #endif /* defined(__need_max_align_t) */
 
-//#if defined(__need_offsetof)
-//#include <__stddef_offsetof.h>
-//#undef __need_offsetof
-//#endif /* defined(__need_offsetof) */
+#ifndef _WIN32
+#if defined(__need_offsetof)
+#include <__stddef_offsetof.h>
+#undef __need_offsetof
+#endif /* defined(__need_offsetof) */
+#endif
 
 /* Some C libraries expect to see a wint_t here. Others (notably MinGW) will use
 __WINT_TYPE__ directly; accommodate both by requiring __need_wint_t */
