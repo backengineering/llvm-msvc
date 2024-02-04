@@ -29,6 +29,10 @@
 # Nested build directory
 /build*
 
+# build directory
+compiler-rt-build/
+install/
+
 #==============================================================================#
 # Explicit files to ignore (only matches one).
 #==============================================================================#
