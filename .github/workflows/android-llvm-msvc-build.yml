@@ -21,7 +21,8 @@ jobs:
           && sudo gunzip /usr/local/bin/ninja.gz \
           && sudo chmod a+x /usr/local/bin/ninja \
           && sudo apt-get install build-essential make cmake \
-          && sudo apt-get install p7zip-full p7zip-rar
+          && sudo apt-get install p7zip-full p7zip-rar \
+          && sudo apt-get install g++-11-aarch64-linux-gnu libstdc++-11-dev-arm64-cross gcc-11 g++-11
           
     - name: Checkout Repo
       uses: actions/checkout@v3
@@ -42,19 +43,20 @@ jobs:
         -DLLVM_TARGET_ARCH=AArch64 \
         -DLLVM_TARGETS_TO_BUILD="AArch64" \
         -DLLVM_ENABLE_PROJECTS="clang;lld;lldb" \
+        -DLLVM_TARGET_TRIPLE="aarch64-android-android-android" \
+        -DLLVM_DEFAULT_TARGET_TRIPLE="aarch64-android-android-android" \
         llvm-msvc/llvm
         time cmake --build build --config ${{ env.BUILD_TYPE }}
-        sudo cmake --build build --target install
+        cmake --build build --target install
         
     - name: Build compiler-rt
       run: |
-        CC=install/bin/clang CXX=install/bin/clang++
-        cmake -GNinja -Bcompiler-rt-build llvm-msvc/compiler-rt \
+        CC=aarch64-linux-gnu-gcc-11 CXX=aarch64-linux-gnu-g++-11 cmake -GNinja -Bcompiler-rt-build compiler-rt \
         -DCMAKE_INSTALL_PREFIX=install \
         -DCOMPILER_RT_DEFAULT_TARGET_TRIPLE="aarch64-android-android-android" \
         -DCOMPILER_RT_DEFAULT_TARGET_ARCH="aarch64"
         time cmake --build compiler-rt-build --config ${{ env.BUILD_TYPE }}
-        sudo cmake --build compiler-rt-build --target install
+        cmake --build compiler-rt-build --target install
 
     - name: Package llvm
       run: 
