@@ -67,7 +67,7 @@ jobs:
         -DCMAKE_CXX_COMPILER_ID=Clang \
         -DLIBCXX_INCLUDE_BENCHMARKS=OFF \
         llvm-msvc/runtimes
-        time cmake --build runtimes-build --config Release
+        time cmake --build runtimes-build --config ${{ env.BUILD_TYPE }}
         cmake --build runtimes-build --target install
 
     - name: Build compiler-rt
@@ -97,7 +97,7 @@ jobs:
         -DCMAKE_C_FLAGS="-Wno-error -std=gnu11" \
         -DCMAKE_CXX_FLAGS="-Wno-error -std=c++20" \
         llvm-msvc/compiler-rt
-        time cmake --build compiler-rt-build --config Release
+        time cmake --build compiler-rt-build --config ${{ env.BUILD_TYPE }}
         cmake --build compiler-rt-build --target install
         
     - name: Package llvm
