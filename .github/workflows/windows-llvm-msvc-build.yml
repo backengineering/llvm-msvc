@@ -46,7 +46,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: windows-llvm-msvc
-        path: install/*
+        path: windows-llvm-msvc.zip
     
     - name: Release
       uses: softprops/action-gh-release@v1
