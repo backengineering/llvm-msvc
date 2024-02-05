@@ -108,7 +108,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: android-llvm-msvc
-        path: android-llvm-msvc.zip
+        path: install/*
     
     - name: Release
       uses: softprops/action-gh-release@v1
