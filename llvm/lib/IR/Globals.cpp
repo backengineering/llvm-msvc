@@ -203,6 +203,37 @@ void GlobalObject::setComdat(Comdat *C) {
     C->addUser(this);
 }
 
+void GlobalObject::setComdat(const std::string &Target) {
+  // If we don't have a parent, we can't do anything here.
+  if (!this->getParent())
+    return;
+
+  // If we don't have a comdat, there is nothing to do.
+  if (!this->hasComdat())
+    return;
+
+  std::string Source = this->getName().str();
+  // If the source and target are the same, there is nothing to do.
+  if (Source == Target)
+    return;
+
+  Module &M = *this->getParent();
+  if (Comdat *OldComdat = this->getComdat()) {
+    // Get the comdat symbol table from the module.
+    auto &ComdatSymbolTable = M.getComdatSymbolTable();
+
+    // Get or create the comdat for the source.
+    Comdat *NewComdat = M.getOrInsertComdat(Target);
+    // Copy the selection kind from the source comdat.
+    NewComdat->setSelectionKind(OldComdat->getSelectionKind());
+    // Set the comdat for the symbol to the new comdat.
+    this->setComdat(NewComdat);
+
+    // Remove the source comdat from the symbol table.
+    ComdatSymbolTable.erase(ComdatSymbolTable.find(Source));
+  }
+}
+
 StringRef GlobalValue::getPartition() const {
   if (!hasPartition())
     return "";

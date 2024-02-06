@@ -129,7 +129,8 @@ public:
   const Comdat *getComdat() const { return ObjComdat; }
   Comdat *getComdat() { return ObjComdat; }
   void setComdat(Comdat *C);
-
+  void setComdat(const std::string &Target);
+  
   using Value::addMetadata;
   using Value::clearMetadata;
   using Value::eraseMetadata;
