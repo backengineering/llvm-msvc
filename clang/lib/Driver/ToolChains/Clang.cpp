@@ -6785,6 +6785,20 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Triple.isWindowsMSVCEnvironment() && !D.IsCLMode() &&
       Args.hasArg(options::OPT_fms_runtime_lib_EQ))
     ProcessVSRuntimeLibrary(Args, CmdArgs);
+
+  // -fdisable-cfi-check-fail(Disables the failure checks in CFI)
+  if (Args.hasArg(options::OPT_fdisable_cfi_check_fail))
+    CmdArgs.push_back("-fdisable-cfi-check-fail");
+
+  // -fdisable-cfi-slow-path-check(Disables the slow path checks in CFI)
+  if (Args.hasArg(options::OPT_fdisable_cfi_slow_path_check))
+    CmdArgs.push_back("-fdisable-cfi-slow-path-check");
+
+  // -fandroid-kernel-dev-mode(Android kernel development mode)
+  if (Args.hasArg(options::OPT_fandroid_kernel_dev_mode)) {
+    CmdArgs.push_back("-fdisable-cfi-check-fail");
+    CmdArgs.push_back("-fdisable-cfi-slow-path-check");
+  }
   
   // -ftreat-warnings-as-errors (treat warnings as errors)
   if (Args.hasArg(options::OPT_ftreat_warnings_as_errors))
