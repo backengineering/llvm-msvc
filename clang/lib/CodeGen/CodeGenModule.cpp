@@ -1037,7 +1037,7 @@ void CodeGenModule::Release() {
                               llvm::MDString::get(Ctx, ABIStr));
   }
 
-  if (CodeGenOpts.SanitizeCfiCrossDso) {
+  if (CodeGenOpts.SanitizeCfiCrossDso && !CodeGenOpts.DisableCFICheck) {
     // Indicate that we want cross-DSO control flow integrity checks.
     getModule().addModuleFlag(llvm::Module::Override, "Cross-DSO CFI", 1);
   }

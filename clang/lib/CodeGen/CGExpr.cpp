@@ -3453,9 +3453,11 @@ void CodeGenFunction::EmitCfiCheckStub() {
   F->setAlignment(llvm::Align(4096));
   CGM.setDSOLocal(F);
   llvm::BasicBlock *BB = llvm::BasicBlock::Create(Ctx, "entry", F);
-  // CrossDSOCFI pass is not executed if there is no executable code.
-  SmallVector<llvm::Value*> Args{F->getArg(2), F->getArg(1)};
-  llvm::CallInst::Create(M->getFunction("__cfi_check_fail"), Args, "", BB);
+  if (!CGM.getCodeGenOpts().DisableCFICheck) {
+    // CrossDSOCFI pass is not executed if there is no executable code.
+    SmallVector<llvm::Value*> Args{F->getArg(2), F->getArg(1)};
+    llvm::CallInst::Create(M->getFunction("__cfi_check_fail"), Args, "", BB);
+  }
   llvm::ReturnInst::Create(Ctx, nullptr, BB);
 }
 

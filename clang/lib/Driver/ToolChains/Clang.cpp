@@ -6786,6 +6786,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       Args.hasArg(options::OPT_fms_runtime_lib_EQ))
     ProcessVSRuntimeLibrary(Args, CmdArgs);
 
+  // -fdisable-cfi-check(Disables the checks in CFI)
+  if (Args.hasArg(options::OPT_fdisable_cfi_check))
+    CmdArgs.push_back("-fdisable-cfi-check");
+
   // -fdisable-cfi-check-fail(Disables the failure checks in CFI)
   if (Args.hasArg(options::OPT_fdisable_cfi_check_fail))
     CmdArgs.push_back("-fdisable-cfi-check-fail");
@@ -6796,6 +6800,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   // -fandroid-kernel-dev-mode(Android kernel development mode)
   if (Args.hasArg(options::OPT_fandroid_kernel_dev_mode)) {
+    CmdArgs.push_back("-fdisable-cfi-check");
     CmdArgs.push_back("-fdisable-cfi-check-fail");
     CmdArgs.push_back("-fdisable-cfi-slow-path-check");
   }
