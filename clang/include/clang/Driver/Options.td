@@ -2443,9 +2443,9 @@ def fdisable_cfi_slow_path_check : Flag<["-"], "fdisable-cfi-slow-path-check">,
                                           Group<f_clang_Group>,
                                           HelpText<"Disables the slow path checks in CFI">,
                                           MarshallingInfoFlag<CodeGenOpts<"DisableCFISlowPathCheck">>;
-def fandroid_kernel_dev_mode : Flag<["-"], "fandroid-kernel-dev-mode">,
+def fandroid_kernel_driver_mode : Flag<["-"], "fandroid-kernel-driver-mode">,
                                           Group<f_clang_Group>,
-                                          HelpText<"Android kernel development mode">;
+                                          HelpText<"Android kernel driver development mode">;
 def fsanitize_cfi_icall_generalize_pointers : Flag<["-"], "fsanitize-cfi-icall-generalize-pointers">,
                                               Group<f_clang_Group>,
                                               HelpText<"Generalize pointers in CFI indirect call type signature checks">,
