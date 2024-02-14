@@ -6792,7 +6792,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-mllvm");
     CmdArgs.push_back("-jumptable-in-function-section=false");
   }
-
+  
   // -fdisable-cfi-check(Disables the checks in CFI)
   if (Args.hasArg(options::OPT_fdisable_cfi_check))
     CmdArgs.push_back("-fdisable-cfi-check");
@@ -6807,7 +6807,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   // -fandroid-kernel-dev-mode(Android kernel development mode)
   if (Args.hasArg(options::OPT_fandroid_kernel_driver_mode)) {
-    CmdArgs.push_back("-fandroid-kernel-dev-mode");
     CmdArgs.push_back("-fdisable-cfi-check");
     CmdArgs.push_back("-fdisable-cfi-check-fail");
     CmdArgs.push_back("-fdisable-cfi-slow-path-check");
