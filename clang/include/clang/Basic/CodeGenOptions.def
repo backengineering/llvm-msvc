@@ -245,6 +245,7 @@ CODEGENOPT(SanitizeMemoryParamRetval, 1, 0) ///< Enable detection of uninitializ
 CODEGENOPT(SanitizeMemoryUseAfterDtor, 1, 0) ///< Enable use-after-delete detection
                                              ///< in MemorySanitizer
 CODEGENOPT(SanitizeCfiCrossDso, 1, 0) ///< Enable cross-dso support in CFI.
+CODEGENOPT(Jumptablerdata, 1, 0) ///< Put switch case jump tables in .rdata
 CODEGENOPT(DisableCFICheckFail, 1, 0) ///< Disables the failure checks in CFI.
 CODEGENOPT(DisableCFICheck, 1, 0) ///< Disables the checks in CFI.
 CODEGENOPT(DisableCFISlowPathCheck, 1, 0) ///< Disables the slow path checks in CFI.

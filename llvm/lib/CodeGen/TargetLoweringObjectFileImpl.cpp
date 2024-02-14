@@ -1819,7 +1819,8 @@ MCSection *TargetLoweringObjectFileCOFF::getSectionForJumpTable(
 bool TargetLoweringObjectFileCOFF::shouldPutJumpTableInFunctionSection(
     bool UsesLabelDifference, const Function &F) const {
   if (TM->getTargetTriple().getArch() == Triple::x86_64) {
-    if (!JumpTableInFunctionSection) {
+    if (!JumpTableInFunctionSection ||
+        F.getParent()->getModuleFlag("Jumptablerdata")) {
       // We can always create relative relocations, so use another section
       // that can be marked non-executable.
       return false;

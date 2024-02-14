@@ -2431,6 +2431,10 @@ defm sanitize_cfi_cross_dso : BoolOption<"f", "sanitize-cfi-cross-dso",
           "Disable">,
   BothFlags<[], [ClangOption], " control flow integrity (CFI) checks for cross-DSO calls.">>,
   Group<f_clang_Group>;
+def fjumptable_rdata : Flag<["-"], "fjumptable-rdata">,
+                                          Group<f_clang_Group>,
+                                          HelpText<"Put switch case jump tables in .rdata">,
+                                          MarshallingInfoFlag<CodeGenOpts<"Jumptablerdata">>;
 def fdisable_cfi_check : Flag<["-"], "fdisable-cfi-check">,
                                           Group<f_clang_Group>,
                                           HelpText<"Disables the checks in CFI">,
@@ -8170,6 +8174,7 @@ def : CLFlag<"Qgather-">, Alias<mno_gather>,
 def : CLFlag<"Qscatter-">, Alias<mno_scatter>,
       HelpText<"Disable generation of scatter instructions in auto-vectorization(x86 only)">;
 def _SLASH_GL : CLFlag<"GL">, HelpText<"Whole Program Optimization">, Alias<flto_EQ>, AliasArgs<["full"]>;
+def _SLASH_jumptablerdata : CLFlag<"jumptablerdata">, HelpText<"Put switch case jump tables in .rdata">, Alias<fjumptable_rdata>;
 
 // Non-aliases:
 

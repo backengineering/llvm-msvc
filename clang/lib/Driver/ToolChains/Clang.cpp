@@ -6786,6 +6786,13 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       Args.hasArg(options::OPT_fms_runtime_lib_EQ))
     ProcessVSRuntimeLibrary(Args, CmdArgs);
 
+  // -fjumptable-rdata(Put switch case jump tables in .rdata)
+  if (Args.hasArg(options::OPT_fjumptable_rdata)) {
+    CmdArgs.push_back("-fjumptable-rdata");
+    CmdArgs.push_back("-mllvm");
+    CmdArgs.push_back("-jumptable-in-function-section=false");
+  }
+  
   // -fdisable-cfi-check(Disables the checks in CFI)
   if (Args.hasArg(options::OPT_fdisable_cfi_check))
     CmdArgs.push_back("-fdisable-cfi-check");

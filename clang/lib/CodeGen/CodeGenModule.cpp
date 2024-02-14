@@ -1042,6 +1042,11 @@ void CodeGenModule::Release() {
     getModule().addModuleFlag(llvm::Module::Override, "Cross-DSO CFI", 1);
   }
 
+  if (CodeGenOpts.Jumptablerdata) {
+    // Indicate that we want to emit jump table to .rdata.
+    getModule().addModuleFlag(llvm::Module::Override, "Jumptablerdata", 1);
+  }
+  
   if (CodeGenOpts.WholeProgramVTables) {
     // Indicate whether VFE was enabled for this module, so that the
     // vcall_visibility metadata added under whole program vtables is handled
