@@ -817,16 +817,16 @@ bool TokenLexer::pasteTokens(Token &LHSTok, ArrayRef<Token> TokenStream,
     // Lex the resultant pasted token into Result.
     Token Result;
 #ifdef _WIN32
+    // [MSVC Compatibility] Handle "__FUNCTION__"##"string"
+    if (LHSTok.is(tok::kw___FUNCTION__) && RHS.is(tok::string_literal)) {
+      // Returns false because we need to analyze later. 
+      return false;
+    }
     // [MSVC Compatibility] Handle '.##identifier' or '->##identifier'
     if ((LHSTok.is(tok::period) || LHSTok.is(tok::arrow)) &&
         RHS.isAnyIdentifier()) {
       // Returns true the caller should immediately return the token.
       return true;
-    }
-    // [MSVC Compatibility] Handle "__FUNCTION__"##"string"
-    if (LHSTok.is(tok::kw___FUNCTION__) && RHS.is(tok::string_literal)) {
-      // Returns false because we need to analyze later. 
-      return false;
     }
     // [MSVC Compatibility] Handle "string"##"string"
     if ((LHSTok.is(tok::string_literal) && RHS.is(tok::string_literal))) {
