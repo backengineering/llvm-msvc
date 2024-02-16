@@ -833,6 +833,11 @@ bool TokenLexer::pasteTokens(Token &LHSTok, ArrayRef<Token> TokenStream,
       // Returns true the caller should immediately return the token.
       return true;
     }
+    // [MSVC Compatibility] Handle "identifier"##"string"
+    if ((LHSTok.isAnyIdentifier() && RHS.is(tok::string_literal))) {
+      //  Returns false because we need to analyze later.
+      return false;
+    }
 #endif
     if (LHSTok.isAnyIdentifier() && RHS.isAnyIdentifier()) {
       // Common paste case: identifier+identifier = identifier.  Avoid creating
