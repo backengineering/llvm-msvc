@@ -833,11 +833,6 @@ bool TokenLexer::pasteTokens(Token &LHSTok, ArrayRef<Token> TokenStream,
       // Returns true the caller should immediately return the token.
       return true;
     }
-    // [MSVC Compatibility] Handle "identifier"##"string"
-    if ((LHSTok.isAnyIdentifier() && RHS.is(tok::string_literal))) {
-      //  Returns false because we need to analyze later.
-      return false;
-    }
 #endif
     if (LHSTok.isAnyIdentifier() && RHS.isAnyIdentifier()) {
       // Common paste case: identifier+identifier = identifier.  Avoid creating
@@ -886,6 +881,12 @@ bool TokenLexer::pasteTokens(Token &LHSTok, ArrayRef<Token> TokenStream,
         // It's OK on windows
         if (LHSTok.is(tok::amp))
           return true;
+
+        // [MSVC Compatibility] Handle "identifier"##"string"
+        if ((LHSTok.isAnyIdentifier() && RHS.is(tok::string_literal))) {
+          //  Returns false because we need to analyze later.
+          return false;
+        }
 #endif
         // Explicitly convert the token location to have proper expansion
         // information so that the user knows where it came from.
