@@ -37,6 +37,7 @@
 - Improved ``SEH`` stability.
 - Added some special Intrinsic functions(``__vmx_vmread``/``__vmx_write``).
 - Supports ``x64``/``ARM64`` windows drivers.
+- Supports ``AArch64`` android GKI drivers.
 - Allows naked ``X64`` inline asm.
 - Enables multiple cores compilation.
 - Supports ``/MP`` when precompiled headers are present.
