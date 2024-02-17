@@ -1189,6 +1189,8 @@ static bool runImpl(Function &F, LazyValueInfo *LVI, DominatorTree *DT,
     }
 
     Instruction *Term = BB->getTerminator();
+    if (!Term) 
+        continue;
     switch (Term->getOpcode()) {
     case Instruction::Switch:
       BBChanged |= processSwitch(cast<SwitchInst>(Term), LVI, DT);
