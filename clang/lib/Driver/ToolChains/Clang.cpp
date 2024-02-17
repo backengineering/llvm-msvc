@@ -6805,9 +6805,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasArg(options::OPT_fdisable_cfi_slow_path_check))
     CmdArgs.push_back("-fdisable-cfi-slow-path-check");
 
-  // -fandroid-kernel-dev-mode(Android kernel development mode)
+  // -fandroid-kernel-driver-mode(Android kernel development mode)
   if (Args.hasArg(options::OPT_fandroid_kernel_driver_mode)) {
-    CmdArgs.push_back("-fandroid-kernel-dev-mode");
+    CmdArgs.push_back("-fandroid-kernel-driver-mode");
     CmdArgs.push_back("-fdisable-cfi-check");
     CmdArgs.push_back("-fdisable-cfi-check-fail");
     CmdArgs.push_back("-fdisable-cfi-slow-path-check");
