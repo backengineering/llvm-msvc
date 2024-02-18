@@ -44,7 +44,7 @@ jobs:
         -DLLVM_ENABLE_ZLIB=OFF \
         -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
         -DLLVM_TARGET_ARCH=AArch64 \
-        -DLLVM_TARGETS_TO_BUILD="X86;AArch64;RISCV" \
+        -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV" \
         -DLLVM_ENABLE_PROJECTS="clang;lld;lldb" \
         -DLLVM_HOST_TRIPLE="x86_64-pc-linux-gnu" \
         -DLLVM_TARGET_TRIPLE="aarch64-linux-gnu" \
