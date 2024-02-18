@@ -651,14 +651,18 @@ public:
   /// If this array is isString(), then this method returns the array as a
   /// StringRef. Otherwise, it asserts out.
   StringRef getAsString() const {
-    assert(isString() && "Not a string");
+    // assert(isString() && "Not a string");
+    if (!isString())
+      return StringRef();
     return getRawDataValues();
   }
 
   /// If this array is isCString(), then this method returns the array (without
   /// the trailing null byte) as a StringRef. Otherwise, it asserts out.
   StringRef getAsCString() const {
-    assert(isCString() && "Isn't a C string");
+    // assert(isCString() && "Isn't a C string");
+    if (!isCString())
+        return StringRef();
     StringRef Str = getAsString();
     return Str.substr(0, Str.size() - 1);
   }
