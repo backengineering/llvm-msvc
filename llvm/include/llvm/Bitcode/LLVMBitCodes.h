@@ -732,6 +732,7 @@ enum AttributeKindCodes {
   ATTR_KIND_WRITABLE = 97,
   ATTR_KIND_CORO_ONLY_DESTROY_WHEN_COMPLETE = 98,
   ATTR_KIND_DEAD_ON_UNWIND = 99,
+  ATTR_KIND_MARKER = 100,
 };
 
 enum ComdatSelectionKindCodes {

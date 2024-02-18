@@ -2092,6 +2092,8 @@ static Attribute::AttrKind getAttrFromCode(uint64_t Code) {
     return Attribute::Hot;
   case bitc::ATTR_KIND_PRESPLIT_COROUTINE:
     return Attribute::PresplitCoroutine;
+  case bitc::ATTR_KIND_MARKER:
+    return Attribute::Marker;
   case bitc::ATTR_KIND_VOLATILE_FUNCTION:
     return Attribute::IsVolatileFunction;
   case bitc::ATTR_KIND_DISABLE_BLOCK_PLACEMENT_PASS:

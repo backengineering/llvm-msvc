@@ -834,6 +834,8 @@ static uint64_t getAttrKindEncoding(Attribute::AttrKind Kind) {
   case Attribute::EmptyKey:
   case Attribute::TombstoneKey:
     llvm_unreachable("Trying to encode EmptyKey/TombstoneKey");
+  case Attribute::Marker:
+    return bitc::ATTR_KIND_MARKER;
   case Attribute::IsVolatileFunction:
     return bitc::ATTR_KIND_VOLATILE_FUNCTION;
   case Attribute::DisableBlockPlacementPass:
