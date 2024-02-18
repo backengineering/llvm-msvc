@@ -925,6 +925,11 @@ Function *CodeExtractor::constructFunction(const ValueSet &inputs,
       case Attribute::Memory:
       case Attribute::NoFPClass:
       case Attribute::CoroDestroyOnlyWhenComplete:
+      case Attribute::HasCXXSEH:
+      case Attribute::HasSEH:
+      case Attribute::IsSEHFilterFunction:
+      case Attribute::IsSEHFinallyFunction:
+      case Attribute::Marker:
         continue;
       // Those attributes should be safe to propagate to the extracted function.
       case Attribute::AlwaysInline:
@@ -968,6 +973,10 @@ Function *CodeExtractor::constructFunction(const ValueSet &inputs,
       case Attribute::MustProgress:
       case Attribute::NoProfile:
       case Attribute::SkipProfile:
+      case Attribute::DisableBlockPlacementPass:
+      case Attribute::DisableCodeGenPreparePass:
+      case Attribute::IsFastISelDisabled:
+      case Attribute::IsVolatileFunction:
         break;
       // These attributes cannot be applied to functions.
       case Attribute::Alignment:
