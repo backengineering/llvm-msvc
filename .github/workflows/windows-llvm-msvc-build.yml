@@ -45,14 +45,14 @@ jobs:
 
     - name: Package llvm
       run: |
-          7z a windows-llvm-msvc.zip install
+          7z a windows-llvm-msvc-full.zip install
           7z a -v1500m windows-llvm-msvc.zip install
     
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
       with:
         name: windows-llvm-msvc
-        path: windows-llvm-msvc.zip
+        path: windows-llvm-msvc-full.zip
     
     - name: Release
       uses: softprops/action-gh-release@v1
