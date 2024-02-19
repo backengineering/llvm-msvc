@@ -29,7 +29,6 @@ jobs:
         cmake -Bbuild `
         -DLLVM_INCLUDE_TESTS=OFF `
         -DLLVM_INCLUDE_EXAMPLES=OFF `
-        -DLLVM_ENABLE_ASSERTIONS=OFF `
         -DLLDB_ENABLE_PYTHON=OFF `
         -DLLVM_ENABLE_LIBXML2=OFF `
         -DLLVM_ENABLE_ZLIB=OFF `
