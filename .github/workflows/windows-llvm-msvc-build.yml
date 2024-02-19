@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest]
+        os: [windows-2019]
     env:
       BUILD_TYPE: Release
     steps:
@@ -38,8 +38,6 @@ jobs:
         -DCMAKE_INSTALL_PREFIX=install `
         -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV" `
         -DLLVM_ENABLE_PROJECTS="clang;lld;lldb" `
-        -DCMAKE_C_FLAGS="/MP" `
-        -DCMAKE_CXX_FLAGS="/MP" `
         llvm-msvc\\llvm
         cmake --build build --config ${{ env.BUILD_TYPE }}
         cmake --build build --target install
