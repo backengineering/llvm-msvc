@@ -18,6 +18,9 @@ jobs:
       BUILD_TYPE: Release
     steps:
     
+    - name: Install ninja-build tool
+      uses: seanmiddleditch/gha-setup-ninja@v3
+      
     - name: Checkout Repo
       uses: actions/checkout@v3
       with:
