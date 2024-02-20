@@ -1,0 +1,125 @@
+name: android-wrapper-llvm-msvc-build
+
+permissions:
+  contents: write
+  
+on: [push, pull_request]
+
+jobs:
+  build:
+    # Skip building pull requests from the same repository
+    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    env:
+      BUILD_TYPE: Release
+    steps:
+
+    - name: Setup build deps
+      run: |
+          sudo wget -qO /usr/local/bin/ninja.gz https://github.com/ninja-build/ninja/releases/latest/download/ninja-linux.zip \
+          && sudo gunzip /usr/local/bin/ninja.gz \
+          && sudo chmod a+x /usr/local/bin/ninja \
+          && sudo apt-get install build-essential make cmake \
+          && sudo apt-get install p7zip-full p7zip-rar \
+          && sudo apt-get install g++-11-aarch64-linux-gnu libstdc++-11-dev-arm64-cross gcc-11 g++-11
+          
+    - name: Checkout Repo
+      uses: actions/checkout@v3
+      with:
+          path: llvm-msvc
+          submodules: 'recursive'
+          
+    - name: Build llvm
+      run: |
+        cmake -GNinja -Bbuild \
+        -DCMAKE_INSTALL_PREFIX=install \
+        -DLLVM_INCLUDE_TESTS=OFF \
+        -DLLVM_INCLUDE_EXAMPLES=OFF \
+        -DLLVM_ENABLE_ASSERTIONS=OFF \
+        -DLLDB_ENABLE_PYTHON=OFF \
+        -DLLVM_ENABLE_LIBXML2=OFF \
+        -DLLVM_ENABLE_ZLIB=OFF \
+        -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+        -DLLVM_TARGET_ARCH=AArch64 \
+        -DLLVM_TARGETS_TO_BUILD="X86;AArch64" \
+        -DLLVM_ENABLE_PROJECTS="clang;lld" \
+        -DLLVM_HOST_TRIPLE="x86_64-pc-linux-gnu" \
+        -DLLVM_TARGET_TRIPLE="aarch64-linux-gnu" \
+        -DLLVM_DEFAULT_TARGET_TRIPLE="aarch64-linux-gnu" \
+        llvm-msvc/llvm
+        time cmake --build build --config ${{ env.BUILD_TYPE }}
+        cmake --build build --target install
+
+    - name: Build runtimes
+      run: |
+        cmake -GNinja -Bruntimes-build \
+        -DCMAKE_INSTALL_PREFIX=install \
+        -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
+        -DCMAKE_C_COMPILER=$(pwd)/install/bin/clang \
+        -DCMAKE_CXX_COMPILER=$(pwd)/install/bin/clang++ \
+        -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" \
+        -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld" \
+        -DCMAKE_C_COMPILER_TARGET="aarch64-linux-gnu" \
+        -DCMAKE_CXX_COMPILER_TARGET="aarch64-linux-gnu" \
+        -DCMAKE_C_FLAGS="-Wno-error -std=gnu11" \
+        -DCMAKE_CXX_FLAGS="-Wno-error -std=c++20" \
+        -DCMAKE_CXX_COMPILER_WORKS=1 \
+        -DCMAKE_CXX_COMPILER_ID=Clang \
+        -DLIBCXX_INCLUDE_BENCHMARKS=OFF \
+        llvm-msvc/runtimes
+        time cmake --build runtimes-build --config ${{ env.BUILD_TYPE }}
+        cmake --build runtimes-build --target install
+
+    - name: Build compiler-rt
+      run: |
+        cmake -GNinja -Bcompiler-rt-build \
+        -DCMAKE_INSTALL_PREFIX=install \
+        -DCOMPILER_RT_BUILD_BUILTINS=ON \
+        -DCOMPILER_RT_BUILD_LIBFUZZER=ON \
+        -DCOMPILER_RT_BUILD_MEMPROF=ON \
+        -DCOMPILER_RT_BUILD_PROFILE=ON \
+        -DCOMPILER_RT_BUILD_SANITIZERS=ON \
+        -DCOMPILER_RT_BUILD_XRAY=ON \
+        -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON \
+        -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" \
+        -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld" \
+        -DCMAKE_ASM_COMPILER_TARGET="aarch64-linux-gnu" \
+        -DCMAKE_C_COMPILER_TARGET="aarch64-linux-gnu" \
+        -DCMAKE_CXX_COMPILER_TARGET="aarch64-linux-gnu" \
+        -DCMAKE_C_COMPILER=$(pwd)/install/bin/clang \
+        -DCMAKE_CXX_COMPILER=$(pwd)/install/bin/clang++ \
+        -DLLVM_CONFIG_PATH=$(pwd)/install/bin/llvm-config \
+        -DCMAKE_AR=$(pwd)/install/bin/llvm-ar \
+        -DCMAKE_NM=$(pwd)/install/bin/llvm-nm \
+        -DCMAKE_CXX_COMPILER_WORKS=1 \
+        -DCMAKE_CXX_COMPILER_ID=Clang \
+        -DLIBCXX_INCLUDE_BENCHMARKS=OFF \
+        -DCMAKE_C_FLAGS="-Wno-error -std=gnu11" \
+        -DCMAKE_CXX_FLAGS="-Wno-error -std=c++20" \
+        llvm-msvc/compiler-rt
+        time cmake --build compiler-rt-build --config ${{ env.BUILD_TYPE }}
+        cmake --build compiler-rt-build --target install
+        
+    - name: Package llvm
+      run: 
+          7z a android-wrapper-llvm-msvc.zip install
+    
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: android-wrapper-llvm-msvc
+        path: android-wrapper-llvm-msvc.zip
+    
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: ${{ startsWith(github.ref, 'refs/tags/') }}
+      with:
+        prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-pre') }}
+        files: android-wrapper-llvm-msvc.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
