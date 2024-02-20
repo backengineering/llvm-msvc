@@ -36,7 +36,7 @@ jobs:
         -DLLVM_USE_CRT_RELEASE=MT `
         -DCPACK_GENERATOR=ZIP `
         -DCMAKE_INSTALL_PREFIX="$pwd\\prefix" `
-        -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" `
+        -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV" `
         -DLLVM_ENABLE_PROJECTS="clang;lld;lldb" `
         llvm-msvc\\llvm
         cmake --build build --config ${{ env.BUILD_TYPE }}
