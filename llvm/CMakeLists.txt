@@ -8,8 +8,8 @@ include(${LLVM_COMMON_CMAKE_UTILS}/Modules/CMakePolicy.cmake
 
 # Enable /MP on MSVC
 if(MSVC)
-  # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MP")
-  # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MP")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
 endif()
 
 # Builds with custom install names and installation rpath setups may not work
