@@ -52,14 +52,14 @@ jobs:
         
     - name: Archive
       run:
-        7z a windows-llvm-msvc.zip build/*.zip
+        7z a -v1500m windows-llvm-msvc.zip build/*.zip
     
     - name: Release
       uses: softprops/action-gh-release@v1
       if: ${{ startsWith(github.ref, 'refs/tags/') }}
       with:
         prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-pre') }}
-        files: windows-llvm-msvc.zip
+        files: windows-llvm-msvc.zip.00*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
