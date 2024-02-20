@@ -47,20 +47,20 @@ jobs:
 
     - name: Archive
       run:
-        7z a windows-wrapper-llvm-msvc-PDB.zip build/*.zip
+        7z a -v1500m windows-wrapper-llvm-msvc-PDB.zip build/*.zip
         
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
       with:
         name: windows-wrapper-llvm-msvc-PDB
-        path: windows-wrapper-llvm-msvc-PDB.zip
+        path: windows-wrapper-llvm-msvc-PDB.zip.00*
         
     - name: Release
       uses: softprops/action-gh-release@v1
       if: ${{ startsWith(github.ref, 'refs/tags/') }}
       with:
         prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-pre') }}
-        files: windows-wrapper-llvm-msvc-PDB.zip
+        files: windows-wrapper-llvm-msvc-PDB.zip.00*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
