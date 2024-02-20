@@ -67,7 +67,7 @@ msbuild /m -p:Configuration=Debug INSTALL.vcxproj
 X86+ARM64：clang+lld+lldb+RelWithDebInfo
 mkdir build2
 pushd build2
-cmake .. -G "Visual Studio 17 2022" -A X64 -DLLDB_ENABLE_PYTHON=OFF -DLLVM_ENABLE_PROJECTS="clang;lld;lldb" -DCMAKE_INSTALL_PREFIX=E:\llvm\install-RelWithDebInfo-64 -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_TARGETS_TO_BUILD="X86;AArch64" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLLVM_USE_CRT_RELEASE=MT ../llvm
+cmake .. -G "Visual Studio 17 2022" -A X64 -DLLVM_ENABLE_PACK_PDB=ON -DLLDB_ENABLE_PYTHON=OFF -DLLVM_ENABLE_PROJECTS="clang;lld;lldb" -DCMAKE_INSTALL_PREFIX=E:\llvm\install-RelWithDebInfo-64 -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_TARGETS_TO_BUILD="X86;AArch64" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLLVM_USE_CRT_RELEASE=MT ../llvm
 msbuild /m -p:Configuration=RelWithDebInfo INSTALL.vcxproj 
 --------------------------------------------------
 X86+ARM64：clang+lld+lldb+release

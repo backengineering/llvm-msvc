@@ -27,6 +27,7 @@ jobs:
     - name: Build llvm
       run: |
         cmake -Bbuild `
+        -DLLVM_ENABLE_PACK_PDB=ON `
         -DLLVM_INCLUDE_TESTS=OFF `
         -DLLVM_INCLUDE_EXAMPLES=OFF `
         -DLLDB_ENABLE_PYTHON=OFF `

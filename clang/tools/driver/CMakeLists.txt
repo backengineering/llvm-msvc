@@ -129,3 +129,12 @@ if(CLANG_ORDER_FILE AND
     set_target_properties(clang PROPERTIES LINK_DEPENDS ${CLANG_ORDER_FILE})
   endif()
 endif()
+
+if(WIN32 AND LLVM_ENABLE_PACK_PDB)
+  set(CLANG_PDB_SOURCE_PATH "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/bin/clang.pdb")
+  install(CODE "
+    file(INSTALL
+      \"${CLANG_PDB_SOURCE_PATH}\"
+      DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")
+    ")
+endif()
