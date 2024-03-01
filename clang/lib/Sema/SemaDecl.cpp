@@ -4368,8 +4368,11 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD, Scope *S,
 #ifndef _WIN32
   Diag(New->getLocation(), diag::err_conflicting_types) << New->getDeclName();
   Diag(OldLocation, PrevDiag) << Old << Old->getType();
-#endif
   return true;
+#else
+  // Remember that this is not an error on Windows.
+  return false;
+#endif
 }
 
 /// Completes the merge of two function declarations that are
