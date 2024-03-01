@@ -4366,6 +4366,13 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD, Scope *S,
     PrevDiag = diag::note_previous_builtin_declaration;
   }
 
+#ifdef _WIN32
+  // Check and merge MSVC compatible function declarations.
+  if (!MergeMSVCCompatibleFunctionDecls(New, Old, S, MergeTypeWithOld)) {
+    return false;
+  }
+#endif
+
   Diag(New->getLocation(), diag::err_conflicting_types) << New->getDeclName();
   Diag(OldLocation, PrevDiag) << Old << Old->getType();
   llvm::errs() << "NewType: " << New->getType().getAsString() << "\n";
