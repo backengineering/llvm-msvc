@@ -4369,6 +4369,7 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD, Scope *S,
 #ifdef _WIN32
   // Check and merge MSVC compatible function declarations.
   if (!MergeMSVCCompatibleFunctionDecls(New, Old, S, MergeTypeWithOld)) {
+    // Return false if the merge was successful.
     return false;
   }
 #endif
