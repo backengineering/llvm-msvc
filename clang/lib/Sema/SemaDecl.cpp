@@ -4418,6 +4418,85 @@ bool Sema::MergeCompatibleFunctionDecls(FunctionDecl *New, FunctionDecl *Old,
   return false;
 }
 
+// The same as MergeCompatibleFunctionDecls, but for MSVC-compatible
+bool Sema::MergeMSVCCompatibleFunctionDecls(FunctionDecl *New,
+                                            FunctionDecl *Old, Scope *S,
+                                            bool MergeTypeWithOld) {
+  QualType OldQType = Context.getCanonicalType(Old->getType());
+  QualType NewQType = Context.getCanonicalType(New->getType());
+
+  const FunctionType *OldFuncType = OldQType->getAs<FunctionType>();
+  const FunctionType *NewFuncType = NewQType->getAs<FunctionType>();
+
+  const FunctionProtoType *OldProto = nullptr;
+  const FunctionProtoType *NewProto = nullptr;
+
+  // If the types are not funtion types, do not merge the declarations.
+  if (!((NewProto = dyn_cast<FunctionProtoType>(NewFuncType)) &&
+      (OldProto = dyn_cast<FunctionProtoType>(OldFuncType))))
+    return true;
+
+  // If the parameter types are different, do not merge the declarations.
+  if (OldProto->param_types().size() != NewProto->param_types().size())
+	  return true;
+
+  // Check parameter types if we can merge the declarations.
+  bool CanMerge = false;
+  if (OldProto->param_types().size() != 0) {
+      for (size_t i = 0; i < OldProto->param_types().size(); ++i) {
+          QualType OldParamType = OldProto->param_types()[i];
+          QualType NewParamType = NewProto->param_types()[i];
+          
+          // Remove local const/volatile qualifiers from the parameter types.
+          OldParamType.removeLocalConst();
+          NewParamType.removeLocalConst();
+          OldParamType.removeLocalVolatile();
+          NewParamType.removeLocalVolatile();
+
+          // If the parameter types are different, we need to check if we can
+          // merge the declarations.
+          if (OldParamType.getAsString() != NewParamType.getAsString()) {
+              // If the parameter types are PointerType, we can merge the
+              // declarations.
+              if (isa<PointerType>(OldParamType) &&
+                  isa<PointerType>(NewParamType)) {
+                  CanMerge = true;
+                  continue;
+              }
+              CanMerge = false;
+              break;
+          }
+      }
+  }
+  if (!CanMerge) 
+    return true;
+
+  if (MergeTypeWithOld) {
+    // The old declaration provided a function prototype, but the
+    // new declaration does not. Merge in the prototype.
+    assert(!OldProto->hasExceptionSpec() && "Exception spec in C");
+    NewQType = Context.getFunctionType(NewFuncType->getReturnType(),
+                                       OldProto->getParamTypes(),
+                                       OldProto->getExtProtoInfo());
+    New->setType(NewQType);
+    New->setHasInheritedPrototype();
+
+    // Synthesize parameters with the same types.
+    SmallVector<ParmVarDecl *, 16> Params;
+    for (const auto &ParamType : OldProto->param_types()) {
+        ParmVarDecl *Param = ParmVarDecl::Create(
+            Context, New, SourceLocation(), SourceLocation(), nullptr,
+            ParamType, /*TInfo=*/nullptr, SC_None, nullptr);
+        Param->setScopeInfo(0, Params.size());
+        Param->setImplicit();
+        Params.push_back(Param);
+    }
+
+    New->setParams(Params);
+  }
+  return MergeCompatibleFunctionDecls(New, Old, S, MergeTypeWithOld);
+}
+
 void Sema::mergeObjCMethodDecls(ObjCMethodDecl *newMethod,
                                 ObjCMethodDecl *oldMethod) {
   // Merge the attributes, including deprecated/unavailable
