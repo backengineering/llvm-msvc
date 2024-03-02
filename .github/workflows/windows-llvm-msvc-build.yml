@@ -28,6 +28,7 @@ jobs:
       run: |
         cmake -Bbuild `
         -DLLVM_INCLUDE_TESTS=OFF `
+        -DLLVM_INCLUDE_TOOLS=ON `
         -DLLVM_INCLUDE_EXAMPLES=OFF `
         -DLLDB_ENABLE_PYTHON=OFF `
         -DLLVM_ENABLE_LIBXML2=OFF `
@@ -35,8 +36,8 @@ jobs:
         -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
         -DLLVM_USE_CRT_RELEASE=MT `
         -DCMAKE_INSTALL_PREFIX=install `
-        -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV" `
-        -DLLVM_ENABLE_PROJECTS="clang;lld;lldb" `
+        -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;Mips;RISCV" `
+        -DLLVM_ENABLE_PROJECTS="clang;lld;lldb;clang-tools-extra" `
         llvm-msvc\\llvm
         cmake --build build --config ${{ env.BUILD_TYPE }}
         cmake --build build --config ${{ env.BUILD_TYPE }} --target install
