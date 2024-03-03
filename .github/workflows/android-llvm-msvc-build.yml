@@ -38,6 +38,7 @@ jobs:
         cmake -GNinja -Bbuild \
         -DCMAKE_INSTALL_PREFIX=install \
         -DLLVM_INCLUDE_TESTS=OFF \
+        -DLLVM_INCLUDE_TOOLS=ON \
         -DLLVM_INCLUDE_EXAMPLES=OFF \
         -DLLVM_ENABLE_ASSERTIONS=OFF \
         -DLLDB_ENABLE_PYTHON=OFF \
@@ -45,8 +46,8 @@ jobs:
         -DLLVM_ENABLE_ZLIB=OFF \
         -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
         -DLLVM_TARGET_ARCH=AArch64 \
-        -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV" \
-        -DLLVM_ENABLE_PROJECTS="clang;lld;lldb" \
+        -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;Mips;RISCV" \
+        -DLLVM_ENABLE_PROJECTS="clang;lld;lldb;clang-tools-extra" \
         -DLLVM_HOST_TRIPLE="x86_64-pc-linux-gnu" \
         -DLLVM_TARGET_TRIPLE="aarch64-linux-gnu" \
         -DLLVM_DEFAULT_TARGET_TRIPLE="aarch64-linux-gnu" \
