@@ -52,7 +52,7 @@
 
 ### How to use llvm-msvc?
 - Install Visual Studio 2015-2022 (I recommend using 2022) along with WDK11.
-- Download and install llvm-msvc from the following repository [llvm-msvc_X86_64_installer.exe](https://github.com/backengineering/llvm-msvc/releases).
+- Download and install llvm-msvc from the following repository [llvm-msvc_X86_64_installer-PDB.exe](https://github.com/backengineering/llvm-msvc/releases).
 - Create your Windows driver project and choose "LLVM-MSVC_v143_KernelMode" as your platform toolset.
 - Compile your project.
 
