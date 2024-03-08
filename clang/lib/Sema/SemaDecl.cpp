@@ -10992,6 +10992,7 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     }
   }
 
+#ifndef _WIN32
   // Diagnose no_builtin attribute on function declaration that are not a
   // definition.
   // FIXME: We should really be doing this in
@@ -11014,7 +11015,7 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     case FunctionDefinitionKind::Definition:
       break;
     }
-
+#endif
   return NewFD;
 }
 
