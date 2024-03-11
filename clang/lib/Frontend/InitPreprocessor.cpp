@@ -464,6 +464,8 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
         Builder.defineMacro("__cplusplus", "201703L");
       else if (LangOpts.isCompatibleWithMSVC(LangOptions::MSVC2015))
         Builder.defineMacro("__cplusplus", "201402L");
+      else 
+        Builder.defineMacro("__cplusplus", "201703L");
     }
     //      [C++14] The name __cplusplus is defined to the value 201402L when
     //      compiling a C++ translation unit.
