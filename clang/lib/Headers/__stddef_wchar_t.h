@@ -16,9 +16,7 @@
 #define _WCHAR_T_DEFINED
 #endif
 
-#if defined(_MSC_VER)
 typedef __WCHAR_TYPE__ wchar_t;
-#endif
 
 #endif
 
