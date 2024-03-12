@@ -2018,23 +2018,30 @@ inlineRetainOrClaimRVCalls(CallBase &CB, objcarc::ARCInstKind RVCallKind,
 // Set volatile attribute for inlined basic block and instructions.
 // This is used to preserve the volatile attribute of the original call instruction.
 static void setVolatileForInlinedBB(BasicBlock *BB) {
+  
+  // Do not set volatile attribute for basic block with only one instruction.
   if (BB->size() <= 1)
     return;
 
-  BB->setVolatile(true);
+  // Filter out BBs that contain EH pad.
+  if (BB->isEHPad())
+	  return;
+
+  // Set volatile attribute for all instructions in the basic block.
   for (auto &I : *BB) {
-    if (I.isEHPad())
-      continue;
     if (I.isTerminator())
       continue;
-    if (I.isPHINodeOrSelectInstOrSwitchInst())
-      continue;
-    if (isa<InvokeInst>(&I))
+    if (I.isPHINodeOrSelectInstOrSwitchInst()) 
       continue;
     if (isa<IntrinsicInst>(&I))
       continue;
+    if (isa<InvokeInst>(&I))
+      continue;
     I.setVolatile(true);
   }
+
+  // Set volatile attribute for the basic block.
+  BB->setVolatile(true);
 }
 
 /// This function inlines the called function into the basic block of the
