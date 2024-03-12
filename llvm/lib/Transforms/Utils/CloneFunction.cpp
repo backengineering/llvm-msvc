@@ -48,6 +48,8 @@ BasicBlock *llvm::CloneBasicBlock(const BasicBlock *BB, ValueToValueMapTy &VMap,
   if (BB->hasName())
     NewBB->setName(BB->getName() + NameSuffix);
 
+  NewBB->setVolatile(BB->isVolatile());
+  
   NewBB->setItisSEHTryBeginBlock(BB->isSEHTryBeginBlock());
   NewBB->setItisSEHTryEndBlock(BB->isCXXSEHTryEndBlock());
   NewBB->setItisSEHExceptEnterBlock(BB->isSEHExceptEnterBlock());
