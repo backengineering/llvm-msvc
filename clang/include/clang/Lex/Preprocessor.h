@@ -1233,7 +1233,7 @@ public:
 
   /// Control whether the preprocessor retains comments in output.
   void SetCommentRetentionState(bool KeepComments, bool KeepMacroComments) {
-    this->KeepComments = KeepComments | KeepMacroComments;
+    this->KeepComments = KeepComments || KeepMacroComments;
     this->KeepMacroComments = KeepMacroComments;
   }
 
