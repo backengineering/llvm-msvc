@@ -1783,7 +1783,7 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
           const LangOptions &LangOpts = getLangOpts();
           return LangOpts.DeclSpecKeyword &&
                  hasAttribute(AttributeCommonInfo::Syntax::AS_Declspec, nullptr,
-                              II, getTargetInfo(), LangOpts);
+                              II, getTargetInfo(), LangOpts) != 0;
         }
 
         return false;
