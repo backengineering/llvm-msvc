@@ -1555,6 +1555,15 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
     // __LINE__ expands to a simple numeric value.
     OS << (PLoc.isValid()? PLoc.getLine() : 1);
     Tok.setKind(tok::numeric_constant);
+  } else if (II == Ident__RANDOM__NUMERIC__) {
+    // __RANDOM__NUMERIC__: A random number (an integer constant).
+    // This is a llvm-msvc specific extension.
+    std::random_device RD;
+    std::uniform_int_distribution<uint64_t> Dist(
+        std::numeric_limits<uint64_t>::min(),
+        std::numeric_limits<uint64_t>::max());
+    OS << Dist(RD);
+    Tok.setKind(tok::numeric_constant);
   } else if (II == Ident__FILE__ || II == Ident__BASE_FILE__ ||
              II == Ident__FILE_NAME__ || II == Ident__FUNCTION__) {
     // C99 6.10.8: "__FILE__: The presumed name of the current source file (a
