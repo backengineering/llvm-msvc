@@ -345,6 +345,7 @@ void Preprocessor::RegisterBuiltinMacros() {
 #else
   Ident__FUNCTION__ = Ident__LINE__ = RegisterBuiltinMacro(*this, "__LINE__");
 #endif
+  Ident__RANDOM__NUMERIC__ = RegisterBuiltinMacro(*this, "__RANDOM__NUMERIC__");
   Ident__FILE__ = RegisterBuiltinMacro(*this, "__FILE__");
   Ident__DATE__ = RegisterBuiltinMacro(*this, "__DATE__");
   Ident__TIME__ = RegisterBuiltinMacro(*this, "__TIME__");
