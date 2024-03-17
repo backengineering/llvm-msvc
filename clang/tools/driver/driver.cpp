@@ -10,7 +10,6 @@
 // for functionality in the Driver clang library.
 //
 //===----------------------------------------------------------------------===//
-#include "version.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Basic/DiagnosticOptions.h"
 #include "clang/Basic/HeaderInclude.h"

@@ -11,7 +11,6 @@
 // demonstration and testing purposes.
 //
 //===----------------------------------------------------------------------===//
-#include "version.h"
 #include "clang/Basic/Stack.h"
 #include "clang/Basic/TargetOptions.h"
 #include "clang/CodeGen/ObjectFilePCHContainerOperations.h"
@@ -226,11 +225,14 @@ static int PrintSupportedExtensions(std::string TargetStr) {
 
 int cc1_main(ArrayRef<const char *> Argv, const char *Argv0, void *MainAddr) {
   clock_t StartTime = clock();
+  std::string ClangVersion = "v" + std::to_string(LLVM_VERSION_MAJOR) + "." +
+                             std::to_string(LLVM_VERSION_MINOR) + "." +
+                             std::to_string(LLVM_VERSION_PATCH);
   StringRef FileName = StringRef(Argv[Argv.size() - 1]);
   auto ExitClock = llvm::make_scope_exit([&]() {
     clock_t EndTime = clock();
     auto Delta = (double)(EndTime - StartTime) / CLOCKS_PER_SEC;
-    llvm::outs() << "llvm-msvc(" << CLANG_LLVM_MSVC_VERSION << ") spent "
+    llvm::outs() << "llvm-msvc(" << ClangVersion << ") spent "
                  << llvm::format("%.3f", Delta) << "s in " << FileName << "\n";
   });
   
