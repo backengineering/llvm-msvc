@@ -1,0 +1,74 @@
+
+name: android-ndk-windows-llvm-msvc.yml
+
+permissions:
+  contents: write
+  
+on: [push, pull_request]
+
+jobs:
+  build:
+    # Skip building pull requests from the same repository
+    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+    env:
+      BUILD_TYPE: Release
+    steps:
+    
+    - name: Checkout Repo
+      uses: actions/checkout@v3
+      with:
+          path: llvm-msvc
+          submodules: 'recursive'
+          
+    - name: Build llvm
+      run: |
+        cmake -Bbuild `
+        -DLLVM_INCLUDE_TESTS=OFF `
+        -DLLVM_INCLUDE_EXAMPLES=OFF `
+        -DLLDB_ENABLE_PYTHON=OFF `
+        -DLLVM_ENABLE_LIBXML2=OFF `
+        -DLLVM_ENABLE_ZLIB=OFF `
+        -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+        -DLLVM_USE_CRT_RELEASE=MT `
+        -DCMAKE_INSTALL_PREFIX=install `
+        -DLLVM_TARGETS_TO_BUILD="X86;AArch64" `
+        -DLLVM_ENABLE_PROJECTS="clang;lld" `
+        llvm-msvc\\llvm
+        cmake --build build --config ${{ env.BUILD_TYPE }}
+        cmake --build build --config ${{ env.BUILD_TYPE }} --target install
+        
+    - name: Package ndk-26c
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/gmh5225/android-ndk-windows-llvm-msvc/releases/download/r26c/android-ndk-r26c-windows-llvm-msvc.7z" -OutFile "android-ndk-r26c-windows-llvm-msvc.7z"
+        7z x "android-ndk-r26c-windows-llvm-msvc.7z"
+        del android-ndk-r26c-windows-llvm-msvc.7z
+        Copy-Item -Path "install\bin\clang.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\clang.exe" -Force
+        Copy-Item -Path "install\bin\clang++.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\clang++.exe" -Force
+        Copy-Item -Path "install\bin\clang-cpp.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\clang-cpp.exe" -Force
+        Copy-Item -Path "install\bin\clang-cl.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\clang-cl.exe" -Force
+        Copy-Item -Path "install\bin\ld.lld.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\ld.lld.exe" -Force
+        Copy-Item -Path "install\bin\lld.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\ld.exe" -Force
+        Copy-Item -Path "install\lib\clang" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\lib" -Recurse -Force
+        7z a -mx=9 android-ndk-r26c-windows-llvm-msvc.7z android-ndk-r26c-windows-llvm-msvc
+        
+    - name: Upload ndk-26c
+      uses: actions/upload-artifact@v2
+      with:
+        name: android-ndk-r26c-windows-llvm-msvc
+        path: android-ndk-r26c-windows-llvm-msvc.7z
+        
+    - name: Release ndk-26c
+      uses: softprops/action-gh-release@v1
+      if: ${{ startsWith(github.ref, 'refs/tags/') }}
+      with:
+        prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-pre') }}
+        files: android-ndk-r26c-windows-llvm-msvc.7z
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+
