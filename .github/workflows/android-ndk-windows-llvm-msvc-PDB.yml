@@ -56,20 +56,20 @@ jobs:
         Copy-Item -Path "install\bin\lld.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\ld.exe" -Force
         Copy-Item -Path "install\bin\lld.pdb" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\lld.pdb" -Force
         Copy-Item -Path "install\lib\clang" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\lib" -Recurse -Force
-        7z a -mx=9 android-ndk-r26c-windows-llvm-msvc-PDB.7z android-ndk-r26c-windows-llvm-msvc
+        7z a android-ndk-r26c-windows-llvm-msvc-PDB.zip android-ndk-r26c-windows-llvm-msvc
         
     - name: Upload ndk-26c
       uses: actions/upload-artifact@v2
       with:
         name: android-ndk-r26c-windows-llvm-msvc-PDB
-        path: android-ndk-r26c-windows-llvm-msvc-PDB.7z
+        path: android-ndk-r26c-windows-llvm-msvc-PDB.zip
         
     - name: Release ndk-26c
       uses: softprops/action-gh-release@v1
       if: ${{ startsWith(github.ref, 'refs/tags/') }}
       with:
         prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-pre') }}
-        files: android-ndk-r26c-windows-llvm-msvc-PDB.7z
+        files: android-ndk-r26c-windows-llvm-msvc-PDB.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
