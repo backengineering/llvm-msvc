@@ -4366,13 +4366,27 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD, Scope *S,
     PrevDiag = diag::note_previous_builtin_declaration;
   }
 
+  // Define a flag to determine whether merging MSVC compatible function
+  // declarations is necessary.
+  bool IsMergeRequiredForMSVC = false;
+
+  // Check if Microsoft extensions or MSVC compatibility mode are enabled.
+  if (getLangOpts().MicrosoftExt || getLangOpts().MSVCCompat)
+    IsMergeRequiredForMSVC = true;
+
+  // In _WIN32 environment, merging is always required.
 #ifdef _WIN32
-  // Check and merge MSVC compatible function declarations.
-  if (!MergeMSVCCompatibleFunctionDecls(New, Old, S, MergeTypeWithOld)) {
-    // Return false if the merge was successful.
-    return false;
-  }
+  IsMergeRequiredForMSVC = true;
 #endif
+
+  // Perform the merge if required.
+  if (IsMergeRequiredForMSVC) {
+    // Check and merge MSVC compatible function declarations.
+    if (!MergeMSVCCompatibleFunctionDecls(New, Old, S, MergeTypeWithOld)) {
+      // Return false if the merge was successful.
+      return false;
+    }
+  }
 
   Diag(New->getLocation(), diag::err_conflicting_types) << New->getDeclName();
   Diag(OldLocation, PrevDiag) << Old << Old->getType();
