@@ -6502,6 +6502,22 @@ void InitializationSequence::InitializeFrom(Sema &S,
     return;
   }
 
+  // Check if the cast is a C-style or functional cast.
+  bool IsCStyleCast = Kind.isCStyleOrFunctionalCast();
+
+  // Update `IsCStyleCast` to true if all of the following conditions are met:
+  // - The string representations of the source and destination types are
+  // different.
+  // - The source type is a pointer and is volatile-qualified.
+  // - The destination type is not a pointer and is not volatile-qualified.
+  // This checks for a specific scenario where a C-style cast might be necessary
+  // to convert between these specific types under these conditions.
+  if (isa<PointerType>(SourceType) && !isa<PointerType>(DestType) &&
+      SourceType.getAsString() != DestType.getAsString() &&
+      SourceType.getAsString().find("volatile") != std::string::npos &&
+      DestType.getAsString().find("volatile") == std::string::npos)
+    IsCStyleCast = true;
+  
   //    - Otherwise, the initial value of the object being initialized is the
   //      (possibly converted) value of the initializer expression. Standard
   //      conversions (Clause 4) will be used, if necessary, to convert the
@@ -6513,7 +6529,7 @@ void InitializationSequence::InitializeFrom(Sema &S,
                               /*SuppressUserConversions*/true,
                               Sema::AllowedExplicit::None,
                               /*InOverloadResolution*/ false,
-                              /*CStyle=*/Kind.isCStyleOrFunctionalCast(),
+                              /*CStyle=*/IsCStyleCast,
                               allowObjCWritebackConversion);
 
   if (ICS.isStandard() &&
