@@ -6514,8 +6514,8 @@ void InitializationSequence::InitializeFrom(Sema &S,
   // to convert between these specific types under these conditions.
   if (isa<PointerType>(SourceType) && !isa<PointerType>(DestType) &&
       SourceType.getAsString() != DestType.getAsString() &&
-      SourceType.getAsString().find("volatile") != std::string::npos &&
-      DestType.getAsString().find("volatile") == std::string::npos)
+      SourceType.getAsString().find(" volatile ") != std::string::npos &&
+      DestType.getAsString().find(" volatile ") == std::string::npos)
     IsCStyleCast = true;
   
   //    - Otherwise, the initial value of the object being initialized is the
