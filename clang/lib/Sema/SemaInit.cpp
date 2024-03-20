@@ -6512,11 +6512,13 @@ void InitializationSequence::InitializeFrom(Sema &S,
   // - The destination type is not a pointer and is not volatile-qualified.
   // This checks for a specific scenario where a C-style cast might be necessary
   // to convert between these specific types under these conditions.
-  if (isa<PointerType>(SourceType) && !isa<PointerType>(DestType) &&
-      SourceType.getAsString() != DestType.getAsString() &&
-      SourceType.getAsString().find(" volatile ") != std::string::npos &&
-      DestType.getAsString().find(" volatile ") == std::string::npos)
-    IsCStyleCast = true;
+  if (S.getLangOpts().MSVCCompat || S.getLangOpts().MicrosoftExt) {
+    if (isa<PointerType>(SourceType) && !isa<PointerType>(DestType) &&
+        SourceType.getAsString() != DestType.getAsString() &&
+        SourceType.getAsString().find(" volatile ") != std::string::npos &&
+        DestType.getAsString().find(" volatile ") == std::string::npos)
+      IsCStyleCast = true;
+  }
   
   //    - Otherwise, the initial value of the object being initialized is the
   //      (possibly converted) value of the initializer expression. Standard
