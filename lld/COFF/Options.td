@@ -30,7 +30,8 @@ multiclass B_priv<string name> {
 
 def dont_merge_sections: F<"dont-merge-sections">,
     HelpText<"Each data directory will have its own section">;
-
+def dont_create_pdb: F<"dont-create-pdb">,
+    HelpText<"Do not create pdb">;
 def align   : P<"align", "Section alignment">;
 def aligncomm : P<"aligncomm", "Set common symbol alignment">;
 def alternatename : P<"alternatename", "Define weak alias">;

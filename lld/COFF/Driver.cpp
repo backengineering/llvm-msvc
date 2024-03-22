@@ -1761,7 +1761,11 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
                       args.hasArg(OPT_driver_wdm_uponly);
   config->driver |=
       config->driverUponly || config->driverWdm || args.hasArg(OPT_driver);
-          
+
+  // Handle /dont-create-pdb
+  if (args.hasArg(OPT_dont_create_pdb))
+    shouldCreatePDB = false;
+
   // Handle /pdb
   if (shouldCreatePDB) {
     if (auto *arg = args.getLastArg(OPT_pdb))
