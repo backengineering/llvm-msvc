@@ -527,6 +527,8 @@ bool Symbol::shouldReplace(const Defined &other) const {
 
 void elf::reportDuplicate(const Symbol &sym, const InputFile *newFile,
                           InputSectionBase *errSec, uint64_t errOffset) {
+  return;
+  
   if (config->allowMultipleDefinition)
     return;
   // In glibc<2.32, crti.o has .gnu.linkonce.t.__x86.get_pc_thunk.bx, which
