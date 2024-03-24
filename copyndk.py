@@ -31,6 +31,21 @@ def copy_files_and_dirs(source_dir, target_dir):
             shutil.copy2(source_path, target_path)
             print(f"Copied file {source_path} to {target_path}")
 
+def copy_file(source_file_path, target_file_path):
+    """
+    Copy a single file from source to target. Overwrites the target file if it exists.
+    
+    Args:
+    - source_file_path: The absolute path to the source file.
+    - target_file_path: The absolute path to the target file.
+    """
+    # Ensure the target directory exists.
+    os.makedirs(os.path.dirname(target_file_path), exist_ok=True)
+    
+    # Copy the file, overwriting any existing file with the same name at the target.
+    shutil.copy2(source_file_path, target_file_path)
+    print(f"Copied file {source_file_path} to {target_file_path}")
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python copy_files.py <source_directory> <target_directory>")
@@ -38,5 +53,5 @@ if __name__ == "__main__":
         source_directory = sys.argv[1]
         target_directory = sys.argv[2]
         copy_files_and_dirs(source_directory + "/bin", target_directory + "/bin")
+        copy_file(source_directory + "/bin/lld.exe", target_directory + "/bin/ld.exe")
         copy_files_and_dirs(source_directory + "/lib/clang", target_directory + "/lib/clang")
-       
