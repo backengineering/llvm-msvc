@@ -47,11 +47,7 @@ jobs:
         Invoke-WebRequest -Uri "https://github.com/gmh5225/android-ndk-windows-llvm-msvc/releases/download/r26c/android-ndk-r26c-windows-llvm-msvc.7z" -OutFile "android-ndk-r26c-windows-llvm-msvc.7z"
         7z x "android-ndk-r26c-windows-llvm-msvc.7z"
         del android-ndk-r26c-windows-llvm-msvc.7z
-        Copy-Item -Path "install\bin\clang.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\clang.exe" -Force
-        Copy-Item -Path "install\bin\clang++.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\clang++.exe" -Force
-        Copy-Item -Path "install\bin\clang-cpp.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\clang-cpp.exe" -Force
-        Copy-Item -Path "install\bin\clang-cl.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\clang-cl.exe" -Force
-        Copy-Item -Path "install\bin\ld.lld.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\ld.lld.exe" -Force
+        Copy-Item -Path "install\bin\*" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin" -Force -Recurse
         Copy-Item -Path "install\bin\lld.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\ld.exe" -Force
         Copy-Item -Path "install\lib\clang" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\lib" -Recurse -Force
         7z a android-ndk-r26c-windows-llvm-msvc.zip android-ndk-r26c-windows-llvm-msvc
