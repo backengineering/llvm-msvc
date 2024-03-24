@@ -46,6 +46,20 @@ def copy_file(source_file_path, target_file_path):
     shutil.copy2(source_file_path, target_file_path)
     print(f"Copied file {source_file_path} to {target_file_path}")
 
+def delete_pdb_files(directory):
+    """
+    Delete all .pdb files in the specified directory and its subdirectories.
+    
+    Args:
+    - directory: The path to the directory where the search should begin.
+    """
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith(".pdb"):
+                file_path = os.path.join(root, file)
+                os.remove(file_path)
+                print(f"Deleted {file_path}")
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python copy_files.py <source_directory> <target_directory>")
@@ -53,5 +67,9 @@ if __name__ == "__main__":
         source_directory = sys.argv[1]
         target_directory = sys.argv[2]
         copy_files_and_dirs(source_directory + "/bin", target_directory + "/bin")
+        delete_pdb_files(target_directory + "/bin")
         copy_file(source_directory + "/bin/lld.exe", target_directory + "/bin/ld.exe")
+        copy_file(source_directory + "/bin/clang.pdb", target_directory + "/bin/clang.pdb")
+        copy_file(source_directory + "/bin/lld.pdb", target_directory + "/bin/lld.pdb")
         copy_files_and_dirs(source_directory + "/lib/clang", target_directory + "/lib/clang")
+        
