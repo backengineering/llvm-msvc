@@ -48,6 +48,7 @@ jobs:
         7z x "android-ndk-r26c-windows-llvm-msvc.7z"
         del android-ndk-r26c-windows-llvm-msvc.7z
         Copy-Item -Path "install\bin\*" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin" -Force -Recurse
+        Get-ChildItem -Path "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin" -Recurse -Filter *.pdb | Remove-Item -Force
         Copy-Item -Path "install\bin\clang.pdb" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\clang.pdb" -Force
         Copy-Item -Path "install\bin\lld.exe" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\ld.exe" -Force
         Copy-Item -Path "install\bin\lld.pdb" -Destination "android-ndk-r26c-windows-llvm-msvc\toolchains\llvm\prebuilt\windows-x86_64\bin\lld.pdb" -Force
