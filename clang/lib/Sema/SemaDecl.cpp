@@ -16020,6 +16020,11 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
       if (FD->hasImplicitReturnZero() || FD->hasAttr<NakedAttr>())
         WP.disableCheckFallThrough();
 
+      // If the function is marked 'noreturn', don't complain about missing
+      // return statements.
+      if (FD->isNoReturn())
+        WP.disableCheckFallThrough();
+	    
       // MSVC permits the use of pure specifier (=0) on function definition,
       // defined at class scope, warn about this non-standard construct.
       if (getLangOpts().MicrosoftExt && FD->isPure() && !FD->isOutOfLine())
